@@ -35,11 +35,21 @@ app.use((req, res, next) => {
 });
 
 // ======================
-// BANCO DE DADOS
+// BANCO DE DADOS - CONEXÃO CORRIGIDA
 // ======================
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/bolao-copa-2026')
-  .then(() => console.log('✅ MongoDB conectado!'))
-  .catch(err => console.log('❌ MongoDB erro:', err));
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/bolao-copa-2026', {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+  serverSelectionTimeoutMS: 30000, // 30 segundos
+  socketTimeoutMS: 45000, // 45 segundos
+})
+.then(() => console.log('✅ MongoDB conectado!'))
+.catch(err => {
+  console.log('❌ ERRO MongoDB:');
+  console.log('- Verifique MONGODB_URI nas variáveis de ambiente');
+  console.log('- String de conexão:', process.env.MONGODB_URI ? '✅ Configurada' : '❌ Não configurada');
+  console.log('- Erro detalhado:', err.message);
+});
 
 // ======================
 // ROTAS
@@ -47,13 +57,18 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/bolao-cop
 
 // Rotas simples
 app.get('/', (req, res) => {
-  res.json({ message: '🚀 Backend funcionando!' });
+  res.json({ 
+    message: '🚀 Backend funcionando!',
+    database: mongoose.connection.readyState === 1 ? '✅ Conectado' : '❌ Desconectado',
+    timestamp: new Date().toISOString()
+  });
 });
 
 app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'OK',
-    database: mongoose.connection.readyState === 1 ? 'Conectado' : 'Desconectado'
+    database: mongoose.connection.readyState === 1 ? 'Conectado' : 'Desconectado',
+    mongodb_state: mongoose.connection.readyState
   });
 });
 
@@ -79,5 +94,7 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log('='.repeat(40));
   console.log(`🎯 Servidor rodando: http://localhost:${PORT}`);
+  console.log('📊 MongoDB State:', mongoose.connection.readyState);
+  console.log('🌐 Ambiente:', process.env.NODE_ENV || 'development');
   console.log('='.repeat(40));
 });
