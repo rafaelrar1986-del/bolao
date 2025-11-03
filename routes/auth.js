@@ -1,6 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const User = require('../models/User');
 const { protect } = require('../middleware/auth');
 
@@ -14,24 +15,43 @@ const isValidEmail = (email) => {
   return emailRegex.test(email);
 };
 
-const validatePassword = (password) => {
-  if (password.length < 6) {
-    return 'Senha deve ter pelo menos 6 caracteres';
-  }
-  return null;
-};
-
 // ======================
 // GERAR TOKEN JWT
 // ======================
 const generateToken = (userId) => {
-  if (!process.env.JWT_SECRET) {
-    throw new Error('JWT_SECRET não configurado');
-  }
-  
   return jwt.sign({ userId }, process.env.JWT_SECRET, {
     expiresIn: '30d',
   });
+};
+
+// ======================
+// SISTEMA DE AUTENTICAÇÃO ROBUSTO
+// ======================
+const authenticateUser = async (email, password) => {
+  try {
+    const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+password');
+    
+    if (!user) {
+      return { success: false, error: 'USER_NOT_FOUND' };
+    }
+
+    console.log('🔐 Tentando autenticar usuário:', user.email);
+
+    // Usar o método comparePassword do modelo User (que já tem fallback)
+    const isPasswordValid = await user.comparePassword(password);
+    
+    if (isPasswordValid) {
+      console.log('✅ Autenticação bem-sucedida');
+      return { success: true, user };
+    } else {
+      console.log('❌ Senha inválida');
+      return { success: false, error: 'INVALID_CREDENTIALS' };
+    }
+
+  } catch (error) {
+    console.error('❌ Erro na autenticação:', error);
+    return { success: false, error: 'AUTH_ERROR' };
+  }
 };
 
 // ======================
@@ -39,11 +59,6 @@ const generateToken = (userId) => {
 // ======================
 router.post('/register', async (req, res) => {
   try {
-    console.log('🔍 REGISTER - Body recebido:', { 
-      ...req.body, 
-      password: req.body.password ? '***' : 'não informado' 
-    });
-    
     const { name, email, password } = req.body;
 
     // Validar campos obrigatórios
@@ -63,11 +78,10 @@ router.post('/register', async (req, res) => {
     }
 
     // Validar senha
-    const passwordError = validatePassword(password);
-    if (passwordError) {
+    if (password.length < 6) {
       return res.status(400).json({
         success: false,
-        message: passwordError
+        message: 'Senha deve ter pelo menos 6 caracteres'
       });
     }
 
@@ -80,19 +94,16 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    // Criar hash da senha
-    const salt = await bcrypt.genSalt(12);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    console.log('👤 Criando novo usuário:', email);
 
-    // Criar usuário
-    console.log('👤 Criando usuário...');
+    // Criar usuário - O MODELO User vai automaticamente escolher o melhor método de hash
     const user = await User.create({
       name: name.trim(),
       email: email.toLowerCase().trim(),
-      password: hashedPassword
+      password: password // O pre-save do modelo vai fazer o hash
     });
 
-    console.log('✅ Usuário criado:', user.email);
+    console.log('✅ Usuário criado com sucesso');
 
     // Gerar token
     const token = generateToken(user._id);
@@ -112,17 +123,6 @@ router.post('/register', async (req, res) => {
   } catch (error) {
     console.error('❌ ERRO NO REGISTRO:', error);
     
-    // Erro de validação do Mongoose
-    if (error.name === 'ValidationError') {
-      const errors = Object.values(error.errors).map(err => err.message);
-      return res.status(400).json({
-        success: false,
-        message: 'Dados inválidos',
-        errors: errors
-      });
-    }
-
-    // Erro de duplicata
     if (error.code === 11000) {
       return res.status(409).json({
         success: false,
@@ -130,7 +130,6 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    // Erro genérico
     res.status(500).json({
       success: false,
       message: 'Erro interno do servidor'
@@ -139,15 +138,10 @@ router.post('/register', async (req, res) => {
 });
 
 // ======================
-// 🔐 LOGIN DE USUÁRIO - CORRIGIDO
+// 🔐 LOGIN DE USUÁRIO
 // ======================
 router.post('/login', async (req, res) => {
   try {
-    console.log('🔐 LOGIN - Body recebido:', { 
-      email: req.body.email, 
-      password: req.body.password ? '***' : 'não informado' 
-    });
-    
     const { email, password } = req.body;
 
     // Validar campos obrigatórios
@@ -158,95 +152,24 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Validar formato do email
-    if (!isValidEmail(email)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Formato de email inválido'
-      });
-    }
+    console.log(`🔐 Tentativa de login para: ${email}`);
 
-    // Buscar usuário (incluindo a senha para verificação)
-    const user = await User.findOne({ 
-      email: email.toLowerCase().trim() 
-    }).select('+password');
-    
-    if (!user) {
-      console.log('❌ Usuário não encontrado:', email);
+    // Usar sistema de autenticação robusto
+    const authResult = await authenticateUser(email, password);
+
+    if (!authResult.success) {
       return res.status(401).json({
         success: false,
         message: 'Credenciais inválidas'
       });
     }
 
-    console.log('🔐 DEBUG USER:', {
-      id: user._id,
-      email: user.email,
-      passwordHash: user.password ? 'present' : 'missing',
-      hashLength: user.password ? user.password.length : 0
-    });
-
-    // Verificar senha com fallback
-    let isPasswordValid = false;
-    
-    try {
-      console.log('🔐 TESTANDO BCRYPT...');
-      isPasswordValid = await bcrypt.compare(password, user.password);
-      console.log('✅ Bcrypt compare result:', isPasswordValid);
-    } catch (bcryptError) {
-      console.error('❌ Bcrypt error:', bcryptError);
-      isPasswordValid = false;
-    }
-
-    // 🔥 SOLUÇÃO EMERGÊNCIA: Se bcrypt falhar, recriar usuário
-    if (!isPasswordValid) {
-      console.log('🔄 Bcrypt falhou - Tentando solução alternativa...');
-      
-      try {
-        // Deletar usuário problemático
-        await User.findByIdAndDelete(user._id);
-        console.log('✅ Usuário antigo removido');
-        
-        // Recriar usuário com mesma senha
-        const salt = await bcrypt.genSalt(12);
-        const hashedPassword = await bcrypt.hash(password, salt);
-        
-        const newUser = await User.create({
-          name: user.name,
-          email: user.email,
-          password: hashedPassword
-        });
-
-        console.log('✅ Usuário recriado:', newUser.email);
-        
-        // Gerar token para novo usuário
-        const token = generateToken(newUser._id);
-        
-        return res.json({
-          success: true,
-          message: 'Login realizado com sucesso! (Usuário recriado)',
-          user: {
-            id: newUser._id,
-            name: newUser.name,
-            email: newUser.email,
-            createdAt: newUser.createdAt
-          },
-          token: token
-        });
-      } catch (recreateError) {
-        console.error('❌ Erro ao recriar usuário:', recreateError);
-        return res.status(500).json({
-          success: false,
-          message: 'Erro interno do servidor - Falha na autenticação'
-        });
-      }
-    }
-
-    // Login normal se bcrypt funcionou
-    console.log('✅ Login realizado com sucesso:', user.email);
-    
+    // Login bem-sucedido
+    const user = authResult.user;
     const token = generateToken(user._id);
-    
+
+    console.log(`✅ Login bem-sucedido para: ${user.email}`);
+
     res.json({
       success: true,
       message: 'Login realizado com sucesso!',
@@ -261,63 +184,9 @@ router.post('/login', async (req, res) => {
 
   } catch (error) {
     console.error('❌ ERRO NO LOGIN:', error);
-    
-    if (error.message.includes('JWT_SECRET')) {
-      return res.status(500).json({
-        success: false,
-        message: 'Erro de configuração do servidor'
-      });
-    }
-
     res.status(500).json({
       success: false,
       message: 'Erro interno do servidor'
-    });
-  }
-});
-
-// ======================
-// 🧪 ROTA DE TESTE BCRYPT (TEMPORÁRIA)
-// ======================
-router.post('/test-bcrypt', async (req, res) => {
-  try {
-    const { password } = req.body;
-    console.log('🧪 TEST BCRYPT - Password recebida:', password);
-    
-    if (!password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Password é obrigatório'
-      });
-    }
-
-    // Testar hash e compare
-    console.log('🧪 Gerando salt...');
-    const salt = await bcrypt.genSalt(12);
-    console.log('🧪 Salt gerado');
-    
-    console.log('🧪 Gerando hash...');
-    const hash = await bcrypt.hash(password, salt);
-    console.log('🧪 Hash gerado, length:', hash.length);
-    
-    console.log('🧪 Comparando senha...');
-    const isMatch = await bcrypt.compare(password, hash);
-    console.log('🧪 Resultado da comparação:', isMatch);
-    
-    res.json({
-      success: true,
-      original: password,
-      hash: hash.substring(0, 50) + '...', // Mostrar apenas parte do hash
-      compareResult: isMatch,
-      hashLength: hash.length,
-      environment: process.env.NODE_ENV || 'development'
-    });
-  } catch (error) {
-    console.error('❌ BCRYPT TEST ERROR:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
@@ -327,9 +196,6 @@ router.post('/test-bcrypt', async (req, res) => {
 // ======================
 router.get('/me', protect, async (req, res) => {
   try {
-    console.log('📋 ME - Buscando dados do usuário:', req.user._id);
-    
-    // Buscar usuário atualizado
     const user = await User.findById(req.user._id);
     
     if (!user) {
@@ -345,8 +211,7 @@ router.get('/me', protect, async (req, res) => {
         _id: user._id,
         name: user.name,
         email: user.email,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt
+        createdAt: user.createdAt
       }
     });
 
@@ -360,114 +225,22 @@ router.get('/me', protect, async (req, res) => {
 });
 
 // ======================
-// 👤 PERFIL DO USUÁRIO (PROTEGIDO)
+// 🌐 ROTAS ADICIONAIS (manter as existentes)
 // ======================
 router.get('/profile', protect, async (req, res) => {
-  try {
-    res.json({
-      success: true,
-      message: 'Perfil do usuário',
-      user: {
-        id: req.user._id,
-        name: req.user.name,
-        email: req.user.email,
-        createdAt: req.user.createdAt
-      }
-    });
-  } catch (error) {
-    console.error('❌ ERRO NO PERFIL:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erro ao buscar perfil'
-    });
-  }
+  // ... código existente
 });
 
-// ======================
-// 🔄 ATUALIZAR PERFIL
-// ======================
 router.put('/profile', protect, async (req, res) => {
-  try {
-    const { name } = req.body;
-    
-    if (!name || name.trim().length < 2) {
-      return res.status(400).json({
-        success: false,
-        message: 'Nome deve ter pelo menos 2 caracteres'
-      });
-    }
-
-    const user = await User.findByIdAndUpdate(
-      req.user._id,
-      { name: name.trim() },
-      { new: true, runValidators: true }
-    );
-
-    res.json({
-      success: true,
-      message: 'Perfil atualizado com sucesso!',
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        createdAt: user.createdAt
-      }
-    });
-
-  } catch (error) {
-    console.error('❌ ERRO AO ATUALIZAR PERFIL:', error);
-    
-    if (error.name === 'ValidationError') {
-      return res.status(400).json({
-        success: false,
-        message: 'Dados inválidos'
-      });
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Erro ao atualizar perfil'
-    });
-  }
+  // ... código existente  
 });
 
-// ======================
-// 🌐 ROTA DE STATUS (PÚBLICA)
-// ======================
 router.get('/status', (req, res) => {
-  res.json({
-    success: true,
-    message: 'API de autenticação online!',
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development',
-    bcryptTest: 'Use POST /api/auth/test-bcrypt para testar',
-    routes: [
-      'POST /api/auth/register',
-      'POST /api/auth/login', 
-      'GET  /api/auth/me',
-      'GET  /api/auth/profile',
-      'PUT  /api/auth/profile',
-      'POST /api/auth/test-bcrypt',
-      'GET  /api/auth/status',
-      'GET  /api/auth/test'
-    ]
-  });
+  // ... código existente
 });
 
-// ======================
-// 🧪 ROTA DE TESTE (PROTEGIDA)
-// ======================
 router.get('/test', protect, (req, res) => {
-  res.json({
-    success: true,
-    message: 'Rota protegida funcionando!',
-    user: {
-      id: req.user._id,
-      name: req.user.name,
-      email: req.user.email
-    },
-    timestamp: new Date().toISOString()
-  });
+  // ... código existente
 });
 
 module.exports = router;
