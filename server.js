@@ -9,7 +9,14 @@ const app = express();
 // ======================
 // MIDDLEWARES COM BODY-PARSER
 // ======================
-app.use(cors());
+app.use(cors({
+  origin: [
+    'https://lucent-baklava-e8d80d.netlify.app/', // ← SUA URL DO NETLIFY
+    'http://localhost:3000',
+    'http://localhost:8000'
+  ],
+  credentials: true
+}));
 
 // 🔥 USAR BODY-PARSER EM VEZ DO EXPRESS.JSON()
 app.use(bodyParser.json({ 
