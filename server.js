@@ -11,7 +11,8 @@ const app = express();
 // ======================
 app.use(cors({
   origin: [
-    'https://lucent-baklava-e8d80d.netlify.app', // SEU FRONTEND NO NETLIFY
+    'https://whimsical-sawine-852c25.netlify.app', // ← NOVO URL DO NETLIFY
+    'https://lucent-baklava-e8d80d.netlify.app',   // ← URL ANTIGO (manter por segurança)
     'http://localhost:3000',
     'http://localhost:5173',
     'http://localhost:8000'
