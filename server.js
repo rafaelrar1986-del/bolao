@@ -11,8 +11,9 @@ const app = express();
 // ======================
 app.use(cors({
   origin: [
-    'https://lucent-baklava-e8d80d.netlify.app/', // ← SUA URL DO NETLIFY
+    'https://lucent-baklava-e8d80d.netlify.app', // SEU FRONTEND NO NETLIFY
     'http://localhost:3000',
+    'http://localhost:5173',
     'http://localhost:8000'
   ],
   credentials: true
@@ -61,21 +62,8 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/bolao-cop
 // ======================
 // ROTAS
 // ======================
-router.get('/', (req, res) => {
-  res.json({
-    success: true,
-    message: '🏆 API de Palpites do Bolão da Copa 2026!',
-    endpoints: {
-      'GET /my-bets': 'Buscar meus palpites (protegido)',
-      'POST /save': 'Salvar palpites (protegido)',
-      'GET /status': 'Verificar status (protegido)',
-      'GET /test': 'Rota de teste (protegido)'
-    },
-    instructions: 'Use as rotas específicas acima para interagir com a API',
-    timestamp: new Date().toISOString()
-  });
-});
-// Rotas simples
+
+// Rotas simples - ✅ CORRIGIDO: usando app. em vez de router.
 app.get('/', (req, res) => {
   res.json({ 
     message: '🚀 Backend funcionando!',
@@ -92,15 +80,31 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// ✅ ROTA TEMPORÁRIA PARA TESTE DO BETS
+app.get('/api/bets', (req, res) => {
+  res.json({
+    success: true,
+    message: '🏆 API de Palpites - Use as rotas específicas',
+    endpoints: {
+      'GET /api/bets/my-bets': 'Buscar meus palpites',
+      'POST /api/bets/save': 'Salvar palpites', 
+      'GET /api/bets/status': 'Verificar status',
+      'GET /api/bets/test': 'Rota de teste'
+    },
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Rotas da aplicação
 const authRoutes = require('./routes/auth');
 const matchesRoutes = require('./routes/matches');
+const betsRoutes = require('./routes/bets');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/matches', matchesRoutes);
-app.use('/api/bets', require('./routes/bets')); 
+app.use('/api/bets', betsRoutes);
 
-// Rota 404
+// Rota 404 - ✅ CORRIGIDO: usando app. em vez de router.
 app.use((req, res) => {
   res.status(404).json({ 
     message: 'Rota não encontrada: ' + req.url
