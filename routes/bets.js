@@ -1,121 +1,218 @@
 const express = require('express');
 const Bet = require('../models/Bet');
+const Match = require('../models/Match');
 const { protect } = require('../middleware/auth');
 const router = express.Router();
 
-// 🌐 ROTA RAIZ - ADICIONE ESTA ROTA (NOVA)
+// ======================
+// 🌐 ROTA RAIZ - INFORMATIVA
+// ======================
 router.get('/', (req, res) => {
   res.json({
     success: true,
     message: '🏆 API de Palpites do Bolão da Copa 2026!',
+    version: '1.0.0',
     endpoints: {
-      'GET /my-bets': 'Buscar meus palpites (protegido)',
-      'POST /save': 'Salvar palpites (protegido)',
-      'GET /status': 'Verificar status (protegido)',
-      'GET /test': 'Rota de teste (protegido)'
+      'GET  /api/bets': 'Esta página de informações',
+      'GET  /api/bets/my-bets': 'Buscar meus palpites (protegido)',
+      'POST /api/bets/save': 'Salvar palpites (protegido)',
+      'GET  /api/bets/status': 'Verificar status (protegido)',
+      'GET  /api/bets/leaderboard': 'Ver classificação (protegido)',
+      'GET  /api/bets/test': 'Rota de teste (protegido)'
     },
     instructions: 'Use as rotas específicas acima para interagir com a API',
     timestamp: new Date().toISOString()
   });
 });
 
-// 🎯 BUSCAR PALPITES DO USUÁRIO
+// ======================
+// 🎯 BUSCAR PALPITES DO USUÁRIO - CORRIGIDO
+// ======================
 router.get('/my-bets', protect, async (req, res) => {
   try {
-    console.log('🎯 Buscando palpites do usuário:', req.user._id);
+    console.log('🎯 Buscando palpites do usuário:', {
+      userId: req.user._id,
+      userName: req.user.name
+    });
     
-    let userBet = await Bet.findOne({ user: req.user._id })
-      .populate('user', 'name email');
+    const userBet = await Bet.findOne({ user: req.user._id })
+      .populate('user', 'name email')
+      .lean();
 
+    // ✅ CORREÇÃO: Não criar registro automaticamente - apenas no save
     if (!userBet) {
-      userBet = await Bet.create({ 
-        user: req.user._id,
-        groupMatches: [],
-        podium: { first: null, second: null, third: null },
-        totalPoints: 0,
-        hasSubmitted: false
+      console.log('📝 Usuário ainda não enviou palpites');
+      return res.json({
+        success: true,
+        data: null,
+        message: 'Você ainda não enviou seus palpites. Use a rota /save para enviar.',
+        hasSubmitted: false,
+        canEdit: true
       });
     }
 
+    console.log('✅ Palpites encontrados para:', req.user.name);
+
     res.json({
       success: true,
-      data: userBet
+      data: userBet,
+      hasSubmitted: userBet.hasSubmitted,
+      canEdit: !userBet.hasSubmitted
     });
 
   } catch (error) {
     console.error('❌ ERRO AO BUSCAR PALPITES:', error);
     res.status(500).json({
       success: false,
-      message: 'Erro ao buscar palpites'
+      message: 'Erro ao buscar seus palpites',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
 
-// 💾 SALVAR PALPITES (APENAS UMA VEZ)
+// ======================
+// 💾 SALVAR PALPITES (APENAS UMA VEZ) - MELHORADO
+// ======================
 router.post('/save', protect, async (req, res) => {
   try {
-    console.log('💾 Tentando salvar palpites para:', req.user.name);
+    console.log('💾 Tentando salvar palpites para:', {
+      userId: req.user._id,
+      userName: req.user.name
+    });
     
     const { groupMatches, podium } = req.body;
     const userId = req.user._id;
+
+    // 🔥 VALIDAÇÃO DE CAMPOS OBRIGATÓRIOS
+    if (!groupMatches || !podium) {
+      return res.status(400).json({
+        success: false,
+        message: 'Dados incompletos. São necessários: groupMatches e podium'
+      });
+    }
+
+    // 🔥 VALIDAÇÃO DO PÓDIO
+    if (!podium.first || !podium.second || !podium.third) {
+      return res.status(400).json({
+        success: false,
+        message: 'Preencha todas as posições do pódio (1º, 2º e 3º lugar)'
+      });
+    }
 
     // 🔥 VERIFICAR SE JÁ ENVIOU PALPITES
     let userBet = await Bet.findOne({ user: userId });
     
     if (userBet && userBet.hasSubmitted) {
-      return res.status(400).json({
+      console.log('❌ Tentativa de reenvio de palpites:', req.user.email);
+      return res.status(409).json({
         success: false,
         message: 'Você já enviou seus palpites! Não é possível alterá-los.',
-        firstSubmission: userBet.firstSubmission
+        firstSubmission: userBet.firstSubmission,
+        canEdit: false
       });
     }
 
-    // Criar ou atualizar registro
+    // 🔥 VALIDAR SE OS JOGOS EXISTEM
+    const matchIds = Object.keys(groupMatches).map(id => parseInt(id));
+    const existingMatches = await Match.find({ 
+      matchId: { $in: matchIds } 
+    }).select('matchId');
+    
+    const existingMatchIds = existingMatches.map(m => m.matchId);
+    const invalidMatches = matchIds.filter(id => !existingMatchIds.includes(id));
+    
+    if (invalidMatches.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `IDs de jogos inválidos: ${invalidMatches.join(', ')}`
+      });
+    }
+
+    // ✅ CRIAR OU ATUALIZAR REGISTRO
+    const now = new Date();
+    
     if (!userBet) {
       userBet = new Bet({ 
         user: userId,
-        firstSubmission: new Date(),
+        firstSubmission: now,
+        lastUpdate: now,
         hasSubmitted: true
       });
     } else {
-      userBet.firstSubmission = new Date();
+      userBet.firstSubmission = userBet.firstSubmission || now;
+      userBet.lastUpdate = now;
       userBet.hasSubmitted = true;
     }
 
-    // Atualizar palpites dos jogos
-    if (groupMatches) {
-      userBet.groupMatches = Object.entries(groupMatches).map(([matchId, bet]) => ({
+    // ✅ PROCESSAR PALPITES DOS JOGOS
+    userBet.groupMatches = Object.entries(groupMatches).map(([matchId, bet]) => {
+      const score = bet.split('-').map(num => parseInt(num.trim()));
+      return {
         matchId: parseInt(matchId),
-        bet: bet
-      }));
-    }
+        bet: bet,
+        scoreA: score[0],
+        scoreB: score[1],
+        points: 0 // Será calculado depois
+      };
+    });
 
-    // Atualizar pódio
-    if (podium) {
-      userBet.podium = podium;
-    }
+    // ✅ PROCESSAR PÓDIO
+    userBet.podium = {
+      first: podium.first.trim(),
+      second: podium.second.trim(), 
+      third: podium.third.trim()
+    };
+
+    // ✅ CALCULAR PONTOS INICIAIS (apenas estrutura)
+    userBet.totalPoints = 0;
+    userBet.groupPoints = 0;
+    userBet.podiumPoints = 0;
+    userBet.bonusPoints = 0;
 
     await userBet.save();
+    
+    // Popular com dados do usuário para resposta
+    await userBet.populate('user', 'name email');
 
-    console.log('✅ Palpites salvos com sucesso! (Primeira submissão)');
+    console.log('✅ Palpites salvos com sucesso!', {
+      user: req.user.name,
+      matches: userBet.groupMatches.length,
+      podium: userBet.podium
+    });
 
-    res.json({
+    res.status(201).json({
       success: true,
       message: 'Palpites enviados com sucesso! Não será possível alterá-los.',
       data: userBet,
-      firstSubmission: true
+      firstSubmission: true,
+      canEdit: false,
+      submissionDate: userBet.firstSubmission
     });
 
   } catch (error) {
     console.error('❌ ERRO AO SALVAR PALPITES:', error);
+    
+    // Erro de validação do Mongoose
+    if (error.name === 'ValidationError') {
+      const errors = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Dados inválidos',
+        errors: errors
+      });
+    }
+
     res.status(500).json({
       success: false,
-      message: 'Erro ao salvar palpites'
+      message: 'Erro ao salvar palpites',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
 
+// ======================
 // 🔍 VERIFICAR STATUS DOS PALPITES
+// ======================
 router.get('/status', protect, async (req, res) => {
   try {
     const userBet = await Bet.findOne({ user: req.user._id });
@@ -123,7 +220,10 @@ router.get('/status', protect, async (req, res) => {
     const status = {
       hasSubmitted: userBet ? userBet.hasSubmitted : false,
       firstSubmission: userBet ? userBet.firstSubmission : null,
-      canEdit: !userBet || !userBet.hasSubmitted
+      lastUpdate: userBet ? userBet.lastUpdate : null,
+      canEdit: !userBet || !userBet.hasSubmitted,
+      matchesCount: userBet ? userBet.groupMatches.length : 0,
+      hasPodium: userBet ? !!(userBet.podium.first && userBet.podium.second && userBet.podium.third) : false
     };
 
     res.json({
@@ -135,17 +235,106 @@ router.get('/status', protect, async (req, res) => {
     console.error('❌ ERRO AO VERIFICAR STATUS:', error);
     res.status(500).json({
       success: false,
-      message: 'Erro ao verificar status'
+      message: 'Erro ao verificar status dos palpites'
     });
   }
 });
 
+// ======================
+// 🏆 CLASSIFICAÇÃO (LEADERBOARD)
+// ======================
+router.get('/leaderboard', protect, async (req, res) => {
+  try {
+    console.log('🏆 Gerando leaderboard...');
+    
+    const leaderboard = await Bet.find({ hasSubmitted: true })
+      .populate('user', 'name email')
+      .select('user totalPoints groupPoints podiumPoints bonusPoints lastUpdate')
+      .sort({ totalPoints: -1, lastUpdate: 1 })
+      .lean();
+
+    // Adicionar posição no ranking
+    const rankedLeaderboard = leaderboard.map((bet, index) => ({
+      position: index + 1,
+      user: bet.user,
+      totalPoints: bet.totalPoints || 0,
+      groupPoints: bet.groupPoints || 0,
+      podiumPoints: bet.podiumPoints || 0,
+      bonusPoints: bet.bonusPoints || 0,
+      lastUpdate: bet.lastUpdate
+    }));
+
+    res.json({
+      success: true,
+      data: rankedLeaderboard,
+      count: rankedLeaderboard.length,
+      updatedAt: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ ERRO AO BUSCAR LEADERBOARD:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao carregar classificação'
+    });
+  }
+});
+
+// ======================
+// 📊 ESTATÍSTICAS DOS PALPITES
+// ======================
+router.get('/stats/overview', protect, async (req, res) => {
+  try {
+    const totalBets = await Bet.countDocuments({ hasSubmitted: true });
+    const totalUsers = await Bet.distinct('user', { hasSubmitted: true });
+    
+    // Últimos palpites enviados
+    const recentBets = await Bet.find({ hasSubmitted: true })
+      .populate('user', 'name')
+      .sort({ lastUpdate: -1 })
+      .limit(5)
+      .select('user lastUpdate');
+
+    res.json({
+      success: true,
+      data: {
+        totalSubmissions: totalBets,
+        totalParticipants: totalUsers.length,
+        recentSubmissions: recentBets
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ ERRO AO BUSCAR ESTATÍSTICAS:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao carregar estatísticas'
+    });
+  }
+});
+
+// ======================
 // 🌐 ROTA DE TESTE
+// ======================
 router.get('/test', protect, (req, res) => {
   res.json({
     success: true,
-    message: 'Rotas de palpites funcionando!',
-    user: req.user.name
+    message: '✅ Rotas de palpites funcionando perfeitamente!',
+    user: {
+      id: req.user._id,
+      name: req.user.name,
+      email: req.user.email
+    },
+    timestamp: new Date().toISOString(),
+    endpoints: [
+      'GET  /api/bets',
+      'GET  /api/bets/my-bets',
+      'POST /api/bets/save', 
+      'GET  /api/bets/status',
+      'GET  /api/bets/leaderboard',
+      'GET  /api/bets/stats/overview',
+      'GET  /api/bets/test'
+    ]
   });
 });
 
