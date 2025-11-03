@@ -1,6 +1,9 @@
 const express = require('express');
+const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { protect } = require('../middleware/auth');
+
 const router = express.Router();
 
 // Gerar token JWT
@@ -34,12 +37,16 @@ router.post('/register', async (req, res) => {
       });
     }
 
+    // Criar hash da senha
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
     // Criar usuário
     console.log('👤 Criando usuário...');
     const user = await User.create({
       name: name.trim(),
       email: email.toLowerCase().trim(),
-      password: password
+      password: hashedPassword
     });
 
     console.log('✅ Usuário criado:', user.email);
@@ -82,29 +89,39 @@ router.post('/login', async (req, res) => {
 
     // Buscar usuário
     const user = await User.findOne({ email: email.toLowerCase().trim() });
-
-    // Verificar usuário e senha
-    if (user && (await user.comparePassword(password))) {
-      console.log('✅ Login realizado:', user.email);
-      
-      res.json({
-        success: true,
-        message: 'Login realizado com sucesso!',
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          isAdmin: user.isAdmin
-        },
-        token: generateToken(user._id)
-      });
-    } else {
-      console.log('❌ Login falhou para:', email);
-      res.status(401).json({
+    
+    if (!user) {
+      console.log('❌ Usuário não encontrado:', email);
+      return res.status(401).json({
         success: false,
         message: 'Email ou senha inválidos'
       });
     }
+
+    // Verificar senha
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      console.log('❌ Senha inválida para:', email);
+      return res.status(401).json({
+        success: false,
+        message: 'Email ou senha inválidos'
+      });
+    }
+
+    console.log('✅ Login realizado:', user.email);
+    
+    res.json({
+      success: true,
+      message: 'Login realizado com sucesso!',
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        createdAt: user.createdAt
+      },
+      token: generateToken(user._id)
+    });
+
   } catch (error) {
     console.error('❌ ERRO NO LOGIN:', error.message);
     res.status(500).json({
@@ -114,14 +131,42 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// 👤 PERFIL DO USUÁRIO (PROTEGIDO)
-router.get('/profile', async (req, res) => {
+// 👤 OBTER DADOS DO USUÁRIO LOGADO (ROTA QUE ESTAVA FALTANDO!)
+router.get('/me', protect, async (req, res) => {
   try {
-    // Por enquanto retorna mensagem simples
-    // Depois implementamos a verificação do token
+    console.log('📋 ME - Buscando dados do usuário:', req.user._id);
+    
     res.json({
       success: true,
-      message: 'Rota de perfil - implementar verificação de token depois'
+      user: {
+        _id: req.user._id,
+        name: req.user.name,
+        email: req.user.email,
+        createdAt: req.user.createdAt
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ ERRO NO /ME:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao buscar dados do usuário'
+    });
+  }
+});
+
+// 👤 PERFIL DO USUÁRIO (PROTEGIDO)
+router.get('/profile', protect, async (req, res) => {
+  try {
+    res.json({
+      success: true,
+      message: 'Perfil do usuário',
+      user: {
+        id: req.user._id,
+        name: req.user.name,
+        email: req.user.email,
+        createdAt: req.user.createdAt
+      }
     });
   } catch (error) {
     console.error('❌ ERRO NO PERFIL:', error.message);
@@ -132,17 +177,32 @@ router.get('/profile', async (req, res) => {
   }
 });
 
-// 🌐 ROTA DE TESTE
-router.get('/test', (req, res) => {
+// 🌐 ROTA DE STATUS (PÚBLICA)
+router.get('/status', (req, res) => {
   res.json({
     success: true,
-    message: 'Rotas de autenticação funcionando!',
+    message: 'API de autenticação online!',
+    timestamp: new Date().toISOString(),
     routes: [
       'POST /api/auth/register',
       'POST /api/auth/login', 
+      'GET  /api/auth/me',
       'GET  /api/auth/profile',
-      'GET  /api/auth/test'
+      'GET  /api/auth/status'
     ]
+  });
+});
+
+// 🧪 ROTA DE TESTE (PROTEGIDA)
+router.get('/test', protect, (req, res) => {
+  res.json({
+    success: true,
+    message: 'Rota protegida funcionando!',
+    user: {
+      id: req.user._id,
+      name: req.user.name,
+      email: req.user.email
+    }
   });
 });
 
