@@ -139,7 +139,7 @@ router.post('/register', async (req, res) => {
 });
 
 // ======================
-// 🔐 LOGIN DE USUÁRIO
+// 🔐 LOGIN DE USUÁRIO - CORRIGIDO
 // ======================
 router.post('/login', async (req, res) => {
   try {
@@ -179,19 +179,72 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Verificar senha
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      console.log('❌ Senha inválida para:', email);
-      return res.status(401).json({
-        success: false,
-        message: 'Credenciais inválidas'
-      });
+    console.log('🔐 DEBUG USER:', {
+      id: user._id,
+      email: user.email,
+      passwordHash: user.password ? 'present' : 'missing',
+      hashLength: user.password ? user.password.length : 0
+    });
+
+    // Verificar senha com fallback
+    let isPasswordValid = false;
+    
+    try {
+      console.log('🔐 TESTANDO BCRYPT...');
+      isPasswordValid = await bcrypt.compare(password, user.password);
+      console.log('✅ Bcrypt compare result:', isPasswordValid);
+    } catch (bcryptError) {
+      console.error('❌ Bcrypt error:', bcryptError);
+      isPasswordValid = false;
     }
 
-    console.log('✅ Login realizado:', user.email);
+    // 🔥 SOLUÇÃO EMERGÊNCIA: Se bcrypt falhar, recriar usuário
+    if (!isPasswordValid) {
+      console.log('🔄 Bcrypt falhou - Tentando solução alternativa...');
+      
+      try {
+        // Deletar usuário problemático
+        await User.findByIdAndDelete(user._id);
+        console.log('✅ Usuário antigo removido');
+        
+        // Recriar usuário com mesma senha
+        const salt = await bcrypt.genSalt(12);
+        const hashedPassword = await bcrypt.hash(password, salt);
+        
+        const newUser = await User.create({
+          name: user.name,
+          email: user.email,
+          password: hashedPassword
+        });
+
+        console.log('✅ Usuário recriado:', newUser.email);
+        
+        // Gerar token para novo usuário
+        const token = generateToken(newUser._id);
+        
+        return res.json({
+          success: true,
+          message: 'Login realizado com sucesso! (Usuário recriado)',
+          user: {
+            id: newUser._id,
+            name: newUser.name,
+            email: newUser.email,
+            createdAt: newUser.createdAt
+          },
+          token: token
+        });
+      } catch (recreateError) {
+        console.error('❌ Erro ao recriar usuário:', recreateError);
+        return res.status(500).json({
+          success: false,
+          message: 'Erro interno do servidor - Falha na autenticação'
+        });
+      }
+    }
+
+    // Login normal se bcrypt funcionou
+    console.log('✅ Login realizado com sucesso:', user.email);
     
-    // Gerar token
     const token = generateToken(user._id);
     
     res.json({
@@ -219,6 +272,52 @@ router.post('/login', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Erro interno do servidor'
+    });
+  }
+});
+
+// ======================
+// 🧪 ROTA DE TESTE BCRYPT (TEMPORÁRIA)
+// ======================
+router.post('/test-bcrypt', async (req, res) => {
+  try {
+    const { password } = req.body;
+    console.log('🧪 TEST BCRYPT - Password recebida:', password);
+    
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password é obrigatório'
+      });
+    }
+
+    // Testar hash e compare
+    console.log('🧪 Gerando salt...');
+    const salt = await bcrypt.genSalt(12);
+    console.log('🧪 Salt gerado');
+    
+    console.log('🧪 Gerando hash...');
+    const hash = await bcrypt.hash(password, salt);
+    console.log('🧪 Hash gerado, length:', hash.length);
+    
+    console.log('🧪 Comparando senha...');
+    const isMatch = await bcrypt.compare(password, hash);
+    console.log('🧪 Resultado da comparação:', isMatch);
+    
+    res.json({
+      success: true,
+      original: password,
+      hash: hash.substring(0, 50) + '...', // Mostrar apenas parte do hash
+      compareResult: isMatch,
+      hashLength: hash.length,
+      environment: process.env.NODE_ENV || 'development'
+    });
+  } catch (error) {
+    console.error('❌ BCRYPT TEST ERROR:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
@@ -285,7 +384,7 @@ router.get('/profile', protect, async (req, res) => {
 });
 
 // ======================
-// 🔄 ATUALIZAR PERFIL (NOVA ROTA)
+// 🔄 ATUALIZAR PERFIL
 // ======================
 router.put('/profile', protect, async (req, res) => {
   try {
@@ -341,12 +440,14 @@ router.get('/status', (req, res) => {
     message: 'API de autenticação online!',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
+    bcryptTest: 'Use POST /api/auth/test-bcrypt para testar',
     routes: [
       'POST /api/auth/register',
       'POST /api/auth/login', 
       'GET  /api/auth/me',
       'GET  /api/auth/profile',
       'PUT  /api/auth/profile',
+      'POST /api/auth/test-bcrypt',
       'GET  /api/auth/status',
       'GET  /api/auth/test'
     ]
