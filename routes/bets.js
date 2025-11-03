@@ -26,20 +26,16 @@ router.get('/', (req, res) => {
 });
 
 // ======================
-// 🎯 BUSCAR PALPITES DO USUÁRIO - CORRIGIDO
+// 🎯 BUSCAR PALPITES DO USUÁRIO - COM NOMES DOS TIMES
 // ======================
 router.get('/my-bets', protect, async (req, res) => {
   try {
-    console.log('🎯 Buscando palpites do usuário:', {
-      userId: req.user._id,
-      userName: req.user.name
-    });
+    console.log('🎯 Buscando palpites do usuário:', req.user._id);
     
     const userBet = await Bet.findOne({ user: req.user._id })
       .populate('user', 'name email')
       .lean();
 
-    // ✅ CORREÇÃO: Não criar registro automaticamente - apenas no save
     if (!userBet) {
       console.log('📝 Usuário ainda não enviou palpites');
       return res.json({
@@ -51,11 +47,33 @@ router.get('/my-bets', protect, async (req, res) => {
       });
     }
 
-    console.log('✅ Palpites encontrados para:', req.user.name);
+    // 🔥 BUSCAR DADOS DOS JOGOS PARA MOSTRAR NOMES DOS TIMES
+    const matches = await Match.find().lean();
+    
+    // 🔥 ADICIONAR INFORMAÇÕES DOS TIMES AOS PALPITES
+    const betsWithTeamNames = userBet.groupMatches.map(bet => {
+      const match = matches.find(m => m.matchId === bet.matchId);
+      return {
+        ...bet,
+        teamA: match ? match.teamA : 'Time A',
+        teamB: match ? match.teamB : 'Time B', 
+        matchName: match ? `${match.teamA} vs ${match.teamB}` : `Jogo ${bet.matchId}`,
+        date: match ? match.date : null,
+        time: match ? match.time : null,
+        group: match ? match.group : null,
+        stadium: match ? match.stadium : null,
+        status: match ? match.status : 'scheduled'
+      };
+    });
+
+    console.log('✅ Palpites encontrados com nomes dos times');
 
     res.json({
       success: true,
-      data: userBet,
+      data: {
+        ...userBet,
+        groupMatches: betsWithTeamNames
+      },
       hasSubmitted: userBet.hasSubmitted,
       canEdit: !userBet.hasSubmitted
     });
@@ -71,14 +89,11 @@ router.get('/my-bets', protect, async (req, res) => {
 });
 
 // ======================
-// 💾 SALVAR PALPITES (APENAS UMA VEZ) - MELHORADO
+// 💾 SALVAR PALPITES (APENAS UMA VEZ)
 // ======================
 router.post('/save', protect, async (req, res) => {
   try {
-    console.log('💾 Tentando salvar palpites para:', {
-      userId: req.user._id,
-      userName: req.user.name
-    });
+    console.log('💾 Tentando salvar palpites para:', req.user.name);
     
     const { groupMatches, podium } = req.body;
     const userId = req.user._id;
