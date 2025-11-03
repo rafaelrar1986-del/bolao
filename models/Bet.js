@@ -43,7 +43,7 @@ const betSchema = new mongoose.Schema({
       default: false
     },
     result: {
-      type: String,  // ✅ STRING SIMPLES
+      type: String,  // ✅ STRING SIMPLES - 'teamA', 'teamB', 'draw'
       default: null
     }
   }],
@@ -446,6 +446,28 @@ betSchema.statics.getGlobalStats = async function() {
     averagePoints: Math.round(avgPoints * 100) / 100,
     calculatedBets: await this.countDocuments({ isCalculated: true })
   };
+};
+
+// 🔥 MÉTODO ESTÁTICO: Buscar palpites para um jogo específico
+betSchema.statics.findBetsForMatch = function(matchId) {
+  return this.find({
+    'groupMatches.matchId': matchId,
+    hasSubmitted: true
+  })
+  .populate('user', 'name')
+  .select('user groupMatches.$');
+};
+
+// 🔥 MÉTODO ESTÁTICO: Estatísticas de participação
+betSchema.statics.getParticipationStats = function() {
+  return this.aggregate([
+    {
+      $group: {
+        _id: '$hasSubmitted',
+        count: { $sum: 1 }
+      }
+    }
+  ]);
 };
 
 // ======================
