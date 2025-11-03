@@ -18,6 +18,9 @@ router.get('/', (req, res) => {
       'POST /api/bets/save': 'Salvar palpites (protegido)',
       'GET  /api/bets/status': 'Verificar status (protegido)',
       'GET  /api/bets/leaderboard': 'Ver classificação (protegido)',
+      'GET  /api/bets/stats/overview': 'Estatísticas (protegido)',
+      'POST /api/bets/simulate-points': 'Simular pontuação (admin)',
+      'POST /api/bets/recalculate-all': 'Recalcular pontos (admin)',
       'GET  /api/bets/test': 'Rota de teste (protegido)'
     },
     instructions: 'Use as rotas específicas acima para interagir com a API',
@@ -26,15 +29,14 @@ router.get('/', (req, res) => {
 });
 
 // ======================
-// 🎯 BUSCAR PALPITES DO USUÁRIO - COM NOMES DOS TIMES
+// 🎯 BUSCAR PALPITES DO USUÁRIO - COM NOMES DOS TIMES (CORRIGIDO)
 // ======================
 router.get('/my-bets', protect, async (req, res) => {
   try {
     console.log('🎯 Buscando palpites do usuário:', req.user._id);
     
     const userBet = await Bet.findOne({ user: req.user._id })
-      .populate('user', 'name email')
-      .lean();
+      .populate('user', 'name email');
 
     if (!userBet) {
       console.log('📝 Usuário ainda não enviou palpites');
@@ -47,14 +49,19 @@ router.get('/my-bets', protect, async (req, res) => {
       });
     }
 
+    console.log('🔍 Buscando dados dos jogos...');
+    
     // 🔥 BUSCAR DADOS DOS JOGOS PARA MOSTRAR NOMES DOS TIMES
     const matches = await Match.find().lean();
+    console.log(`✅ Encontrados ${matches.length} jogos no banco`);
     
     // 🔥 ADICIONAR INFORMAÇÕES DOS TIMES AOS PALPITES
     const betsWithTeamNames = userBet.groupMatches.map(bet => {
       const match = matches.find(m => m.matchId === bet.matchId);
+      console.log(`🔍 Procurando jogo ${bet.matchId}:`, match ? 'Encontrado' : 'NÃO ENCONTRADO');
+      
       return {
-        ...bet,
+        ...bet.toObject ? bet.toObject() : bet,
         teamA: match ? match.teamA : 'Time A',
         teamB: match ? match.teamB : 'Time B', 
         matchName: match ? `${match.teamA} vs ${match.teamB}` : `Jogo ${bet.matchId}`,
@@ -66,16 +73,19 @@ router.get('/my-bets', protect, async (req, res) => {
       };
     });
 
-    console.log('✅ Palpites encontrados com nomes dos times');
+    console.log('✅ Palpites processados com nomes dos times');
 
+    // Converter userBet para objeto simples para manipulação
+    const userBetData = userBet.toObject ? userBet.toObject() : userBet;
+    
     res.json({
       success: true,
       data: {
-        ...userBet,
+        ...userBetData,
         groupMatches: betsWithTeamNames
       },
-      hasSubmitted: userBet.hasSubmitted,
-      canEdit: !userBet.hasSubmitted
+      hasSubmitted: userBetData.hasSubmitted,
+      canEdit: !userBetData.hasSubmitted
     });
 
   } catch (error) {
@@ -167,7 +177,7 @@ router.post('/save', protect, async (req, res) => {
         bet: bet,
         scoreA: score[0],
         scoreB: score[1],
-        points: 0 // Será calculado depois
+        points: 0
       };
     });
 
@@ -178,22 +188,15 @@ router.post('/save', protect, async (req, res) => {
       third: podium.third.trim()
     };
 
-    // ✅ CALCULAR PONTOS INICIAIS (apenas estrutura)
     userBet.totalPoints = 0;
     userBet.groupPoints = 0;
     userBet.podiumPoints = 0;
     userBet.bonusPoints = 0;
 
     await userBet.save();
-    
-    // Popular com dados do usuário para resposta
     await userBet.populate('user', 'name email');
 
-    console.log('✅ Palpites salvos com sucesso!', {
-      user: req.user.name,
-      matches: userBet.groupMatches.length,
-      podium: userBet.podium
-    });
+    console.log('✅ Palpites salvos com sucesso!');
 
     res.status(201).json({
       success: true,
@@ -207,7 +210,6 @@ router.post('/save', protect, async (req, res) => {
   } catch (error) {
     console.error('❌ ERRO AO SALVAR PALPITES:', error);
     
-    // Erro de validação do Mongoose
     if (error.name === 'ValidationError') {
       const errors = Object.values(error.errors).map(err => err.message);
       return res.status(400).json({
@@ -219,8 +221,7 @@ router.post('/save', protect, async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: 'Erro ao salvar palpites',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      message: 'Erro ao salvar palpites'
     });
   }
 });
@@ -256,7 +257,7 @@ router.get('/status', protect, async (req, res) => {
 });
 
 // ======================
-// 🏆 CLASSIFICAÇÃO (LEADERBOARD)
+// 🏆 CLASSIFICAÇÃO (LEADERBOARD) - COM NOMES DOS TIMES
 // ======================
 router.get('/leaderboard', protect, async (req, res) => {
   try {
@@ -264,11 +265,11 @@ router.get('/leaderboard', protect, async (req, res) => {
     
     const leaderboard = await Bet.find({ hasSubmitted: true })
       .populate('user', 'name email')
-      .select('user totalPoints groupPoints podiumPoints bonusPoints lastUpdate')
+      .select('user totalPoints groupPoints podiumPoints bonusPoints lastUpdate podium')
       .sort({ totalPoints: -1, lastUpdate: 1 })
       .lean();
 
-    // Adicionar posição no ranking
+    // Adicionar posição no ranking e informações do pódio
     const rankedLeaderboard = leaderboard.map((bet, index) => ({
       position: index + 1,
       user: bet.user,
@@ -276,6 +277,11 @@ router.get('/leaderboard', protect, async (req, res) => {
       groupPoints: bet.groupPoints || 0,
       podiumPoints: bet.podiumPoints || 0,
       bonusPoints: bet.bonusPoints || 0,
+      podium: bet.podium ? {
+        first: bet.podium.first,
+        second: bet.podium.second,
+        third: bet.podium.third
+      } : null,
       lastUpdate: bet.lastUpdate
     }));
 
@@ -310,12 +316,24 @@ router.get('/stats/overview', protect, async (req, res) => {
       .limit(5)
       .select('user lastUpdate');
 
+    // Estatísticas do pódio
+    const podiumStats = await Bet.aggregate([
+      { $match: { hasSubmitted: true } },
+      { $group: {
+        _id: '$podium.first',
+        count: { $sum: 1 }
+      }},
+      { $sort: { count: -1 } },
+      { $limit: 5 }
+    ]);
+
     res.json({
       success: true,
       data: {
         totalSubmissions: totalBets,
         totalParticipants: totalUsers.length,
-        recentSubmissions: recentBets
+        recentSubmissions: recentBets,
+        topChampions: podiumStats
       }
     });
 
@@ -324,6 +342,99 @@ router.get('/stats/overview', protect, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Erro ao carregar estatísticas'
+    });
+  }
+});
+
+// ======================
+// 🔥 ROTA PARA SIMULAR PONTUAÇÃO (ADMIN)
+// ======================
+router.post('/simulate-points', protect, async (req, res) => {
+  try {
+    // Verificar se é admin (simplificado)
+    if (!req.user.isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Acesso negado. Apenas administradores podem simular pontuação.'
+      });
+    }
+
+    const { actualMatches, actualPodium } = req.body;
+    
+    console.log('🎮 SIMULANDO PONTUAÇÃO PARA TODOS OS PALPITES...');
+
+    const bets = await Bet.find({ hasSubmitted: true });
+    const simulationResults = [];
+
+    for (const bet of bets) {
+      const simulatedPoints = bet.simulatePoints(actualMatches, actualPodium);
+      simulationResults.push({
+        user: bet.user,
+        totalPoints: simulatedPoints.totalPoints,
+        groupPoints: simulatedPoints.groupPoints,
+        podiumPoints: simulatedPoints.podiumPoints,
+        correctBets: simulatedPoints.correctBets
+      });
+    }
+
+    // Ordenar por pontuação
+    simulationResults.sort((a, b) => b.totalPoints - a.totalPoints);
+
+    res.json({
+      success: true,
+      message: `Simulação concluída para ${simulationResults.length} participantes`,
+      data: simulationResults,
+      summary: {
+        totalParticipants: simulationResults.length,
+        highestScore: simulationResults[0]?.totalPoints || 0,
+        averageScore: simulationResults.reduce((sum, bet) => sum + bet.totalPoints, 0) / simulationResults.length,
+        perfectScores: simulationResults.filter(bet => bet.correctBets === 8).length
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ ERRO NA SIMULAÇÃO:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao simular pontuação'
+    });
+  }
+});
+
+// ======================
+// 🔥 ROTA PARA RECALCULAR TODOS OS PONTOS (ADMIN)
+// ======================
+router.post('/recalculate-all', protect, async (req, res) => {
+  try {
+    // Verificar se é admin
+    if (!req.user.isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Acesso negado. Apenas administradores podem recalcular pontos.'
+      });
+    }
+
+    const { actualMatches, actualPodium } = req.body;
+    
+    console.log('🔄 RECALCULANDO TODOS OS PONTOS...');
+
+    const updatedCount = await Bet.recalculateAllPoints(actualMatches, actualPodium);
+    
+    // Atualizar ranking
+    const rankedCount = await Bet.updateRanking();
+
+    res.json({
+      success: true,
+      message: `Pontos recalculados para ${updatedCount} participantes. Ranking atualizado.`,
+      updatedCount,
+      rankedCount
+    });
+
+  } catch (error) {
+    console.error('❌ ERRO AO RECALCULAR PONTOS:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao recalcular pontos'
     });
   }
 });
@@ -348,6 +459,8 @@ router.get('/test', protect, (req, res) => {
       'GET  /api/bets/status',
       'GET  /api/bets/leaderboard',
       'GET  /api/bets/stats/overview',
+      'POST /api/bets/simulate-points',
+      'POST /api/bets/recalculate-all',
       'GET  /api/bets/test'
     ]
   });
