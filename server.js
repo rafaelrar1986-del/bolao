@@ -54,7 +54,20 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/bolao-cop
 // ======================
 // ROTAS
 // ======================
-
+router.get('/', (req, res) => {
+  res.json({
+    success: true,
+    message: '🏆 API de Palpites do Bolão da Copa 2026!',
+    endpoints: {
+      'GET /my-bets': 'Buscar meus palpites (protegido)',
+      'POST /save': 'Salvar palpites (protegido)',
+      'GET /status': 'Verificar status (protegido)',
+      'GET /test': 'Rota de teste (protegido)'
+    },
+    instructions: 'Use as rotas específicas acima para interagir com a API',
+    timestamp: new Date().toISOString()
+  });
+});
 // Rotas simples
 app.get('/', (req, res) => {
   res.json({ 
