@@ -3,6 +3,22 @@ const Bet = require('../models/Bet');
 const { protect } = require('../middleware/auth');
 const router = express.Router();
 
+// 🌐 ROTA RAIZ - ADICIONE ESTA ROTA (NOVA)
+router.get('/', (req, res) => {
+  res.json({
+    success: true,
+    message: '🏆 API de Palpites do Bolão da Copa 2026!',
+    endpoints: {
+      'GET /my-bets': 'Buscar meus palpites (protegido)',
+      'POST /save': 'Salvar palpites (protegido)',
+      'GET /status': 'Verificar status (protegido)',
+      'GET /test': 'Rota de teste (protegido)'
+    },
+    instructions: 'Use as rotas específicas acima para interagir com a API',
+    timestamp: new Date().toISOString()
+  });
+});
+
 // 🎯 BUSCAR PALPITES DO USUÁRIO
 router.get('/my-bets', protect, async (req, res) => {
   try {
