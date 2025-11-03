@@ -12,9 +12,8 @@ const betSchema = new mongoose.Schema({
       required: true
     },
     bet: {
-      type: String,
-      required: true,
-      enum: ['teamA', 'teamB', 'draw']
+      type: String,  // ← REMOVE O ENUM - ACEITA QUALQUER STRING
+      required: true
     },
     points: {
       type: Number,
@@ -39,7 +38,6 @@ const betSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
-  // 🔥 NOVO: Controle de envio único
   firstSubmission: {
     type: Date,
     default: null
