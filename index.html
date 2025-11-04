@@ -1,0 +1,3140 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bolão Copa do Mundo 2026</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #0066b3;
+            --secondary: #009639;
+            --accent: #fed100;
+            --light: #f5f5f5;
+            --dark: #333;
+            --danger: #dc3545;
+            --success: #28a745;
+            --warning: #ffc107;
+            --info: #17a2b8;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: var(--light);
+            color: var(--dark);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            padding: 20px 0;
+            text-align: center;
+            border-radius: 0 0 10px 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        /* SEÇÃO DE LOGIN */
+        #login-section {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            max-width: 400px;
+            margin: 50px auto;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 1rem;
+        }
+
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .btn {
+            padding: 12px 24px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 1rem;
+            margin-top: 10px;
+            transition: all 0.3s;
+        }
+
+        .btn:hover {
+            background: #005299;
+            transform: translateY(-2px);
+        }
+
+        .btn-success {
+            background: var(--success);
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .btn-danger {
+            background: var(--danger);
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn-warning {
+            background: var(--warning);
+            color: var(--dark);
+        }
+
+        .btn-warning:hover {
+            background: #e0a800;
+        }
+
+        .btn-info {
+            background: var(--info);
+        }
+
+        .btn-info:hover {
+            background: #138496;
+        }
+
+        .btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-small {
+            padding: 8px 16px;
+            font-size: 0.9rem;
+        }
+
+        /* ABAS PRINCIPAIS */
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #ddd;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+
+        .tab {
+            padding: 12px 24px;
+            cursor: pointer;
+            background: white;
+            border: 1px solid #ddd;
+            border-bottom: none;
+            border-radius: 5px 5px 0 0;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .tab.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .tab-content {
+            display: none;
+            background: white;
+            padding: 20px;
+            border-radius: 0 5px 5px 5px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* JOGOS E PALPITES */
+        .group-stage {
+            margin-bottom: 30px;
+        }
+
+        .group-title {
+            background: var(--primary);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px 5px 0 0;
+            font-weight: 600;
+            margin-bottom: 0;
+        }
+
+        .match-card {
+            background: white;
+            border-radius: 0 0 8px 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            border: 1px solid #ddd;
+            border-top: none;
+        }
+
+        .match-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .match-teams {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 15px;
+        }
+
+        .team {
+            display: flex;
+            align-items: center;
+            width: 40%;
+        }
+
+        .team-name {
+            font-weight: 600;
+            margin: 0 10px;
+        }
+
+        .team-flag {
+            width: 30px;
+            height: 20px;
+            background-color: #eee;
+            border: 1px solid #ddd;
+        }
+
+        .vs {
+            font-weight: bold;
+            color: #999;
+        }
+
+        .bet-options {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .bet-option {
+            padding: 8px 15px;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 600;
+            text-align: center;
+            flex: 1;
+            max-width: 120px;
+        }
+
+        .bet-option.selected {
+            border-color: var(--primary);
+            background-color: rgba(0, 102, 179, 0.1);
+        }
+
+        .bet-option.team-a.selected {
+            border-color: var(--success);
+            background-color: rgba(40, 167, 69, 0.1);
+        }
+
+        .bet-option.team-b.selected {
+            border-color: var(--danger);
+            background-color: rgba(220, 53, 69, 0.1);
+        }
+
+        .bet-option.draw.selected {
+            border-color: var(--warning);
+            background-color: rgba(255, 193, 7, 0.1);
+        }
+
+        /* PÓDIO */
+        .podium-section {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 2px dashed #ddd;
+        }
+
+        .podium-title {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            text-align: center;
+            color: var(--primary);
+        }
+
+        .podium-cards {
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .podium-card {
+            flex: 1;
+            min-width: 250px;
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+            border-top: 5px solid;
+        }
+
+        .podium-card.first {
+            border-color: gold;
+        }
+
+        .podium-card.second {
+            border-color: silver;
+        }
+
+        .podium-card.third {
+            border-color: #cd7f32;
+        }
+
+        .podium-card h3 {
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+        }
+
+        .podium-points {
+            font-size: 0.9rem;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .team-select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            font-size: 1rem;
+            margin-top: 10px;
+        }
+
+        .team-select:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        /* RANKING */
+        .ranking-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        .ranking-table th, .ranking-table td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .ranking-table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+        }
+
+        .ranking-table tr:hover {
+            background-color: #f1f1f1;
+        }
+
+        .position {
+            font-weight: bold;
+            width: 50px;
+            text-align: center;
+        }
+
+        .points {
+            font-weight: bold;
+            color: var(--primary);
+            text-align: center;
+        }
+
+        /* ESTILOS PARA A ABA MEUS PALPITES */
+        .bet-item {
+            background: #f8f9fa;
+            border-left: 4px solid var(--primary);
+            padding: 12px 15px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+        }
+
+        .bet-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .bet-item p {
+            margin: 5px 0;
+            font-size: 0.95rem;
+        }
+
+        .podium-bet-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            padding: 10px 12px;
+            border-radius: 6px;
+            color: white;
+            font-weight: 600;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .podium-bet-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .bet-card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border: 1px solid #e9ecef;
+        }
+
+        .bet-card h3 {
+            color: var(--primary);
+            margin-bottom: 15px;
+            border-bottom: 2px solid #f1f1f1;
+            padding-bottom: 8px;
+        }
+
+        .bet-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        /* INFO DO USUÁRIO */
+        .user-info {
+            background: var(--primary);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .admin-badge {
+            background: var(--warning);
+            color: var(--dark);
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            margin-left: 10px;
+            font-weight: bold;
+        }
+
+        /* MENSAGENS */
+        .message {
+            padding: 10px 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+
+        .message.success {
+            background: var(--success);
+            color: white;
+        }
+
+        .message.error {
+            background: var(--danger);
+            color: white;
+        }
+
+        .message.warning {
+            background: var(--warning);
+            color: var(--dark);
+        }
+
+        .message.info {
+            background: var(--info);
+            color: white;
+        }
+
+        /* LOADING */
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+
+        .loading i {
+            margin-right: 10px;
+        }
+
+        /* MODAL */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f1f1f1;
+        }
+
+        .modal-title {
+            font-size: 1.5rem;
+            color: var(--primary);
+            margin: 0;
+        }
+
+        .close-modal {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #666;
+            padding: 5px;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .close-modal:hover {
+            background: #f1f1f1;
+            color: var(--danger);
+        }
+
+        /* FORMULÁRIOS ADMIN */
+        .form-row {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+            margin-bottom: 0;
+        }
+
+        .admin-actions {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            border-left: 4px solid var(--primary);
+        }
+
+        .stat-number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--primary);
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        /* ESTILOS PARA A ABA TODOS OS PALPITES */
+        .bet-user-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #f1f1f1;
+        }
+
+        .user-badge {
+            background: var(--primary);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .current-user-badge {
+            background: var(--success);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .bet-match-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 10px;
+            margin: 15px 0;
+        }
+
+        .bet-match-item {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 6px;
+            border-left: 4px solid var(--primary);
+        }
+
+        .match-teams-small {
+            font-weight: 600;
+            margin-bottom: 5px;
+            font-size: 0.9rem;
+        }
+
+        .bet-details {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.85rem;
+        }
+
+        .points-badge {
+            background: var(--success);
+            color: white;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+
+        .no-points-badge {
+            background: #ccc;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 0.75rem;
+        }
+
+        .podium-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin: 15px 0;
+        }
+
+        .podium-item {
+            text-align: center;
+            padding: 15px;
+            border-radius: 8px;
+            color: white;
+            font-weight: 600;
+        }
+
+        .podium-gold {
+            background: linear-gradient(135deg, gold, #ffd700);
+        }
+
+        .podium-silver {
+            background: linear-gradient(135deg, silver, #c0c0c0);
+        }
+
+        .podium-bronze {
+            background: linear-gradient(135deg, #cd7f32, #b08d57);
+        }
+
+        .search-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .search-stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            border-left: 4px solid var(--primary);
+        }
+
+        .search-stat-number {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: var(--primary);
+            margin-bottom: 5px;
+        }
+
+        .search-stat-label {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #666;
+        }
+
+        .empty-state i {
+            font-size: 3rem;
+            margin-bottom: 15px;
+            color: #ccc;
+        }
+
+        /* RESPONSIVO */
+        @media (max-width: 768px) {
+            .tabs {
+                flex-direction: column;
+            }
+            
+            .tab {
+                margin-right: 0;
+                margin-bottom: 5px;
+                border-radius: 5px;
+            }
+            
+            .match-teams {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .team {
+                width: 100%;
+                margin-bottom: 10px;
+            }
+            
+            .vs {
+                align-self: center;
+                margin: 10px 0;
+            }
+            
+            .bet-options {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .bet-option {
+                max-width: 100%;
+                width: 100%;
+            }
+            
+            .podium-cards {
+                flex-direction: column;
+            }
+
+            .form-row {
+                flex-direction: column;
+                gap: 0;
+            }
+
+            .admin-actions {
+                flex-direction: column;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .bet-match-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .podium-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .bet-user-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            
+            .search-stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1><i class="fas fa-futbol"></i> Bolão Copa do Mundo 2026</h1>
+            <p class="subtitle">Faça seus palpites e acompanhe o ranking em tempo real!</p>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- SEÇÃO DE LOGIN/REGISTRO -->
+        <div id="login-section">
+            <h2>Entrar no Bolão</h2>
+            
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="login-email">Email:</label>
+                    <input type="email" id="login-email" required>
+                </div>
+                <div class="form-group">
+                    <label for="login-password">Senha:</label>
+                    <input type="password" id="login-password" required>
+                </div>
+                <button type="submit" class="btn">Entrar</button>
+            </form>
+
+            <div style="text-align: center; margin: 20px 0;">
+                <span>ou</span>
+            </div>
+
+            <form id="register-form">
+                <h3>Criar Nova Conta</h3>
+                <div class="form-group">
+                    <label for="register-name">Nome:</label>
+                    <input type="text" id="register-name" required>
+                </div>
+                <div class="form-group">
+                    <label for="register-email">Email:</label>
+                    <input type="email" id="register-email" required>
+                </div>
+                <div class="form-group">
+                    <label for="register-password">Senha:</label>
+                    <input type="password" id="register-password" required minlength="6">
+                </div>
+                <button type="submit" class="btn btn-success">Criar Conta</button>
+            </form>
+        </div>
+
+        <!-- APLICAÇÃO PRINCIPAL (inicialmente escondida) -->
+        <div id="app-section" style="display: none;">
+            <div class="user-info" id="user-info">
+                Carregando...
+            </div>
+
+            <!-- TABS PRINCIPAIS -->
+            <div class="tabs">
+                <div class="tab active" data-tab="bets">Fazer Palpites</div>
+                <div class="tab" data-tab="ranking">Ranking</div>
+                <div class="tab" data-tab="all-bets">Todos os Palpites</div>
+                <div class="tab" data-tab="my-bets">Meus Palpites</div>
+                <div class="tab" data-tab="admin" id="admin-tab" style="display: none;">Administração</div>
+                <div class="tab" data-tab="stats" id="stats-tab">Estatísticas</div>
+            </div>
+
+            <!-- ABA: FAZER PALPITES -->
+            <div id="bets" class="tab-content active">
+                <h2>Palpites - Fase de Grupos</h2>
+                <p>Para cada jogo, selecione o vencedor ou empate:</p>
+                
+                <div id="matches-container">
+                    <div class="loading">
+                        <i class="fas fa-spinner fa-spin"></i> Carregando jogos...
+                    </div>
+                </div>
+
+                <div class="podium-section">
+                    <h2 class="podium-title">Palpite para o Pódio Final</h2>
+                    <div class="podium-cards">
+                        <div class="podium-card first">
+                            <h3><i class="fas fa-trophy" style="color: gold;"></i> 1º Lugar</h3>
+                            <p>Campeão da Copa</p>
+                            <p class="podium-points">(10 pontos)</p>
+                            <select class="team-select" id="first-place">
+                                <option value="">Selecione o campeão</option>
+                            </select>
+                        </div>
+                        
+                        <div class="podium-card second">
+                            <h3><i class="fas fa-medal" style="color: silver;"></i> 2º Lugar</h3>
+                            <p>Vice-campeão</p>
+                            <p class="podium-points">(7 pontos)</p>
+                            <select class="team-select" id="second-place">
+                                <option value="">Selecione o vice</option>
+                            </select>
+                        </div>
+                        
+                        <div class="podium-card third">
+                            <h3><i class="fas fa-award" style="color: #cd7f32;"></i> 3º Lugar</h3>
+                            <p>Terceiro colocado</p>
+                            <p class="podium-points">(4 pontos)</p>
+                            <select class="team-select" id="third-place">
+                                <option value="">Selecione o terceiro</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <button id="save-bets" class="btn btn-success" style="margin-top: 30px;">
+                    <i class="fas fa-save"></i> Salvar Todos os Palpites
+                </button>
+                <div id="save-message"></div>
+            </div>
+
+            <!-- ABA: RANKING -->
+            <div id="ranking" class="tab-content">
+                <h2>Ranking do Bolão</h2>
+                <p>Confira a classificação atual dos participantes:</p>
+                
+                <table class="ranking-table">
+                    <thead>
+                        <tr>
+                            <th class="position">#</th>
+                            <th>Participante</th>
+                            <th class="points">Pontos</th>
+                            <th>Acertos Grupos</th>
+                            <th>Acertos Pódio</th>
+                            <th>Bônus</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ranking-body">
+                        <tr>
+                            <td colspan="6" style="text-align: center;">
+                                <div class="loading">
+                                    <i class="fas fa-spinner fa-spin"></i> Carregando ranking...
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+           
+            <!-- ABA: TODOS OS PALPITES -->
+            <div id="all-bets" class="tab-content">
+                <h2><i class="fas fa-users"></i> Todos os Palpites</h2>
+                <p>Veja os palpites de todos os participantes e filtre por usuário ou partida.</p>
+                
+                <!-- SISTEMA DE BUSCA -->
+                <div class="bet-card">
+                    <h3><i class="fas fa-search"></i> Buscar Palpites</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="search-user">Buscar por Usuário:</label>
+                            <input type="text" id="search-user" placeholder="Digite o nome do usuário...">
+                        </div>
+                        <div class="form-group">
+                            <label for="search-match">Filtrar por Partida:</label>
+                            <select id="search-match">
+                                <option value="">Todas as partidas</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="search-group">Filtrar por Grupo:</label>
+                            <select id="search-group">
+                                <option value="">Todos os grupos</option>
+                                <option value="Grupo A">Grupo A</option>
+                                <option value="Grupo B">Grupo B</option>
+                                <option value="Grupo C">Grupo C</option>
+                                <option value="Grupo D">Grupo D</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="sort-bets">Ordenar por:</label>
+                            <select id="sort-bets">
+                                <option value="user">Nome do Usuário</option>
+                                <option value="points">Pontuação (maior primeiro)</option>
+                                <option value="date">Data de Envio (mais recente)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="admin-actions">
+                        <button class="btn btn-info" onclick="searchAllBets()">
+                            <i class="fas fa-search"></i> Buscar Palpites
+                        </button>
+                        <button class="btn" onclick="clearSearch()">
+                            <i class="fas fa-eraser"></i> Limpar Filtros
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ESTATÍSTICAS DA BUSCA -->
+                <div id="search-stats" style="display: none; margin: 20px 0;">
+                    <!-- Será preenchido via JavaScript -->
+                </div>
+
+                <!-- RESULTADOS DA BUSCA -->
+                <div id="all-bets-results">
+                    <div class="loading" id="all-bets-loading">
+                        <i class="fas fa-spinner fa-spin"></i> Carregando todos os palpites...
+                    </div>
+                    <div id="all-bets-container">
+                        <!-- Os palpites serão renderizados aqui -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- ABA: MEUS PALPITES -->
+            <div id="my-bets" class="tab-content">
+                <h2>Meus Palpites</h2>
+                <p>Aqui você pode visualizar todos os seus palpites:</p>
+                
+                <div id="user-bets-container">
+                    <div class="loading">
+                        <i class="fas fa-spinner fa-spin"></i> Carregando seus palpites...
+                    </div>
+                </div>
+            </div>
+
+            <!-- ABA: ADMINISTRAÇÃO -->
+            <div id="admin" class="tab-content">
+                <h2><i class="fas fa-crown"></i> Painel de Administração</h2>
+                <p>Gerencie partidas, resultados e o sistema de pontuação.</p>
+
+                <div class="admin-actions">
+                    <button class="btn btn-info" onclick="openAddMatchModal()">
+                        <i class="fas fa-plus"></i> Adicionar Partida
+                    </button>
+                    <button class="btn btn-warning" onclick="openFinishMatchModal()">
+                        <i class="fas fa-whistle"></i> Finalizar Partida
+                    </button>
+                    <button class="btn btn-success" onclick="openSetPodiumModal()">
+                        <i class="fas fa-trophy"></i> Definir Pódio
+                    </button>
+                    <button class="btn btn-info" onclick="recalculateAllPoints()">
+                        <i class="fas fa-calculator"></i> Recalcular Pontos
+                    </button>
+                    <button class="btn btn-warning" onclick="checkDataIntegrity()">
+                        <i class="fas fa-shield-alt"></i> Verificar Integridade
+                    </button>
+                </div>
+
+                <div class="bet-card">
+                    <h3><i class="fas fa-list"></i> Todas as Partidas</h3>
+                    <div id="admin-matches-list">
+                        <div class="loading">
+                            <i class="fas fa-spinner fa-spin"></i> Carregando partidas...
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bet-card">
+                    <h3><i class="fas fa-cogs"></i> Ferramentas Avançadas</h3>
+                    <div class="admin-actions">
+                        <button class="btn btn-danger btn-small" onclick="resetAllCalculations()">
+                            <i class="fas fa-eraser"></i> Resetar Cálculos (Dev)
+                        </button>
+                        <button class="btn btn-info btn-small" onclick="simulatePoints()">
+                            <i class="fas fa-chart-line"></i> Simular Pontuação
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ABA: ESTATÍSTICAS -->
+            <div id="stats" class="tab-content">
+                <h2><i class="fas fa-chart-bar"></i> Estatísticas do Bolão</h2>
+                <p>Dados e análises sobre o andamento do bolão.</p>
+
+                <div id="stats-container">
+                    <div class="loading">
+                        <i class="fas fa-spinner fa-spin"></i> Carregando estatísticas...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAIS -->
+    <div id="add-match-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Adicionar Nova Partida</h3>
+                <button class="close-modal" onclick="closeModal('add-match-modal')">&times;</button>
+            </div>
+            <form id="add-match-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="match-id">ID da Partida:</label>
+                        <input type="number" id="match-id" required min="1">
+                    </div>
+                    <div class="form-group">
+                        <label for="match-group">Grupo:</label>
+                        <input type="text" id="match-group" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="team-a">Time A:</label>
+                        <input type="text" id="team-a" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="team-b">Time B:</label>
+                        <input type="text" id="team-b" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="match-date">Data (DD/MM/AAAA):</label>
+                        <input type="text" id="match-date" placeholder="DD/MM/AAAA" required pattern="\d{2}/\d{2}/\d{4}">
+                    </div>
+                    <div class="form-group">
+                        <label for="match-time">Horário (HH:MM):</label>
+                        <input type="text" id="match-time" placeholder="HH:MM" required pattern="\d{2}:\d{2}">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="match-stadium">Estádio:</label>
+                    <input type="text" id="match-stadium">
+                </div>
+                <button type="submit" class="btn btn-success">Adicionar Partida</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="finish-match-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Finalizar Partida</h3>
+                <button class="close-modal" onclick="closeModal('finish-match-modal')">&times;</button>
+            </div>
+            <div class="form-group">
+                <label for="finish-match-select">Selecionar Partida:</label>
+                <select id="finish-match-select" onchange="loadMatchDetails()">
+                    <option value="">Selecione uma partida</option>
+                </select>
+            </div>
+            <div id="match-details" style="display: none;">
+                <h4 id="selected-match-name"></h4>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="score-a">Placar Time A:</label>
+                        <input type="number" id="score-a" min="0" max="20" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="score-b">Placar Time B:</label>
+                        <input type="number" id="score-b" min="0" max="20" required>
+                    </div>
+                </div>
+                <button class="btn btn-success" onclick="finishMatch()">Finalizar Partida</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="set-podium-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Definir Pódio Final</h3>
+                <button class="close-modal" onclick="closeModal('set-podium-modal')">&times;</button>
+            </div>
+            <p>Defina as posições finais da Copa do Mundo 2026:</p>
+            <div class="form-group">
+                <label for="podium-first">🥇 1º Lugar (Campeão - 10 pontos):</label>
+                <select id="podium-first" required>
+                    <option value="">Selecione o campeão</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="podium-second">🥈 2º Lugar (Vice - 7 pontos):</label>
+                <select id="podium-second" required>
+                    <option value="">Selecione o vice</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="podium-third">🥉 3º Lugar (Terceiro - 4 pontos):</label>
+                <select id="podium-third" required>
+                    <option value="">Selecione o terceiro</option>
+                </select>
+            </div>
+            <button class="btn btn-success" onclick="setPodium()">Definir Pódio</button>
+        </div>
+    </div>
+
+    <script>
+    // CONFIGURAÇÃO
+    const API_URL = 'https://bolao-62rz.onrender.com';
+    let currentUser = null;
+    let token = localStorage.getItem('token');
+    let matches = [];
+    let teams = [];
+    let userBets = null;
+    let isAdmin = false;
+    let allMatchesForFilter = [];
+    let allGroups = [];
+
+    // ELEMENTOS DO DOM
+    const loginSection = document.getElementById('login-section');
+    const appSection = document.getElementById('app-section');
+    const userInfo = document.getElementById('user-info');
+    const matchesContainer = document.getElementById('matches-container');
+    const rankingBody = document.getElementById('ranking-body');
+    const userBetsContainer = document.getElementById('user-bets-container');
+    const saveMessage = document.getElementById('save-message');
+    const adminTab = document.getElementById('admin-tab');
+    const statsTab = document.getElementById('stats-tab');
+
+    // INICIALIZAÇÃO
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('🚀 Inicializando Bolão da Copa 2026...');
+        setupEventListeners();
+        checkAuthStatus();
+    });
+
+    // CONFIGURAR EVENT LISTENERS
+    function setupEventListeners() {
+        // Login e Registro
+        document.getElementById('login-form').addEventListener('submit', handleLogin);
+        document.getElementById('register-form').addEventListener('submit', handleRegister);
+        
+        // Tabs
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+        });
+
+        // Salvar palpites
+        document.getElementById('save-bets').addEventListener('click', saveAllBets);
+
+        // Formulários admin
+        document.getElementById('add-match-form').addEventListener('submit', handleAddMatch);
+
+        // Busca na nova aba "Todos os Palpites"
+        const searchUserInput = document.getElementById('search-user');
+        if (searchUserInput) {
+            searchUserInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    searchAllBets();
+                }
+            });
+        }
+
+        // Busca automática ao mudar filtros
+        const searchMatchSelect = document.getElementById('search-match');
+        const searchGroupSelect = document.getElementById('search-group');
+        const sortBetsSelect = document.getElementById('sort-bets');
+
+        if (searchMatchSelect) {
+            searchMatchSelect.addEventListener('change', function() {
+                if (this.value) searchAllBets();
+            });
+        }
+
+        if (searchGroupSelect) {
+            searchGroupSelect.addEventListener('change', function() {
+                if (this.value) searchAllBets();
+            });
+        }
+
+        if (sortBetsSelect) {
+            sortBetsSelect.addEventListener('change', searchAllBets);
+        }
+    }
+
+    // VERIFICAR SE USUÁRIO ESTÁ LOGADO
+    function checkAuthStatus() {
+        if (token) {
+            verifyToken();
+        }
+    }
+
+    // VERIFICAR TOKEN
+    async function verifyToken() {
+        try {
+            const response = await fetch(`${API_URL}/api/auth/me`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (response.ok) {
+                const userData = await response.json();
+                currentUser = userData.user;
+                isAdmin = currentUser.isAdmin || false;
+                showApp();
+            } else {
+                localStorage.removeItem('token');
+                token = null;
+            }
+        } catch (error) {
+            console.error('Erro ao verificar token:', error);
+            localStorage.removeItem('token');
+            token = null;
+        }
+    }
+
+    // LOGIN
+    async function handleLogin(e) {
+        e.preventDefault();
+        
+        const email = document.getElementById('login-email').value;
+        const password = document.getElementById('login-password').value;
+
+        try {
+            const response = await fetch(`${API_URL}/api/auth/login`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ email, password })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                token = data.token;
+                localStorage.setItem('token', token);
+                currentUser = data.user;
+                isAdmin = currentUser.isAdmin || false;
+                showApp();
+            } else {
+                showMessage('error', 'Erro no login: ' + data.message);
+            }
+        } catch (error) {
+            showMessage('error', 'Erro de conexão: ' + error.message);
+        }
+    }
+
+    // REGISTRO
+    async function handleRegister(e) {
+        e.preventDefault();
+        
+        const name = document.getElementById('register-name').value;
+        const email = document.getElementById('register-email').value;
+        const password = document.getElementById('register-password').value;
+
+        try {
+            const response = await fetch(`${API_URL}/api/auth/register`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ name, email, password })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                showMessage('success', 'Conta criada com sucesso! Faça login.');
+                document.getElementById('register-form').reset();
+            } else {
+                showMessage('error', 'Erro no registro: ' + data.message);
+            }
+        } catch (error) {
+            showMessage('error', 'Erro de conexão: ' + error.message);
+        }
+    }
+
+    // MOSTRAR APLICAÇÃO PRINCIPAL
+    function showApp() {
+        loginSection.style.display = 'none';
+        appSection.style.display = 'block';
+        
+        // 🔥 SOLUÇÃO TEMPORÁRIA: Forçar admin para usuários específicos
+        const adminEmails = ['admin@example.com', 'admin@teste.com', '1@gmail.com'];
+        isAdmin = adminEmails.includes(currentUser.email.toLowerCase());
+        
+        const adminBadge = isAdmin ? '<span class="admin-badge">ADMIN</span>' : '';
+        userInfo.innerHTML = `Olá, ${currentUser.name}! ${adminBadge}`;
+        
+        // Mostrar/ocultar aba de admin
+        adminTab.style.display = isAdmin ? 'block' : 'none';
+        
+        loadMatches();
+        loadRanking();
+        loadUserBets();
+        checkBetStatus();
+        
+        if (isAdmin) {
+            loadAdminMatches();
+        }
+        
+        // 🔧 BOTÃO TEMPORÁRIO PARA ATIVAR ADMIN
+        addTempAdminButton();
+    }
+
+    // 🔧 FUNÇÃO PARA ADICIONAR BOTÃO ADMIN TEMPORÁRIO
+    function addTempAdminButton() {
+        if (document.getElementById('temp-admin-btn')) return;
+        
+        const tempBtn = document.createElement('button');
+        tempBtn.id = 'temp-admin-btn';
+        tempBtn.innerHTML = '👑 Ativar Modo Admin';
+        tempBtn.style.position = 'fixed';
+        tempBtn.style.top = '70px';
+        tempBtn.style.right = '10px';
+        tempBtn.style.zIndex = '1000';
+        tempBtn.style.background = 'var(--warning)';
+        tempBtn.style.color = 'var(--dark)';
+        tempBtn.style.border = 'none';
+        tempBtn.style.padding = '10px 15px';
+        tempBtn.style.borderRadius = '5px';
+        tempBtn.style.cursor = 'pointer';
+        tempBtn.style.fontWeight = 'bold';
+        tempBtn.style.boxShadow = '0 2px 10px rgba(0,0,0,0.2)';
+        
+        tempBtn.addEventListener('click', function() {
+            isAdmin = true;
+            adminTab.style.display = 'block';
+            switchTab('admin');
+            showMessage('warning', '👑 Modo admin ativado para testes!');
+        });
+        
+        document.body.appendChild(tempBtn);
+    }
+
+    // CARREGAR TODOS OS PALPITES (VERSÃO CORRIGIDA)
+async function loadAllBets(searchParams = {}) {
+    try {
+        console.log('🔍 Carregando todos os palpites...', searchParams);
+        
+        // Verificar se estamos na aba correta
+        const allBetsTab = document.getElementById('all-bets');
+        if (!allBetsTab || !allBetsTab.classList.contains('active')) {
+            console.log('📭 Aba "Todos os Palpites" não está ativa, pulando carregamento...');
+            return;
+        }
+
+        showLoading('all-bets');
+        
+        const params = new URLSearchParams();
+        
+        if (searchParams.search) params.append('search', searchParams.search);
+        if (searchParams.matchId) params.append('matchId', searchParams.matchId);
+        if (searchParams.group) params.append('group', searchParams.group);
+        if (searchParams.sortBy) params.append('sortBy', searchParams.sortBy);
+
+        const response = await fetch(`${API_URL}/api/bets/all-bets?${params}`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            console.log('✅ Dados recebidos:', data);
+            hideLoading('all-bets');
+            renderAllBets(data.data, data.stats);
+        } else {
+            console.error('❌ Erro na resposta:', response.status);
+            hideLoading('all-bets');
+            showAllBetsError('Erro ao carregar palpites. Tente recarregar a página.');
+        }
+    } catch (error) {
+        console.error('❌ Erro ao carregar todos os palpites:', error);
+        hideLoading('all-bets');
+        showAllBetsError('Erro de conexão. Verifique sua internet.');
+    }
+}
+
+// FUNÇÃO AUXILIAR PARA MOSTRAR ERROS
+function showAllBetsError(message) {
+    const container = document.getElementById('all-bets-container');
+    if (container) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-exclamation-triangle"></i>
+                <h3>Erro</h3>
+                <p>${message}</p>
+                <button class="btn" onclick="loadAllBets()">
+                    <i class="fas fa-redo"></i> Tentar Novamente
+                </button>
+            </div>
+        `;
+    }
+}
+
+    // MOSTRAR LOADING
+    function showLoading(elementId) {
+        const element = document.getElementById(elementId);
+        if (element) {
+            element.innerHTML = `
+                <div class="loading">
+                    <i class="fas fa-spinner fa-spin"></i> Carregando...
+                </div>
+            `;
+        }
+    }
+
+    // ESCONDER LOADING
+    function hideLoading(elementId) {
+        const element = document.getElementById(elementId);
+        if (element && element.querySelector('.loading')) {
+            element.innerHTML = '';
+        }
+    }
+
+    // RENDERIZAR TODOS OS PALPITES (VERSÃO CORRIGIDA)
+function renderAllBets(bets, stats) {
+    const container = document.getElementById('all-bets-container');
+    
+    // Verificar se o container existe
+    if (!container) {
+        console.error('❌ Container all-bets-container não encontrado');
+        return;
+    }
+    
+    // Verificar se há dados
+    if (!bets || bets.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-search"></i>
+                <h3>Nenhum palpite encontrado</h3>
+                <p>Nenhum usuário enviou palpites ou os filtros não retornaram resultados.</p>
+                <button class="btn" onclick="clearSearch()">
+                    <i class="fas fa-eraser"></i> Limpar Filtros
+                </button>
+            </div>
+        `;
+        
+        // Esconder estatísticas se não há resultados
+        const statsContainer = document.getElementById('search-stats');
+        if (statsContainer) {
+            statsContainer.style.display = 'none';
+        }
+        
+        return;
+    }
+
+    console.log(`🎯 Renderizando ${bets.length} palpites`);
+
+    // Atualizar estatísticas (se stats existir)
+    if (stats) {
+        renderSearchStats(stats);
+    }
+
+    let html = '';
+
+    bets.forEach((bet, index) => {
+        const isCurrentUser = currentUser && bet.user && bet.user._id === currentUser._id;
+        const userBadge = isCurrentUser ? 
+            '<span class="current-user-badge">VOCÊ</span>' : 
+            '<span class="user-badge">PARTICIPANTE</span>';
+        
+        html += `
+            <div class="bet-card">
+                <div class="bet-user-header">
+                    <div>
+                        <h3 style="margin: 0; display: flex; align-items: center; gap: 10px;">
+                            <i class="fas fa-user"></i> 
+                            ${bet.userName || 'Usuário'}
+                            ${userBadge}
+                        </h3>
+                        <p style="margin: 5px 0 0 0; color: #666; font-size: 0.9rem;">
+                            <i class="fas fa-envelope"></i> ${bet.userEmail || 'N/A'}
+                        </p>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-size: 1.5rem; font-weight: bold; color: var(--primary);">
+                            ${bet.totalPoints || 0} pontos
+                        </div>
+                        <div style="font-size: 0.85rem; color: #666;">
+                            <i class="fas fa-calendar"></i> ${bet.firstSubmission ? new Date(bet.firstSubmission).toLocaleDateString('pt-BR') : 'N/A'}
+                        </div>
+                        <div style="font-size: 0.8rem; color: #888; margin-top: 5px;">
+                            Jogos: ${bet.groupPoints || 0} | Pódio: ${bet.podiumPoints || 0}
+                            ${bet.bonusPoints ? ` | Bônus: ${bet.bonusPoints}` : ''}
+                        </div>
+                    </div>
+                </div>
+        `;
+
+        // PALPITES DOS JOGOS
+        if (bet.groupMatches && bet.groupMatches.length > 0) {
+            html += `
+                <h4 style="color: var(--primary); margin: 20px 0 10px 0;">
+                    <i class="fas fa-futbol"></i> Palpites dos Jogos
+                </h4>
+            `;
+
+            // Agrupar palpites por grupo
+            const groups = {};
+            bet.groupMatches.forEach(betMatch => {
+                if (!groups[betMatch.group]) {
+                    groups[betMatch.group] = [];
+                }
+                groups[betMatch.group].push(betMatch);
+            });
+
+            Object.keys(groups).sort().forEach(groupName => {
+                html += `
+                    <div style="margin-bottom: 20px;">
+                        <h5 style="color: var(--secondary); margin-bottom: 10px; padding: 5px 10px; background: #f8f9fa; border-radius: 4px;">
+                            ${groupName}
+                        </h5>
+                        <div class="bet-match-grid">
+                `;
+                
+                groups[groupName].forEach(betMatch => {
+                    const pointsBadge = betMatch.points > 0 ? 
+                        `<span class="points-badge">+${betMatch.points}</span>` :
+                        `<span class="no-points-badge">0</span>`;
+                    
+                    const matchStatus = betMatch.status === 'finished' ? 
+                        `<span style="color: ${betMatch.points > 0 ? 'var(--success)' : 'var(--danger)'}; font-size: 0.8rem;">
+                            <i class="fas fa-check-circle"></i> Finalizado
+                        </span>` :
+                        `<span style="color: var(--info); font-size: 0.8rem;">
+                            <i class="fas fa-clock"></i> ${betMatch.date || 'Agendado'}
+                        </span>`;
+                    
+                    html += `
+                        <div class="bet-match-item">
+                            <div class="match-teams-small">
+                                ${betMatch.teamA || 'Time A'} vs ${betMatch.teamB || 'Time B'}
+                            </div>
+                            <div class="bet-details">
+                                <div>
+                                    <strong>Palpite:</strong> ${betMatch.bet || 'N/A'}
+                                </div>
+                                <div>
+                                    ${pointsBadge}
+                                </div>
+                            </div>
+                            <div style="margin-top: 5px; display: flex; justify-content: space-between; align-items: center;">
+                                ${matchStatus}
+                                <span style="font-size: 0.75rem; color: #888;">
+                                    Jogo ${betMatch.matchId || 'N/A'}
+                                </span>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                html += `</div></div>`;
+            });
+        }
+
+        // PALPITE DO PÓDIO
+        if (bet.podium && (bet.podium.first || bet.podium.second || bet.podium.third)) {
+            html += `
+                <h4 style="color: var(--primary); margin: 25px 0 15px 0;">
+                    <i class="fas fa-trophy"></i> Palpite do Pódio
+                </h4>
+                <div class="podium-grid">
+                    <div class="podium-item podium-gold">
+                        <div style="font-size: 2rem;">🥇</div>
+                        <div style="font-weight: bold; font-size: 1.1rem;">${bet.podium.first || 'Não definido'}</div>
+                        <div style="font-size: 0.8rem; opacity: 0.9;">10 pontos</div>
+                    </div>
+                    <div class="podium-item podium-silver">
+                        <div style="font-size: 2rem;">🥈</div>
+                        <div style="font-weight: bold; font-size: 1.1rem;">${bet.podium.second || 'Não definido'}</div>
+                        <div style="font-size: 0.8rem; opacity: 0.9;">7 pontos</div>
+                    </div>
+                    <div class="podium-item podium-bronze">
+                        <div style="font-size: 2rem;">🥉</div>
+                        <div style="font-weight: bold; font-size: 1.1rem;">${bet.podium.third || 'Não definido'}</div>
+                        <div style="font-size: 0.8rem; opacity: 0.9;">4 pontos</div>
+                    </div>
+                </div>
+                ${bet.podium.points ? `
+                    <div style="text-align: center; margin-top: 10px;">
+                        <strong>Pontos do pódio:</strong> 
+                        <span style="color: var(--success); font-weight: bold;">${bet.podium.points} pontos</span>
+                    </div>
+                ` : ''}
+            `;
+        }
+
+        html += `</div>`; // Fecha bet-card
+    });
+
+    container.innerHTML = html;
+    console.log('✅ Palpites renderizados com sucesso');
+}
+
+        // Atualizar estatísticas
+        renderSearchStats(stats);
+
+        let html = '';
+
+        bets.forEach(bet => {
+            const isCurrentUser = currentUser && bet.user && bet.user._id === currentUser._id;
+            const userBadge = isCurrentUser ? 
+                '<span class="current-user-badge">VOCÊ</span>' : 
+                '<span class="user-badge">PARTICIPANTE</span>';
+            
+            html += `
+                <div class="bet-card">
+                    <div class="bet-user-header">
+                        <div>
+                            <h3 style="margin: 0; display: flex; align-items: center; gap: 10px;">
+                                <i class="fas fa-user"></i> 
+                                ${bet.userName || 'Usuário'}
+                                ${userBadge}
+                            </h3>
+                            <p style="margin: 5px 0 0 0; color: #666; font-size: 0.9rem;">
+                                <i class="fas fa-envelope"></i> ${bet.userEmail || 'N/A'}
+                            </p>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 1.5rem; font-weight: bold; color: var(--primary);">
+                                ${bet.totalPoints || 0} pontos
+                            </div>
+                            <div style="font-size: 0.85rem; color: #666;">
+                                <i class="fas fa-calendar"></i> ${new Date(bet.firstSubmission).toLocaleDateString('pt-BR')}
+                            </div>
+                            <div style="font-size: 0.8rem; color: #888; margin-top: 5px;">
+                                Jogos: ${bet.groupPoints || 0} | Pódio: ${bet.podiumPoints || 0}
+                                ${bet.bonusPoints ? ` | Bônus: ${bet.bonusPoints}` : ''}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- PALPITES DOS JOGOS -->
+                    <h4 style="color: var(--primary); margin: 20px 0 10px 0;">
+                        <i class="fas fa-futbol"></i> Palpites dos Jogos
+                    </h4>
+            `;
+
+            // Agrupar palpites por grupo
+            const groups = {};
+            bet.groupMatches.forEach(betMatch => {
+                if (!groups[betMatch.group]) {
+                    groups[betMatch.group] = [];
+                }
+                groups[betMatch.group].push(betMatch);
+            });
+
+            Object.keys(groups).sort().forEach(groupName => {
+                html += `
+                    <div style="margin-bottom: 20px;">
+                        <h5 style="color: var(--secondary); margin-bottom: 10px; padding: 5px 10px; background: #f8f9fa; border-radius: 4px;">
+                            ${groupName}
+                        </h5>
+                        <div class="bet-match-grid">
+                `;
+                
+                groups[groupName].forEach(betMatch => {
+                    const pointsBadge = betMatch.points > 0 ? 
+                        `<span class="points-badge">+${betMatch.points}</span>` :
+                        `<span class="no-points-badge">0</span>`;
+                    
+                    const matchStatus = betMatch.status === 'finished' ? 
+                        `<span style="color: ${betMatch.points > 0 ? 'var(--success)' : 'var(--danger)'}; font-size: 0.8rem;">
+                            <i class="fas fa-check-circle"></i> Finalizado
+                        </span>` :
+                        `<span style="color: var(--info); font-size: 0.8rem;">
+                            <i class="fas fa-clock"></i> ${betMatch.date || 'Agendado'}
+                        </span>`;
+                    
+                    html += `
+                        <div class="bet-match-item">
+                            <div class="match-teams-small">
+                                ${betMatch.teamA} vs ${betMatch.teamB}
+                            </div>
+                            <div class="bet-details">
+                                <div>
+                                    <strong>Palpite:</strong> ${betMatch.bet}
+                                </div>
+                                <div>
+                                    ${pointsBadge}
+                                </div>
+                            </div>
+                            <div style="margin-top: 5px; display: flex; justify-content: space-between; align-items: center;">
+                                ${matchStatus}
+                                <span style="font-size: 0.75rem; color: #888;">
+                                    Jogo ${betMatch.matchId}
+                                </span>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                html += `</div></div>`;
+            });
+
+            // PALPITE DO PÓDIO
+            if (bet.podium && (bet.podium.first || bet.podium.second || bet.podium.third)) {
+                html += `
+                    <h4 style="color: var(--primary); margin: 25px 0 15px 0;">
+                        <i class="fas fa-trophy"></i> Palpite do Pódio
+                    </h4>
+                    <div class="podium-grid">
+                        <div class="podium-item podium-gold">
+                            <div style="font-size: 2rem;">🥇</div>
+                            <div style="font-weight: bold; font-size: 1.1rem;">${bet.podium.first || 'Não definido'}</div>
+                            <div style="font-size: 0.8rem; opacity: 0.9;">10 pontos</div>
+                        </div>
+                        <div class="podium-item podium-silver">
+                            <div style="font-size: 2rem;">🥈</div>
+                            <div style="font-weight: bold; font-size: 1.1rem;">${bet.podium.second || 'Não definido'}</div>
+                            <div style="font-size: 0.8rem; opacity: 0.9;">7 pontos</div>
+                        </div>
+                        <div class="podium-item podium-bronze">
+                            <div style="font-size: 2rem;">🥉</div>
+                            <div style="font-weight: bold; font-size: 1.1rem;">${bet.podium.third || 'Não definido'}</div>
+                            <div style="font-size: 0.8rem; opacity: 0.9;">4 pontos</div>
+                        </div>
+                    </div>
+                    ${bet.podium.points ? `
+                        <div style="text-align: center; margin-top: 10px;">
+                            <strong>Pontos do pódio:</strong> 
+                            <span style="color: var(--success); font-weight: bold;">${bet.podium.points} pontos</span>
+                        </div>
+                    ` : ''}
+                `;
+            }
+
+            html += `</div>`; // Fecha bet-card
+        });
+
+        container.innerHTML = html;
+    }
+
+    // RENDERIZAR ESTATÍSTICAS DA BUSCA (VERSÃO CORRIGIDA)
+function renderSearchStats(stats) {
+    const statsContainer = document.getElementById('search-stats');
+    
+    // Verificar se o elemento existe
+    if (!statsContainer) {
+        console.warn('⚠️ Elemento search-stats não encontrado');
+        return;
+    }
+    
+    // Verificar se stats existe
+    if (!stats) {
+        console.warn('⚠️ Estatísticas não fornecidas');
+        return;
+    }
+    
+    statsContainer.innerHTML = `
+        <div class="search-stats-grid">
+            <div class="search-stat-card">
+                <div class="search-stat-number">${stats.totalBets || 0}</div>
+                <div class="search-stat-label">Palpites Encontrados</div>
+            </div>
+            <div class="search-stat-card">
+                <div class="search-stat-number">${stats.totalUsers || 0}</div>
+                <div class="search-stat-label">Usuários</div>
+            </div>
+            <div class="search-stat-card">
+                <div class="search-stat-number">${stats.totalMatches || 0}</div>
+                <div class="search-stat-label">Partidas com Palpites</div>
+            </div>
+        </div>
+    `;
+    
+    statsContainer.style.display = 'block';
+    console.log('✅ Estatísticas de busca renderizadas');
+}
+
+    // BUSCAR PALPITES
+    function searchAllBets() {
+        const searchParams = {
+            search: document.getElementById('search-user').value.trim(),
+            matchId: document.getElementById('search-match').value,
+            group: document.getElementById('search-group').value,
+            sortBy: document.getElementById('sort-bets').value
+        };
+        
+        loadAllBets(searchParams);
+    }
+
+    // LIMPAR BUSCA
+    function clearSearch() {
+        document.getElementById('search-user').value = '';
+        document.getElementById('search-match').value = '';
+        document.getElementById('search-group').value = '';
+        document.getElementById('sort-bets').value = 'user';
+        
+        loadAllBets();
+    }
+
+   // CARREGAR PARTIDAS PARA FILTRO (VERSÃO CORRIGIDA)
+async function loadMatchesForFilter() {
+    try {
+        // Verificar se a aba está ativa antes de carregar
+        const allBetsTab = document.getElementById('all-bets');
+        if (!allBetsTab || !allBetsTab.classList.contains('active')) {
+            console.log('🔍 Aba "Todos os Palpites" não está ativa, pulando carregamento de filtros...');
+            return;
+        }
+
+        // Verificar se os elementos existem
+        const searchMatchSelect = document.getElementById('search-match');
+        if (!searchMatchSelect) {
+            console.warn('⚠️ Elemento search-match não encontrado no DOM');
+            return;
+        }
+
+        console.log('🔍 Carregando partidas para filtro...');
+        
+        const response = await fetch(`${API_URL}/api/bets/matches-for-filter`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            allMatchesForFilter = data.data;
+            console.log(`✅ ${allMatchesForFilter.length} partidas carregadas para filtro`);
+            
+            // Só preencher se o elemento existir
+            if (searchMatchSelect) {
+                populateMatchFilter();
+                loadGroupsForFilter();
+            }
+        } else {
+            console.error('❌ Erro na resposta da API:', response.status);
+        }
+    } catch (error) {
+        console.error('❌ Erro ao carregar partidas para filtro:', error);
+    }
+}
+
+    // PREENCHER FILTRO DE PARTIDAS (VERSÃO CORRIGIDA)
+function populateMatchFilter() {
+    const select = document.getElementById('search-match');
+    
+    // Verificar se o elemento existe
+    if (!select) {
+        console.warn('⚠️ Elemento search-match não encontrado para preenchimento');
+        return;
+    }
+    
+    console.log(`🎯 Preenchendo filtro com ${allMatchesForFilter.length} partidas`);
+    
+    select.innerHTML = '<option value="">Todas as partidas</option>';
+    
+    allMatchesForFilter.forEach(match => {
+        const option = document.createElement('option');
+        option.value = match.matchId;
+        option.textContent = `Jogo ${match.matchId}: ${match.teamA} vs ${match.teamB} (${match.group})`;
+        select.appendChild(option);
+    });
+    
+    console.log('✅ Filtro de partidas preenchido com sucesso');
+}
+
+    // CARREGAR GRUPOS PARA FILTRO (VERSÃO CORRIGIDA)
+function loadGroupsForFilter() {
+    const select = document.getElementById('search-group');
+    
+    // Verificar se o elemento existe
+    if (!select) {
+        console.warn('⚠️ Elemento search-group não encontrado');
+        return;
+    }
+    
+    const groups = [...new Set(allMatchesForFilter.map(match => match.group))].sort();
+    allGroups = groups;
+    
+    const currentValue = select.value;
+    select.innerHTML = '<option value="">Todos os grupos</option>';
+    
+    groups.forEach(group => {
+        const option = document.createElement('option');
+        option.value = group;
+        option.textContent = group;
+        select.appendChild(option);
+    });
+    
+    // Restaurar valor anterior se ainda existir
+    if (currentValue && groups.includes(currentValue)) {
+        select.value = currentValue;
+    }
+    
+    console.log(`✅ ${groups.length} grupos carregados para filtro`);
+}
+
+    // CARREGAR TIMES
+    async function loadTeams() {
+        try {
+            const response = await fetch(`${API_URL}/api/matches`);
+            const data = await response.json();
+            
+            if (data.data) {
+                const allTeams = new Set();
+                data.data.forEach(match => {
+                    allTeams.add(match.teamA);
+                    allTeams.add(match.teamB);
+                });
+                
+                teams = Array.from(allTeams).sort();
+                populateTeamSelects();
+            }
+        } catch (error) {
+            console.error('Erro ao carregar times:', error);
+        }
+    }
+
+    // PREENCHER SELECTS DE TIMES
+    function populateTeamSelects() {
+        const selects = ['first-place', 'second-place', 'third-place', 'podium-first', 'podium-second', 'podium-third'];
+        
+        selects.forEach(selectId => {
+            const select = document.getElementById(selectId);
+            if (select) {
+                select.innerHTML = '<option value="">Selecione...</option>';
+                
+                teams.forEach(team => {
+                    const option = document.createElement('option');
+                    option.value = team;
+                    option.textContent = team;
+                    select.appendChild(option);
+                });
+            }
+        });
+    }
+
+    // CARREGAR JOGOS
+    async function loadMatches() {
+        try {
+            const response = await fetch(`${API_URL}/api/matches`);
+            const data = await response.json();
+            
+            if (data.data) {
+                matches = data.data;
+                renderMatches();
+                loadTeams();
+            }
+        } catch (error) {
+            console.error('Erro ao carregar jogos:', error);
+            matchesContainer.innerHTML = '<p>Erro ao carregar jogos</p>';
+        }
+    }
+
+    // RENDERIZAR JOGOS
+    function renderMatches() {
+        if (matches.length === 0) {
+            matchesContainer.innerHTML = '<p>Nenhum jogo encontrado.</p>';
+            return;
+        }
+
+        // Agrupar por grupo
+        const groups = {};
+        matches.forEach(match => {
+            if (!groups[match.group]) {
+                groups[match.group] = [];
+            }
+            groups[match.group].push(match);
+        });
+
+        let html = '';
+        Object.keys(groups).sort().forEach(groupName => {
+            html += `
+                <div class="group-stage">
+                    <h3 class="group-title">${groupName}</h3>
+            `;
+            
+            groups[groupName].forEach(match => {
+                html += createMatchCardHTML(match);
+            });
+            
+            html += `</div>`;
+        });
+
+        matchesContainer.innerHTML = html;
+        setupBetEventListeners();
+    }
+
+    // CRIAR HTML DO CARD DE JOGO
+    function createMatchCardHTML(match) {
+        const statusBadge = match.status === 'finished' ? 
+            `<span style="color: var(--success); font-weight: bold;">✓ Finalizado</span>` :
+            match.status === 'in_progress' ?
+            `<span style="color: var(--warning); font-weight: bold;">⏳ Em andamento</span>` :
+            `<span style="color: var(--info);">⏰ Agendado</span>`;
+            
+        const resultText = match.status === 'finished' ? 
+            `<div style="text-align: center; margin-top: 10px; padding: 5px; background: #f8f9fa; border-radius: 4px;">
+                <strong>Resultado: ${match.scoreA} - ${match.scoreB}</strong>
+            </div>` : '';
+
+        return `
+            <div class="match-card" data-match-id="${match.matchId}">
+                <div class="match-header">
+                    <span>${match.date} • ${match.time}</span>
+                    ${statusBadge}
+                </div>
+                <div class="match-teams">
+                    <div class="team">
+                        <div class="team-flag"></div>
+                        <span class="team-name">${match.teamA}</span>
+                    </div>
+                    <div class="vs">VS</div>
+                    <div class="team" style="justify-content: flex-end;">
+                        <span class="team-name">${match.teamB}</span>
+                        <div class="team-flag"></div>
+                    </div>
+                </div>
+                ${resultText}
+                ${match.status !== 'finished' ? `
+                <div class="bet-options">
+                    <div class="bet-option team-a" data-bet="${match.teamA}">${match.teamA}</div>
+                    <div class="bet-option draw" data-bet="draw">Empate</div>
+                    <div class="bet-option team-b" data-bet="${match.teamB}">${match.teamB}</div>
+                </div>
+                ` : ''}
+            </div>
+        `;
+    }
+
+    // CONFIGURAR EVENTOS DOS PALPITES
+    function setupBetEventListeners() {
+        document.querySelectorAll('.bet-option').forEach(option => {
+            option.addEventListener('click', function() {
+                const matchCard = this.closest('.match-card');
+                const options = matchCard.querySelectorAll('.bet-option');
+                
+                options.forEach(opt => opt.classList.remove('selected'));
+                this.classList.add('selected');
+            });
+        });
+    }
+
+    // VERIFICAR STATUS DOS PALPITES
+    async function checkBetStatus() {
+        if (!token) return;
+
+        try {
+            const response = await fetch(`${API_URL}/api/bets/status`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                if (data.data.hasSubmitted) {
+                    document.getElementById('save-bets').disabled = true;
+                    document.getElementById('save-bets').innerHTML = '<i class="fas fa-check"></i> Palpites Já Enviados';
+                    showMessage('warning', 'Você já enviou seus palpites e não pode mais alterá-los.');
+                }
+            }
+        } catch (error) {
+            console.error('Erro ao verificar status:', error);
+        }
+    }
+
+    // SALVAR TODOS OS PALPITES
+    async function saveAllBets() {
+        if (!token) {
+            showMessage('error', 'Faça login para salvar palpites!');
+            return;
+        }
+
+        // Coletar palpites dos jogos (formato placar)
+        const groupMatches = {};
+        let hasMissingBets = false;
+
+        document.querySelectorAll('.match-card').forEach(card => {
+            const matchId = card.dataset.matchId;
+            const selectedBet = card.querySelector('.bet-option.selected');
+            
+            if (selectedBet) {
+                const betValue = selectedBet.dataset.bet;
+                // Converter para formato de placar (ex: "2-1", "0-0", "1-2")
+                if (betValue === 'draw') {
+                    groupMatches[matchId] = '0-0';
+                } else {
+                    // Para vitórias, usar placar simples 1-0 ou 2-1
+                    const isTeamA = betValue === card.querySelector('.team-a').dataset.bet;
+                    groupMatches[matchId] = isTeamA ? '1-0' : '0-1';
+                }
+            } else {
+                hasMissingBets = true;
+            }
+        });
+
+        // Coletar pódio
+        const podium = {
+            first: document.getElementById('first-place').value,
+            second: document.getElementById('second-place').value,
+            third: document.getElementById('third-place').value
+        };
+
+        // Validar
+        if (hasMissingBets) {
+            showMessage('error', 'Faça palpites em todos os jogos!');
+            return;
+        }
+
+        if (!podium.first || !podium.second || !podium.third) {
+            showMessage('error', 'Selecione todas as posições do pódio!');
+            return;
+        }
+
+        try {
+            const saveButton = document.getElementById('save-bets');
+            saveButton.disabled = true;
+            saveButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Salvando...';
+
+            const response = await fetch(`${API_URL}/api/bets/save`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ groupMatches, podium })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                showMessage('success', 'Palpites salvos com sucesso!');
+                saveButton.innerHTML = '<i class="fas fa-check"></i> Palpites Enviados';
+                saveButton.disabled = true;
+                loadUserBets();
+            } else {
+                showMessage('error', 'Erro ao salvar: ' + data.message);
+                saveButton.disabled = false;
+                saveButton.innerHTML = '<i class="fas fa-save"></i> Salvar Todos os Palpites';
+            }
+        } catch (error) {
+            showMessage('error', 'Erro de conexão: ' + error.message);
+            document.getElementById('save-bets').disabled = false;
+            document.getElementById('save-bets').innerHTML = '<i class="fas fa-save"></i> Salvar Todos os Palpites';
+        }
+    }
+
+    // CARREGAR RANKING
+    async function loadRanking() {
+        try {
+            const response = await fetch(`${API_URL}/api/bets/leaderboard`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                renderRanking(data.data);
+            } else {
+                rankingBody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Erro ao carregar ranking</td></tr>';
+            }
+        } catch (error) {
+            console.error('Erro ao carregar ranking:', error);
+            rankingBody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Erro de conexão</td></tr>';
+        }
+    }
+
+    // RENDERIZAR RANKING
+    function renderRanking(leaderboard) {
+        if (!leaderboard || leaderboard.length === 0) {
+            rankingBody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Nenhum participante ainda</td></tr>';
+            return;
+        }
+
+        let html = '';
+        leaderboard.forEach((entry, index) => {
+            const isCurrentUser = currentUser && entry.user && entry.user._id === currentUser._id;
+            const rowClass = isCurrentUser ? 'style="background-color: #e3f2fd;"' : '';
+            
+            html += `
+                <tr ${rowClass}>
+                    <td class="position">${entry.position}</td>
+                    <td>${entry.user.name} ${isCurrentUser ? '(Você)' : ''}</td>
+                    <td class="points">${entry.totalPoints}</td>
+                    <td>${entry.groupPoints || 0}</td>
+                    <td>${entry.podiumPoints || 0}</td>
+                    <td>${entry.bonusPoints || 0}</td>
+                </tr>
+            `;
+        });
+
+        rankingBody.innerHTML = html;
+    }
+
+    // CARREGAR PALPITES DO USUÁRIO
+    async function loadUserBets() {
+        if (!token) {
+            userBetsContainer.innerHTML = '<p>Faça login para ver seus palpites.</p>';
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_URL}/api/bets/my-bets`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                userBets = data.data;
+                renderUserBets(userBets);
+            } else {
+                userBetsContainer.innerHTML = '<p>Erro ao carregar palpites.</p>';
+            }
+        } catch (error) {
+            console.error('Erro ao carregar palpites:', error);
+            userBetsContainer.innerHTML = '<p>Erro de conexão ao carregar palpites.</p>';
+        }
+    }
+
+    // RENDERIZAR PALPITES DO USUÁRIO
+    function renderUserBets(bets) {
+        if (!bets) {
+            userBetsContainer.innerHTML = '<p>Nenhum palpite encontrado.</p>';
+            return;
+        }
+
+        let html = '';
+
+        // CABEÇALHO COM INFORMAÇÕES GERAIS
+        html += `
+            <div class="bet-card">
+                <h3><i class="fas fa-user"></i> Informações dos Palpites</h3>
+                <p><strong>Status:</strong> ${bets.hasSubmitted ? '✅ Enviados' : '⏳ Pendentes'}</p>
+                ${bets.hasSubmitted ? 
+                    `<p><strong>Enviado em:</strong> ${new Date(bets.firstSubmission).toLocaleString('pt-BR')}</p>` : 
+                    '<p>Você ainda não enviou seus palpites.</p>'
+                }
+                <p><strong>Pontuação Total:</strong> <span style="color: var(--primary); font-weight: bold;">${bets.totalPoints || 0} pontos</span></p>
+                <p><strong>Pontos dos Jogos:</strong> ${bets.groupPoints || 0} pontos</p>
+                <p><strong>Pontos do Pódio:</strong> ${bets.podiumPoints || 0} pontos</p>
+                ${bets.bonusPoints ? `<p><strong>Pontos Bônus:</strong> ${bets.bonusPoints} pontos</p>` : ''}
+            </div>
+        `;
+
+        // PALPITES DOS JOGOS
+        if (bets.groupMatches && bets.groupMatches.length > 0) {
+            html += `
+                <div class="bet-card">
+                    <h3><i class="fas fa-futbol"></i> Palpites - Fase de Grupos</h3>
+            `;
+            
+            // Agrupar por grupo
+            const groups = {};
+            bets.groupMatches.forEach(bet => {
+                const match = matches.find(m => m.matchId === bet.matchId);
+                if (match) {
+                    if (!groups[match.group]) {
+                        groups[match.group] = [];
+                    }
+                    groups[match.group].push({ bet, match });
+                }
+            });
+
+            Object.keys(groups).sort().forEach(groupName => {
+                html += `<h4 style="color: var(--primary); margin: 15px 0 10px 0;">${groupName}</h4>`;
+                
+                groups[groupName].forEach(({ bet, match }) => {
+                    const pointsText = bet.points > 0 ? 
+                        `<span style="color: var(--success); font-weight: bold;">+${bet.points} ponto(s)</span>` : 
+                        `<span style="color: var(--danger);">0 pontos</span>`;
+                    
+                    const matchStatus = match.status === 'finished' ? 
+                        `<span style="color: ${bet.points > 0 ? 'var(--success)' : 'var(--danger)'};">✓ Finalizado</span>` :
+                        `<span style="color: var(--info);">⏰ Pendente</span>`;
+                    
+                    html += `
+                        <div class="bet-item">
+                            <div class="bet-header">
+                                <span><strong>${match.teamA} vs ${match.teamB}</strong></span>
+                                ${matchStatus}
+                            </div>
+                            <p><strong>Seu palpite:</strong> ${bet.bet}</p>
+                            <p><strong>Pontuação:</strong> ${pointsText}</p>
+                        </div>
+                    `;
+                });
+            });
+            
+            html += `</div>`;
+        }
+
+        // PALPITES DO PÓDIO
+        if (bets.podium) {
+            html += `
+                <div class="bet-card">
+                    <h3><i class="fas fa-trophy"></i> Palpite do Pódio Final</h3>
+                    <div class="podium-bet-item" style="background: linear-gradient(135deg, gold, #ffd700);">
+                        <span><strong>🥇 1º Lugar:</strong></span>
+                        <span>${bets.podium.first || 'Não definido'}</span>
+                    </div>
+                    <div class="podium-bet-item" style="background: linear-gradient(135deg, silver, #c0c0c0);">
+                        <span><strong>🥈 2º Lugar:</strong></span>
+                        <span>${bets.podium.second || 'Não definido'}</span>
+                    </div>
+                    <div class="podium-bet-item" style="background: linear-gradient(135deg, #cd7f32, #b08d57);">
+                        <span><strong>🥉 3º Lugar:</strong></span>
+                        <span>${bets.podium.third || 'Não definido'}</span>
+                    </div>
+                    ${bets.podium.points ? `<p style="margin-top: 10px;"><strong>Pontos do pódio:</strong> ${bets.podium.points} pontos</p>` : ''}
+                </div>
+            `;
+        }
+
+        userBetsContainer.innerHTML = html;
+    }
+
+    // FUNÇÕES DE ADMINISTRAÇÃO
+
+    // CARREGAR PARTIDAS PARA ADMIN
+    async function loadAdminMatches() {
+        if (!isAdmin) return;
+
+        try {
+            const response = await fetch(`${API_URL}/api/matches/admin/all`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                renderAdminMatches(data.data);
+            }
+        } catch (error) {
+            console.error('Erro ao carregar partidas admin:', error);
+        }
+    }
+
+    // RENDERIZAR PARTIDAS PARA ADMIN
+    function renderAdminMatches(matchesList) {
+        const container = document.getElementById('admin-matches-list');
+        
+        if (!matchesList || matchesList.length === 0) {
+            container.innerHTML = '<p>Nenhuma partida encontrada.</p>';
+            return;
+        }
+
+        let html = '<table class="ranking-table" style="font-size: 0.9rem;">';
+        html += `
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Partida</th>
+                    <th>Grupo</th>
+                    <th>Status</th>
+                    <th>Placar</th>
+                    <th>Palpites</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+        `;
+
+        matchesList.forEach(match => {
+            const statusColor = match.status === 'finished' ? 'var(--success)' : 
+                              match.status === 'in_progress' ? 'var(--warning)' : 'var(--info)';
+            
+            const score = match.status === 'finished' ? 
+                `${match.scoreA} - ${match.scoreB}` : '-- : --';
+            
+            html += `
+                <tr>
+                    <td>${match.matchId}</td>
+                    <td><strong>${match.teamA}</strong> vs <strong>${match.teamB}</strong></td>
+                    <td>${match.group}</td>
+                    <td style="color: ${statusColor}; font-weight: bold;">${match.status}</td>
+                    <td>${score}</td>
+                    <td>${match.betsCount || 0}</td>
+                    <td>
+                        <button class="btn btn-small btn-info" onclick="editMatch(${match.matchId})">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        ${match.status !== 'finished' ? `
+                        <button class="btn btn-small btn-success" onclick="prepareFinishMatch(${match.matchId})">
+                            <i class="fas fa-whistle"></i>
+                        </button>
+                        ` : ''}
+                    </td>
+                </tr>
+            `;
+        });
+
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    }
+
+    // MODAIS
+
+    function openModal(modalId) {
+        document.getElementById(modalId).classList.add('active');
+    }
+
+    function closeModal(modalId) {
+        const modal = document.getElementById(modalId);
+        if (modal) {
+            modal.classList.remove('active');
+        }
+    }
+
+    function openAddMatchModal() {
+        openModal('add-match-modal');
+    }
+
+    function openFinishMatchModal() {
+        // Preencher select de partidas
+        const select = document.getElementById('finish-match-select');
+        select.innerHTML = '<option value="">Selecione uma partida</option>';
+        
+        matches.filter(m => m.status !== 'finished').forEach(match => {
+            const option = document.createElement('option');
+            option.value = match.matchId;
+            option.textContent = `${match.teamA} vs ${match.teamB} (${match.group})`;
+            select.appendChild(option);
+        });
+        
+        openModal('finish-match-modal');
+    }
+
+    function openSetPodiumModal() {
+        openModal('set-podium-modal');
+    }
+
+    // ADICIONAR PARTIDA
+    async function handleAddMatch(e) {
+        e.preventDefault();
+        
+        const matchData = {
+            matchId: parseInt(document.getElementById('match-id').value),
+            teamA: document.getElementById('team-a').value,
+            teamB: document.getElementById('team-b').value,
+            date: document.getElementById('match-date').value,
+            time: document.getElementById('match-time').value,
+            group: document.getElementById('match-group').value,
+            stadium: document.getElementById('match-stadium').value
+        };
+
+        try {
+            const response = await fetch(`${API_URL}/api/matches/admin/add`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(matchData)
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                showMessage('success', 'Partida adicionada com sucesso!');
+                closeModal('add-match-modal');
+                document.getElementById('add-match-form').reset();
+                loadMatches();
+                loadAdminMatches();
+            } else {
+                showMessage('error', 'Erro ao adicionar partida: ' + data.message);
+            }
+        } catch (error) {
+            showMessage('error', 'Erro de conexão: ' + error.message);
+        }
+    }
+
+    // PREPARAR FINALIZAÇÃO DE PARTIDA
+    function loadMatchDetails() {
+        const select = document.getElementById('finish-match-select');
+        const matchId = select.value;
+        const detailsDiv = document.getElementById('match-details');
+        
+        if (matchId) {
+            const match = matches.find(m => m.matchId == matchId);
+            if (match) {
+                document.getElementById('selected-match-name').textContent = `${match.teamA} vs ${match.teamB}`;
+                detailsDiv.style.display = 'block';
+            }
+        } else {
+            detailsDiv.style.display = 'none';
+        }
+    }
+
+    // FINALIZAR PARTIDA
+    async function finishMatch() {
+        const matchId = document.getElementById('finish-match-select').value;
+        const scoreA = document.getElementById('score-a').value;
+        const scoreB = document.getElementById('score-b').value;
+
+        if (!matchId || scoreA === '' || scoreB === '') {
+            showMessage('error', 'Preencha todos os campos!');
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_URL}/api/matches/admin/finish/${matchId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ scoreA: parseInt(scoreA), scoreB: parseInt(scoreB) })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                showMessage('success', 'Partida finalizada e pontos calculados!');
+                closeModal('finish-match-modal');
+                loadMatches();
+                loadAdminMatches();
+                loadRanking();
+            } else {
+                showMessage('error', 'Erro ao finalizar partida: ' + data.message);
+            }
+        } catch (error) {
+            showMessage('error', 'Erro de conexão: ' + error.message);
+        }
+    }
+
+    // DEFINIR PÓDIO
+    async function setPodium() {
+        const podium = {
+            first: document.getElementById('podium-first').value,
+            second: document.getElementById('podium-second').value,
+            third: document.getElementById('podium-third').value
+        };
+
+        if (!podium.first || !podium.second || !podium.third) {
+            showMessage('error', 'Selecione todas as posições do pódio!');
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_URL}/api/points/process-podium`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(podium)
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                showMessage('success', 'Pódio definido e pontos calculados!');
+                closeModal('set-podium-modal');
+                loadRanking();
+                loadUserBets();
+            } else {
+                showMessage('error', 'Erro ao definir pódio: ' + data.message);
+            }
+        } catch (error) {
+            showMessage('error', 'Erro de conexão: ' + error.message);
+        }
+    }
+
+    // RECALCULAR TODOS OS PONTOS
+    async function recalculateAllPoints() {
+        try {
+            const response = await fetch(`${API_URL}/api/points/recalculate-all`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                showMessage('success', 'Todos os pontos foram recalculados!');
+                loadRanking();
+                loadUserBets();
+            } else {
+                showMessage('error', 'Erro ao recalcular pontos: ' + data.message);
+            }
+        } catch (error) {
+            showMessage('error', 'Erro de conexão: ' + error.message);
+        }
+    }
+
+    // VERIFICAR INTEGRIDADE DOS DADOS
+    async function checkDataIntegrity() {
+        try {
+            const response = await fetch(`${API_URL}/api/points/integrity-check`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                const errors = data.data.errors || [];
+                const warnings = data.data.warnings || [];
+                
+                let message = `Verificação concluída: ${data.data.totalBets} palpites verificados<br>`;
+                message += `Erros: ${errors.length}<br>`;
+                message += `Avisos: ${warnings.length}`;
+                
+                if (errors.length === 0) {
+                    showMessage('success', message);
+                } else {
+                    showMessage('warning', message);
+                }
+            } else {
+                showMessage('error', 'Erro na verificação: ' + data.message);
+            }
+        } catch (error) {
+            showMessage('error', 'Erro de conexão: ' + error.message);
+        }
+    }
+
+    // RESETAR CÁLCULOS (APENAS DESENVOLVIMENTO)
+    async function resetAllCalculations() {
+        if (!confirm('⚠️ ATENÇÃO: Isso resetará TODOS os cálculos de pontos. Continuar?')) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_URL}/api/points/reset-all`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                showMessage('success', 'Cálculos resetados com sucesso!');
+                loadRanking();
+                loadUserBets();
+            } else {
+                showMessage('error', 'Erro ao resetar cálculos: ' + data.message);
+            }
+        } catch (error) {
+            showMessage('error', 'Erro de conexão: ' + error.message);
+        }
+    }
+
+    // SIMULAR PONTUAÇÃO
+    async function simulatePoints() {
+        try {
+            const response = await fetch(`${API_URL}/api/points/simulate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    podium: {
+                        first: "Brasil",
+                        second: "Argentina", 
+                        third: "França"
+                    }
+                })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                showMessage('info', `Simulação concluída: ${data.summary.totalParticipants} participantes, média: ${data.summary.simulatedAverage.toFixed(1)} pontos`);
+            } else {
+                showMessage('error', 'Erro na simulação: ' + data.message);
+            }
+        } catch (error) {
+            showMessage('error', 'Erro de conexão: ' + error.message);
+        }
+    }
+
+    // CARREGAR ESTATÍSTICAS
+    async function loadStats() {
+        try {
+            const response = await fetch(`${API_URL}/api/points/stats`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                renderStats(data.data);
+            } else {
+                document.getElementById('stats-container').innerHTML = '<p>Erro ao carregar estatísticas</p>';
+            }
+        } catch (error) {
+            console.error('Erro ao carregar estatísticas:', error);
+            document.getElementById('stats-container').innerHTML = '<p>Erro de conexão</p>';
+        }
+    }
+
+    // RENDERIZAR ESTATÍSTICAS
+    function renderStats(stats) {
+        const container = document.getElementById('stats-container');
+        
+        let html = `
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-number">${stats.participants || 0}</div>
+                    <div class="stat-label">Participantes</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${stats.finishedMatches || 0}</div>
+                    <div class="stat-label">Partidas Finalizadas</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${stats.totalPoints || 0}</div>
+                    <div class="stat-label">Pontos Distribuídos</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${stats.averagePoints || 0}</div>
+                    <div class="stat-label">Média de Pontos</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${stats.averageAccuracy || 0}%</div>
+                    <div class="stat-label">Precisão Média</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${stats.maxPoints || 0}</div>
+                    <div class="stat-label">Maior Pontuação</div>
+                </div>
+            </div>
+        `;
+
+        if (stats.topParticipants && stats.topParticipants.length > 0) {
+            html += `
+                <div class="bet-card">
+                    <h3><i class="fas fa-trophy"></i> Top 5 Participantes</h3>
+                    <table class="ranking-table">
+                        <thead>
+                            <tr>
+                                <th>Posição</th>
+                                <th>Participante</th>
+                                <th>Pontos</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            stats.topParticipants.slice(0, 5).forEach(participant => {
+                html += `
+                    <tr>
+                        <td class="position">${participant.position}º</td>
+                        <td>${participant.name}</td>
+                        <td class="points">${participant.points}</td>
+                    </tr>
+                `;
+            });
+            
+            html += `</tbody></table></div>`;
+        }
+
+        container.innerHTML = html;
+    }
+
+    // MOSTRAR MENSAGEM
+    function showMessage(type, text) {
+        saveMessage.innerHTML = `<div class="message ${type}">${text}</div>`;
+        setTimeout(() => {
+            saveMessage.innerHTML = '';
+        }, 5000);
+    }
+
+    // TROCAR DE ABA
+    function switchTab(tabName) {
+        console.log('🔀 Mudando para aba:', tabName);
+        
+        // Atualizar tabs
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.classList.remove('active');
+        });
+        document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+
+        // Atualizar conteúdo
+        document.querySelectorAll('.tab-content').forEach(content => {
+            content.classList.remove('active');
+        });
+        document.getElementById(tabName).classList.add('active');
+
+        // Recarregar dados se necessário
+        if (tabName === 'ranking') {
+            loadRanking();
+        } else if (tabName === 'my-bets') {
+            loadUserBets();
+        } else if (tabName === 'admin' && isAdmin) {
+            loadAdminMatches();
+        } else if (tabName === 'stats') {
+            loadStats();
+        } else if (tabName === 'all-bets') {
+            // 👇 NOVA ABA - CARREGAR PALPITES E FILTROS
+            loadAllBets();
+            loadMatchesForFilter();
+        }
+        
+        // Scroll para o topo ao mudar de aba
+        window.scrollTo(0, 0);
+    }
+
+    // FUNÇÕES AUXILIARES
+    function prepareFinishMatch(matchId) {
+        openFinishMatchModal();
+        document.getElementById('finish-match-select').value = matchId;
+        loadMatchDetails();
+    }
+
+    // 👑 EDITAR PARTIDA
+    function editMatch(matchId) {
+        console.log('🔧 Editando partida:', matchId);
+        
+        // Buscar dados da partida
+        const match = matches.find(m => m.matchId === matchId);
+        if (!match) {
+            showMessage('error', 'Partida não encontrada');
+            return;
+        }
+        
+        // Criar modal de edição
+        createEditMatchModal(match);
+    }
+
+    // 👑 CRIAR MODAL DE EDIÇÃO
+    function createEditMatchModal(match) {
+        // Remover modal existente se houver
+        const existingModal = document.getElementById('edit-match-modal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+        
+        // Criar modal
+        const modalHTML = `
+            <div id="edit-match-modal" class="modal active">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3 class="modal-title">Editar Partida</h3>
+                        <button class="close-modal" onclick="closeModal('edit-match-modal')">&times;</button>
+                    </div>
+                    <form id="edit-match-form">
+                        <input type="hidden" id="edit-match-id" value="${match.matchId}">
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="edit-team-a">Time A:</label>
+                                <input type="text" id="edit-team-a" value="${match.teamA}" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-team-b">Time B:</label>
+                                <input type="text" id="edit-team-b" value="${match.teamB}" required>
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="edit-match-date">Data (DD/MM/AAAA):</label>
+                                <input type="text" id="edit-match-date" value="${match.date}" placeholder="DD/MM/AAAA" required pattern="\\d{2}/\\d{2}/\\d{4}">
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-match-time">Horário (HH:MM):</label>
+                                <input type="text" id="edit-match-time" value="${match.time}" placeholder="HH:MM" required pattern="\\d{2}:\\d{2}">
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="edit-match-group">Grupo:</label>
+                                <input type="text" id="edit-match-group" value="${match.group}" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-match-stadium">Estádio:</label>
+                                <input type="text" id="edit-match-stadium" value="${match.stadium || ''}">
+                            </div>
+                        </div>
+                        
+                        ${match.status === 'finished' ? `
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="edit-score-a">Placar Time A:</label>
+                                <input type="number" id="edit-score-a" value="${match.scoreA || 0}" min="0" max="20">
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-score-b">Placar Time B:</label>
+                                <input type="number" id="edit-score-b" value="${match.scoreB || 0}" min="0" max="20">
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="edit-match-status">Status:</label>
+                            <select id="edit-match-status">
+                                <option value="scheduled" ${match.status === 'scheduled' ? 'selected' : ''}>Agendado</option>
+                                <option value="in_progress" ${match.status === 'in_progress' ? 'selected' : ''}>Em Andamento</option>
+                                <option value="finished" ${match.status === 'finished' ? 'selected' : ''}>Finalizado</option>
+                            </select>
+                        </div>
+                        ` : ''}
+                        
+                        <div class="admin-actions">
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-save"></i> Salvar Alterações
+                            </button>
+                            ${match.status !== 'finished' ? `
+                            <button type="button" class="btn btn-warning" onclick="prepareFinishMatch(${match.matchId})">
+                                <i class="fas fa-whistle"></i> Finalizar Partida
+                            </button>
+                            ` : ''}
+                            <button type="button" class="btn btn-danger" onclick="deleteMatch(${match.matchId})">
+                                <i class="fas fa-trash"></i> Excluir Partida
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        `;
+        
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+        
+        // Configurar evento do formulário
+        document.getElementById('edit-match-form').addEventListener('submit', handleEditMatch);
+    }
+
+    // 👑 SALVAR EDIÇÃO DA PARTIDA
+    async function handleEditMatch(e) {
+        e.preventDefault();
+        
+        const matchId = document.getElementById('edit-match-id').value;
+        const updates = {
+            teamA: document.getElementById('edit-team-a').value,
+            teamB: document.getElementById('edit-team-b').value,
+            date: document.getElementById('edit-match-date').value,
+            time: document.getElementById('edit-match-time').value,
+            group: document.getElementById('edit-match-group').value,
+            stadium: document.getElementById('edit-match-stadium').value
+        };
+        
+        // Adicionar campos opcionais se existirem
+        const scoreA = document.getElementById('edit-score-a');
+        const scoreB = document.getElementById('edit-score-b');
+        const status = document.getElementById('edit-match-status');
+        
+        if (scoreA) updates.scoreA = parseInt(scoreA.value) || 0;
+        if (scoreB) updates.scoreB = parseInt(scoreB.value) || 0;
+        if (status) updates.status = status.value;
+        
+        try {
+            const response = await fetch(`${API_URL}/api/matches/admin/edit/${matchId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(updates)
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                showMessage('success', 'Partida atualizada com sucesso!');
+                closeModal('edit-match-modal');
+                loadMatches();
+                loadAdminMatches();
+            } else {
+                showMessage('error', 'Erro ao atualizar partida: ' + data.message);
+            }
+        } catch (error) {
+            showMessage('error', 'Erro de conexão: ' + error.message);
+        }
+    }
+
+    // 👑 EXCLUIR PARTIDA
+    async function deleteMatch(matchId) {
+        if (!confirm('⚠️ ATENÇÃO: Tem certeza que deseja excluir esta partida?\n\nEsta ação não pode ser desfeita!')) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`${API_URL}/api/matches/admin/delete/${matchId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                showMessage('success', 'Partida excluída com sucesso!');
+                closeModal('edit-match-modal');
+                loadMatches();
+                loadAdminMatches();
+            } else {
+                showMessage('error', 'Erro ao excluir partida: ' + data.message);
+            }
+        } catch (error) {
+            showMessage('error', 'Erro de conexão: ' + error.message);
+        }
+    }
+// ... todo o resto do código ...
+
+// 👑 EXCLUIR PARTIDA
+async function deleteMatch(matchId) {
+    // ... código existente
+}
+
+// ======================
+// 🛠️ FUNÇÕES UTILITÁRIAS
+// ======================
+
+// VERIFICAR SE ELEMENTO EXISTE
+function elementExists(id) {
+    const element = document.getElementById(id);
+    if (!element) {
+        console.warn(`⚠️ Elemento não encontrado: ${id}`);
+        return false;
+    }
+    return true;
+}
+
+console.log('🎯 Script completo carregado!');
+console.log('👉 Use switchTab("all-bets") para testar a nova aba');
+
+    </script>
+</body>
+</html>
