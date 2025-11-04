@@ -440,7 +440,233 @@ router.post('/recalculate-all', protect, async (req, res) => {
 });
 
 // ======================
-// 🌐 ROTA DE TESTE
+// 👁️ VER TODOS OS PALPITES (COM BUSCA) - NOVAS ROTAS
+// ======================
+
+// 🔍 BUSCAR TODOS OS PALPITES COM FILTROS
+router.get('/all-bets', protect, async (req, res) => {
+  try {
+    const { search, matchId, userId, group, sortBy = 'user' } = req.query;
+    
+    console.log('🔍 Buscando todos os palpites...', { search, matchId, userId, group });
+
+    // Construir query de busca
+    let query = { hasSubmitted: true };
+    
+    // Busca por usuário
+    if (userId) {
+      query.user = userId;
+    } else if (search) {
+      const users = await User.find({
+        name: { $regex: search, $options: 'i' }
+      }).select('_id');
+      
+      query.user = { $in: users.map(u => u._id) };
+    }
+
+    // Busca por partida específica
+    if (matchId) {
+      query['groupMatches.matchId'] = parseInt(matchId);
+    }
+
+    // Busca por grupo
+    if (group) {
+      // Primeiro buscar partidas deste grupo
+      const matchesInGroup = await Match.find({ 
+        group: new RegExp(group, 'i') 
+      }).select('matchId');
+      
+      const matchIds = matchesInGroup.map(m => m.matchId);
+      query['groupMatches.matchId'] = { $in: matchIds };
+    }
+
+    let betsQuery = Bet.find(query)
+      .populate('user', 'name email')
+      .select('user groupMatches podium totalPoints groupPoints podiumPoints firstSubmission lastUpdate');
+
+    // Ordenação
+    if (sortBy === 'user') {
+      betsQuery = betsQuery.sort('user.name');
+    } else if (sortBy === 'points') {
+      betsQuery = betsQuery.sort('-totalPoints');
+    } else if (sortBy === 'date') {
+      betsQuery = betsQuery.sort('-firstSubmission');
+    }
+
+    const allBets = await betsQuery.lean();
+
+    // Buscar dados das partidas para mostrar nomes dos times
+    const matches = await Match.find().lean();
+    
+    // Enriquecer dados com informações das partidas
+    const enrichedBets = allBets.map(bet => {
+      const enrichedMatches = bet.groupMatches.map(betMatch => {
+        const match = matches.find(m => m.matchId === betMatch.matchId);
+        return {
+          ...betMatch,
+          teamA: match ? match.teamA : 'Time A',
+          teamB: match ? match.teamB : 'Time B',
+          matchName: match ? `${match.teamA} vs ${match.teamB}` : `Jogo ${betMatch.matchId}`,
+          date: match ? match.date : null,
+          group: match ? match.group : null,
+          status: match ? match.status : 'scheduled'
+        };
+      });
+
+      return {
+        ...bet,
+        groupMatches: enrichedMatches,
+        userName: bet.user.name,
+        userEmail: bet.user.email
+      };
+    });
+
+    // Estatísticas da busca
+    const stats = {
+      totalBets: enrichedBets.length,
+      totalUsers: [...new Set(enrichedBets.map(bet => bet.user._id.toString()))].length,
+      totalMatches: [...new Set(enrichedBets.flatMap(bet => bet.groupMatches.map(m => m.matchId)))].length
+    };
+
+    res.json({
+      success: true,
+      data: enrichedBets,
+      stats: stats,
+      searchParams: { search, matchId, userId, group, sortBy }
+    });
+
+  } catch (error) {
+    console.error('❌ ERRO AO BUSCAR TODOS OS PALPITES:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao buscar palpites'
+    });
+  }
+});
+
+// ======================
+// 🔍 BUSCAR PARTIDAS PARA FILTRO
+// ======================
+router.get('/matches-for-filter', protect, async (req, res) => {
+  try {
+    const matches = await Match.find()
+      .select('matchId teamA teamB group date')
+      .sort('matchId');
+    
+    res.json({
+      success: true,
+      data: matches
+    });
+  } catch (error) {
+    console.error('❌ ERRO AO BUSCAR PARTIDAS:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao buscar partidas'
+    });
+  }
+});
+
+// ======================
+// 👥 LISTAR TODOS OS USUÁRIOS PARA FILTRO
+// ======================
+router.get('/users-for-filter', protect, async (req, res) => {
+  try {
+    const users = await User.find()
+      .select('_id name email')
+      .sort('name');
+    
+    res.json({
+      success: true,
+      data: users
+    });
+  } catch (error) {
+    console.error('❌ ERRO AO BUSCAR USUÁRIOS:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao buscar usuários'
+    });
+  }
+});
+
+// ======================
+// 📊 ESTATÍSTICAS DETALHADAS DOS PALPITES
+// ======================
+router.get('/all-bets/stats', protect, async (req, res) => {
+  try {
+    const totalBets = await Bet.countDocuments({ hasSubmitted: true });
+    const totalUsers = await Bet.distinct('user', { hasSubmitted: true });
+    
+    // Estatísticas de pódio
+    const podiumStats = await Bet.aggregate([
+      { $match: { hasSubmitted: true } },
+      { $group: {
+        _id: '$podium.first',
+        count: { $sum: 1 }
+      }},
+      { $sort: { count: -1 } },
+      { $limit: 5 }
+    ]);
+
+    // Partidas mais palpites
+    const popularMatches = await Bet.aggregate([
+      { $match: { hasSubmitted: true } },
+      { $unwind: '$groupMatches' },
+      { $group: {
+        _id: '$groupMatches.matchId',
+        betCount: { $sum: 1 }
+      }},
+      { $sort: { betCount: -1 } },
+      { $limit: 5 }
+    ]);
+
+    // Enriquecer com nomes das partidas
+    const matches = await Match.find();
+    const enrichedPopularMatches = popularMatches.map(popular => {
+      const match = matches.find(m => m.matchId === popular._id);
+      return {
+        matchId: popular._id,
+        matchName: match ? `${match.teamA} vs ${match.teamB}` : `Jogo ${popular._id}`,
+        betCount: popular.betCount
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        totalParticipants: totalUsers.length,
+        totalSubmissions: totalBets,
+        topChampions: podiumStats,
+        popularMatches: enrichedPopularMatches,
+        averagePoints: await calculateAveragePoints()
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ ERRO AO BUSCAR ESTATÍSTICAS:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao buscar estatísticas'
+    });
+  }
+});
+
+// ======================
+// 🎯 FUNÇÃO AUXILIAR: CALCULAR MÉDIA DE PONTOS
+// ======================
+async function calculateAveragePoints() {
+  const result = await Bet.aggregate([
+    { $match: { hasSubmitted: true } },
+    { $group: {
+      _id: null,
+      averagePoints: { $avg: '$totalPoints' }
+    }}
+  ]);
+  
+  return result.length > 0 ? Math.round(result[0].averagePoints * 100) / 100 : 0;
+}
+
+// ======================
+// 🌐 ATUALIZAR ROTA DE TESTE COM NOVOS ENDPOINTS
 // ======================
 router.get('/test', protect, (req, res) => {
   res.json({
@@ -459,11 +685,14 @@ router.get('/test', protect, (req, res) => {
       'GET  /api/bets/status',
       'GET  /api/bets/leaderboard',
       'GET  /api/bets/stats/overview',
+      'GET  /api/bets/all-bets',           // 👈 NOVA
+      'GET  /api/bets/matches-for-filter', // 👈 NOVA
+      'GET  /api/bets/users-for-filter',   // 👈 NOVA
+      'GET  /api/bets/all-bets/stats',     // 👈 NOVA
       'POST /api/bets/simulate-points',
       'POST /api/bets/recalculate-all',
       'GET  /api/bets/test'
     ]
   });
 });
-
 module.exports = router;
