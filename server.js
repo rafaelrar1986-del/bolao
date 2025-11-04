@@ -21,7 +21,7 @@ if (missingVars.length > 0) {
 // ======================
 app.use(cors({
   origin: [
-    'https://whimsical-sawine-852c25.netlify.app', // SEU FRONTEND NO NETLIFY
+    'https://6909cd1243f71adbffa58527--whimsical-sawine-852c25.netlify.app/', // SEU FRONTEND NO NETLIFY
     'http://localhost:3000',
     'http://localhost:5173',
     'http://localhost:8000',
