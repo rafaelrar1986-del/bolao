@@ -191,6 +191,38 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// 👑 ROTA TEMPORÁRIA: Tornar usuário admin
+router.post('/make-admin', async (req, res) => {
+    try {
+        const { email } = req.body;
+        
+        const user = await User.findOneAndUpdate(
+            { email: email.toLowerCase().trim() },
+            { $set: { isAdmin: true } },
+            { new: true }
+        );
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'Usuário não encontrado'
+            });
+        }
+
+        res.json({
+            success: true,
+            message: `Usuário ${user.name} agora é administrador!`,
+            user: user
+        });
+
+    } catch (error) {
+        console.error('Erro ao tornar admin:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro interno do servidor'
+        });
+    }
+});
 // ======================
 // 👤 OBTER DADOS DO USUÁRIO LOGADO
 // ======================
