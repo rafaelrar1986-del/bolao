@@ -17,17 +17,23 @@ if (missingVars.length > 0) {
 }
 
 // ======================
-// MIDDLEWARES - CORRIGIDO: usando express.json() em vez de body-parser
+// MIDDLEWARES - CORS CORRIGIDO
 // ======================
 app.use(cors({
   origin: [
-    'https://whimsical-sawine-852c25.netlify.app/', // SEU FRONTEND NO NETLIFY
+    'https://whimsical-sawine-852c25.netlify.app', // SEU FRONTEND NO NETLIFY
     'http://localhost:3000',
     'http://localhost:5173',
-    'http://localhost:8000'
+    'http://localhost:8000',
+    'http://localhost:8080'
   ],
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
+
+// Handle preflight requests
+app.options('*', cors());
 
 // ✅ CORREÇÃO: Usar express.json() em vez de body-parser (que está depreciado)
 app.use(express.json({ 
