@@ -1,6 +1,7 @@
 const express = require('express');
 const Bet = require('../models/Bet');
 const Match = require('../models/Match');
+const User = require('../models/User'); // 👈 ADICIONAR ESTE IMPORT
 const { protect } = require('../middleware/auth');
 const router = express.Router();
 
