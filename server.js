@@ -16,15 +16,11 @@ if (missingVars.length > 0) {
   console.error('⚠️  Configure no arquivo .env ou nas variáveis de ambiente do servidor');
 }
 
-// ======================
-// MIDDLEWARES - CORS CORRIGIDO
-// ======================
 app.use(cors({
   origin: [
-    'https://6909cd1243f71adbffa58527--whimsical-sawine-852c25.netlify.app', // ✅ NOVO DOMÍNIO
-    'https://whimsical-sawine-852c25.netlify.app', // DOMÍNIO ANTIGO
+    /\.netlify\.app$/, // ✅ PERMITE TODOS OS SUBDOMÍNIOS NETLIFY
     'http://localhost:3000',
-    'http://localhost:5173', 
+    'http://localhost:5173',
     'http://localhost:8000',
     'http://localhost:8080'
   ],
@@ -32,6 +28,7 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
+
 // Handle preflight requests
 app.options('*', cors());
 
