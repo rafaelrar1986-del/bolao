@@ -328,10 +328,10 @@ router.get('/group/:groupName', async (req, res) => {
 });
 
 // ======================
-// 👑 ROTAS ADMIN - GERENCIAR PARTIDAS
+// 👑 ROTAS ADMIN - GERENCIAR PARTIDAS (ATUALIZADAS)
 // ======================
 
-// 🔥 ADICIONAR NOVA PARTIDA (Admin)
+// 🔥 ADICIONAR NOVA PARTIDA (Admin) - ATUALIZADA
 router.post('/admin/add', protect, admin, async (req, res) => {
   try {
     const {
@@ -351,6 +351,22 @@ router.post('/admin/add', protect, admin, async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Todos os campos são obrigatórios: matchId, teamA, teamB, date, time, group'
+      });
+    }
+
+    // Validar formato da data
+    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(date)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Formato de data inválido. Use DD/MM/YYYY'
+      });
+    }
+
+    // Validar formato do horário
+    if (!/^\d{2}:\d{2}$/.test(time)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Formato de horário inválido. Use HH:MM'
       });
     }
 
@@ -375,7 +391,7 @@ router.post('/admin/add', protect, admin, async (req, res) => {
       status: 'scheduled'
     });
 
-    console.log('✅ Partida criada com sucesso:', newMatch.matchName);
+    console.log('✅ Partida criada com sucesso:', `${newMatch.teamA} vs ${newMatch.teamB}`);
 
     res.status(201).json({
       success: true,
@@ -409,7 +425,7 @@ router.post('/admin/add', protect, admin, async (req, res) => {
   }
 });
 
-// 🔥 EDITAR PARTIDA (Admin)
+// 🔥 EDITAR PARTIDA (Admin) - ATUALIZADA
 router.put('/admin/edit/:id', protect, admin, async (req, res) => {
   try {
     const matchId = req.params.id;
@@ -456,6 +472,8 @@ router.put('/admin/edit/:id', protect, admin, async (req, res) => {
         } else {
           updateData.winner = 'draw';
         }
+
+        console.log(`🎯 Partida finalizada: ${updateData.scoreA}-${updateData.scoreB}, Vencedor: ${updateData.winner}`);
       }
     }
 
@@ -465,12 +483,25 @@ router.put('/admin/edit/:id', protect, admin, async (req, res) => {
       { new: true, runValidators: true }
     );
 
-    console.log('✅ Partida atualizada:', updatedMatch.matchName);
+    console.log('✅ Partida atualizada:', `${updatedMatch.teamA} vs ${updatedMatch.teamB}`);
+
+    // Se a partida foi finalizada, processar os pontos automaticamente
+    if (updatedMatch.status === 'finished') {
+      console.log('🔄 Processando pontos para partida finalizada...');
+      try {
+        const affectedBets = await processMatchResults(updatedMatch.matchId);
+        console.log(`✅ Pontos processados para ${affectedBets} palpites`);
+      } catch (processingError) {
+        console.error('⚠️ Erro ao processar pontos:', processingError);
+        // Não falha a requisição principal, apenas loga o erro
+      }
+    }
 
     res.json({
       success: true,
       message: 'Partida atualizada com sucesso!',
-      data: updatedMatch
+      data: updatedMatch,
+      pointsProcessed: updatedMatch.status === 'finished'
     });
 
   } catch (error) {
@@ -492,7 +523,7 @@ router.put('/admin/edit/:id', protect, admin, async (req, res) => {
   }
 });
 
-// 🔥 EXCLUIR PARTIDA (Admin)
+// 🔥 EXCLUIR PARTIDA (Admin) - ATUALIZADA
 router.delete('/admin/delete/:id', protect, admin, async (req, res) => {
   try {
     const matchId = req.params.id;
@@ -528,14 +559,15 @@ router.delete('/admin/delete/:id', protect, admin, async (req, res) => {
 
     await Match.findByIdAndDelete(match._id);
 
-    console.log('✅ Partida excluída:', match.matchName);
+    console.log('✅ Partida excluída:', `${match.teamA} vs ${match.teamB}`);
 
     res.json({
       success: true,
       message: 'Partida excluída com sucesso!',
       deletedMatch: {
         matchId: match.matchId,
-        matchName: match.matchName
+        teams: `${match.teamA} vs ${match.teamB}`,
+        group: match.group
       }
     });
 
@@ -548,7 +580,7 @@ router.delete('/admin/delete/:id', protect, admin, async (req, res) => {
   }
 });
 
-// 🔥 LISTAR TODAS AS PARTIDAS (Admin - com mais detalhes)
+// 🔥 LISTAR TODAS AS PARTIDAS (Admin - com mais detalhes) - ATUALIZADA
 router.get('/admin/all', protect, admin, async (req, res) => {
   try {
     console.log('👑 ADMIN - Listando todas as partidas');
@@ -566,7 +598,8 @@ router.get('/admin/all', protect, admin, async (req, res) => {
         return {
           ...matchObj,
           betsCount,
-          hasBets: betsCount > 0
+          hasBets: betsCount > 0,
+          matchName: `${match.teamA} vs ${match.teamB}`
         };
       })
     );
@@ -586,7 +619,7 @@ router.get('/admin/all', protect, admin, async (req, res) => {
   }
 });
 
-// 🔥 ATUALIZAR PLACAR E FINALIZAR PARTIDA (Admin)
+// 🔥 ATUALIZAR PLACAR E FINALIZAR PARTIDA (Admin) - NOVA FUNCIONALIDADE
 router.post('/admin/finish/:id', protect, admin, async (req, res) => {
   try {
     const matchId = req.params.id;
@@ -599,6 +632,13 @@ router.post('/admin/finish/:id', protect, admin, async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Placar é obrigatório (scoreA e scoreB)'
+      });
+    }
+
+    if (scoreA < 0 || scoreB < 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Placar não pode ser negativo'
       });
     }
 
@@ -617,6 +657,26 @@ router.post('/admin/finish/:id', protect, admin, async (req, res) => {
       });
     }
 
+    // Verificar se a partida já está finalizada
+    if (match.status === 'finished') {
+      return res.status(400).json({
+        success: false,
+        message: 'Esta partida já está finalizada'
+      });
+    }
+
+    // Determinar vencedor
+    let winner;
+    if (scoreA > scoreB) {
+      winner = 'teamA';
+    } else if (scoreB > scoreA) {
+      winner = 'teamB';
+    } else {
+      winner = 'draw';
+    }
+
+    console.log(`🎯 Resultado: ${scoreA}-${scoreB}, Vencedor: ${winner}`);
+
     // Atualizar partida
     const updatedMatch = await Match.findByIdAndUpdate(
       match._id,
@@ -625,17 +685,28 @@ router.post('/admin/finish/:id', protect, admin, async (req, res) => {
         scoreB: parseInt(scoreB),
         status: 'finished',
         isFinished: true,
-        winner: scoreA > scoreB ? 'teamA' : scoreB > scoreA ? 'teamB' : 'draw'
+        winner: winner
       },
       { new: true, runValidators: true }
     );
 
-    console.log('✅ Partida finalizada:', updatedMatch.matchName);
+    console.log('✅ Partida finalizada:', `${updatedMatch.teamA} vs ${updatedMatch.teamB}`);
+
+    // 🔥 PROCESSAR PONTOS AUTOMATICAMENTE PARA TODOS OS PALPITES
+    console.log('🔄 Processando pontos para partida finalizada...');
+    const affectedBets = await processMatchResults(updatedMatch.matchId);
+    
+    console.log(`✅ Pontos processados para ${affectedBets} palpites`);
 
     res.json({
       success: true,
-      message: 'Partida finalizada com sucesso!',
-      data: updatedMatch
+      message: 'Partida finalizada com sucesso e pontos calculados!',
+      data: updatedMatch,
+      stats: {
+        affectedBets: affectedBets,
+        result: `${scoreA}-${scoreB}`,
+        winner: winner === 'teamA' ? updatedMatch.teamA : winner === 'teamB' ? updatedMatch.teamB : 'Empate'
+      }
     });
 
   } catch (error) {
@@ -646,6 +717,167 @@ router.post('/admin/finish/:id', protect, admin, async (req, res) => {
     });
   }
 });
+
+// 🔥 RECALCULAR PONTOS PARA UMA PARTIDA ESPECÍFICA (Admin) - NOVA FUNCIONALIDADE
+router.post('/admin/recalculate-points/:matchId', protect, admin, async (req, res) => {
+  try {
+    const matchId = parseInt(req.params.matchId);
+
+    console.log('👑 ADMIN - Recalculando pontos para partida:', matchId);
+
+    // Verificar se a partida existe e está finalizada
+    const match = await Match.findOne({ matchId, status: 'finished' });
+    
+    if (!match) {
+      return res.status(404).json({
+        success: false,
+        message: 'Partida não encontrada ou não está finalizada'
+      });
+    }
+
+    // Processar pontos
+    const affectedBets = await processMatchResults(matchId);
+
+    res.json({
+      success: true,
+      message: `Pontos recalculados para partida ${matchId}`,
+      stats: {
+        match: `${match.teamA} vs ${match.teamB}`,
+        result: `${match.scoreA}-${match.scoreB}`,
+        affectedBets: affectedBets,
+        winner: match.winner === 'teamA' ? match.teamA : match.winner === 'teamB' ? match.teamB : 'Empate'
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ ERRO AO RECALCULAR PONTOS:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao recalcular pontos'
+    });
+  }
+});
+
+// 🔥 DEFINIR PÓDIO FINAL E CALCULAR PONTOS (Admin) - NOVA FUNCIONALIDADE
+router.post('/admin/set-podium', protect, admin, async (req, res) => {
+  try {
+    const { first, second, third } = req.body;
+
+    console.log('👑 ADMIN - Definindo pódio final:', { first, second, third });
+
+    // Validar campos
+    if (!first || !second || !third) {
+      return res.status(400).json({
+        success: false,
+        message: 'Todos os campos do pódio são obrigatórios: first, second, third'
+      });
+    }
+
+    // Verificar se os times são diferentes
+    const podiumTeams = [first, second, third];
+    const uniqueTeams = [...new Set(podiumTeams)];
+    
+    if (uniqueTeams.length !== 3) {
+      return res.status(400).json({
+        success: false,
+        message: 'Os times do pódio devem ser diferentes'
+      });
+    }
+
+    // Buscar todas as partidas finalizadas para calcular pontos
+    const finishedMatches = await Match.find({ status: 'finished' });
+    
+    if (finishedMatches.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Não há partidas finalizadas para calcular pontos'
+      });
+    }
+
+    const actualPodium = { first, second, third };
+
+    // Recalcular todos os pontos incluindo o pódio
+    const updatedCount = await Bet.recalculateAllPoints(finishedMatches, actualPodium);
+    
+    // Atualizar ranking
+    const rankedCount = await Bet.updateRanking();
+
+    console.log(`✅ Pódio definido e pontos calculados para ${updatedCount} participantes`);
+
+    res.json({
+      success: true,
+      message: 'Pódio definido com sucesso e pontos calculados!',
+      data: {
+        podium: actualPodium,
+        stats: {
+          participants: updatedCount,
+          finishedMatches: finishedMatches.length,
+          rankingUpdated: rankedCount
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ ERRO AO DEFINIR PÓDIO:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao definir pódio'
+    });
+  }
+});
+
+// ======================
+// 🎯 FUNÇÃO AUXILIAR: PROCESSAR PONTOS DE UMA PARTIDA
+// ======================
+async function processMatchResults(matchId) {
+  try {
+    console.log(`🎯 Processando pontos para partida ${matchId}...`);
+    
+    // Buscar partida finalizada
+    const match = await Match.findOne({ matchId, status: 'finished' });
+    
+    if (!match) {
+      throw new Error(`Partida ${matchId} não encontrada ou não está finalizada`);
+    }
+
+    // Buscar todos os palpites para esta partida
+    const bets = await Bet.find({ 
+      'groupMatches.matchId': matchId,
+      hasSubmitted: true 
+    }).populate('user', 'name');
+
+    console.log(`🔍 Encontrados ${bets.length} palpites para a partida ${matchId}`);
+
+    let processedCount = 0;
+
+    // Calcular pontos para cada usuário
+    for (const bet of bets) {
+      try {
+        // Recalcular pontos para este palpite
+        await bet.calculatePoints([match]);
+        processedCount++;
+        
+        console.log(`✅ Pontos calculados para ${bet.user.name}`);
+      } catch (betError) {
+        console.error(`❌ Erro ao calcular pontos para ${bet.user.name}:`, betError);
+      }
+    }
+
+    // Atualizar ranking geral após processar todos os palpites
+    if (processedCount > 0) {
+      await Bet.updateRanking();
+      console.log(`🏆 Ranking atualizado para ${processedCount} participantes`);
+    }
+
+    console.log(`✅ Processamento concluído: ${processedCount}/${bets.length} palpites processados`);
+    
+    return processedCount;
+
+  } catch (error) {
+    console.error('❌ ERRO NO PROCESSAMENTO DE PONTOS:', error);
+    throw error;
+  }
+}
 
 // ======================
 // 🌐 ROTA DE STATUS/TESTE
@@ -668,6 +900,8 @@ router.get('/test/hello', (req, res) => {
       'DELETE /api/matches/admin/delete/:id',
       'GET    /api/matches/admin/all',
       'POST   /api/matches/admin/finish/:id',
+      'POST   /api/matches/admin/recalculate-points/:matchId',
+      'POST   /api/matches/admin/set-podium',
       'GET    /api/matches/test/hello'
     ]
   });
