@@ -16,21 +16,75 @@ if (missingVars.length > 0) {
   console.error('⚠️  Configure no arquivo .env ou nas variáveis de ambiente do servidor');
 }
 
+// ======================
+// CONFIGURAÇÃO CORS CORRIGIDA - FUNCIONANDO PARA VERCEL
+// ======================
 app.use(cors({
-  origin: [
-    'https://bolao-gamma.vercel.app', // ✅ NOVO DOMÍNIO DO VERCEL
-    /\.netlify\.app$/, // ✅ PERMITE TODOS OS SUBDOMÍNIOS NETLIFY
-    'http://localhost:3000',
-    'http://localhost:5173', 
-    'http://localhost:8000',
-    'http://localhost:8080'
-  ],
+  origin: function (origin, callback) {
+    // Permitir requests sem origin (como mobile apps, Postman, etc)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'https://bolao-d2zh.vercel.app', // ✅ SEU NOVO DOMÍNIO VERCEL
+      'https://bolao-gamma.vercel.app', // ✅ SEU DOMÍNIO VERCEL ANTERIOR
+      /\.vercel\.app$/, // ✅ TODOS OS SUBDOMÍNIOS VERCEL
+      /\.netlify\.app$/, // ✅ TODOS OS SUBDOMÍNIOS NETLIFY
+      'http://localhost:3000',
+      'http://localhost:5173', 
+      'http://localhost:8000',
+      'http://localhost:8080'
+    ];
+
+    // Verificar se a origin está na lista de permitidas
+    const isAllowed = allowedOrigins.some(allowed => {
+      if (typeof allowed === 'string') {
+        return origin === allowed;
+      } else if (allowed instanceof RegExp) {
+        return allowed.test(origin);
+      }
+      return false;
+    });
+
+    if (isAllowed) {
+      console.log('✅ CORS permitido para:', origin);
+      return callback(null, true);
+    } else {
+      console.log('🚫 CORS bloqueado para:', origin);
+      return callback(new Error('Not allowed by CORS'), false);
+    }
+  },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: [
+    'Content-Type', 
+    'Authorization', 
+    'X-Requested-With',
+    'Accept',
+    'Origin',
+    'Access-Control-Request-Method',
+    'Access-Control-Request-Headers',
+    'X-Auth-Token'
+  ],
+  exposedHeaders: [
+    'Content-Range',
+    'X-Content-Range',
+    'Access-Control-Allow-Origin',
+    'Access-Control-Allow-Credentials'
+  ],
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 }));
-// Handle preflight requests
-app.options('*', cors());
+
+// 🔥 MIDDLEWARE CRÍTICO: Handle preflight requests
+app.options('*', (req, res) => {
+  console.log('🛬 Preflight request recebido para:', req.headers.origin);
+  res.header('Access-Control-Allow-Origin', req.headers.origin);
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Access-Control-Request-Method, Access-Control-Request-Headers, X-Auth-Token');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Max-Age', '86400'); // 24 horas
+  res.status(204).send();
+});
 
 // ✅ CORREÇÃO: Usar express.json() em vez de body-parser (que está depreciado)
 app.use(express.json({ 
@@ -46,8 +100,9 @@ app.use(express.urlencoded({
 app.use((req, res, next) => {
   console.log('='.repeat(50));
   console.log(`📨 ${req.method} ${req.url}`);
-  console.log('📋 Content-Type:', req.headers['content-type']);
-  console.log('📦 Body TYPE:', typeof req.body);
+  console.log('📋 Origin:', req.headers.origin);
+  console.log('🔑 Authorization:', req.headers.authorization ? 'Presente' : 'Ausente');
+  console.log('📦 Content-Type:', req.headers['content-type']);
   console.log('📦 Body KEYS:', Object.keys(req.body || {}));
   if (Object.keys(req.body || {}).length > 0) {
     console.log('📦 Body SAMPLE:', JSON.stringify(req.body).substring(0, 200) + '...');
@@ -110,7 +165,17 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     database: mongoose.connection.readyState === 1 ? '✅ Conectado' : '❌ Desconectado',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    cors: {
+      allowed_origins: [
+        'https://bolao-d2zh.vercel.app',
+        'https://bolao-gamma.vercel.app',
+        '*.vercel.app',
+        '*.netlify.app',
+        'localhost:3000',
+        'localhost:5173'
+      ]
+    }
   });
 });
 
@@ -123,7 +188,8 @@ app.get('/api/health', (req, res) => {
     database: dbStatus,
     mongodb_state: mongoose.connection.readyState,
     uptime: process.uptime(),
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    origin: req.headers.origin || 'No origin header'
   });
 });
 
@@ -138,7 +204,8 @@ app.get('/api/bets', (req, res) => {
       'GET /api/bets/status': 'Verificar status',
       'GET /api/bets/test': 'Rota de teste'
     },
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    origin: req.headers.origin || 'No origin header'
   });
 });
 
@@ -169,13 +236,29 @@ app.use('*', (req, res) => {
       '/api/auth/*': 'Rotas de autenticação',
       '/api/matches/*': 'Rotas de partidas',
       '/api/bets/*': 'Rotas de palpites'
-    }
+    },
+    origin: req.headers.origin || 'No origin header'
   });
 });
 
 // ✅ CORREÇÃO: Middleware de erro global
 app.use((error, req, res, next) => {
   console.error('💥 Erro não tratado:', error);
+  
+  // Erro de CORS
+  if (error.message === 'Not allowed by CORS') {
+    return res.status(403).json({
+      success: false,
+      message: 'Acesso bloqueado por política CORS',
+      origin: req.headers.origin,
+      allowed_origins: [
+        'https://bolao-d2zh.vercel.app',
+        'https://bolao-gamma.vercel.app',
+        '*.vercel.app',
+        '*.netlify.app'
+      ]
+    });
+  }
   
   // Erro de validação do Mongoose
   if (error.name === 'ValidationError') {
@@ -240,6 +323,12 @@ const server = app.listen(PORT, () => {
   console.log(`📊 MongoDB State: ${mongoose.connection.readyState === 1 ? '✅ Conectado' : '❌ Desconectado'}`);
   console.log(`🌐 Ambiente: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🕒 Iniciado em: ${new Date().toLocaleString('pt-BR')}`);
+  console.log('🌍 Domínios permitidos:');
+  console.log('   ✅ https://bolao-d2zh.vercel.app');
+  console.log('   ✅ https://bolao-gamma.vercel.app');
+  console.log('   ✅ *.vercel.app');
+  console.log('   ✅ *.netlify.app');
+  console.log('   ✅ localhost:3000, 5173, 8000, 8080');
   console.log('='.repeat(50));
 });
 
