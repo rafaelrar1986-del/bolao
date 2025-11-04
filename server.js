@@ -149,10 +149,12 @@ app.get('/api/bets', (req, res) => {
 const authRoutes = require('./routes/auth');
 const matchesRoutes = require('./routes/matches');
 const betsRoutes = require('./routes/bets');
+const pointsRoutes = require('./routes/points'); // 👈 NOVA ROTA
 
 app.use('/api/auth', authRoutes);
 app.use('/api/matches', matchesRoutes);
 app.use('/api/bets', betsRoutes);
+app.use('/api/points', pointsRoutes); // 👈 NOVA ROTA
 
 // ======================
 // MIDDLEWARES DE ERRO - NOVOS
