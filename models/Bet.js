@@ -45,6 +45,10 @@ const betSchema = new mongoose.Schema({
     result: {
       type: String,  // ✅ STRING SIMPLES - 'teamA', 'teamB', 'draw'
       default: null
+    },
+    processedAt: {
+      type: Date,
+      default: null
     }
   }],
   podium: {
@@ -73,6 +77,10 @@ const betSchema = new mongoose.Schema({
       type: Number,
       min: [0, 'Pontos não podem ser negativos'],
       default: 0
+    },
+    calculated: {
+      type: Boolean,
+      default: false
     }
   },
   totalPoints: {
@@ -114,6 +122,10 @@ const betSchema = new mongoose.Schema({
   rankingPosition: {
     type: Number,
     default: 0
+  },
+  lastPointsCalculation: {
+    type: Date,
+    default: null
   }
 }, {
   timestamps: true,
@@ -210,8 +222,13 @@ betSchema.virtual('accuracyRate').get(function() {
   return ((this.correctBets / this.groupMatches.length) * 100).toFixed(1);
 });
 
+// 🔥 VIRTUAL: Nome do usuário (para facilitar)
+betSchema.virtual('userName').get(function() {
+  return this.user ? this.user.name : 'Usuário';
+});
+
 // ======================
-// MÉTODOS DE INSTÂNCIA
+// MÉTODOS DE INSTÂNCIA (ATUALIZADOS)
 // ======================
 
 // 🔥 MÉTODO: Adicionar palpite para um jogo
@@ -222,12 +239,15 @@ betSchema.methods.addMatchBet = function(matchId, betString) {
     // Atualizar palpite existente
     this.groupMatches[existingBetIndex].bet = betString;
     this.groupMatches[existingBetIndex].calculated = false; // Recalcular
+    this.groupMatches[existingBetIndex].points = 0; // Resetar pontos
+    this.groupMatches[existingBetIndex].processedAt = null;
   } else {
     // Adicionar novo palpite
     this.groupMatches.push({
       matchId: matchId,
       bet: betString,
-      calculated: false
+      calculated: false,
+      points: 0
     });
   }
   
@@ -239,6 +259,8 @@ betSchema.methods.setPodium = function(first, second, third) {
   this.podium.first = first;
   this.podium.second = second;
   this.podium.third = third;
+  this.podium.calculated = false; // Marcar para recalcular pontos
+  this.podium.points = 0; // Resetar pontos
   return this.save();
 };
 
@@ -257,41 +279,57 @@ betSchema.methods.submitBets = function() {
   return this.save();
 };
 
-// 🔥 MÉTODO: Calcular pontos baseado apenas no RESULTADO
-betSchema.methods.calculatePoints = async function(actualMatches, actualPodium = null) {
-  console.log('🏆 CALCULANDO PONTOS - Sistema de Resultado');
+// 🔥 MÉTODO PRINCIPAL: Calcular pontos baseado apenas no RESULTADO (ATUALIZADO)
+betSchema.methods.calculatePoints = async function(actualMatches = [], actualPodium = null) {
+  console.log(`🏆 CALCULANDO PONTOS para ${this.userName}`);
   
   let groupPoints = 0;
   let podiumPoints = 0;
+  let updatedMatches = 0;
   
   // 🔥 CALCULAR PONTOS DOS JOGOS (1 ponto por acerto de resultado)
   this.groupMatches.forEach(matchBet => {
     const actualMatch = actualMatches.find(m => m.matchId === matchBet.matchId);
     
     if (actualMatch && actualMatch.status === 'finished' && actualMatch.winner) {
-      console.log(`🔍 Jogo ${matchBet.matchId}:`);
-      console.log(`- Palpite: ${matchBet.bet} (resultado: ${matchBet.result})`);
-      console.log(`- Real: ${actualMatch.scoreA}-${actualMatch.scoreB} (resultado: ${actualMatch.winner})`);
+      const previousPoints = matchBet.points || 0;
       
       // 🔥 COMPARAR APENAS O RESULTADO (vencedor/empate)
       if (matchBet.result === actualMatch.winner) {
         matchBet.points = 1; // 1 ponto por acertar o resultado
         groupPoints += 1;
-        console.log(`✅ ACERTOU! +1 ponto`);
+        
+        if (previousPoints === 0) {
+          console.log(`✅ ACERTOU Jogo ${matchBet.matchId}! +1 ponto`);
+          updatedMatches++;
+        }
       } else {
         matchBet.points = 0;
-        console.log(`❌ ERROU! 0 pontos`);
+        if (previousPoints > 0) {
+          console.log(`🔄 PERDEU PONTOS Jogo ${matchBet.matchId}! -1 ponto`);
+          updatedMatches++;
+        }
       }
+      
+      matchBet.processedAt = new Date();
     } else {
-      matchBet.points = 0;
+      // Resetar pontos se a partida não está finalizada
+      if (matchBet.points > 0) {
+        matchBet.points = 0;
+        matchBet.processedAt = null;
+        updatedMatches++;
+      }
     }
   });
   
   // 🔥 CALCULAR PONTOS DO PÓDIO (se fornecido)
-  if (actualPodium) {
+  if (actualPodium && this.podium.first && this.podium.second && this.podium.third) {
     console.log('🏅 CALCULANDO PÓDIO:');
     console.log('- Palpite:', this.podium);
     console.log('- Real:', actualPodium);
+    
+    const previousPodiumPoints = this.podium.points || 0;
+    podiumPoints = 0;
     
     if (this.podium.first === actualPodium.first) {
       podiumPoints += 10;
@@ -307,6 +345,12 @@ betSchema.methods.calculatePoints = async function(actualMatches, actualPodium =
     }
     
     this.podium.points = podiumPoints;
+    this.podium.calculated = true;
+    
+    if (podiumPoints !== previousPodiumPoints) {
+      console.log(`🔄 Pódio atualizado: ${previousPodiumPoints} → ${podiumPoints} pontos`);
+      updatedMatches++;
+    }
   }
   
   // Calcular totais
@@ -314,19 +358,86 @@ betSchema.methods.calculatePoints = async function(actualMatches, actualPodium =
   this.podiumPoints = podiumPoints;
   this.totalPoints = groupPoints + podiumPoints + this.bonusPoints;
   this.isCalculated = true;
-  
-  console.log(`📊 PONTUAÇÃO FINAL:`);
+  this.lastPointsCalculation = new Date();
+
+  console.log(`📊 PONTUAÇÃO FINAL para ${this.userName}:`);
   console.log(`- Jogos: ${groupPoints} pontos`);
   console.log(`- Pódio: ${podiumPoints} pontos`);
   console.log(`- Bônus: ${this.bonusPoints} pontos`);
   console.log(`- TOTAL: ${this.totalPoints} pontos`);
-  
+  console.log(`- Atualizações: ${updatedMatches} itens modificados`);
+
   await this.save();
-  return this;
+  return {
+    groupPoints,
+    podiumPoints,
+    totalPoints: this.totalPoints,
+    updatedMatches,
+    user: this.userName
+  };
+};
+
+// 🔥 MÉTODO: Calcular pontos para uma partida específica (NOVO)
+betSchema.methods.calculatePointsForMatch = async function(matchId, actualMatch) {
+  console.log(`🎯 Calculando pontos para jogo ${matchId} - ${this.userName}`);
+  
+  const matchBet = this.groupMatches.find(bet => bet.matchId === matchId);
+  
+  if (!matchBet) {
+    console.log(`⚠️ Usuário ${this.userName} não tem palpite para jogo ${matchId}`);
+    return { points: 0, updated: false };
+  }
+  
+  if (!actualMatch || actualMatch.status !== 'finished' || !actualMatch.winner) {
+    console.log(`⚠️ Jogo ${matchId} não está finalizado`);
+    return { points: 0, updated: false };
+  }
+  
+  const previousPoints = matchBet.points || 0;
+  let newPoints = 0;
+  
+  // 🔥 COMPARAR RESULTADO (1 ponto por acerto)
+  if (matchBet.result === actualMatch.winner) {
+    newPoints = 1;
+    console.log(`✅ ${this.userName} ACERTOU jogo ${matchId}! +1 ponto`);
+  } else {
+    newPoints = 0;
+    console.log(`❌ ${this.userName} ERROU jogo ${matchId}! 0 pontos`);
+  }
+  
+  // Atualizar apenas se mudou
+  if (previousPoints !== newPoints) {
+    matchBet.points = newPoints;
+    matchBet.processedAt = new Date();
+    
+    // Recalcular totais
+    await this.calculateGroupPointsTotal();
+    
+    console.log(`🔄 ${this.userName}: Jogo ${matchId} ${previousPoints} → ${newPoints} pontos`);
+    
+    await this.save();
+    return { points: newPoints, updated: true };
+  }
+  
+  return { points: newPoints, updated: false };
+};
+
+// 🔥 MÉTODO: Recalcular apenas pontos dos jogos (NOVO)
+betSchema.methods.calculateGroupPointsTotal = async function() {
+  const groupPoints = this.groupMatches.reduce((sum, match) => sum + (match.points || 0), 0);
+  
+  if (this.groupPoints !== groupPoints) {
+    this.groupPoints = groupPoints;
+    this.totalPoints = groupPoints + this.podiumPoints + this.bonusPoints;
+    this.lastPointsCalculation = new Date();
+    console.log(`🔄 ${this.userName}: Pontos jogos atualizado ${this.groupPoints} → ${groupPoints}`);
+  }
+  
+  return groupPoints;
 };
 
 // 🔥 MÉTODO: Simular pontuação (para preview)
-betSchema.methods.simulatePoints = function(actualMatches, actualPodium = null) {
+betSchema.methods.simulatePoints = function(actualMatches = [], actualPodium = null) {
   let simulatedGroupPoints = 0;
   let simulatedPodiumPoints = 0;
   
@@ -348,40 +459,94 @@ betSchema.methods.simulatePoints = function(actualMatches, actualPodium = null) 
     if (this.podium.third === actualPodium.third) simulatedPodiumPoints += 4;
   }
   
+  const totalPoints = simulatedGroupPoints + simulatedPodiumPoints + this.bonusPoints;
+  
   return {
     groupPoints: simulatedGroupPoints,
     podiumPoints: simulatedPodiumPoints,
-    totalPoints: simulatedGroupPoints + simulatedPodiumPoints + this.bonusPoints,
+    totalPoints: totalPoints,
+    bonusPoints: this.bonusPoints,
     correctBets: this.groupMatches.filter(matchBet => {
       const actualMatch = actualMatches.find(m => m.matchId === matchBet.matchId);
       return actualMatch && actualMatch.status === 'finished' && 
              matchBet.result === actualMatch.winner;
-    }).length
+    }).length,
+    totalMatches: actualMatches.filter(m => m.status === 'finished').length
   };
 };
 
 // 🔥 MÉTODO: Adicionar pontos bônus
 betSchema.methods.addBonusPoints = function(points, reason = '') {
+  const previousBonus = this.bonusPoints;
   this.bonusPoints += points;
-  console.log(`🎁 Bônus adicionado: +${points} pontos (${reason})`);
+  
+  // Recalcular total
+  this.totalPoints = this.groupPoints + this.podiumPoints + this.bonusPoints;
+  
+  console.log(`🎁 Bônus adicionado para ${this.userName}: +${points} pontos (${reason})`);
+  console.log(`📊 Bônus: ${previousBonus} → ${this.bonusPoints} pontos`);
+  
   return this.save();
 };
 
 // 🔥 MÉTODO: Resetar cálculo
 betSchema.methods.resetCalculation = function() {
+  console.log(`🔄 Resetando cálculo para ${this.userName}`);
+  
   this.groupMatches.forEach(match => {
     match.points = 0;
+    match.processedAt = null;
   });
+  
   this.podium.points = 0;
+  this.podium.calculated = false;
   this.groupPoints = 0;
   this.podiumPoints = 0;
   this.totalPoints = 0;
+  this.bonusPoints = 0;
   this.isCalculated = false;
+  this.lastPointsCalculation = null;
+  
   return this.save();
 };
 
+// 🔥 MÉTODO: Obter estatísticas detalhadas (NOVO)
+betSchema.methods.getDetailedStats = function(actualMatches = []) {
+  const finishedMatches = actualMatches.filter(m => m.status === 'finished');
+  const userBets = this.groupMatches;
+  
+  const stats = {
+    totalBets: userBets.length,
+    finishedMatches: finishedMatches.length,
+    correctBets: userBets.filter(bet => {
+      const match = finishedMatches.find(m => m.matchId === bet.matchId);
+      return match && bet.result === match.winner;
+    }).length,
+    accuracy: 0,
+    pointsBreakdown: {
+      group: this.groupPoints,
+      podium: this.podiumPoints,
+      bonus: this.bonusPoints,
+      total: this.totalPoints
+    },
+    recentUpdates: this.groupMatches
+      .filter(bet => bet.processedAt)
+      .sort((a, b) => new Date(b.processedAt) - new Date(a.processedAt))
+      .slice(0, 5)
+      .map(bet => ({
+        matchId: bet.matchId,
+        points: bet.points,
+        processedAt: bet.processedAt
+      }))
+  };
+  
+  stats.accuracy = stats.totalBets > 0 ? (stats.correctBets / stats.totalBets) * 100 : 0;
+  
+  return stats;
+};
+
 // ======================
-// MÉTODOS ESTÁTICOS
+// MÉTODOS ESTÁTICOS (ATUALIZADOS)
 // ======================
 
 // 🔥 MÉTODO ESTÁTICO: Buscar palpites por usuário
@@ -397,20 +562,54 @@ betSchema.statics.findSubmittedBets = function() {
     .sort({ totalPoints: -1, firstSubmission: 1 });
 };
 
-// 🔥 MÉTODO ESTÁTICO: Recalcular todos os pontos
-betSchema.statics.recalculateAllPoints = async function(actualMatches, actualPodium = null) {
+// 🔥 MÉTODO ESTÁTICO: Recalcular todos os pontos (ATUALIZADO)
+betSchema.statics.recalculateAllPoints = async function(actualMatches = [], actualPodium = null) {
   console.log('🔄 RECALCULANDO TODOS OS PONTOS...');
   
-  const bets = await this.find({ hasSubmitted: true });
+  const bets = await this.find({ hasSubmitted: true }).populate('user', 'name');
+  let updatedCount = 0;
+  let totalUpdatedMatches = 0;
+  
+  for (const bet of bets) {
+    try {
+      const result = await bet.calculatePoints(actualMatches, actualPodium);
+      if (result.updatedMatches > 0) {
+        updatedCount++;
+        totalUpdatedMatches += result.updatedMatches;
+      }
+    } catch (error) {
+      console.error(`❌ Erro ao recalcular pontos para ${bet.userName}:`, error);
+    }
+  }
+  
+  console.log(`✅ ${updatedCount}/${bets.length} palpites atualizados, ${totalUpdatedMatches} itens modificados`);
+  return { updatedBets: updatedCount, totalBets: bets.length, updatedItems: totalUpdatedMatches };
+};
+
+// 🔥 MÉTODO ESTÁTICO: Recalcular pontos para uma partida específica (NOVO)
+betSchema.statics.recalculatePointsForMatch = async function(matchId, actualMatch) {
+  console.log(`🎯 RECALCULANDO PONTOS para partida ${matchId}...`);
+  
+  const bets = await this.find({ 
+    'groupMatches.matchId': matchId,
+    hasSubmitted: true 
+  }).populate('user', 'name');
+  
   let updatedCount = 0;
   
   for (const bet of bets) {
-    await bet.calculatePoints(actualMatches, actualPodium);
-    updatedCount++;
+    try {
+      const result = await bet.calculatePointsForMatch(matchId, actualMatch);
+      if (result.updated) {
+        updatedCount++;
+      }
+    } catch (error) {
+      console.error(`❌ Erro ao recalcular pontos para ${bet.userName}:`, error);
+    }
   }
   
-  console.log(`✅ ${updatedCount} palpites recalculados`);
-  return updatedCount;
+  console.log(`✅ ${updatedCount}/${bets.length} palpites atualizados para partida ${matchId}`);
+  return { updatedBets: updatedCount, totalBets: bets.length };
 };
 
 // 🔥 MÉTODO ESTÁTICO: Atualizar ranking
@@ -440,11 +639,26 @@ betSchema.statics.getGlobalStats = async function() {
   
   const avgPoints = totalPoints.length > 0 ? totalPoints[0].total / totalBets : 0;
   
+  // Estatísticas de pontos
+  const pointsStats = await this.aggregate([
+    { $match: { hasSubmitted: true } },
+    { 
+      $group: {
+        _id: null,
+        avgGroupPoints: { $avg: '$groupPoints' },
+        avgPodiumPoints: { $avg: '$podiumPoints' },
+        maxPoints: { $max: '$totalPoints' },
+        minPoints: { $min: '$totalPoints' }
+      }
+    }
+  ]);
+  
   return {
     totalParticipants: totalBets,
     totalPoints: totalPoints.length > 0 ? totalPoints[0].total : 0,
     averagePoints: Math.round(avgPoints * 100) / 100,
-    calculatedBets: await this.countDocuments({ isCalculated: true })
+    calculatedBets: await this.countDocuments({ isCalculated: true }),
+    pointsStats: pointsStats.length > 0 ? pointsStats[0] : {}
   };
 };
 
@@ -455,7 +669,7 @@ betSchema.statics.findBetsForMatch = function(matchId) {
     hasSubmitted: true
   })
   .populate('user', 'name')
-  .select('user groupMatches.$');
+  .select('user groupMatches.$ totalPoints groupPoints');
 };
 
 // 🔥 MÉTODO ESTÁTICO: Estatísticas de participação
@@ -470,6 +684,41 @@ betSchema.statics.getParticipationStats = function() {
   ]);
 };
 
+// 🔥 MÉTODO ESTÁTICO: Top participantes (NOVO)
+betSchema.statics.getTopParticipants = async function(limit = 10) {
+  return this.find({ hasSubmitted: true })
+    .populate('user', 'name')
+    .sort({ totalPoints: -1, firstSubmission: 1 })
+    .limit(limit)
+    .select('user totalPoints groupPoints podiumPoints bonusPoints rankingPosition');
+};
+
+// 🔥 MÉTODO ESTÁTICO: Limpar cálculos (para testes) (NOVO)
+betSchema.statics.resetAllCalculations = async function() {
+  console.log('🔄 LIMPANDO TODOS OS CÁLCULOS...');
+  
+  const result = await this.updateMany(
+    { hasSubmitted: true },
+    {
+      $set: {
+        'groupMatches.$[].points': 0,
+        'groupMatches.$[].processedAt': null,
+        'podium.points': 0,
+        'podium.calculated': false,
+        'groupPoints': 0,
+        'podiumPoints': 0,
+        'totalPoints': 0,
+        'bonusPoints': 0,
+        'isCalculated': false,
+        'lastPointsCalculation': null
+      }
+    }
+  );
+  
+  console.log(`✅ ${result.modifiedCount} palpites resetados`);
+  return result.modifiedCount;
+};
+
 // ======================
 // ÍNDICES PARA PERFORMANCE
 // ======================
@@ -479,5 +728,6 @@ betSchema.index({ totalPoints: -1 });
 betSchema.index({ 'groupMatches.matchId': 1 });
 betSchema.index({ firstSubmission: -1 });
 betSchema.index({ rankingPosition: 1 });
+betSchema.index({ lastPointsCalculation: -1 });
 
 module.exports = mongoose.model('Bet', betSchema);
