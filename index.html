@@ -1912,7 +1912,7 @@
             `;
         }
 
-        let html = '';
+                let html = '';
 
         data.data.forEach(bet => {
             const isCurrentUser = currentUser && bet.user && bet.user._id === currentUser._id;
@@ -2100,7 +2100,6 @@
             }, 300);
         }
     }
-
     function openAddMatchModal() {
         openModal('add-match-modal');
     }
@@ -2688,14 +2687,18 @@
         }
     }
 
-        // FUNÇÃO DEBOUNCE PARA PESQUISA (VERSÃO SIMPLIFICADA)
+    // FUNÇÃO DEBOUNCE PARA PESQUISA
     function debounce(func, wait) {
         let timeout;
-        return function(...args) {
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
             clearTimeout(timeout);
-            timeout = setTimeout(() => func.apply(this, args), wait);
+            timeout = setTimeout(later, wait);
         };
     }
-</script>
+    </script>
 </body>
 </html>
