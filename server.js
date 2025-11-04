@@ -21,9 +21,10 @@ if (missingVars.length > 0) {
 // ======================
 app.use(cors({
   origin: [
-    'https://6909cd1243f71adbffa58527--whimsical-sawine-852c25.netlify.app/', // SEU FRONTEND NO NETLIFY
+    'https://6909cd1243f71adbffa58527--whimsical-sawine-852c25.netlify.app', // ✅ NOVO DOMÍNIO
+    'https://whimsical-sawine-852c25.netlify.app', // DOMÍNIO ANTIGO
     'http://localhost:3000',
-    'http://localhost:5173',
+    'http://localhost:5173', 
     'http://localhost:8000',
     'http://localhost:8080'
   ],
@@ -31,7 +32,6 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
-
 // Handle preflight requests
 app.options('*', cors());
 
