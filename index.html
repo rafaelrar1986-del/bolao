@@ -521,11 +521,21 @@
             align-items: center;
             justify-content: center;
         }
-
-        .modal.active {
-            display: flex;
+        /* MODAL */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
         }
 
+        /* ESTILOS PARA MODAIS DE EDIÇÃO (NOVOS) */
         .modal-content {
             background: white;
             padding: 30px;
@@ -569,6 +579,43 @@
 
         .close-modal:hover {
             background: #f1f1f1;
+            color: var(--danger);
+        }
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-title {
+            font-size: 1.5rem;
+            color: var(--primary);
+        }
+
+        .close-modal {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #666;
+        }
+
+        .close-modal:hover {
             color: var(--danger);
         }
 
@@ -617,119 +664,6 @@
         .stat-label {
             color: #666;
             font-size: 0.9rem;
-        }
-
-        /* ESTILOS PARA A ABA TODOS OS PALPITES */
-        .all-bets-user-card {
-            background: white;
-            border-radius: 10px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            border-left: 4px solid var(--primary);
-        }
-
-        .all-bets-user-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid #f1f1f1;
-        }
-
-        .all-bets-user-name {
-            font-size: 1.2rem;
-            font-weight: bold;
-            color: var(--primary);
-        }
-
-        .all-bets-user-points {
-            background: var(--primary);
-            color: white;
-            padding: 5px 12px;
-            border-radius: 20px;
-            font-weight: bold;
-            font-size: 0.9rem;
-        }
-
-        .all-bets-user-email {
-            color: #666;
-            font-size: 0.9rem;
-            margin-bottom: 10px;
-        }
-
-        .all-bets-podium {
-            display: flex;
-            gap: 10px;
-            margin: 15px 0;
-        }
-
-        .all-bets-podium-item {
-            flex: 1;
-            text-align: center;
-            padding: 10px;
-            border-radius: 6px;
-            font-weight: 600;
-        }
-
-        .all-bets-podium-first {
-            background: linear-gradient(135deg, gold, #ffd700);
-            color: #333;
-        }
-
-        .all-bets-podium-second {
-            background: linear-gradient(135deg, silver, #c0c0c0);
-            color: #333;
-        }
-
-        .all-bets-podium-third {
-            background: linear-gradient(135deg, #cd7f32, #b08d57);
-            color: white;
-        }
-
-        .all-bets-matches-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 15px;
-            margin-top: 15px;
-        }
-
-        .all-bets-match-item {
-            background: #f8f9fa;
-            padding: 12px;
-            border-radius: 6px;
-            border-left: 3px solid var(--info);
-        }
-
-        .all-bets-match-header {
-            display: flex;
-            justify-content: space-between;
-            font-weight: 600;
-            margin-bottom: 5px;
-        }
-
-        .all-bets-match-teams {
-            font-size: 0.9rem;
-            margin-bottom: 5px;
-        }
-
-        .all-bets-match-bet {
-            color: var(--primary);
-            font-weight: 600;
-        }
-
-        .all-bets-match-points {
-            color: var(--success);
-            font-weight: bold;
-            font-size: 0.9rem;
-        }
-
-        .all-bets-no-results {
-            text-align: center;
-            padding: 40px;
-            color: #666;
-            font-style: italic;
         }
 
         /* RESPONSIVO */
@@ -784,20 +718,6 @@
 
             .stats-grid {
                 grid-template-columns: 1fr;
-            }
-
-            .all-bets-matches-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .all-bets-user-header {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 10px;
-            }
-
-            .all-bets-podium {
-                flex-direction: column;
             }
         }
     </style>
@@ -859,7 +779,7 @@
                 <div class="tab active" data-tab="bets">Fazer Palpites</div>
                 <div class="tab" data-tab="ranking">Ranking</div>
                 <div class="tab" data-tab="my-bets">Meus Palpites</div>
-                <div class="tab" data-tab="all-bets">Todos os Palpites</div> <!-- 👈 NOVA ABA -->
+                <div class="tab" data-tab="all-bets" id="all-bets-tab">Todos os Palpites</div>
                 <div class="tab" data-tab="admin" id="admin-tab" style="display: none;">Administração</div>
                 <div class="tab" data-tab="stats" id="stats-tab">Estatísticas</div>
             </div>
@@ -953,46 +873,17 @@
                 </div>
             </div>
 
-            <!-- ABA: TODOS OS PALPITES -->
+            <!-- ABA: TODOS OS PALPITES (PÚBLICA) -->
             <div id="all-bets" class="tab-content">
-                <h2><i class="fas fa-users"></i> Palpites de Todos os Usuários</h2>
-                <p>Visualize os palpites de todos os participantes do bolão.</p>
-                
-                <!-- Filtros -->
+                <h2>Todos os Palpites</h2>
+                <p>Visão completa dos palpites submetidos por todos os participantes.</p>
+
                 <div class="bet-card">
-                    <h3><i class="fas fa-filter"></i> Filtros</h3>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="filter-user">Buscar por usuário:</label>
-                            <input type="text" id="filter-user" placeholder="Digite o nome do usuário...">
+                    <h3><i class="fas fa-users"></i> Lista de Palpites</h3>
+                    <div id="all-bets-container">
+                        <div class="loading">
+                            <i class="fas fa-spinner fa-spin"></i> Carregando palpites...
                         </div>
-                        <div class="form-group">
-                            <label for="filter-match">Filtrar por partida:</label>
-                            <select id="filter-match">
-                                <option value="">Todas as partidas</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="filter-group">Filtrar por grupo:</label>
-                            <select id="filter-group">
-                                <option value="">Todos os grupos</option>
-                            </select>
-                        </div>
-                    </div>
-                    <button class="btn btn-info" onclick="loadAllBets()">
-                        <i class="fas fa-sync-alt"></i> Atualizar
-                    </button>
-                </div>
-
-                <!-- Estatísticas da busca -->
-                <div id="all-bets-stats" class="stats-grid" style="display: none;">
-                    <!-- Será preenchido dinamicamente -->
-                </div>
-
-                <!-- Lista de palpites -->
-                <div id="all-bets-container">
-                    <div class="loading">
-                        <i class="fas fa-spinner fa-spin"></i> Carregando palpites de todos os usuários...
                     </div>
                 </div>
             </div>
@@ -1204,11 +1095,6 @@
 
         // Formulários admin
         document.getElementById('add-match-form').addEventListener('submit', handleAddMatch);
-
-        // Filtros da aba "Todos os Palpites"
-        document.getElementById('filter-user').addEventListener('input', debounce(loadAllBets, 500));
-        document.getElementById('filter-match').addEventListener('change', loadAllBets);
-        document.getElementById('filter-group').addEventListener('change', loadAllBets);
     }
 
     // VERIFICAR SE USUÁRIO ESTÁ LOGADO
@@ -1219,72 +1105,75 @@
     }
 
     // VERIFICAR TOKEN
-    async function verifyToken() {
-        try {
-            const response = await fetch(`${API_URL}/api/auth/me`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-
-            if (response.ok) {
-                const userData = await response.json();
-                currentUser = userData.user;
-                
-                console.log('Dados do usuário (verifyToken):', currentUser);
-                
-                isAdmin = currentUser.isAdmin || false;
-                console.log('É admin?', isAdmin);
-                
-                showApp();
-            } else {
-                localStorage.removeItem('token');
-                token = null;
+async function verifyToken() {
+    try {
+        const response = await fetch(`${API_URL}/api/auth/me`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
             }
-        } catch (error) {
-            console.error('Erro ao verificar token:', error);
+        });
+
+        if (response.ok) {
+            const userData = await response.json();
+            currentUser = userData.user;
+            
+            // 👇 VERIFIQUE SE O CAMPO isAdmin ESTÁ PRESENTE
+            console.log('Dados do usuário (verifyToken):', currentUser);
+            
+            isAdmin = currentUser.isAdmin || false;
+            console.log('É admin?', isAdmin);
+            
+            showApp();
+        } else {
             localStorage.removeItem('token');
             token = null;
         }
+    } catch (error) {
+        console.error('Erro ao verificar token:', error);
+        localStorage.removeItem('token');
+        token = null;
     }
+}
 
     // LOGIN
-    async function handleLogin(e) {
-        e.preventDefault();
+async function handleLogin(e) {
+    e.preventDefault();
+    
+    const email = document.getElementById('login-email').value;
+    const password = document.getElementById('login-password').value;
+
+    try {
+        const response = await fetch(`${API_URL}/api/auth/login`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ email, password })
+        });
+
+        const data = await response.json();
         
-        const email = document.getElementById('login-email').value;
-        const password = document.getElementById('login-password').value;
+        // 👇 ADICIONE ESTE CONSOLE.LOG PARA DEBUG
+        console.log('Resposta do login:', data);
 
-        try {
-            const response = await fetch(`${API_URL}/api/auth/login`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ email, password })
-            });
-
-            const data = await response.json();
+        if (response.ok) {
+            token = data.token;
+            localStorage.setItem('token', token);
+            currentUser = data.user;
+            isAdmin = currentUser.isAdmin || false;
             
-            console.log('Resposta do login:', data);
-
-            if (response.ok) {
-                token = data.token;
-                localStorage.setItem('token', token);
-                currentUser = data.user;
-                isAdmin = currentUser.isAdmin || false;
-                
-                console.log('Usuário logado:', currentUser);
-                console.log('É admin?', isAdmin);
-                
-                showApp();
-            } else {
-                showMessage('error', 'Erro no login: ' + data.message);
-            }
-        } catch (error) {
-            showMessage('error', 'Erro de conexão: ' + error.message);
+            // 👇 ADICIONE ESTE CONSOLE.LOG
+            console.log('Usuário logado:', currentUser);
+            console.log('É admin?', isAdmin);
+            
+            showApp();
+        } else {
+            showMessage('error', 'Erro no login: ' + data.message);
         }
+    } catch (error) {
+        showMessage('error', 'Erro de conexão: ' + error.message);
     }
+}
 
     // REGISTRO
     async function handleRegister(e) {
@@ -1317,75 +1206,82 @@
     }
 
     // MOSTRAR APLICAÇÃO PRINCIPAL
-    function showApp() {
-        loginSection.style.display = 'none';
-        appSection.style.display = 'block';
-        
-        // 🔥 SOLUÇÃO TEMPORÁRIA: Forçar admin para usuários específicos
-        const adminEmails = [
-            'admin@example.com', 
-            'admin@teste.com',
-            '1@gmail.com'  // 👈 SUBSTITUA PELO SEU EMAIL REAL!
-        ];
-        
-        isAdmin = adminEmails.includes(currentUser.email.toLowerCase());
-        
-        console.log('🔧 Verificando admin:', {
-            email: currentUser.email,
-            isAdmin: isAdmin,
-            adminEmails: adminEmails
-        });
-        
-        const adminBadge = isAdmin ? '<span class="admin-badge">ADMIN</span>' : '';
-        userInfo.innerHTML = `Olá, ${currentUser.name}! ${adminBadge}`;
-        
-        // Mostrar/ocultar aba de admin
-        adminTab.style.display = isAdmin ? 'block' : 'none';
-        
-        loadMatches();
-        loadRanking();
-        loadUserBets();
-        checkBetStatus();
-        
-        if (isAdmin) {
-            console.log('🎯 Carregando dados admin...');
-            loadAdminMatches();
-        }
-        
-        // 🔧 BOTÃO TEMPORÁRIO PARA ATIVAR ADMIN
-        addTempAdminButton();
-    }
+function showApp() {
+    loginSection.style.display = 'none';
+    appSection.style.display = 'block';
+    
+    // 🔥 SOLUÇÃO TEMPORÁRIA: Forçar admin para usuários específicos (mantido para testes, não controla aba "Todos os Palpites")
+    const adminEmails = [
+        'admin@example.com', 
+        'admin@teste.com',
+        '1@gmail.com'  // 👈 SUBSTITUA PELO SEU EMAIL REAL!
+    ];
+    
+    isAdmin = isAdmin || adminEmails.includes((currentUser && currentUser.email || '').toLowerCase());
+    
+    console.log('🔧 Verificando admin:', {
+        email: currentUser.email,
+        isAdmin: isAdmin,
+        adminEmails: adminEmails
+    });
+    
+    const adminBadge = isAdmin ? '<span class="admin-badge">ADMIN</span>' : '';
+    userInfo.innerHTML = `Olá, ${currentUser.name}! ${adminBadge}`;
+    
+    // Mostrar/ocultar aba de admin
+    adminTab.style.display = isAdmin ? 'block' : 'none';
+    
+    // Garantir que a aba "Todos os Palpites" esteja visível para todos
+    const allBetsTab = document.getElementById('all-bets-tab');
+    if (allBetsTab) allBetsTab.style.display = 'block';
 
-    // 🔧 FUNÇÃO PARA ADICIONAR BOTÃO ADMIN TEMPORÁRIO
-    function addTempAdminButton() {
-        if (document.getElementById('temp-admin-btn')) return;
-        
-        const tempBtn = document.createElement('button');
-        tempBtn.id = 'temp-admin-btn';
-        tempBtn.innerHTML = '👑 Ativar Modo Admin';
-        tempBtn.style.position = 'fixed';
-        tempBtn.style.top = '70px';
-        tempBtn.style.right = '10px';
-        tempBtn.style.zIndex = '1000';
-        tempBtn.style.background = 'var(--warning)';
-        tempBtn.style.color = 'var(--dark)';
-        tempBtn.style.border = 'none';
-        tempBtn.style.padding = '10px 15px';
-        tempBtn.style.borderRadius = '5px';
-        tempBtn.style.cursor = 'pointer';
-        tempBtn.style.fontWeight = 'bold';
-        tempBtn.style.boxShadow = '0 2px 10px rgba(0,0,0,0.2)';
-        
-        tempBtn.addEventListener('click', function() {
-            isAdmin = true;
-            adminTab.style.display = 'block';
-            switchTab('admin');
-            showMessage('warning', '👑 Modo admin ativado para testes!');
-            console.log('🔧 Modo admin ativado manualmente');
-        });
-        
-        document.body.appendChild(tempBtn);
+    loadMatches();
+    loadRanking();
+    loadUserBets();
+    checkBetStatus();
+
+    // CARREGAR "Todos os Palpites" para todos os usuários
+    loadAllBets();
+    
+    if (isAdmin) {
+        console.log('🎯 Carregando dados admin...');
+        loadAdminMatches();
     }
+    
+    // 🔧 BOTÃO TEMPORÁRIO PARA ATIVAR ADMIN
+    addTempAdminButton();
+}
+
+// 🔧 FUNÇÃO PARA ADICIONAR BOTÃO ADMIN TEMPORÁRIO
+function addTempAdminButton() {
+    if (document.getElementById('temp-admin-btn')) return;
+    
+    const tempBtn = document.createElement('button');
+    tempBtn.id = 'temp-admin-btn';
+    tempBtn.innerHTML = '👑 Ativar Modo Admin';
+    tempBtn.style.position = 'fixed';
+    tempBtn.style.top = '70px';
+    tempBtn.style.right = '10px';
+    tempBtn.style.zIndex = '1000';
+    tempBtn.style.background = 'var(--warning)';
+    tempBtn.style.color = 'var(--dark)';
+    tempBtn.style.border = 'none';
+    tempBtn.style.padding = '10px 15px';
+    tempBtn.style.borderRadius = '5px';
+    tempBtn.style.cursor = 'pointer';
+    tempBtn.style.fontWeight = 'bold';
+    tempBtn.style.boxShadow = '0 2px 10px rgba(0,0,0,0.2)';
+    
+    tempBtn.addEventListener('click', function() {
+        isAdmin = true;
+        adminTab.style.display = 'block';
+        switchTab('admin');
+        showMessage('warning', '👑 Modo admin ativado para testes!');
+        console.log('🔧 Modo admin ativado manualmente');
+    });
+    
+    document.body.appendChild(tempBtn);
+}
 
     // CARREGAR TIMES
     async function loadTeams() {
@@ -1402,7 +1298,6 @@
                 
                 teams = Array.from(allTeams).sort();
                 populateTeamSelects();
-                populateFilterSelects();
             }
         } catch (error) {
             console.error('Erro ao carregar times:', error);
@@ -1425,32 +1320,6 @@
                     select.appendChild(option);
                 });
             }
-        });
-    }
-
-    // PREENCHER FILTROS DA ABA "TODOS OS PALPITES"
-    function populateFilterSelects() {
-        // Preencher filtro de partidas
-        const matchSelect = document.getElementById('filter-match');
-        matchSelect.innerHTML = '<option value="">Todas as partidas</option>';
-        
-        matches.forEach(match => {
-            const option = document.createElement('option');
-            option.value = match.matchId;
-            option.textContent = `${match.teamA} vs ${match.teamB}`;
-            matchSelect.appendChild(option);
-        });
-
-        // Preencher filtro de grupos
-        const groupSelect = document.getElementById('filter-group');
-        groupSelect.innerHTML = '<option value="">Todos os grupos</option>';
-        
-        const groups = [...new Set(matches.map(match => match.group))].sort();
-        groups.forEach(group => {
-            const option = document.createElement('option');
-            option.value = group;
-            option.textContent = group;
-            groupSelect.appendChild(option);
         });
     }
 
@@ -1518,6 +1387,7 @@
                 <strong>Resultado: ${match.scoreA} - ${match.scoreB}</strong>
             </div>` : '';
 
+        // add dataset for team-a and team-b to help saveAllBets logic
         return `
             <div class="match-card" data-match-id="${match.matchId}">
                 <div class="match-header">
@@ -1605,9 +1475,15 @@
                 if (betValue === 'draw') {
                     groupMatches[matchId] = '0-0';
                 } else {
-                    // Para vitórias, usar placar simples 1-0 ou 2-1
-                    const isTeamA = betValue === card.querySelector('.team-a').dataset.bet;
-                    groupMatches[matchId] = isTeamA ? '1-0' : '0-1';
+                    // Para vitórias, usar placar simples 1-0 ou 0-1
+                    const isTeamA = betValue === card.querySelector('.team-a')?.dataset?.bet || betValue === card.querySelector('.team name')?.dataset?.bet;
+                    // Simples heurística: se betValue equals left team name then 1-0 else 0-1
+                    const leftTeam = card.querySelector('.team .team-name') ? card.querySelector('.team .team-name').textContent : null;
+                    // fallback robusto:
+                    const teamANode = card.querySelectorAll('.team .team-name')[0];
+                    const teamAName = teamANode ? teamANode.textContent : null;
+                    const isA = betValue === teamAName;
+                    groupMatches[matchId] = isA ? '1-0' : '0-1';
                 }
             } else {
                 hasMissingBets = true;
@@ -1653,6 +1529,7 @@
                 saveButton.innerHTML = '<i class="fas fa-check"></i> Palpites Enviados';
                 saveButton.disabled = true;
                 loadUserBets();
+                loadAllBets(); // atualizar a aba pública após envio
             } else {
                 showMessage('error', 'Erro ao salvar: ' + data.message);
                 saveButton.disabled = false;
@@ -1837,165 +1714,110 @@
         userBetsContainer.innerHTML = html;
     }
 
-    // CARREGAR TODOS OS PALPITES (NOVA FUNCIONALIDADE)
+    // ======================
+    // NOVAS FUNÇÕES: TODOS OS PALPITES (PÚBLICO)
+    // ======================
+
+    // CARREGAR TODOS OS PALPITES (VISÍVEL PARA TODOS)
     async function loadAllBets() {
-        if (!token) {
-            document.getElementById('all-bets-container').innerHTML = '<p>Faça login para visualizar os palpites.</p>';
-            return;
-        }
-
         try {
-            const userFilter = document.getElementById('filter-user').value;
-            const matchFilter = document.getElementById('filter-match').value;
-            const groupFilter = document.getElementById('filter-group').value;
+            const container = document.getElementById('all-bets-container');
+            if (container) {
+                container.innerHTML = `<div class="loading"><i class="fas fa-spinner fa-spin"></i> Carregando palpites...</div>`;
+            }
 
-            let url = `${API_URL}/api/bets/all-bets?`;
-            const params = [];
-            
-            if (userFilter) params.push(`search=${encodeURIComponent(userFilter)}`);
-            if (matchFilter) params.push(`matchId=${matchFilter}`);
-            if (groupFilter) params.push(`group=${encodeURIComponent(groupFilter)}`);
-            
-            url += params.join('&');
+            const headers = {};
+            if (token) headers['Authorization'] = `Bearer ${token}`;
 
-            const response = await fetch(url, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
+            const response = await fetch(`${API_URL}/api/bets/all-bets`, {
+                headers
             });
 
             if (response.ok) {
                 const data = await response.json();
-                renderAllBets(data);
+                renderAllBets(data.data || []);
             } else {
-                document.getElementById('all-bets-container').innerHTML = '<p>Erro ao carregar palpites.</p>';
+                const err = await response.json().catch(()=>({message:'Erro'}));
+                if (container) container.innerHTML = `<p>Erro ao carregar: ${err.message || 'Erro'}</p>`;
             }
         } catch (error) {
             console.error('Erro ao carregar todos os palpites:', error);
-            document.getElementById('all-bets-container').innerHTML = '<p>Erro de conexão ao carregar palpites.</p>';
+            const container = document.getElementById('all-bets-container');
+            if (container) container.innerHTML = '<p>Erro de conexão ao carregar palpites.</p>';
         }
     }
 
-    // RENDERIZAR TODOS OS PALPITES (NOVA FUNCIONALIDADE)
-    function renderAllBets(data) {
+    // RENDERIZAR TODOS OS PALPITES
+    function renderAllBets(bets) {
         const container = document.getElementById('all-bets-container');
-        const statsContainer = document.getElementById('all-bets-stats');
 
-        if (!data.data || data.data.length === 0) {
-            container.innerHTML = `
-                <div class="all-bets-no-results">
-                    <i class="fas fa-search" style="font-size: 3rem; margin-bottom: 15px; opacity: 0.5;"></i>
-                    <p>Nenhum palpite encontrado com os filtros selecionados.</p>
-                    <p>Tente ajustar os critérios de busca.</p>
-                </div>
-            `;
-            statsContainer.style.display = 'none';
+        if (!container) return;
+
+        if (!bets || bets.length === 0) {
+            container.innerHTML = '<p>Nenhum palpite submetido ainda.</p>';
             return;
         }
 
-        // Mostrar estatísticas
-        if (data.stats) {
-            statsContainer.style.display = 'grid';
-            statsContainer.innerHTML = `
-                <div class="stat-card">
-                    <div class="stat-number">${data.stats.totalBets}</div>
-                    <div class="stat-label">Palpites Encontrados</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number">${data.stats.totalUsers}</div>
-                    <div class="stat-label">Usuários</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number">${data.stats.totalMatches}</div>
-                    <div class="stat-label">Partidas</div>
-                </div>
-            `;
-        }
-
-                let html = '';
-
-        data.data.forEach(bet => {
-            const isCurrentUser = currentUser && bet.user && bet.user._id === currentUser._id;
-            const userBadge = isCurrentUser ? '<span style="color: var(--primary); font-weight: bold;">(Você)</span>' : '';
-
+        // Construir HTML agrupando por usuário (cada item já vem enriquecido pelo backend)
+        let html = '';
+        bets.forEach((betObj, idx) => {
+            const user = betObj.user || { name: 'Usuário', _id: '' };
             html += `
-                <div class="all-bets-user-card">
-                    <div class="all-bets-user-header">
-                        <div>
-                            <div class="all-bets-user-name">${bet.user.name} ${userBadge}</div>
-                            <div class="all-bets-user-email">${bet.user.email}</div>
-                        </div>
-                        <div class="all-bets-user-points">${bet.totalPoints || 0} pts</div>
-                    </div>
-
-                    <!-- Pódio -->
-                    ${bet.podium ? `
-                    <div class="all-bets-podium">
-                        <div class="all-bets-podium-item all-bets-podium-first">
-                            <div>🥇 1º</div>
-                            <div><strong>${bet.podium.first || 'N/D'}</strong></div>
-                        </div>
-                        <div class="all-bets-podium-item all-bets-podium-second">
-                            <div>🥈 2º</div>
-                            <div><strong>${bet.podium.second || 'N/D'}</strong></div>
-                        </div>
-                        <div class="all-bets-podium-item all-bets-podium-third">
-                            <div>🥉 3º</div>
-                            <div><strong>${bet.podium.third || 'N/D'}</strong></div>
+                <div class="bet-card" style="margin-bottom: 12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <div><strong>${idx + 1}. ${user.name}</strong> <small style="color:#666;">${user.email ? `(${user.email})` : ''}</small></div>
+                        <div style="text-align:right;">
+                            <div style="font-weight:700; color:var(--primary);">${betObj.totalPoints || 0} pts</div>
+                            <div style="font-size:0.85rem; color:#666;">${betObj.hasSubmitted ? 'Enviado' : 'Pendente'}</div>
                         </div>
                     </div>
-                    ` : ''}
 
-                    <!-- Palpites dos jogos -->
-                    ${bet.groupMatches && bet.groupMatches.length > 0 ? `
-                    <div class="all-bets-matches-grid">
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
             `;
 
-            // Agrupar por grupo para melhor organização
-            const groups = {};
-            bet.groupMatches.forEach(betMatch => {
-                if (!groups[betMatch.group]) {
-                    groups[betMatch.group] = [];
-                }
-                groups[betMatch.group].push(betMatch);
-            });
+            // Pódio
+            if (betObj.podium) {
+                html += `
+                    <div style="border:1px solid #eee; padding:8px; border-radius:6px;">
+                        <strong>Pódio:</strong>
+                        <div>🥇 ${betObj.podium.first || '-'}</div>
+                        <div>🥈 ${betObj.podium.second || '-'}</div>
+                        <div>🥉 ${betObj.podium.third || '-'}</div>
+                        ${betObj.podium.points ? `<div style="margin-top:6px;">Pontos pódio: <strong>${betObj.podium.points}</strong></div>` : ''}
+                    </div>
+                `;
+            } else {
+                html += `<div style="border:1px solid #eee; padding:8px; border-radius:6px;"><strong>Pódio:</strong><div>Não informado</div></div>`;
+            }
 
-            Object.keys(groups).sort().forEach(groupName => {
-                html += `<div style="grid-column: 1 / -1; font-weight: bold; color: var(--primary); margin-top: 10px;">${groupName}</div>`;
-                
-                groups[groupName].forEach(betMatch => {
-                    const pointsBadge = betMatch.points > 0 ? 
-                        `<span class="all-bets-match-points">+${betMatch.points}</span>` : 
-                        `<span style="color: #666;">0</span>`;
-                    
+            // Palpites dos jogos
+            html += `<div style="border:1px solid #eee; padding:8px; border-radius:6px;"><strong>Palpites:</strong>`;
+
+            if (betObj.groupMatches && betObj.groupMatches.length > 0) {
+                html += `<div style="margin-top:8px;">`;
+                betObj.groupMatches.forEach(gm => {
+                    const matchName = gm.matchName || `Jogo ${gm.matchId}`;
+                    const betValue = gm.bet || `${gm.scoreA || '-'}-${gm.scoreB || '-'}`;
+                    const pts = gm.points || 0;
+                    const status = gm.processedAt ? new Date(gm.processedAt).toLocaleString('pt-BR') : 'Pendente';
                     html += `
-                        <div class="all-bets-match-item">
-                            <div class="all-bets-match-header">
-                                <span>Jogo ${betMatch.matchId}</span>
-                                ${pointsBadge}
+                        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px dashed #f1f1f1;">
+                            <div style="font-size:0.95rem;"><strong>${matchName}</strong><div style="color:#666; font-size:0.85rem;">Palpite: ${betValue}</div></div>
+                            <div style="text-align:right;">
+                                <div style="font-weight:700; color:${pts>0 ? 'var(--success)' : '#666'};">${pts} pts</div>
+                                <div style="font-size:0.8rem; color:#999;">${status}</div>
                             </div>
-                            <div class="all-bets-match-teams">${betMatch.teamA} vs ${betMatch.teamB}</div>
-                            <div class="all-bets-match-bet">Palpite: ${betMatch.bet}</div>
                         </div>
                     `;
                 });
-            });
+                html += `</div>`;
+            } else {
+                html += `<div style="margin-top:8px;">Nenhum palpite registrado</div>`;
+            }
 
-            html += `
-                    </div>
-                    ` : ''}
-
-                    <!-- Informações adicionais -->
-                    <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #eee; font-size: 0.9rem; color: #666;">
-                        <strong>Pontuação:</strong> 
-                        Jogos: ${bet.groupPoints || 0} | 
-                        Pódio: ${bet.podiumPoints || 0} | 
-                        Bônus: ${bet.bonusPoints || 0} |
-                        Total: ${bet.totalPoints || 0}
-                        ${bet.firstSubmission ? `<br><strong>Enviado em:</strong> ${new Date(bet.firstSubmission).toLocaleString('pt-BR')}` : ''}
-                    </div>
-                </div>
-            `;
+            html += `</div>`; // fecha coluna de palpites
+            html += `</div>`; // fecha grid
+            html += `</div>`; // fecha bet-card
         });
 
         container.innerHTML = html;
@@ -2088,18 +1910,20 @@
     }
 
     // FECHAR MODAL
-    function closeModal(modalId) {
-        const modal = document.getElementById(modalId);
-        if (modal) {
-            modal.classList.remove('active');
-            // Remover o modal do DOM após animação
-            setTimeout(() => {
-                if (modal.parentNode) {
-                    modal.parentNode.removeChild(modal);
-                }
-            }, 300);
-        }
+function closeModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.classList.remove('active');
+        // Remover o modal do DOM após animação (apenas modais dinâmicos)
+        setTimeout(() => {
+            const el = document.getElementById(modalId);
+            if (el && el.dataset && el.dataset.dynamic === 'true') {
+                el.parentNode && el.parentNode.removeChild(el);
+            }
+        }, 300);
     }
+}
+
     function openAddMatchModal() {
         openModal('add-match-modal');
     }
@@ -2209,6 +2033,7 @@
                 loadMatches();
                 loadAdminMatches();
                 loadRanking();
+                loadAllBets();
             } else {
                 showMessage('error', 'Erro ao finalizar partida: ' + data.message);
             }
@@ -2247,6 +2072,7 @@
                 closeModal('set-podium-modal');
                 loadRanking();
                 loadUserBets();
+                loadAllBets();
             } else {
                 showMessage('error', 'Erro ao definir pódio: ' + data.message);
             }
@@ -2271,6 +2097,7 @@
                 showMessage('success', 'Todos os pontos foram recalculados!');
                 loadRanking();
                 loadUserBets();
+                loadAllBets();
             } else {
                 showMessage('error', 'Erro ao recalcular pontos: ' + data.message);
             }
@@ -2331,6 +2158,7 @@
                 showMessage('success', 'Cálculos resetados com sucesso!');
                 loadRanking();
                 loadUserBets();
+                loadAllBets();
             } else {
                 showMessage('error', 'Erro ao resetar cálculos: ' + data.message);
             }
@@ -2468,25 +2296,27 @@
         document.querySelectorAll('.tab').forEach(tab => {
             tab.classList.remove('active');
         });
-        document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+        const targetTab = document.querySelector(`[data-tab="${tabName}"]`);
+        if (targetTab) targetTab.classList.add('active');
 
         // Atualizar conteúdo
         document.querySelectorAll('.tab-content').forEach(content => {
             content.classList.remove('active');
         });
-        document.getElementById(tabName).classList.add('active');
+        const content = document.getElementById(tabName);
+        if (content) content.classList.add('active');
 
         // Recarregar dados se necessário
         if (tabName === 'ranking') {
             loadRanking();
         } else if (tabName === 'my-bets') {
             loadUserBets();
-        } else if (tabName === 'all-bets') {
-            loadAllBets();
         } else if (tabName === 'admin' && isAdmin) {
             loadAdminMatches();
         } else if (tabName === 'stats') {
             loadStats();
+        } else if (tabName === 'all-bets') {
+            loadAllBets();
         }
     }
 
@@ -2498,207 +2328,196 @@
     }
 
     // 👑 EDITAR PARTIDA
-    function editMatch(matchId) {
-        console.log('🔧 Editando partida:', matchId);
-        
-        // Buscar dados da partida
-        const match = matches.find(m => m.matchId === matchId);
-        if (!match) {
-            showMessage('error', 'Partida não encontrada');
-            return;
-        }
-        
-        // Criar modal de edição
-        createEditMatchModal(match);
+function editMatch(matchId) {
+    console.log('🔧 Editando partida:', matchId);
+    
+    // Buscar dados da partida
+    const match = matches.find(m => m.matchId === matchId);
+    if (!match) {
+        showMessage('error', 'Partida não encontrada');
+        return;
     }
+    
+    // Criar modal de edição
+    createEditMatchModal(match);
+}
 
-    // 👑 CRIAR MODAL DE EDIÇÃO
-    function createEditMatchModal(match) {
-        // Remover modal existente se houver
-        const existingModal = document.getElementById('edit-match-modal');
-        if (existingModal) {
-            existingModal.remove();
-        }
-        
-        // Criar modal
-        const modalHTML = `
-            <div id="edit-match-modal" class="modal active">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h3 class="modal-title">Editar Partida</h3>
-                        <button class="close-modal" onclick="closeModal('edit-match-modal')">&times;</button>
-                    </div>
-                    <form id="edit-match-form">
-                        <input type="hidden" id="edit-match-id" value="${match.matchId}">
-                        
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="edit-team-a">Time A:</label>
-                                <input type="text" id="edit-team-a" value="${match.teamA}" required>
-                            </div>
-                            <div class="form-group">
-                                <label for="edit-team-b">Time B:</label>
-                                <input type="text" id="edit-team-b" value="${match.teamB}" required>
-                            </div>
-                        </div>
-                        
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="edit-match-date">Data (DD/MM/AAAA):</label>
-                                <input type="text" id="edit-match-date" value="${match.date}" placeholder="DD/MM/AAAA" required pattern="\\d{2}/\\d{2}/\\d{4}">
-                            </div>
-                            <div class="form-group">
-                                <label for="edit-match-time">Horário (HH:MM):</label>
-                                <input type="text" id="edit-match-time" value="${match.time}" placeholder="HH:MM" required pattern="\\d{2}:\\d{2}">
-                            </div>
-                        </div>
-                        
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="edit-match-group">Grupo:</label>
-                                <input type="text" id="edit-match-group" value="${match.group}" required>
-                            </div>
-                            <div class="form-group">
-                                <label for="edit-match-stadium">Estádio:</label>
-                                <input type="text" id="edit-match-stadium" value="${match.stadium || ''}">
-                            </div>
-                        </div>
-                        
-                        ${match.status === 'finished' ? `
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="edit-score-a">Placar Time A:</label>
-                                <input type="number" id="edit-score-a" value="${match.scoreA || 0}" min="0" max="20">
-                            </div>
-                            <div class="form-group">
-                                <label for="edit-score-b">Placar Time B:</label>
-                                <input type="number" id="edit-score-b" value="${match.scoreB || 0}" min="0" max="20">
-                            </div>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="edit-match-status">Status:</label>
-                            <select id="edit-match-status">
-                                <option value="scheduled" ${match.status === 'scheduled' ? 'selected' : ''}>Agendado</option>
-                                <option value="in_progress" ${match.status === 'in_progress' ? 'selected' : ''}>Em Andamento</option>
-                                <option value="finished" ${match.status === 'finished' ? 'selected' : ''}>Finalizado</option>
-                            </select>
-                        </div>
-                        ` : ''}
-                        
-                        <div class="admin-actions">
-                            <button type="submit" class="btn btn-success">
-                                <i class="fas fa-save"></i> Salvar Alterações
-                            </button>
-                            ${match.status !== 'finished' ? `
-                            <button type="button" class="btn btn-warning" onclick="prepareFinishMatch(${match.matchId})">
-                                <i class="fas fa-whistle"></i> Finalizar Partida
-                            </button>
-                            ` : ''}
-                            <button type="button" class="btn btn-danger" onclick="deleteMatch(${match.matchId})">
-                                <i class="fas fa-trash"></i> Excluir Partida
-                            </button>
-                        </div>
-                    </form>
+// 👑 CRIAR MODAL DE EDIÇÃO
+function createEditMatchModal(match) {
+    // Remover modal existente se houver
+    const existingModal = document.getElementById('edit-match-modal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // Criar modal
+    const modalHTML = `
+        <div id="edit-match-modal" class="modal active" data-dynamic="true">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 class="modal-title">Editar Partida</h3>
+                    <button class="close-modal" onclick="closeModal('edit-match-modal')">&times;</button>
                 </div>
+                <form id="edit-match-form">
+                    <input type="hidden" id="edit-match-id" value="${match.matchId}">
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="edit-team-a">Time A:</label>
+                            <input type="text" id="edit-team-a" value="${match.teamA}" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-team-b">Time B:</label>
+                            <input type="text" id="edit-team-b" value="${match.teamB}" required>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="edit-match-date">Data (DD/MM/AAAA):</label>
+                            <input type="text" id="edit-match-date" value="${match.date}" placeholder="DD/MM/AAAA" required pattern="\\d{2}/\\d{2}/\\d{4}">
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-match-time">Horário (HH:MM):</label>
+                            <input type="text" id="edit-match-time" value="${match.time}" placeholder="HH:MM" required pattern="\\d{2}:\\d{2}">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="edit-match-group">Grupo:</label>
+                            <input type="text" id="edit-match-group" value="${match.group}" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-match-stadium">Estádio:</label>
+                            <input type="text" id="edit-match-stadium" value="${match.stadium || ''}">
+                        </div>
+                    </div>
+                    
+                    ${match.status === 'finished' ? `
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="edit-score-a">Placar Time A:</label>
+                            <input type="number" id="edit-score-a" value="${match.scoreA || 0}" min="0" max="20">
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-score-b">Placar Time B:</label>
+                            <input type="number" id="edit-score-b" value="${match.scoreB || 0}" min="0" max="20">
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="edit-match-status">Status:</label>
+                        <select id="edit-match-status">
+                            <option value="scheduled" ${match.status === 'scheduled' ? 'selected' : ''}>Agendado</option>
+                            <option value="in_progress" ${match.status === 'in_progress' ? 'selected' : ''}>Em Andamento</option>
+                            <option value="finished" ${match.status === 'finished' ? 'selected' : ''}>Finalizado</option>
+                        </select>
+                    </div>
+                    ` : ''}
+                    
+                    <div class="admin-actions">
+                        <button type="submit" class="btn btn-success">
+                            <i class="fas fa-save"></i> Salvar Alterações
+                        </button>
+                        ${match.status !== 'finished' ? `
+                        <button type="button" class="btn btn-warning" onclick="prepareFinishMatch(${match.matchId})">
+                            <i class="fas fa-whistle"></i> Finalizar Partida
+                        </button>
+                        ` : ''}
+                        <button type="button" class="btn btn-danger" onclick="deleteMatch(${match.matchId})">
+                            <i class="fas fa-trash"></i> Excluir Partida
+                        </button>
+                    </div>
+                </form>
             </div>
-        `;
-        
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
-        
-        // Configurar evento do formulário
-        document.getElementById('edit-match-form').addEventListener('submit', handleEditMatch);
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+    
+    // Configurar evento do formulário
+    document.getElementById('edit-match-form').addEventListener('submit', handleEditMatch);
+}
+
+// 👑 SALVAR EDIÇÃO DA PARTIDA
+async function handleEditMatch(e) {
+    e.preventDefault();
+    
+    const matchId = document.getElementById('edit-match-id').value;
+    const updates = {
+        teamA: document.getElementById('edit-team-a').value,
+        teamB: document.getElementById('edit-team-b').value,
+        date: document.getElementById('edit-match-date').value,
+        time: document.getElementById('edit-match-time').value,
+        group: document.getElementById('edit-match-group').value,
+        stadium: document.getElementById('edit-match-stadium').value
+    };
+    
+    // Adicionar campos opcionais se existirem
+    const scoreA = document.getElementById('edit-score-a');
+    const scoreB = document.getElementById('edit-score-b');
+    const status = document.getElementById('edit-match-status');
+    
+    if (scoreA) updates.scoreA = parseInt(scoreA.value) || 0;
+    if (scoreB) updates.scoreB = parseInt(scoreB.value) || 0;
+    if (status) updates.status = status.value;
+    
+    try {
+        const response = await fetch(`${API_URL}/api/matches/admin/edit/${matchId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(updates)
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            showMessage('success', 'Partida atualizada com sucesso!');
+            closeModal('edit-match-modal');
+            loadMatches();
+            loadAdminMatches();
+            loadAllBets();
+        } else {
+            showMessage('error', 'Erro ao atualizar partida: ' + data.message);
+        }
+    } catch (error) {
+        showMessage('error', 'Erro de conexão: ' + error.message);
     }
+}
 
-    // 👑 SALVAR EDIÇÃO DA PARTIDA
-    async function handleEditMatch(e) {
-        e.preventDefault();
-        
-        const matchId = document.getElementById('edit-match-id').value;
-        const updates = {
-            teamA: document.getElementById('edit-team-a').value,
-            teamB: document.getElementById('edit-team-b').value,
-            date: document.getElementById('edit-match-date').value,
-            time: document.getElementById('edit-match-time').value,
-            group: document.getElementById('edit-match-group').value,
-            stadium: document.getElementById('edit-match-stadium').value
-        };
-        
-        // Adicionar campos opcionais se existirem
-        const scoreA = document.getElementById('edit-score-a');
-        const scoreB = document.getElementById('edit-score-b');
-        const status = document.getElementById('edit-match-status');
-        
-        if (scoreA) updates.scoreA = parseInt(scoreA.value) || 0;
-        if (scoreB) updates.scoreB = parseInt(scoreB.value) || 0;
-        if (status) updates.status = status.value;
-        
-        try {
-            const response = await fetch(`${API_URL}/api/matches/admin/edit/${matchId}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify(updates)
-            });
-
-            const data = await response.json();
-
-            if (response.ok) {
-                showMessage('success', 'Partida atualizada com sucesso!');
-                closeModal('edit-match-modal');
-                loadMatches();
-                loadAdminMatches();
-            } else {
-                showMessage('error', 'Erro ao atualizar partida: ' + data.message);
+// 👑 EXCLUIR PARTIDA
+async function deleteMatch(matchId) {
+    if (!confirm('⚠️ ATENÇÃO: Tem certeza que deseja excluir esta partida?\n\nEsta ação não pode ser desfeita!')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_URL}/api/matches/admin/delete/${matchId}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`
             }
-        } catch (error) {
-            showMessage('error', 'Erro de conexão: ' + error.message);
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            showMessage('success', 'Partida excluída com sucesso!');
+            closeModal('edit-match-modal');
+            loadMatches();
+            loadAdminMatches();
+            loadAllBets();
+        } else {
+            showMessage('error', 'Erro ao excluir partida: ' + data.message);
         }
+    } catch (error) {
+        showMessage('error', 'Erro de conexão: ' + error.message);
     }
-
-    // 👑 EXCLUIR PARTIDA
-    async function deleteMatch(matchId) {
-        if (!confirm('⚠️ ATENÇÃO: Tem certeza que deseja excluir esta partida?\n\nEsta ação não pode ser desfeita!')) {
-            return;
-        }
-        
-        try {
-            const response = await fetch(`${API_URL}/api/matches/admin/delete/${matchId}`, {
-                method: 'DELETE',
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-
-            const data = await response.json();
-
-            if (response.ok) {
-                showMessage('success', 'Partida excluída com sucesso!');
-                closeModal('edit-match-modal');
-                loadMatches();
-                loadAdminMatches();
-            } else {
-                showMessage('error', 'Erro ao excluir partida: ' + data.message);
-            }
-        } catch (error) {
-            showMessage('error', 'Erro de conexão: ' + error.message);
-        }
-    }
-
-    // FUNÇÃO DEBOUNCE PARA PESQUISA
-    function debounce(func, wait) {
-        let timeout;
-        return function executedFunction(...args) {
-            const later = () => {
-                clearTimeout(timeout);
-                func(...args);
-            };
-            clearTimeout(timeout);
-            timeout = setTimeout(later, wait);
-        };
-    }
+}
     </script>
 </body>
 </html>
