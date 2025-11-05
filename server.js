@@ -19,82 +19,42 @@ if (missingVars.length > 0) {
 // ======================
 // CONFIGURAÇÃO CORS CORRIGIDA - FUNCIONANDO PARA VERCEL
 // ======================
-app.use(cors({
-  origin: function (origin, callback) {
-    // Permitir requests sem origin (como mobile apps, Postman, etc)
+const allowedOrigins = [
+  'https://bolao-d2zh.vercel.app',
+  'https://bolao-gamma.vercel.app',
+  /\.vercel\.app$/, // todos os subdomínios vercel
+  /\.netlify\.app$/, // todos os subdomínios netlify
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://localhost:8000',
+  'http://localhost:8080'
+];
+
+const corsOptions = {
+  origin(origin, callback) {
+    // Permitir requests sem Origin (ex.: healthchecks, curl, Postman)
     if (!origin) return callback(null, true);
-    
-    const allowedOrigins = [
-      'https://bolao-d2zh.vercel.app', // ✅ SEU NOVO DOMÍNIO VERCEL
-      'https://bolao-gamma.vercel.app', // ✅ SEU DOMÍNIO VERCEL ANTERIOR
-      /\.vercel\.app$/, // ✅ TODOS OS SUBDOMÍNIOS VERCEL
-      /\.netlify\.app$/, // ✅ TODOS OS SUBDOMÍNIOS NETLIFY
-      'http://localhost:3000',
-      'http://localhost:5173', 
-      'http://localhost:8000',
-      'http://localhost:8080'
-    ];
-
-    // Verificar se a origin está na lista de permitidas
-    const isAllowed = allowedOrigins.some(allowed => {
-      if (typeof allowed === 'string') {
-        return origin === allowed;
-      } else if (allowed instanceof RegExp) {
-        return allowed.test(origin);
-      }
-      return false;
-    });
-
-    if (isAllowed) {
-      console.log('✅ CORS permitido para:', origin);
-      return callback(null, true);
-    } else {
-      console.log('🚫 CORS bloqueado para:', origin);
-      return callback(new Error('Not allowed by CORS'), false);
-    }
+    const isAllowed = allowedOrigins.some(allowed =>
+      typeof allowed === 'string' ? origin === allowed : allowed.test(origin)
+    );
+    return isAllowed ? callback(null, true) : callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: [
-    'Content-Type', 
-    'Authorization', 
-    'X-Requested-With',
-    'Accept',
-    'Origin',
-    'Access-Control-Request-Method',
-    'Access-Control-Request-Headers',
-    'X-Auth-Token'
-  ],
-  exposedHeaders: [
-    'Content-Range',
-    'X-Content-Range',
-    'Access-Control-Allow-Origin',
-    'Access-Control-Allow-Credentials'
-  ],
-  preflightContinue: false,
-  optionsSuccessStatus: 204
-}));
+  // Deixe o CORS refletir automaticamente os headers do preflight
+  optionsSuccessStatus: 204,
+  maxAge: 86400 // cache do preflight por 24h
+};
 
-// 🔥 MIDDLEWARE CRÍTICO: Handle preflight requests
-app.options('*', (req, res) => {
-  console.log('🛬 Preflight request recebido para:', req.headers.origin);
-  res.header('Access-Control-Allow-Origin', req.headers.origin);
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Access-Control-Request-Method, Access-Control-Request-Headers, X-Auth-Token');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.header('Access-Control-Max-Age', '86400'); // 24 horas
-  res.status(204).send();
-});
+// Aplique CORS globalmente e trate preflights automaticamente
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
-// ✅ CORREÇÃO: Usar express.json() em vez de body-parser (que está depreciado)
-app.use(express.json({ 
-  limit: '10mb'
-}));
-
-app.use(express.urlencoded({ 
-  extended: true,
-  limit: '10mb'
-}));
+// ======================
+// PARSERS
+// ======================
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Debug middleware (opcional - pode remover em produção)
 app.use((req, res, next) => {
@@ -112,34 +72,35 @@ app.use((req, res, next) => {
 });
 
 // ======================
-// BANCO DE DADOS - CONEXÃO CORRIGIDA
+// BANCO DE DADOS - CONEXÃO
 // ======================
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/bolao-copa-2026';
 
-mongoose.connect(MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-  serverSelectionTimeoutMS: 30000, // 30 segundos
-  socketTimeoutMS: 45000, // 45 segundos,
-  retryWrites: true,
-  w: 'majority'
-})
-.then(() => {
-  console.log('✅ MongoDB conectado com sucesso!');
-  console.log('📊 Database:', mongoose.connection.name);
-  console.log('🔗 Host:', mongoose.connection.host);
-})
-.catch(err => {
-  console.error('❌ ERRO na conexão com MongoDB:');
-  console.error('- Verifique MONGODB_URI nas variáveis de ambiente');
-  console.error('- String de conexão:', MONGODB_URI.substring(0, 20) + '...');
-  console.error('- Erro detalhado:', err.message);
-  
-  // Em produção, não saia do processo, apenas log o erro
-  if (process.env.NODE_ENV === 'development') {
-    process.exit(1);
-  }
-});
+mongoose
+  .connect(MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 30000, // 30 segundos
+    socketTimeoutMS: 45000, // 45 segundos
+    retryWrites: true,
+    w: 'majority'
+  })
+  .then(() => {
+    console.log('✅ MongoDB conectado com sucesso!');
+    console.log('📊 Database:', mongoose.connection.name);
+    console.log('🔗 Host:', mongoose.connection.host);
+  })
+  .catch(err => {
+    console.error('❌ ERRO na conexão com MongoDB:');
+    console.error('- Verifique MONGODB_URI nas variáveis de ambiente');
+    console.error('- String de conexão:', MONGODB_URI.substring(0, 20) + '...');
+    console.error('- Erro detalhado:', err.message);
+
+    // Em desenvolvimento, encerra; em produção apenas loga
+    if (process.env.NODE_ENV === 'development') {
+      process.exit(1);
+    }
+  });
 
 // Eventos de conexão do MongoDB
 mongoose.connection.on('error', err => {
@@ -160,7 +121,7 @@ mongoose.connection.on('reconnected', () => {
 
 // Rotas simples
 app.get('/', (req, res) => {
-  res.json({ 
+  res.json({
     message: '🚀 Backend do Bolão da Copa funcionando!',
     version: '1.0.0',
     database: mongoose.connection.readyState === 1 ? '✅ Conectado' : '❌ Desconectado',
@@ -182,8 +143,8 @@ app.get('/', (req, res) => {
 app.get('/api/health', (req, res) => {
   const dbStatus = mongoose.connection.readyState === 1 ? 'healthy' : 'unhealthy';
   const statusCode = dbStatus === 'healthy' ? 200 : 503;
-  
-  res.status(statusCode).json({ 
+
+  res.status(statusCode).json({
     status: dbStatus === 'healthy' ? 'OK' : 'ERROR',
     database: dbStatus,
     mongodb_state: mongoose.connection.readyState,
@@ -200,7 +161,7 @@ app.get('/api/bets', (req, res) => {
     message: '🏆 API de Palpites - Use as rotas específicas',
     endpoints: {
       'GET /api/bets/my-bets': 'Buscar meus palpites',
-      'POST /api/bets/save': 'Salvar palpites', 
+      'POST /api/bets/save': 'Salvar palpites',
       'GET /api/bets/status': 'Verificar status',
       'GET /api/bets/test': 'Rota de teste'
     },
@@ -226,7 +187,7 @@ app.use('/api/points', pointsRoutes); // 👈 NOVA ROTA
 
 // Rota 404 - Para rotas não encontradas
 app.use('*', (req, res) => {
-  res.status(404).json({ 
+  res.status(404).json({
     success: false,
     message: `Rota não encontrada: ${req.originalUrl}`,
     method: req.method,
@@ -241,10 +202,10 @@ app.use('*', (req, res) => {
   });
 });
 
-// ✅ CORREÇÃO: Middleware de erro global
+// ✅ Middleware de erro global
 app.use((error, req, res, next) => {
   console.error('💥 Erro não tratado:', error);
-  
+
   // Erro de CORS
   if (error.message === 'Not allowed by CORS') {
     return res.status(403).json({
@@ -259,7 +220,7 @@ app.use((error, req, res, next) => {
       ]
     });
   }
-  
+
   // Erro de validação do Mongoose
   if (error.name === 'ValidationError') {
     return res.status(400).json({
@@ -268,7 +229,7 @@ app.use((error, req, res, next) => {
       errors: Object.values(error.errors).map(err => err.message)
     });
   }
-  
+
   // Erro de duplicata do MongoDB
   if (error.code === 11000) {
     return res.status(400).json({
@@ -277,7 +238,7 @@ app.use((error, req, res, next) => {
       field: Object.keys(error.keyPattern)[0]
     });
   }
-  
+
   // Erro de JWT
   if (error.name === 'JsonWebTokenError') {
     return res.status(401).json({
@@ -285,7 +246,7 @@ app.use((error, req, res, next) => {
       message: 'Token inválido'
     });
   }
-  
+
   // Erro genérico
   res.status(error.status || 500).json({
     success: false,
