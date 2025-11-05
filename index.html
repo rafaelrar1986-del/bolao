@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bolão Copa do Mundo 2026</title>
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="./assets/css/styles.css" />
+</head>
+<body>
+  <header class="header">
+    <div class="container">
+      <h1><i class="fas fa-futbol"></i> Bolão Copa do Mundo 2026</h1>
+      <p class="subtitle">Faça seus palpites e acompanhe o ranking!</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- LOGIN / REGISTRO -->
+    <section id="login-section" class="card narrow">
+      <h2>Entrar no Bolão</h2>
+      <form id="login-form" class="form-grid">
+        <label>Email <input type="email" id="login-email" required /></label>
+        <label>Senha <input type="password" id="login-password" required /></label>
+        <button class="btn primary" type="submit"><i class="fas fa-right-to-bracket"></i> Entrar</button>
+      </form>
+      <div class="divider">ou</div>
+      <form id="register-form" class="form-grid">
+        <h3>Criar Nova Conta</h3>
+        <label>Nome <input type="text" id="register-name" required minlength="2" /></label>
+        <label>Email <input type="email" id="register-email" required /></label>
+        <label>Senha <input type="password" id="register-password" required minlength="6" /></label>
+        <button class="btn success" type="submit"><i class="fas fa-user-plus"></i> Criar Conta</button>
+      </form>
+    </section>
+
+    <!-- APP -->
+    <section id="app-section" style="display:none;">
+      <div id="user-info" class="user-info">Carregando...</div>
+
+      <nav class="tabs" role="tablist">
+        <button class="tab active" data-tab="bets">Fazer Palpites</button>
+        <button class="tab" data-tab="ranking">Ranking</button>
+        <button class="tab" data-tab="my-bets">Meus Palpites</button>
+        <button class="tab" data-tab="all-bets">Todos os Palpites</button>
+        <button class="tab" data-tab="stats">Estatísticas</button>
+        <button class="tab" id="admin-tab" data-tab="admin" style="display:none;">Admin</button>
+      </nav>
+
+      <!-- Fazer Palpites -->
+      <section id="bets" class="tab-content active">
+        <h2>Palpites - Fase de Grupos</h2>
+        <p>Selecione o vencedor (ou empate) para cada jogo.</p>
+        <div id="matches-container" class="spaced">
+          <div class="loading"><i class="fas fa-spinner fa-spin"></i> Carregando jogos...</div>
+        </div>
+
+        <div class="podium-section card">
+          <h3><i class="fas fa-trophy"></i> Pódio Final</h3>
+          <div class="podium-grid">
+            <label>🥇 Campeão (10 pts)
+              <select id="first-place"></select>
+            </label>
+            <label>🥈 Vice (7 pts)
+              <select id="second-place"></select>
+            </label>
+            <label>🥉 Terceiro (4 pts)
+              <select id="third-place"></select>
+            </label>
+          </div>
+        </div>
+
+        <button id="save-bets" class="btn success"><i class="fas fa-save"></i> Salvar Todos os Palpites</button>
+        <div id="save-message" class="mt-2"></div>
+      </section>
+
+      <!-- Ranking -->
+      <section id="ranking" class="tab-content">
+        <h2>Ranking</h2>
+        <table class="table" aria-label="Tabela de ranking">
+          <thead>
+            <tr><th>#</th><th>Participante</th><th>Pontos</th><th>Grupos</th><th>Pódio</th><th>Bônus</th></tr>
+          </thead>
+          <tbody id="ranking-body">
+            <tr><td colspan="6" class="center"><div class="loading"><i class="fas fa-spinner fa-spin"></i> Carregando...</div></td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- Meus Palpites -->
+      <section id="my-bets" class="tab-content">
+        <h2>Meus Palpites</h2>
+        <div id="user-bets-container" class="spaced">
+          <div class="loading"><i class="fas fa-spinner fa-spin"></i> Carregando...</div>
+        </div>
+      </section>
+
+      <!-- Todos os Palpites -->
+      <section id="all-bets" class="tab-content">
+        <div class="flex-between">
+          <h2>Todos os Palpites</h2>
+          <div>
+            <button id="view-detailed" class="btn small outline active" aria-pressed="true">Detalhado</button>
+            <button id="view-compact" class="btn small outline" aria-pressed="false">Compacto por usuário</button>
+          </div>
+        </div>
+
+        <div class="filters card">
+          <div class="filter-grid">
+            <label>Buscar por nome
+              <input type="search" id="filter-search" placeholder="Nome do participante" />
+            </label>
+            <label>Partida
+              <select id="filter-match">
+                <option value="">Todas</option>
+              </select>
+            </label>
+            <label>Usuário
+              <select id="filter-user">
+                <option value="">Todos</option>
+              </select>
+            </label>
+            <label>Ordenar por
+              <select id="filter-sort">
+                <option value="user">Usuário</option>
+                <option value="points">Pontos</option>
+                <option value="date">Data</option>
+              </select>
+            </label>
+            <label>Itens por página
+              <select id="filter-limit">
+                <option>10</option>
+                <option selected>20</option>
+                <option>50</option>
+                <option>100</option>
+              </select>
+            </label>
+          </div>
+          <div class="mt-1">
+            <button id="apply-filters" class="btn primary"><i class="fas fa-filter"></i> Aplicar</button>
+            <button id="clear-filters" class="btn"><i class="fas fa-broom"></i> Limpar</button>
+          </div>
+        </div>
+
+        <div id="all-bets-summary" class="muted mt-1"></div>
+
+        <div id="all-bets-container" class="spaced">
+          <div class="loading"><i class="fas fa-spinner fa-spin"></i> Carregando...</div>
+        </div>
+
+        <div class="pagination center" id="all-bets-pagination"></div>
+      </section>
+
+      <!-- Estatísticas -->
+      <section id="stats" class="tab-content">
+        <h2>Estatísticas</h2>
+        <div id="stats-container" class="spaced">
+          <div class="loading"><i class="fas fa-spinner fa-spin"></i> Carregando...</div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <small>© 2026 Bolão – Todos os direitos reservados.</small>
+    </div>
+  </footer>
+
+  <!-- Config & Utils -->
+  <script>window.API_URL = "https://bolao-62rz.onrender.com";</script>
+  <script src="./assets/js/utils.js" type="module"></script>
+  <script src="./assets/js/api.js" type="module"></script>
+  <!-- Features -->
+  <script src="./assets/js/auth.js" type="module"></script>
+  <script src="./assets/js/matches.js" type="module"></script>
+  <script src="./assets/js/ranking.js" type="module"></script>
+  <script src="./assets/js/myBets.js" type="module"></script>
+  <script src="./assets/js/allBets.js" type="module"></script>
+  <script src="./assets/js/stats.js" type="module"></script>
+  <script src="./assets/js/app.js" type="module"></script>
+</body>
+</html>
