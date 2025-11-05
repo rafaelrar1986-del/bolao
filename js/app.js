@@ -1,52 +1,100 @@
 // js/app.js
-(function(UI, API, Auth, Matches, Ranking, MyBets, AllBets, Admin){
-  function bindTabs(){
-    UI.$$('.tab').forEach(tab=>{
-      tab.addEventListener('click', ()=>{
-        UI.setActiveTab(tab.dataset.tab);
-        switch(tab.dataset.tab){
-          case 'ranking': Ranking.loadRanking(); break;
-          case 'my-bets': MyBets.loadMyBets(); break;
-          case 'all-bets': AllBets.init(); break;
-          case 'admin': Admin.loadAdminMatches(); break;
-          case 'stats': loadStats(); break;
-        }
-      });
-    });
-  }
 
-  async function loadStats(){
-    const box = document.getElementById('stats-container');
-    try{
-      const res = await API.request('/api/points/stats',{auth:true});
-      const s = res.data || {};
-      box.innerHTML = `
-        <div class="grid-3">
-          <div class="card"><div><strong>Participantes</strong></div><div class="mt">${s.participants||0}</div></div>
-          <div class="card"><div><strong>Partidas Finalizadas</strong></div><div class="mt">${s.finishedMatches||0}</div></div>
-          <div class="card"><div><strong>Maior Pontuação</strong></div><div class="mt">${s.maxPoints||0}</div></div>
-        </div>`;
-    }catch(e){
-      box.innerHTML = `<p>${e.message}</p>`;
+// --- Importações principais (não quebrem se algum módulo expor nomes diferentes) ---
+import { checkAuthAndStart } from "./auth.js";
+import { setupTabs, showToast } from "./ui.js";
+
+// Imports "flexíveis": pegamos todos os exports e escolhemos a função existente
+import * as MyBets from "./myBets.js";
+import * as Ranking from "./ranking.js";
+import * as AllBets from "./allBets.js";
+import * as Admin from "./admin.js";
+
+// Helper para chamar função se existir, sem quebrar a página
+function callIfExists(obj, candidates = [], ...args) {
+  for (const name of candidates) {
+    if (typeof obj[name] === "function") {
+      try {
+        return obj[name](...args);
+      } catch (e) {
+        console.error(`[app] Erro ao executar ${name}:`, e);
+        showToast?.("error", `Erro ao carregar: ${name}`);
+      }
     }
   }
+  // silencioso se nenhuma função existir
+}
 
-  async function afterLogin(){
-    Matches.loadMatches();
-    Matches.checkBetStatus();
-    Ranking.loadRanking();
-    MyBets.loadMyBets();
-    Admin.bindAdminButtons();
+// Carregar conteúdo padrão das abas após autenticação
+function loadDefaultTabs(isAdmin) {
+  // Meus Palpites
+  callIfExists(MyBets, ["initMyBets", "loadMyBets", "mountMyBets"]);
+
+  // Ranking
+  callIfExists(Ranking, ["initRanking", "loadRanking", "mountRanking"]);
+
+  // Todos os Palpites
+  callIfExists(AllBets, ["initAllBets", "loadAllBetsUI", "mountAllBets"]);
+
+  // Administração (somente se admin)
+  if (isAdmin) {
+    callIfExists(Admin, ["initAdminUI", "loadAdminUI", "mountAdmin"]);
   }
+}
 
-  async function boot(){
-    bindTabs();
-    Auth.setupAuthForms();
-    const ok = await Auth.verifyToken();
-    if(ok){ afterLogin(); }
-    document.getElementById('save-bets').addEventListener('click', Matches.saveAllBets);
+// Observa troca de abas para recarregar conteúdo quando necessário
+function attachTabObservers(isAdmin) {
+  const tabMap = {
+    "my-bets": () => callIfExists(MyBets, ["initMyBets", "loadMyBets", "mountMyBets"]),
+    "ranking": () => callIfExists(Ranking, ["initRanking", "loadRanking", "mountRanking"]),
+    "all-bets": () => callIfExists(AllBets, ["initAllBets", "loadAllBetsUI", "mountAllBets"]),
+    "admin": () => isAdmin && callIfExists(Admin, ["initAdminUI", "loadAdminUI", "mountAdmin"]),
+  };
+
+  document.querySelectorAll(".tab").forEach((el) => {
+    el.addEventListener("click", () => {
+      const tab = el.dataset.tab;
+      if (tab && tabMap[tab]) {
+        tabMap[tab]();
+      }
+    });
+  });
+}
+
+// Exporte a função esperada pelo index.html
+export function initApp() {
+  const start = () => {
+    // checkAuthAndStart cuida de validar token e obter /auth/me
+    checkAuthAndStart({
+      onLogin: (user) => {
+        const isAdmin = !!user?.isAdmin;
+
+        // Monta as abas (mostra/esconde a de Admin conforme backend)
+        setupTabs(isAdmin);
+
+        // Carrega conteúdo inicial
+        loadDefaultTabs(isAdmin);
+
+        // Observa mudança de abas para recarregar o conteúdo certo
+        attachTabObservers(isAdmin);
+      },
+      onLogout: () => {
+        // Se quiser, pode redirecionar ou resetar UI aqui
+        showToast?.("info", "Sessão encerrada");
+        setupTabs(false);
+      },
+      onError: (err) => {
+        console.error("[app] Erro de autenticação:", err);
+        setupTabs(false);
+        // Mesmo sem login, se houver abas públicas, elas podem ser inicializadas aqui
+        callIfExists(Ranking, ["initRanking", "loadRanking", "mountRanking"]);
+      },
+    });
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", start, { once: true });
+  } else {
+    start();
   }
-
-  window.App = { boot, afterLogin };
-  document.addEventListener('DOMContentLoaded', boot);
-})(window.UI, window.API, window.Auth, window.Matches, window.Ranking, window.MyBets, window.AllBets, window.Admin);
+}
