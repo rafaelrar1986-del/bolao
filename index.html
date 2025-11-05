@@ -1252,36 +1252,6 @@ function showApp() {
     addTempAdminButton();
 }
 
-// 🔧 FUNÇÃO PARA ADICIONAR BOTÃO ADMIN TEMPORÁRIO
-function addTempAdminButton() {
-    if (document.getElementById('temp-admin-btn')) return;
-    
-    const tempBtn = document.createElement('button');
-    tempBtn.id = 'temp-admin-btn';
-    tempBtn.innerHTML = '👑 Ativar Modo Admin';
-    tempBtn.style.position = 'fixed';
-    tempBtn.style.top = '70px';
-    tempBtn.style.right = '10px';
-    tempBtn.style.zIndex = '1000';
-    tempBtn.style.background = 'var(--warning)';
-    tempBtn.style.color = 'var(--dark)';
-    tempBtn.style.border = 'none';
-    tempBtn.style.padding = '10px 15px';
-    tempBtn.style.borderRadius = '5px';
-    tempBtn.style.cursor = 'pointer';
-    tempBtn.style.fontWeight = 'bold';
-    tempBtn.style.boxShadow = '0 2px 10px rgba(0,0,0,0.2)';
-    
-    tempBtn.addEventListener('click', function() {
-        isAdmin = true;
-        adminTab.style.display = 'block';
-        switchTab('admin');
-        showMessage('warning', '👑 Modo admin ativado para testes!');
-        console.log('🔧 Modo admin ativado manualmente');
-    });
-    
-    document.body.appendChild(tempBtn);
-}
 
     // CARREGAR TIMES
     async function loadTeams() {
