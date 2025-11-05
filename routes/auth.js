@@ -1,7 +1,7 @@
 const express = require('express');
-const bcrypt = require('bcryptjs');
+const bcrypt = require('bcryptjs'); // (usado no modelo se passwordVersion=1)
 const jwt = require('jsonwebtoken');
-const crypto = require('crypto');
+const crypto = require('crypto'); // (fallback usado no modelo)
 const User = require('../models/User');
 const { protect } = require('../middleware/auth');
 
@@ -30,24 +30,18 @@ const generateToken = (userId) => {
 const authenticateUser = async (email, password) => {
   try {
     const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+password');
-    
     if (!user) {
       return { success: false, error: 'USER_NOT_FOUND' };
     }
 
-    console.log('🔐 Tentando autenticar usuário:', user.email);
-
-    // Usar o método comparePassword do modelo User (que já tem fallback)
+    // método comparePassword do modelo já lida com bcrypt/crypto e lock
     const isPasswordValid = await user.comparePassword(password);
-    
+
     if (isPasswordValid) {
-      console.log('✅ Autenticação bem-sucedida');
       return { success: true, user };
     } else {
-      console.log('❌ Senha inválida');
       return { success: false, error: 'INVALID_CREDENTIALS' };
     }
-
   } catch (error) {
     console.error('❌ Erro na autenticação:', error);
     return { success: false, error: 'AUTH_ERROR' };
@@ -94,18 +88,14 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    console.log('👤 Criando novo usuário:', email);
-
-    // Criar usuário - O MODELO User vai automaticamente escolher o melhor método de hash
+    // Criar usuário (o pre-save do modelo faz o hash)
     const user = await User.create({
       name: name.trim(),
       email: email.toLowerCase().trim(),
-      password: password // O pre-save do modelo vai fazer o hash
+      password
+      // isAdmin permanece false por padrão; ajuste no banco se necessário
     });
 
-    console.log('✅ Usuário criado com sucesso');
-
-    // Gerar token
     const token = generateToken(user._id);
 
     res.status(201).json({
@@ -115,14 +105,14 @@ router.post('/register', async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
+        isAdmin: user.isAdmin,  // 👈 IMPORTANTE
         createdAt: user.createdAt
       },
-      token: token
+      token
     });
-
   } catch (error) {
     console.error('❌ ERRO NO REGISTRO:', error);
-    
+
     if (error.code === 11000) {
       return res.status(409).json({
         success: false,
@@ -152,9 +142,6 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    console.log(`🔐 Tentativa de login para: ${email}`);
-
-    // Usar sistema de autenticação robusto
     const authResult = await authenticateUser(email, password);
 
     if (!authResult.success) {
@@ -164,11 +151,8 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Login bem-sucedido
     const user = authResult.user;
     const token = generateToken(user._id);
-
-    console.log(`✅ Login bem-sucedido para: ${user.email}`);
 
     res.json({
       success: true,
@@ -177,11 +161,11 @@ router.post('/login', async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
+        isAdmin: user.isAdmin,  // 👈 IMPORTANTE
         createdAt: user.createdAt
       },
-      token: token
+      token
     });
-
   } catch (error) {
     console.error('❌ ERRO NO LOGIN:', error);
     res.status(500).json({
@@ -191,45 +175,52 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// 👑 ROTA TEMPORÁRIA: Tornar usuário admin
-router.post('/make-admin', async (req, res) => {
-    try {
-        const { email } = req.body;
-        
-        const user = await User.findOneAndUpdate(
-            { email: email.toLowerCase().trim() },
-            { $set: { isAdmin: true } },
-            { new: true }
-        );
-
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: 'Usuário não encontrado'
-            });
-        }
-
-        res.json({
-            success: true,
-            message: `Usuário ${user.name} agora é administrador!`,
-            user: user
-        });
-
-    } catch (error) {
-        console.error('Erro ao tornar admin:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Erro interno do servidor'
-        });
-    }
-});
 // ======================
-// 👤 OBTER DADOS DO USUÁRIO LOGADO
+// 👑 ROTA TEMPORÁRIA: Tornar usuário admin (opcional)
+// ======================
+router.post('/make-admin', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    const user = await User.findOneAndUpdate(
+      { email: email.toLowerCase().trim() },
+      { $set: { isAdmin: true } },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Usuário não encontrado'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Usuário ${user.name} agora é administrador!`,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        isAdmin: user.isAdmin
+      }
+    });
+  } catch (error) {
+    console.error('Erro ao tornar admin:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    });
+  }
+});
+
+// ======================
+// 👤 OBTER DADOS DO USUÁRIO LOGADO (/me)
 // ======================
 router.get('/me', protect, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
-    
+    const user = await User.findById(req.user._id); // req.user vem do middleware protect
+
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -243,10 +234,10 @@ router.get('/me', protect, async (req, res) => {
         _id: user._id,
         name: user.name,
         email: user.email,
+        isAdmin: user.isAdmin,   // 👈 IMPORTANTE
         createdAt: user.createdAt
       }
     });
-
   } catch (error) {
     console.error('❌ ERRO NO /ME:', error);
     res.status(500).json({
@@ -257,22 +248,23 @@ router.get('/me', protect, async (req, res) => {
 });
 
 // ======================
-// 🌐 ROTAS ADICIONAIS (manter as existentes)
+// 🌐 ROTAS ADICIONAIS (opcional / mantidas para compatibilidade)
 // ======================
-router.get('/profile', protect, async (req, res) => {
-  // ... código existente
-});
-
-router.put('/profile', protect, async (req, res) => {
-  // ... código existente  
-});
-
 router.get('/status', (req, res) => {
-  // ... código existente
+  res.json({
+    success: true,
+    message: '✅ Rotas de autenticação ativas',
+    timestamp: new Date().toISOString()
+  });
 });
 
 router.get('/test', protect, (req, res) => {
-  // ... código existente
+  res.json({
+    success: true,
+    message: '🔒 Acesso com token OK',
+    userId: req.user?._id || null,
+    timestamp: new Date().toISOString()
+  });
 });
 
 module.exports = router;
