@@ -1,7 +1,4 @@
 {
-  "build": {
-    "env": {
-      "NODE_VERSION": "22"
-    }
-  }
+  "functions": { "runtime": "nodejs22.x" },
+  "build": { "env": { "NODE_VERSION": "22" } }
 }
