@@ -1,80 +1,94 @@
+// js/myBets.js
 import { api } from './api.js';
-import { $, toast } from './ui.js';
 
-export async function loadMyBets(matchesCache){
-  const container = document.getElementById('user-bets-container');
-  container.innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin"></i> Carregando...</div>';
-  try{
-    const data = await api.myBets();
-    const bets = data.data;
-    if(!bets){ container.innerHTML = '<p>Você ainda não enviou seus palpites.</p>'; return; }
+const $container = () => document.getElementById('user-bets-container');
 
-    let html = `<div class="bet-card">
-      <h3><i class="fas fa-user"></i> Informações</h3>
-      <p><strong>Status:</strong> ${bets.hasSubmitted?'✅ Enviados':'⏳ Pendentes'}</p>
-      ${bets.firstSubmission? `<p><strong>Enviado em:</strong> ${new Date(bets.firstSubmission).toLocaleString('pt-BR')}</p>`:''}
-      <p><strong>Pontuação Total:</strong> <span class="points">${bets.totalPoints||0}</span></p>
-      <p><strong>Jogos:</strong> ${bets.groupPoints||0}</p>
-      <p><strong>Pódio:</strong> ${bets.podiumPoints||0}</p>
-    </div>`;
+export async function initMyBets() {
+  await loadMyBets();
+}
 
-    if(bets.groupMatches?.length){
-      html += `<div class="bet-card"><h3><i class="fas fa-futbol"></i> Palpites</h3>`;
-      const byGroup = {};
-      bets.groupMatches.forEach(b=>{
-        const m = matchesCache.find(mm=>mm.matchId===b.matchId);
-        if(m){
-          byGroup[m.group] = byGroup[m.group]||[];
-          byGroup[m.group].push({bet:b, match:m});
-        }
-      });
-      Object.keys(byGroup).sort().forEach(g=>{
-        html += `<h4 style="color:var(--primary);margin:12px 0;">${g}</h4>`;
-        byGroup[g].forEach(({bet,match})=>{
-          const correctOutcome = outcomeFromScore(match.scoreA, match.scoreB);
-          const userChoice = betToLabel(bet.bet, match);
-          const status = match.status==='finished'
-            ? (bet.bet===correctOutcome ? 'win':'lose')
-            : 'pending';
-          const color = status==='win'?'var(--success)':status==='lose'?'var(--danger)':'#666';
-          const statusText = status==='pending'?'⏰ Pendente':(status==='win'?'✓ Acertou':'✗ Errou');
-          html += `<div class="bet-item" style="border-left-color:${color}">
-            <div class="bet-header"><span><strong>${match.teamA} vs ${match.teamB}</strong></span><span style="color:${color}">${statusText}</span></div>
-            <p><strong>Seu palpite:</strong> ${userChoice}</p>
-          </div>`;
-        });
-      });
-      html += `</div>`;
-    }
-
-    if(bets.podium){
-      html += `<div class="bet-card">
-        <h3><i class="fas fa-trophy"></i> Pódio</h3>
-        <div class="podium-bet-item" style="background:linear-gradient(135deg,gold,#ffd700);color:#000;display:flex;justify-content:space-between;border-radius:6px;margin-bottom:8px;padding:8px 10px;">
-          <span><strong>🥇 1º:</strong></span><span>${bets.podium.first||'-'}</span>
-        </div>
-        <div class="podium-bet-item" style="background:linear-gradient(135deg,silver,#c0c0c0);color:#000;display:flex;justify-content:space-between;border-radius:6px;margin-bottom:8px;padding:8px 10px;">
-          <span><strong>🥈 2º:</strong></span><span>${bets.podium.second||'-'}</span>
-        </div>
-        <div class="podium-bet-item" style="background:linear-gradient(135deg,#cd7f32,#b08d57);color:#000;display:flex;justify-content:space-between;border-radius:6px;padding:8px 10px;">
-          <span><strong>🥉 3º:</strong></span><span>${bets.podium.third||'-'}</span>
-        </div>
-      </div>`;
-    }
-    container.innerHTML = html;
-  }catch(err){
-    container.innerHTML = `<p>Erro: ${err.message}</p>`;
+export async function loadMyBets() {
+  try {
+    const res = await api.get('/api/bets/my-bets');
+    if (!res.success) throw new Error(res.message || 'Erro');
+    renderMyBets(res.data);
+  } catch (e) {
+    console.error(e);
+    if ($container()) $container().innerHTML = '<p>Erro ao carregar seus palpites.</p>';
   }
 }
 
-function outcomeFromScore(a,b){
-  if(a==null||b==null) return null;
-  if(a>b) return 'A';
-  if(b>a) return 'B';
-  return 'D';
-}
-function betToLabel(code, match){
-  if(code==='A') return match.teamA;
-  if(code==='B') return match.teamB;
-  return 'Empate';
+function renderMyBets(bet) {
+  const el = $container();
+  if (!el) return;
+
+  if (!bet) {
+    el.innerHTML = '<p>Você ainda não enviou seus palpites.</p>';
+    return;
+  }
+
+  let html = `
+    <div class="bet-card">
+      <h3><i class="fas fa-user"></i> Informações dos Palpites</h3>
+      <p><strong>Status:</strong> ${bet.hasSubmitted ? '✅ Enviados' : '⏳ Pendentes'}</p>
+      ${bet.firstSubmission ? `<p><strong>Enviado em:</strong> ${new Date(bet.firstSubmission).toLocaleString('pt-BR')}</p>` : ''}
+      <p><strong>Pontuação Total:</strong> <span style="color: var(--primary); font-weight: bold;">${bet.totalPoints || 0} pontos</span></p>
+      <p><strong>Pontos dos Jogos:</strong> ${bet.groupPoints || 0} pontos</p>
+      <p><strong>Pontos do Pódio:</strong> ${bet.podiumPoints || 0} pontos</p>
+    </div>
+  `;
+
+  // jogos (mostrar nome do time escolhido ou "Empate")
+  if (Array.isArray(bet.groupMatches) && bet.groupMatches.length) {
+    html += `
+      <div class="bet-card">
+        <h3><i class="fas fa-futbol"></i> Palpites - Fase de Grupos</h3>
+    `;
+
+    // ordenar por group/matchId se vier info
+    const items = [...bet.groupMatches];
+
+    items.forEach(item => {
+      const chosenLabel = item.winner === 'A' ? (item.teamA || 'Time A')
+                         : item.winner === 'B' ? (item.teamB || 'Time B')
+                         : 'Empate';
+
+      // status finalizado => pinta win/lose
+      let pointsHTML = '';
+      let chipClass = 'pending';
+      if (item.status === 'finished') {
+        if ((item.points || 0) > 0) { chipClass = 'win'; pointsHTML = `<span style="color: var(--success); font-weight: 700;">+1 ponto</span>`; }
+        else { chipClass = 'lose'; pointsHTML = `<span style="color: var(--danger); font-weight: 700;">0 ponto</span>`; }
+      }
+
+      html += `
+        <div class="bet-item">
+          <div class="bet-header">
+            <span><strong>${item.matchName || `Jogo ${item.matchId}`}</strong></span>
+            <span>${item.status === 'finished' ? '✓ Finalizado' : '⏰ Pendente'}</span>
+          </div>
+          <p><strong>Seu palpite:</strong> <span class="chip ${chipClass}">${chosenLabel}</span></p>
+          ${item.status === 'finished' ? `<p><strong>Pontuação:</strong> ${pointsHTML}</p>` : ``}
+        </div>
+      `;
+    });
+
+    html += `</div>`;
+  }
+
+  // pódio
+  if (bet.podium) {
+    html += `
+      <div class="bet-card">
+        <h3><i class="fas fa-trophy"></i> Pódio</h3>
+        <div class="chips">
+          <span class="chip">🥇 ${bet.podium.first || '-'}</span>
+          <span class="chip">🥈 ${bet.podium.second || '-'}</span>
+          <span class="chip">🥉 ${bet.podium.third || '-'}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  el.innerHTML = html;
 }
