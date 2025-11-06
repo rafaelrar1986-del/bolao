@@ -482,5 +482,20 @@ function openFinishMatchModalIfNotOpen() {
   if (!modal) return toast('Modal de finalizar partida não encontrado', 'error');
   openModal('finish-match-modal');
 }
+// =============== RESETAR TODAS AS APOSTAS (ADMIN) ===============
+async function resetAllBets() {
+  if (!confirm('⚠️ ATENÇÃO:\nIsso irá APAGAR ou RESETAR TODOS os palpites.\nDeseja continuar?')) return;
+
+  try {
+    const res = await api.post('/api/bets/admin/reset-all');
+    if (!res.success) throw new Error(res.message || 'Erro ao resetar');
+
+    toast('Todas as apostas foram resetadas ✅', 'success');
+    await loadAdminMatches(); // atualiza contadores
+  } catch (err) {
+    console.error(err);
+    toast(err.message || 'Erro ao resetar apostas', 'error');
+  }
+}
 
 export { openAddMatchModal, openFinishMatchModal, openSetPodiumModal };
