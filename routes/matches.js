@@ -6,8 +6,18 @@ const Match = require('../models/Match');
 const Bet   = require('../models/Bet');
 const { protect, admin } = require('../middleware/auth');
 
+// ---- helper
+function calcWinner(a, b) {
+  const na = Number(a);
+  const nb = Number(b);
+  if (!Number.isFinite(na) || !Number.isFinite(nb)) return null;
+  if (na > nb) return 'A';
+  if (nb > na) return 'B';
+  return 'draw';
+}
+
 // ======================
-// GET /api/matches  (público) — lista partidas para o app
+// GET /api/matches  (público)
 // ======================
 router.get('/', async (req, res) => {
   try {
@@ -20,20 +30,18 @@ router.get('/', async (req, res) => {
 });
 
 // ======================
-// GET /api/matches/admin/all  (admin) — lista com info extra
+// GET /api/matches/admin/all  (admin)
 // ======================
 router.get('/admin/all', protect, admin, async (req, res) => {
   try {
     const matches = await Match.find().sort({ matchId: 1 }).lean();
 
-    // betsCount por partida (opcional)
     const betCounts = await Bet.aggregate([
       { $unwind: '$groupMatches' },
       { $group: { _id: '$groupMatches.matchId', count: { $sum: 1 } } },
     ]);
 
     const countMap = new Map(betCounts.map(b => [b._id, b.count]));
-
     const enriched = matches.map(m => ({
       ...m,
       betsCount: countMap.get(m.matchId) || 0,
@@ -47,7 +55,8 @@ router.get('/admin/all', protect, admin, async (req, res) => {
 });
 
 // ======================
-/* POST /api/matches/admin/add  (admin) — cria partida */
+// POST /api/matches/admin/add  (admin)
+// ======================
 router.post('/admin/add', protect, admin, async (req, res) => {
   try {
     const { matchId, teamA, teamB, date, time, group, stadium } = req.body;
@@ -56,19 +65,24 @@ router.post('/admin/add', protect, admin, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Campos obrigatórios ausentes' });
     }
 
-    const exists = await Match.findOne({ matchId });
+    const idNum = Number(matchId);
+    if (!Number.isFinite(idNum) || idNum <= 0) {
+      return res.status(400).json({ success: false, message: 'matchId inválido' });
+    }
+
+    const exists = await Match.findOne({ matchId: idNum });
     if (exists) {
       return res.status(409).json({ success: false, message: 'matchId já existe' });
     }
 
     const m = await Match.create({
-      matchId: Number(matchId),
-      teamA: teamA.trim(),
-      teamB: teamB.trim(),
-      date: date.trim(),
-      time: time.trim(),
-      group: group.trim(),
-      stadium: stadium ? stadium.trim() : undefined,
+      matchId: idNum,
+      teamA: String(teamA).trim(),
+      teamB: String(teamB).trim(),
+      date: String(date).trim(),
+      time: String(time).trim(),
+      group: String(group).trim(),
+      stadium: stadium ? String(stadium).trim() : undefined,
       status: 'scheduled',
       scoreA: undefined,
       scoreB: undefined,
@@ -82,19 +96,21 @@ router.post('/admin/add', protect, admin, async (req, res) => {
 });
 
 // ======================
-// PUT /api/matches/admin/edit/:matchId  (admin) — edita dados
-// (não recalcula pontos aqui; isso é feito em /finish)
+// PUT /api/matches/admin/edit/:matchId  (admin)
+// (não recalcula pontos aqui; /finish é quem define placar e pontos)
 // ======================
 router.put('/admin/edit/:matchId', protect, admin, async (req, res) => {
   try {
     const matchId = Number(req.params.matchId);
-    const updates = {};
+    if (!Number.isFinite(matchId)) {
+      return res.status(400).json({ success: false, message: 'matchId inválido' });
+    }
 
+    const updates = {};
     ['teamA','teamB','date','time','group','stadium','status','scoreA','scoreB'].forEach(k => {
       if (req.body[k] !== undefined) updates[k] = req.body[k];
     });
 
-    // Normalize
     if (updates.teamA) updates.teamA = String(updates.teamA).trim();
     if (updates.teamB) updates.teamB = String(updates.teamB).trim();
     if (updates.date)  updates.date  = String(updates.date).trim();
@@ -102,9 +118,20 @@ router.put('/admin/edit/:matchId', protect, admin, async (req, res) => {
     if (updates.group) updates.group = String(updates.group).trim();
     if (updates.stadium) updates.stadium = String(updates.stadium).trim();
 
-    // Não force status finished aqui — use a rota /finish para recalcular pontos
-    const match = await Match.findOneAndUpdate({ matchId }, { $set: updates }, { new: true });
+    // Se tentarem setar finished por aqui sem placar, bloqueia:
+    if (updates.status === 'finished' &&
+        (updates.scoreA === undefined || updates.scoreB === undefined)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Para finalizar, informe scoreA e scoreB — use a tela "Finalizar Partida".'
+      });
+    }
 
+    // Coerção de placar se vier
+    if (updates.scoreA !== undefined) updates.scoreA = Number(updates.scoreA);
+    if (updates.scoreB !== undefined) updates.scoreB = Number(updates.scoreB);
+
+    const match = await Match.findOneAndUpdate({ matchId }, { $set: updates }, { new: true });
     if (!match) {
       return res.status(404).json({ success: false, message: 'Partida não encontrada' });
     }
@@ -118,29 +145,24 @@ router.put('/admin/edit/:matchId', protect, admin, async (req, res) => {
 
 // ======================
 // POST /api/matches/admin/finish/:matchId  (admin)
-// - seta placar e status finished
+// - seta placar + status finished
 // - calcula vencedor 'A'|'B'|'draw'
-// - atualiza points = 1 se acertou winner; 0 senão
+// - marca 1 ponto para quem acertou winner
 // - recalcula groupPoints e totalPoints
 // ======================
 router.post('/admin/finish/:matchId', protect, admin, async (req, res) => {
   try {
     const matchId = Number(req.params.matchId);
-    const { scoreA, scoreB } = req.body;
+    const scoreA = Number(req.body.scoreA);
+    const scoreB = Number(req.body.scoreB);
 
-    if (Number.isNaN(matchId) || scoreA == null || scoreB == null) {
-      return res.status(400).json({ success: false, message: 'matchId, scoreA e scoreB são obrigatórios' });
+    if (!Number.isFinite(matchId) || !Number.isFinite(scoreA) || !Number.isFinite(scoreB)) {
+      return res.status(400).json({ success: false, message: 'matchId, scoreA e scoreB válidos são obrigatórios' });
     }
 
     const match = await Match.findOneAndUpdate(
       { matchId },
-      {
-        $set: {
-          scoreA: Number(scoreA),
-          scoreB: Number(scoreB),
-          status: 'finished',
-        },
-      },
+      { $set: { scoreA, scoreB, status: 'finished' } },
       { new: true }
     );
 
@@ -148,24 +170,21 @@ router.post('/admin/finish/:matchId', protect, admin, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Partida não encontrada' });
     }
 
-    let resultWinner = 'draw';
-    if (match.scoreA > match.scoreB) resultWinner = 'A';
-    else if (match.scoreB > match.scoreA) resultWinner = 'B';
+    const resultWinner = calcWinner(scoreA, scoreB); // 'A' | 'B' | 'draw'
 
-    // Atualiza todas as apostas que possuem esse matchId
+    // Atualiza apostas desse jogo
     const cursor = Bet.find({ 'groupMatches.matchId': matchId }).cursor();
     for await (const bet of cursor) {
-      // atualiza pontos do jogo
-      bet.groupMatches = bet.groupMatches.map(gm => {
+      bet.groupMatches = (bet.groupMatches || []).map(gm => {
         if (gm.matchId === matchId) {
           gm.points = (gm.winner === resultWinner) ? 1 : 0;
         }
         return gm;
       });
 
-      // recomputa totais
-      bet.groupPoints = bet.groupMatches.reduce((s, gm) => s + (gm.points || 0), 0);
+      bet.groupPoints = (bet.groupMatches || []).reduce((sum, gm) => sum + (gm.points || 0), 0);
       bet.totalPoints = (bet.groupPoints || 0) + (bet.podiumPoints || 0) + (bet.bonusPoints || 0);
+      bet.lastUpdate = new Date();
 
       await bet.save();
     }
@@ -188,13 +207,15 @@ router.post('/admin/finish/:matchId', protect, admin, async (req, res) => {
 
 // ======================
 // POST /api/matches/admin/unfinish/:matchId  (admin)
-// - volta status para 'scheduled'
-// - limpa scoreA/scoreB
+// - volta para 'scheduled', zera placar
 // - zera pontos desse jogo nas apostas e recalcula totais
 // ======================
 router.post('/admin/unfinish/:matchId', protect, admin, async (req, res) => {
   try {
     const matchId = Number(req.params.matchId);
+    if (!Number.isFinite(matchId)) {
+      return res.status(400).json({ success: false, message: 'matchId inválido' });
+    }
 
     const match = await Match.findOneAndUpdate(
       { matchId },
@@ -207,15 +228,14 @@ router.post('/admin/unfinish/:matchId', protect, admin, async (req, res) => {
 
     const cursor = Bet.find({ 'groupMatches.matchId': matchId }).cursor();
     for await (const bet of cursor) {
-      bet.groupMatches = bet.groupMatches.map(gm => {
-        if (gm.matchId === matchId) {
-          gm.points = 0;
-        }
+      bet.groupMatches = (bet.groupMatches || []).map(gm => {
+        if (gm.matchId === matchId) gm.points = 0;
         return gm;
       });
 
-      bet.groupPoints = bet.groupMatches.reduce((s, gm) => s + (gm.points || 0), 0);
+      bet.groupPoints = (bet.groupMatches || []).reduce((s, gm) => s + (gm.points || 0), 0);
       bet.totalPoints = (bet.groupPoints || 0) + (bet.podiumPoints || 0) + (bet.bonusPoints || 0);
+      bet.lastUpdate = new Date();
       await bet.save();
     }
 
@@ -234,6 +254,9 @@ router.post('/admin/unfinish/:matchId', protect, admin, async (req, res) => {
 router.delete('/admin/delete/:matchId', protect, admin, async (req, res) => {
   try {
     const matchId = Number(req.params.matchId);
+    if (!Number.isFinite(matchId)) {
+      return res.status(400).json({ success: false, message: 'matchId inválido' });
+    }
 
     const removed = await Match.findOneAndDelete({ matchId });
     if (!removed) {
@@ -242,9 +265,10 @@ router.delete('/admin/delete/:matchId', protect, admin, async (req, res) => {
 
     const cursor = Bet.find({ 'groupMatches.matchId': matchId }).cursor();
     for await (const bet of cursor) {
-      bet.groupMatches = bet.groupMatches.filter(gm => gm.matchId !== matchId);
-      bet.groupPoints = bet.groupMatches.reduce((s, gm) => s + (gm.points || 0), 0);
+      bet.groupMatches = (bet.groupMatches || []).filter(gm => gm.matchId !== matchId);
+      bet.groupPoints = (bet.groupMatches || []).reduce((s, gm) => s + (gm.points || 0), 0);
       bet.totalPoints = (bet.groupPoints || 0) + (bet.podiumPoints || 0) + (bet.bonusPoints || 0);
+      bet.lastUpdate = new Date();
       await bet.save();
     }
 
