@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bolão Copa do Mundo 2026</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="./css/styles.css" />
+</head>
+<body>
+  <header>
+    <div class="container">
+      <h1><i class="fas fa-futbol"></i> Bolão Copa do Mundo 2026</h1>
+      <p class="subtitle">Faça seus palpites e acompanhe o ranking em tempo real!</p>
+    </div>
+  </header>
+
+  <div class="container">
+    <!-- LOGIN -->
+    <section id="login-section" class="card login-card">
+      <h2>Entrar no Bolão</h2>
+      <form id="login-form" class="auth-form">
+        <div class="form-group">
+          <label for="login-email">Email</label>
+          <input type="email" id="login-email" placeholder="seu@email.com" required />
+        </div>
+        <div class="form-group">
+          <label for="login-password">Senha</label>
+          <input type="password" id="login-password" placeholder="••••••••" required minlength="6" />
+        </div>
+        <button type="submit" class="btn">Entrar</button>
+      </form>
+
+      <div class="auth-divider"><span>ou</span></div>
+
+      <form id="register-form" class="auth-form">
+        <h3>Criar conta</h3>
+        <div class="form-group">
+          <label for="register-name">Nome</label>
+          <input type="text" id="register-name" required minlength="2"/>
+        </div>
+        <div class="form-group">
+          <label for="register-email">Email</label>
+          <input type="email" id="register-email" required />
+        </div>
+        <div class="form-group">
+          <label for="register-password">Senha</label>
+          <input type="password" id="register-password" required minlength="6" />
+        </div>
+        <button type="submit" class="btn btn-success">Criar Conta</button>
+      </form>
+    </section>
+
+    <!-- APP -->
+    <section id="app-section" style="display:none;">
+      <div id="user-info" class="user-info">Carregando...</div>
+
+      <div class="tabs">
+        <button class="tab active" data-tab="bets">Fazer Palpites</button>
+        <button class="tab" data-tab="ranking">Ranking</button>
+        <button class="tab" data-tab="my-bets">Meus Palpites</button>
+        <button class="tab" data-tab="all-bets">Todos os Palpites</button>
+        <button class="tab" data-tab="admin" id="admin-tab" style="display:none;">Administração</button>
+        <button class="tab" data-tab="stats">Estatísticas</button>
+      </div>
+
+      <!-- BETS -->
+      <div id="bets" class="tab-content active">
+        <h2>Palpites - Fase de Grupos</h2>
+        <p>Selecione o vencedor ou empate (1 ponto por acerto).</p>
+
+        <div id="matches-container" class="matches-container">
+          <div class="loading"><i class="fas fa-spinner fa-spin"></i> Carregando jogos...</div>
+        </div>
+
+        <div class="podium-section">
+          <h2 class="podium-title">Palpite para o Pódio Final</h2>
+          <div class="podium-cards">
+            <div class="podium-card first">
+              <h3><i class="fas fa-trophy" style="color:gold;"></i> 1º Lugar</h3>
+              <p class="podium-points">(7 pontos)</p>
+              <select class="team-select" id="first-place"><option value="">Selecione...</option></select>
+            </div>
+            <div class="podium-card second">
+              <h3><i class="fas fa-medal" style="color:silver;"></i> 2º Lugar</h3>
+              <p class="podium-points">(4 pontos)</p>
+              <select class="team-select" id="second-place"><option value="">Selecione...</option></select>
+            </div>
+            <div class="podium-card third">
+              <h3><i class="fas fa-award" style="color:#cd7f32;"></i> 3º Lugar</h3>
+              <p class="podium-points">(2 pontos)</p>
+              <select class="team-select" id="third-place"><option value="">Selecione...</option></select>
+            </div>
+          </div>
+        </div>
+
+        <button id="save-bets" class="btn btn-success" style="margin-top:20px;"><i class="fas fa-save"></i> Salvar Palpites</button>
+        <div id="save-message"></div>
+      </div>
+
+      <!-- RANKING -->
+      <div id="ranking" class="tab-content">
+        <h2>Ranking</h2>
+        <table class="ranking-table">
+          <thead>
+            <tr>
+              <th>#</th><th>Participante</th><th>Pontos</th><th>Grupos</th><th>Pódio</th><th>Bônus</th>
+            </tr>
+          </thead>
+          <tbody id="ranking-body">
+            <tr><td colspan="6"><div class="loading"><i class="fas fa-spinner fa-spin"></i> Carregando...</div></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- MY BETS -->
+      <div id="my-bets" class="tab-content">
+        <h2>Meus Palpites</h2>
+        <div id="user-bets-container"><div class="loading"><i class="fas fa-spinner fa-spin"></i> Carregando...</div></div>
+      </div>
+
+      <!-- ALL BETS -->
+      <div id="all-bets" class="tab-content">
+        <h2>Todos os Palpites</h2>
+
+        <div class="filters card">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="filter-search">Buscar por nome</label>
+              <input id="filter-search" placeholder="Ex.: Rafael" />
+            </div>
+            <div class="form-group">
+              <label for="filter-match">Partida</label>
+              <select id="filter-match"><option value="">Todas</option></select>
+            </div>
+            <div class="form-group">
+              <label for="filter-group">Grupo</label>
+              <input id="filter-group" placeholder="Ex.: Grupo A" />
+            </div>
+            <div class="form-group">
+              <label for="filter-sort">Ordenar por</label>
+              <select id="filter-sort">
+                <option value="user">Usuário</option>
+                <option value="points">Pontos</option>
+                <option value="date">Data</option>
+              </select>
+            </div>
+          </div>
+          <div class="filters-actions">
+            <button id="btn-search" class="btn btn-info"><i class="fas fa-search"></i> Buscar</button>
+            <button id="btn-clear" class="btn btn-warning"><i class="fas fa-broom"></i> Limpar Filtros</button>
+          </div>
+        </div>
+
+        <div id="all-bets-container"></div>
+        <div class="pagination" id="all-bets-pagination"></div>
+      </div>
+
+      <!-- ADMIN -->
+      <div id="admin" class="tab-content">
+        <h2><i class="fas fa-crown"></i> Administração</h2>
+
+        <div class="admin-actions">
+          <button class="btn btn-info" id="btn-open-add-modal"><i class="fas fa-plus"></i> Adicionar Partida</button>
+          <button class="btn btn-warning" id="btn-open-finish-modal"><i class="fas fa-whistle"></i> Finalizar Partida</button>
+          <button class="btn btn-success" id="btn-open-podium-modal"><i class="fas fa-trophy"></i> Definir Pódio</button>
+          <button class="btn btn-info" id="btn-recalc"><i class="fas fa-calculator"></i> Recalcular Pontos</button>
+          <button class="btn btn-warning" id="btn-integrity"><i class="fas fa-shield-alt"></i> Verificar Integridade</button>
+        </div>
+
+        <div class="bet-card">
+          <h3><i class="fas fa-list"></i> Todas as Partidas</h3>
+          <div id="admin-matches-list"><div class="loading"><i class="fas fa-spinner fa-spin"></i> Carregando partidas...</div></div>
+        </div>
+      </div>
+
+      <!-- STATS -->
+      <div id="stats" class="tab-content">
+        <h2><i class="fas fa-chart-bar"></i> Estatísticas</h2>
+        <div id="stats-container"><div class="loading"><i class="fas fa-spinner fa-spin"></i> Carregando...</div></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Modals dynamic in JS -->
+  <div id="global-messages"></div>
+
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
