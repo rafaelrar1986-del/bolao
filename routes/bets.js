@@ -5,187 +5,196 @@ const User = require('../models/User');
 const { protect, admin } = require('../middleware/auth');
 const router = express.Router();
 
-/**
- * Função auxiliar para determinar vencedor real
- */
-function getWinner(scoreA, scoreB) {
-  if (scoreA > scoreB) return 'teamA';
-  if (scoreB > scoreA) return 'teamB';
-  return 'draw';
-}
-
-/**
- * Função auxiliar para converter aposta "A", "B" ou "D" para nome
- */
-function betLabel(match, bet) {
-  if (!match) return bet;
-  if (bet === 'A') return match.teamA;
-  if (bet === 'B') return match.teamB;
-  return 'Empate';
-}
-
-/**
- * Cálculo de pontos simplificado:
- *  • Acertou o vencedor/empate → 1 ponto
- *  • Pódio: 7 / 4 / 2
- */
-function calculatePointsForBet(bet, match) {
-  if (!match || match.status !== 'finished') return 0;
-  const realWinner = getWinner(match.scoreA, match.scoreB);
-  return bet.pick === realWinner ? 1 : 0;
-}
+// ======================
+// 🌐 ROTA RAIZ - INFO
+// ======================
+router.get('/', (req, res) => {
+  res.json({
+    success: true,
+    message: '🏆 API de Palpites do Bolão 2026',
+    version: '1.0.0'
+  });
+});
 
 // ======================
-// GET - MINHAS APOSTAS
+// 🎯 BUSCAR MEUS PALPITES
 // ======================
 router.get('/my-bets', protect, async (req, res) => {
   try {
-    const betDoc = await Bet.findOne({ user: req.user._id }).lean();
-    if (!betDoc) {
-      return res.json({ success: true, hasSubmitted: false, data: null });
-    }
+    const bet = await Bet.findOne({ user: req.user._id }).lean();
 
     const matches = await Match.find().lean();
 
-    const bets = betDoc.groupMatches.map(b => {
-      const match = matches.find(m => m.matchId === b.matchId);
+    if (!bet) {
+      return res.json({
+        success: true,
+        data: null,
+        hasSubmitted: false
+      });
+    }
+
+    // Enriquecer com nomes dos times
+    bet.groupMatches = bet.groupMatches.map(b => {
+      const m = matches.find(x => x.matchId === b.matchId);
       return {
-        matchId: b.matchId,
-        teamA: match?.teamA,
-        teamB: match?.teamB,
-        pick: betLabel(match, b.pick),
-        correct: match?.status === 'finished' ? calculatePointsForBet(b, match) > 0 : null
+        ...b,
+        matchName: m ? `${m.teamA} vs ${m.teamB}` : `Jogo ${b.matchId}`,
+        teamA: m?.teamA,
+        teamB: m?.teamB,
+        status: m?.status
       };
     });
 
-    res.json({
+    return res.json({
       success: true,
-      hasSubmitted: betDoc.hasSubmitted,
-      podium: betDoc.podium,
-      bets
+      data: bet,
+      hasSubmitted: bet.hasSubmitted
     });
-  } catch (error) {
-    console.error(error);
+  } catch (e) {
+    console.log(e);
     res.status(500).json({ success: false });
   }
 });
 
 // ======================
-// POST - Enviar Palpites
+// 💾 SALVAR PALPITES
 // ======================
 router.post('/save', protect, async (req, res) => {
   try {
     const { groupMatches, podium } = req.body;
 
-    let betDoc = await Bet.findOne({ user: req.user._id });
-    if (betDoc && betDoc.hasSubmitted) {
-      return res.status(409).json({ success: false, message: "Palpites já enviados" });
+    if (!groupMatches || !podium) {
+      return res.status(400).json({ success: false, message: 'Dados incompletos' });
     }
 
-    if (!betDoc) betDoc = new Bet({ user: req.user._id });
+    let bet = await Bet.findOne({ user: req.user._id });
 
-    betDoc.groupMatches = Object.entries(groupMatches).map(([matchId, pick]) => ({
-      matchId: Number(matchId),
-      pick
-    }));
+    if (bet && bet.hasSubmitted) {
+      return res.status(409).json({
+        success: false,
+        message: 'Você já enviou seus palpites.'
+      });
+    }
 
-    betDoc.podium = podium;
-    betDoc.hasSubmitted = true;
-    await betDoc.save();
+    const now = new Date();
 
-    res.json({ success: true, message: "Palpites enviados!" });
-  } catch (error) {
-    console.error(error);
+    if (!bet) bet = new Bet({ user: req.user._id });
+    
+    bet.groupMatches = Object.keys(groupMatches).map(matchId => {
+      const choice = groupMatches[matchId];
+      return {
+        matchId: Number(matchId),
+        winner: choice, // 'A', 'B' ou 'draw'
+        points: 0
+      };
+    });
+
+    bet.podium = {
+      first: podium.first,
+      second: podium.second,
+      third: podium.third
+    };
+
+    bet.hasSubmitted = true;
+    bet.firstSubmission = now;
+    bet.lastUpdate = now;
+
+    await bet.save();
+
+    return res.json({ success: true, message: 'Palpites enviados!' });
+
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success: false, message: 'Erro ao salvar palpites' });
+  }
+});
+
+// ======================
+// 🏆 LEADERBOARD
+// ======================
+router.get('/leaderboard', protect, async (req, res) => {
+  try {
+    const bets = await Bet.find({ hasSubmitted: true })
+      .populate('user', 'name')
+      .sort({ totalPoints: -1 });
+
+    res.json({ success: true, data: bets });
+  } catch (e) {
     res.status(500).json({ success: false });
   }
 });
 
 // ======================
-// GET - TODOS OS PALPITES (FILTROS)
+// 👁️ VER TODOS OS PALPITES (com filtros)
 // ======================
 router.get('/all-bets', protect, async (req, res) => {
   try {
     const { search, matchId } = req.query;
 
     let query = { hasSubmitted: true };
-    let usersFilter = [];
 
     if (search) {
-      usersFilter = await User.find({ name: { $regex: search, $options: 'i' } }).select('_id');
-      query.user = { $in: usersFilter.map(u => u._id) };
+      const users = await User.find({
+        name: new RegExp(search, 'i')
+      }).select('_id');
+
+      query.user = { $in: users.map(u => u._id) };
     }
 
-    const bets = await Bet.find(query).populate('user', 'name').lean();
+    if (matchId) {
+      query['groupMatches.matchId'] = Number(matchId);
+    }
+
+    const bets = await Bet.find(query)
+      .populate('user', 'name')
+      .lean();
+
     const matches = await Match.find().lean();
 
-    // Organiza por usuário
-    const formatted = bets.map(b => {
-      const picks = b.groupMatches.map(g => {
-        const match = matches.find(m => m.matchId === g.matchId);
-        const correct = match?.status === 'finished' ? (getWinner(match.scoreA, match.scoreB) === g.pick) : null;
+    const formatted = bets.map(b => ({
+      userName: b.user.name,
+      podium: b.podium,
+      totalPoints: b.totalPoints,
+      bets: b.groupMatches.map(g => {
+        const m = matches.find(x => x.matchId === g.matchId);
         return {
           matchId: g.matchId,
-          label: match ? `${match.teamA} vs ${match.teamB}` : g.matchId,
-          pick: betLabel(match, g.pick),
-          correct
+          choice: g.winner,
+          matchName: m ? `${m.teamA} vs ${m.teamB}` : '',
+          teamA: m?.teamA,
+          teamB: m?.teamB,
+          status: m?.status
         };
-      });
+      })
+    }));
 
-      return {
-        userId: b.user._id,
-        userName: b.user.name,
-        picks
-      };
-    });
+    res.json({ success: true, data: formatted });
 
-    // Caso matchId enviado → filtrar apenas aquele jogo
-    if (matchId) {
-      formatted.forEach(u => {
-        u.picks = u.picks.filter(p => p.matchId === Number(matchId));
-      });
-    }
-
-    res.json({
-      success: true,
-      data: formatted
-    });
-
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Erro ao carregar apostas' });
   }
 });
 
 // ======================
-// GET - Listar usuários para filtro
-// ======================
-router.get('/users-for-filter', protect, async (req, res) => {
-  const list = await User.find().select('_id name').sort('name');
-  res.json({ success: true, data: list });
-});
-
-// ======================
-// GET - Listar Partidas para filtro
-// ======================
-router.get('/matches-for-filter', protect, async (req, res) => {
-  const list = await Match.find().select('matchId teamA teamB').sort('matchId');
-  res.json({ success: true, data: list });
-});
-
-// ======================
-// 🔥 ADMIN - RESETAR TODAS APOSTAS
+// 🔥 ADMIN: RESETAR TODAS AS APOSTAS (APAGA TUDO)
 // ======================
 router.post('/admin/reset-all', protect, admin, async (req, res) => {
   try {
     const result = await Bet.deleteMany({});
-    res.json({
+
+    return res.json({
       success: true,
-      message: "✅ Todas as apostas foram resetadas.",
-      deleted: result.deletedCount
+      message: `Apostas resetadas com sucesso.`,
+      deletedCount: result.deletedCount,
+      timestamp: new Date().toISOString()
     });
+
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false });
+    console.error('❌ ERRO AO RESETAR APOSTAS:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro ao resetar apostas'
+    });
   }
 });
 
