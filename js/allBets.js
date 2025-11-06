@@ -2,136 +2,194 @@
 import { api } from './api.js';
 import { toast } from './ui.js';
 
-const AB_STATE = {
-  all: [],
-  page: 1,
-  pageSize: 5
-};
-
 const $container = () => document.getElementById('all-bets-container');
 const $pagination = () => document.getElementById('all-bets-pagination');
 
-export async function initAllBets() {
-  await preloadFilters();
-  bindFilterButtons();
-  await fetchAndRender(); // lista inicial
+const AB_STATE = {
+  list: [],
+  page: 1,
+  pageSize: 5,
+  search: '',
+  matchId: '',
+  group: '',
+  sortBy: 'user'
+};
+
+function computeWinnerFromScore(a, b) {
+  const A = Number(a), B = Number(b);
+  if (!Number.isFinite(A) || !Number.isFinite(B)) return null;
+  if (A > B) return 'A';
+  if (B > A) return 'B';
+  return 'draw';
 }
 
-function bindFilterButtons() {
-  document.getElementById('btn-search')?.addEventListener('click', async () => {
+function winnerLabel(match, winnerCode) {
+  if (!winnerCode) return '-';
+  if (winnerCode === 'draw') return 'Empate';
+  if (winnerCode === 'A') return match?.teamA || 'Time A';
+  if (winnerCode === 'B') return match?.teamB || 'Time B';
+  return '-';
+}
+
+export async function initAllBets() {
+  // filtros
+  document.getElementById('btn-search')?.addEventListener('click', () => {
+    AB_STATE.search = document.getElementById('filter-search').value.trim();
+    AB_STATE.matchId = document.getElementById('filter-match').value;
+    AB_STATE.group = document.getElementById('filter-group').value.trim();
+    AB_STATE.sortBy = document.getElementById('filter-sort').value;
     AB_STATE.page = 1;
-    await fetchAndRender();
+    loadAllBets();
   });
-  document.getElementById('btn-clear')?.addEventListener('click', async () => {
+  document.getElementById('btn-clear')?.addEventListener('click', () => {
     document.getElementById('filter-search').value = '';
     document.getElementById('filter-match').value = '';
     document.getElementById('filter-group').value = '';
     document.getElementById('filter-sort').value = 'user';
+    AB_STATE.search = '';
+    AB_STATE.matchId = '';
+    AB_STATE.group = '';
+    AB_STATE.sortBy = 'user';
     AB_STATE.page = 1;
-    await fetchAndRender();
+    loadAllBets();
   });
-}
 
-async function preloadFilters() {
+  // combos de partida/usuário (seus endpoints já existem)
   try {
-    const res = await api.get('/api/bets/matches-for-filter');
-    if (res.success) {
-      const sel = document.getElementById('filter-match');
-      if (sel) {
-        sel.innerHTML = '<option value="">Todas</option>';
-        (res.data || []).forEach(m => {
-          const opt = document.createElement('option');
-          opt.value = m.matchId;
-          opt.textContent = `${m.matchId} • ${m.teamA} vs ${m.teamB} (${m.group})`;
-          sel.appendChild(opt);
-        });
-      }
-    }
-  } catch (_) {}
-}
+    const [matchesRes] = await Promise.all([
+      api.get('/api/bets/matches-for-filter'),
+    ]);
 
-async function fetchAndRender() {
-  try {
-    const search = document.getElementById('filter-search').value.trim();
-    const matchId = document.getElementById('filter-match').value;
-    const group = document.getElementById('filter-group').value.trim();
-    const sortBy = document.getElementById('filter-sort').value;
-
-    const qs = new URLSearchParams();
-    if (search) qs.set('search', search);
-    if (matchId) qs.set('matchId', matchId);
-    if (group) qs.set('group', group);
-    if (sortBy) qs.set('sortBy', sortBy);
-
-    const res = await api.get(`/api/bets/all-bets?${qs.toString()}`);
-    if (!res.success) throw new Error(res.message || 'Erro');
-    AB_STATE.all = res.data || [];
-    renderPage();
+    const matchSel = document.getElementById('filter-match');
+    matchSel.innerHTML = `<option value="">Todas</option>`;
+    (matchesRes?.data || []).forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.matchId;
+      opt.textContent = `${m.matchId} - ${m.teamA} vs ${m.teamB}`;
+      matchSel.appendChild(opt);
+    });
   } catch (e) {
-    console.error(e);
-    if ($container()) $container().innerHTML = '<p>Erro ao buscar apostas</p>';
+    console.warn('Falha ao preencher filtros auxiliares', e);
+  }
+
+  loadAllBets();
+}
+
+export async function loadAllBets() {
+  if ($container()) {
+    $container().innerHTML = `<div class="loading"><i class="fas fa-spinner fa-spin"></i> Carregando...</div>`;
+  }
+
+  try {
+    const params = new URLSearchParams();
+    if (AB_STATE.search) params.set('search', AB_STATE.search);
+    if (AB_STATE.matchId) params.set('matchId', AB_STATE.matchId);
+    if (AB_STATE.group) params.set('group', AB_STATE.group);
+    if (AB_STATE.sortBy) params.set('sortBy', AB_STATE.sortBy);
+
+    const res = await api.get(`/api/bets/all-bets?${params.toString()}`);
+    if (!res.success) throw new Error(res.message || 'Erro');
+
+    // Espera-se data: [{ userName, podium, totalPoints, groupMatches:[ {matchId, teamA, teamB, status, scoreA?, scoreB?, winner, points } ] }]
+    const raw = res.data || [];
+
+    // Se matchId foi usado, manter SOMENTE o palpite dessa partida por usuário (UX pedido).
+    let list = raw.map(u => {
+      const arr = (u.groupMatches || u.bets || u.group_matches || u.matches || []);
+      let filtered = arr;
+      if (AB_STATE.matchId) {
+        filtered = arr.filter(g => String(g.matchId) === String(AB_STATE.matchId));
+      }
+      return {
+        userName: u.userName,
+        totalPoints: u.totalPoints || 0,
+        groupMatches: filtered
+      };
+    });
+
+    // paginação
+    AB_STATE.list = list;
+    renderAllBets();
+  } catch (err) {
+    console.error(err);
+    if ($container()) $container().innerHTML = `<p>Erro ao carregar palpites.</p>`;
+    toast('Erro ao carregar "Todos os Palpites"', 'error');
   }
 }
 
-function renderPage() {
-  const el = $container();
-  if (!el) return;
+function renderAllBets() {
+  const root = $container();
+  if (!root) return;
+
+  const total = AB_STATE.list.length;
+  const pages = Math.max(1, Math.ceil(total / AB_STATE.pageSize));
+  AB_STATE.page = Math.min(AB_STATE.page, pages);
 
   const start = (AB_STATE.page - 1) * AB_STATE.pageSize;
   const end = start + AB_STATE.pageSize;
-  const pageItems = AB_STATE.all.slice(start, end);
+  const slice = AB_STATE.list.slice(start, end);
 
-  if (!pageItems.length) {
-    el.innerHTML = '<p>Nenhum resultado para os filtros aplicados.</p>';
+  if (!slice.length) {
+    root.innerHTML = `<p>Nenhum palpite encontrado.</p>`;
     $pagination().innerHTML = '';
     return;
   }
 
-  el.innerHTML = pageItems.map(userBlock).join('');
-  renderPagination();
-}
-
-function userBlock(entry) {
-  // entry.bets[] tem { matchId, choice(A/B/draw), matchName, teamA, teamB, status, points? }
-  const chips = entry.bets.map(b => {
-    const label = b.choice === 'A' ? (b.teamA || 'Time A')
-                : b.choice === 'B' ? (b.teamB || 'Time B')
-                : 'Empate';
-    let cls = 'pending';
-    if (b.status === 'finished') {
-      cls = (b.points || 0) > 0 ? 'win' : 'lose';
-    }
-    return `<span class="chip ${cls}">${b.matchName || `Jogo ${b.matchId}`} • <strong>${label}</strong></span>`;
-  }).join('');
-
-  return `
-    <div class="user-bets-compact">
-      <div class="user-bets-header">
-        <div><strong>${entry.userName}</strong></div>
-        <div><strong>${entry.totalPoints || 0}</strong> pts</div>
-      </div>
-      <div class="chips">${chips}</div>
-    </div>
-  `;
-}
-
-function renderPagination() {
-  const el = $pagination();
-  if (!el) return;
-
-  const totalPages = Math.ceil(AB_STATE.all.length / AB_STATE.pageSize);
-  if (totalPages <= 1) { el.innerHTML = ''; return; }
-
   let html = '';
-  for (let p = 1; p <= totalPages; p++) {
-    html += `<button class="page-btn ${p === AB_STATE.page ? 'active' : ''}" data-p="${p}">${p}</button>`;
-  }
-  el.innerHTML = html;
+  slice.forEach(u => {
+    const chips = (u.groupMatches || []).map(g => {
+      const userChoice = g.winner || g.choice; // backend pode retornar winner
+      const label = winnerLabel(g, userChoice);
 
-  el.querySelectorAll('.page-btn').forEach(btn => {
+      let cls = 'pending';
+      let resultText = 'Pendente';
+      if (g.status === 'finished') {
+        if (g.scoreA !== undefined && g.scoreB !== undefined) {
+          const resW = computeWinnerFromScore(g.scoreA, g.scoreB);
+          cls = (resW === userChoice) ? 'win' : 'lose';
+          resultText = (resW === userChoice) ? 'Acertou' : 'Errou';
+        } else {
+          // fallback caso sem placar enriquecido
+          cls = (g.points === 1) ? 'win' : 'lose';
+          resultText = (g.points === 1) ? 'Acertou' : 'Errou';
+        }
+      }
+
+      return `
+        <span class="chip ${cls}">
+          ${g.matchName || `${g.teamA} vs ${g.teamB}`} • Seu palpite: <strong>${label}</strong> • ${resultText}
+        </span>
+      `;
+    }).join('');
+
+    html += `
+      <div class="user-bets-compact">
+        <div class="user-bets-header">
+          <div>
+            <strong>${u.userName}</strong>
+          </div>
+          <div>Pontos: <strong>${u.totalPoints || 0}</strong></div>
+        </div>
+        <div class="chips">
+          ${chips || '<span class="chip pending">Sem palpites para este filtro</span>'}
+        </div>
+      </div>
+    `;
+  });
+
+  root.innerHTML = html;
+
+  // paginação
+  const pagesCount = Math.max(1, Math.ceil(total / AB_STATE.pageSize));
+  let pHtml = '';
+  for (let i = 1; i <= pagesCount; i++) {
+    pHtml += `<button class="page-btn ${i === AB_STATE.page ? 'active' : ''}" data-p="${i}">${i}</button>`;
+  }
+  $pagination().innerHTML = pHtml;
+  $pagination().querySelectorAll('button').forEach(btn => {
     btn.addEventListener('click', () => {
       AB_STATE.page = Number(btn.dataset.p);
-      renderPage();
+      renderAllBets();
     });
   });
 }
