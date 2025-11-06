@@ -76,17 +76,17 @@
         <div class="podium-section">
           <h2 class="podium-title">Palpite para o Pódio Final</h2>
           <div class="podium-cards">
-            <div class="podium-card first">
+            <div class="podium-card first card">
               <h3><i class="fas fa-trophy" style="color:gold;"></i> 1º Lugar</h3>
               <p class="podium-points">(7 pontos)</p>
               <select class="team-select" id="first-place"><option value="">Selecione...</option></select>
             </div>
-            <div class="podium-card second">
+            <div class="podium-card second card">
               <h3><i class="fas fa-medal" style="color:silver;"></i> 2º Lugar</h3>
               <p class="podium-points">(4 pontos)</p>
               <select class="team-select" id="second-place"><option value="">Selecione...</option></select>
             </div>
-            <div class="podium-card third">
+            <div class="podium-card third card">
               <h3><i class="fas fa-award" style="color:#cd7f32;"></i> 3º Lugar</h3>
               <p class="podium-points">(2 pontos)</p>
               <select class="team-select" id="third-place"><option value="">Selecione...</option></select>
@@ -160,16 +160,15 @@
       <div id="admin" class="tab-content">
         <h2><i class="fas fa-crown"></i> Administração</h2>
 
-        <div class="admin-actions">
+        <div class="admin-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
           <button class="btn btn-info" id="btn-open-add-modal"><i class="fas fa-plus"></i> Adicionar Partida</button>
           <button class="btn btn-warning" id="btn-open-finish-modal"><i class="fas fa-whistle"></i> Finalizar Partida</button>
           <button class="btn btn-success" id="btn-open-podium-modal"><i class="fas fa-trophy"></i> Definir Pódio</button>
           <button class="btn btn-info" id="btn-recalc"><i class="fas fa-calculator"></i> Recalcular Pontos</button>
           <button class="btn btn-warning" id="btn-integrity"><i class="fas fa-shield-alt"></i> Verificar Integridade</button>
-           <button class="btn btn-danger" onclick="resetAllBets()">
-  🔥 Resetar Todas as Apostas (Admin)
-</button>
-
+          <button class="btn btn-danger" onclick="resetAllBets()">
+            🔥 Resetar Todas as Apostas (Admin)
+          </button>
         </div>
 
         <div class="bet-card">
@@ -186,9 +185,129 @@
     </section>
   </div>
 
-  <!-- Modals dynamic in JS -->
+  <!-- ============ MODAIS (necessários para admin.js) ============ -->
+
+  <!-- Adicionar Partida -->
+  <div id="add-match-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title">Adicionar Nova Partida</h3>
+        <button class="close-modal" onclick="closeModal('add-match-modal')">&times;</button>
+      </div>
+      <form id="add-match-form">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="match-id">ID da Partida</label>
+            <input type="number" id="match-id" required min="1">
+          </div>
+          <div class="form-group">
+            <label for="match-group">Grupo</label>
+            <input type="text" id="match-group" required>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="team-a">Time A</label>
+            <input type="text" id="team-a" required>
+          </div>
+          <div class="form-group">
+            <label for="team-b">Time B</label>
+            <input type="text" id="team-b" required>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="match-date">Data (DD/MM/AAAA)</label>
+            <input type="text" id="match-date" placeholder="DD/MM/AAAA" required pattern="\d{2}/\d{2}/\d{4}">
+          </div>
+          <div class="form-group">
+            <label for="match-time">Horário (HH:MM)</label>
+            <input type="text" id="match-time" placeholder="HH:MM" required pattern="\d{2}:\d{2}">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="match-stadium">Estádio</label>
+          <input type="text" id="match-stadium">
+        </div>
+        <div class="form-row" style="gap:8px; margin-top:8px;">
+          <button type="submit" class="btn btn-success"><i class="fas fa-save"></i> Adicionar Partida</button>
+          <button type="button" class="btn btn-danger" onclick="closeModal('add-match-modal')"><i class="fas fa-times"></i> Cancelar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Finalizar Partida -->
+  <div id="finish-match-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title">Finalizar Partida</h3>
+        <button class="close-modal" onclick="closeModal('finish-match-modal')">&times;</button>
+      </div>
+      <div class="form-group">
+        <label for="finish-match-select">Selecionar Partida</label>
+        <select id="finish-match-select" onchange="loadMatchDetails()">
+          <option value="">Selecione uma partida</option>
+        </select>
+      </div>
+
+      <div id="match-details" style="display:none;">
+        <h4 id="selected-match-name"></h4>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="score-a">Placar Time A</label>
+            <input type="number" id="score-a" min="0" max="50" required>
+          </div>
+          <div class="form-group">
+            <label for="score-b">Placar Time B</label>
+            <input type="number" id="score-b" min="0" max="50" required>
+          </div>
+        </div>
+        <div class="form-row" style="gap:8px; margin-top:8px;">
+          <button class="btn btn-success" onclick="finishMatch()"><i class="fas fa-check"></i> Finalizar</button>
+          <button class="btn btn-danger" onclick="closeModal('finish-match-modal')"><i class="fas fa-times"></i> Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Definir Pódio -->
+  <div id="set-podium-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title">Definir Pódio Final</h3>
+        <button class="close-modal" onclick="closeModal('set-podium-modal')">&times;</button>
+      </div>
+      <p>Defina as posições finais:</p>
+      <div class="form-group">
+        <label for="podium-first">🥇 1º Lugar (7 pts)</label>
+        <select id="podium-first" required>
+          <option value="">Selecione...</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="podium-second">🥈 2º Lugar (4 pts)</label>
+        <select id="podium-second" required>
+          <option value="">Selecione...</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="podium-third">🥉 3º Lugar (2 pts)</label>
+        <select id="podium-third" required>
+          <option value="">Selecione...</option>
+        </select>
+      </div>
+      <div class="form-row" style="gap:8px; margin-top:8px;">
+        <button class="btn btn-success" onclick="setPodium()"><i class="fas fa-trophy"></i> Definir Pódio</button>
+        <button class="btn btn-danger" onclick="closeModal('set-podium-modal')"><i class="fas fa-times"></i> Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mensagens globais -->
   <div id="global-messages"></div>
 
+  <!-- JS -->
   <script type="module" src="./js/app.js"></script>
 </body>
 </html>
