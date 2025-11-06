@@ -1,149 +1,73 @@
+// routes/points.js
 const express = require('express');
-const PointsService = require('../services/pointsService');
-const { protect, admin } = require('../middleware/auth');
 const router = express.Router();
 
+const { protect, admin } = require('../middleware/auth');
+const {
+  recalcGroupPointsFromFinishedMatches,
+  processPodiumForAllBets,
+  integrityOverview,
+} = require('../services/pointsService');
+
 // ======================
-// 🎯 ROTAS DE PONTUAÇÃO
+// POST /api/points/recalculate-all  (admin)
+// Recalcula APENAS os pontos de JOGOS (fase de grupos) com base nas partidas finalizadas.
+// Mantém podiumPoints intocados. totalPoints é refeito = group + podium + bonus.
 // ======================
-
-// 🔥 PROCESSAR PONTOS DE UMA PARTIDA
-router.post('/process-match/:matchId', protect, admin, async (req, res) => {
-  try {
-    const matchId = parseInt(req.params.matchId);
-    
-    const result = await PointsService.processMatchPoints(matchId);
-    
-    res.json({
-      success: true,
-      message: `Pontos processados para partida ${matchId}`,
-      ...result
-    });
-  } catch (error) {
-    console.error('❌ Erro ao processar pontos:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erro ao processar pontos',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
-  }
-});
-
-// 🏅 PROCESSAR PÓDIO FINAL
-router.post('/process-podium', protect, admin, async (req, res) => {
-  try {
-    const { first, second, third } = req.body;
-    
-    const result = await PointsService.processPodiumPoints({ first, second, third });
-    
-    res.json({
-      success: true,
-      message: 'Pódio processado e pontos calculados!',
-      ...result
-    });
-  } catch (error) {
-    console.error('❌ Erro ao processar pódio:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erro ao processar pódio',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
-  }
-});
-
-// 🔄 RECALCULAR TODOS OS PONTOS
 router.post('/recalculate-all', protect, admin, async (req, res) => {
   try {
-    const result = await PointsService.recalculateAllPoints();
-    
+    const updated = await recalcGroupPointsFromFinishedMatches();
     res.json({
       success: true,
-      message: 'Todos os pontos recalculados!',
-      ...result
+      message: `Pontos de jogos recalculados para ${updated} apostas.`,
+      updatedCount: updated,
+      timestamp: new Date().toISOString(),
     });
-  } catch (error) {
-    console.error('❌ Erro ao recalcular pontos:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erro ao recalcular pontos',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
+  } catch (err) {
+    console.error('Erro em /recalculate-all:', err);
+    res.status(500).json({ success: false, message: 'Erro ao recalcular pontos' });
   }
 });
 
-// 📈 ESTATÍSTICAS DE PONTUAÇÃO
-router.get('/stats', protect, async (req, res) => {
+// ======================
+// POST /api/points/process-podium  (admin)
+// Recebe { first, second, third } = pódio final real
+// Aplica a regra 7/4/2 e atualiza podiumPoints + totalPoints para todos.
+// ======================
+router.post('/process-podium', protect, admin, async (req, res) => {
   try {
-    const stats = await PointsService.getPointsStatistics();
-    
+    const { first, second, third } = req.body || {};
+    if (!first || !second || !third) {
+      return res.status(400).json({ success: false, message: 'Informe first, second e third' });
+    }
+
+    const updated = await processPodiumForAllBets({ first, second, third });
+
     res.json({
       success: true,
-      data: stats
+      message: `Pódio processado. ${updated} apostas atualizadas (7/4/2).`,
+      updatedCount: updated,
+      podium: { first, second, third },
+      timestamp: new Date().toISOString(),
     });
-  } catch (error) {
-    console.error('❌ Erro ao buscar estatísticas:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erro ao carregar estatísticas'
-    });
+  } catch (err) {
+    console.error('Erro em /process-podium:', err);
+    res.status(500).json({ success: false, message: 'Erro ao processar pódio' });
   }
 });
 
-// 🎮 SIMULAR PONTUAÇÃO
-router.post('/simulate', protect, admin, async (req, res) => {
-  try {
-    const scenario = req.body;
-    
-    const result = await PointsService.simulatePoints(scenario);
-    
-    res.json({
-      success: true,
-      message: 'Simulação concluída',
-      ...result
-    });
-  } catch (error) {
-    console.error('❌ Erro na simulação:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erro na simulação'
-    });
-  }
-});
-
-// 🔧 VERIFICAR INTEGRIDADE (Admin)
+// ======================
+// GET /api/points/integrity-check  (admin)
+// Resumo simples de integridade
+// ======================
 router.get('/integrity-check', protect, admin, async (req, res) => {
   try {
-    const report = await PointsService.checkDataIntegrity();
-    
-    res.json({
-      success: true,
-      data: report
-    });
-  } catch (error) {
-    console.error('❌ Erro na verificação:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erro na verificação de integridade'
-    });
+    const info = await integrityOverview();
+    res.json({ success: true, data: info });
+  } catch (err) {
+    console.error('Erro em /integrity-check:', err);
+    res.status(500).json({ success: false, message: 'Erro ao verificar integridade' });
   }
-});
-
-// 🌐 ROTA DE STATUS
-router.get('/status', (req, res) => {
-  res.json({
-    success: true,
-    message: '🎯 Serviço de Pontuação funcionando!',
-    version: '1.0.0',
-    endpoints: [
-      'POST /api/points/process-match/:matchId',
-      'POST /api/points/process-podium',
-      'POST /api/points/recalculate-all',
-      'GET  /api/points/stats',
-      'POST /api/points/simulate',
-      'GET  /api/points/integrity-check',
-      'GET  /api/points/status'
-    ]
-  });
 });
 
 module.exports = router;
