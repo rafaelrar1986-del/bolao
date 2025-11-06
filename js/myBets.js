@@ -1,94 +1,94 @@
 // js/myBets.js
 import { api } from './api.js';
+import { toast } from './ui.js';
 
 const $container = () => document.getElementById('user-bets-container');
 
-export async function initMyBets() {
-  await loadMyBets();
+function computeWinnerFromScore(a, b) {
+  const A = Number(a), B = Number(b);
+  if (!Number.isFinite(A) || !Number.isFinite(B)) return null;
+  if (A > B) return 'A';
+  if (B > A) return 'B';
+  return 'draw';
+}
+
+function winnerLabel(match, winnerCode) {
+  if (!winnerCode) return '-';
+  if (winnerCode === 'draw') return 'Empate';
+  if (winnerCode === 'A') return match?.teamA || 'Time A';
+  if (winnerCode === 'B') return match?.teamB || 'Time B';
+  return '-';
 }
 
 export async function loadMyBets() {
+  if (!$container()) return;
+  $container().innerHTML = `<div class="loading"><i class="fas fa-spinner fa-spin"></i> Carregando...</div>`;
+
   try {
     const res = await api.get('/api/bets/my-bets');
     if (!res.success) throw new Error(res.message || 'Erro');
-    renderMyBets(res.data);
-  } catch (e) {
-    console.error(e);
-    if ($container()) $container().innerHTML = '<p>Erro ao carregar seus palpites.</p>';
-  }
-}
 
-function renderMyBets(bet) {
-  const el = $container();
-  if (!el) return;
+    if (!res.data) {
+      $container().innerHTML = `<p>Você ainda não enviou seus palpites.</p>`;
+      return;
+    }
 
-  if (!bet) {
-    el.innerHTML = '<p>Você ainda não enviou seus palpites.</p>';
-    return;
-  }
+    const bets = res.data.groupMatches || [];
+    if (!bets.length) {
+      $container().innerHTML = `<p>Nenhum palpite encontrado.</p>`;
+      return;
+    }
 
-  let html = `
-    <div class="bet-card">
-      <h3><i class="fas fa-user"></i> Informações dos Palpites</h3>
-      <p><strong>Status:</strong> ${bet.hasSubmitted ? '✅ Enviados' : '⏳ Pendentes'}</p>
-      ${bet.firstSubmission ? `<p><strong>Enviado em:</strong> ${new Date(bet.firstSubmission).toLocaleString('pt-BR')}</p>` : ''}
-      <p><strong>Pontuação Total:</strong> <span style="color: var(--primary); font-weight: bold;">${bet.totalPoints || 0} pontos</span></p>
-      <p><strong>Pontos dos Jogos:</strong> ${bet.groupPoints || 0} pontos</p>
-      <p><strong>Pontos do Pódio:</strong> ${bet.podiumPoints || 0} pontos</p>
-    </div>
-  `;
+    // render
+    let html = '';
+    bets
+      .sort((a, b) => a.matchId - b.matchId)
+      .forEach(b => {
+        // b: { matchId, winner, points, matchName, teamA, teamB, status, scoreA?, scoreB? (pode vir se você povoar no backend) }
+        const match = {
+          teamA: b.teamA,
+          teamB: b.teamB,
+          status: b.status,
+          scoreA: b.scoreA,
+          scoreB: b.scoreB,
+          matchName: b.matchName
+        };
 
-  // jogos (mostrar nome do time escolhido ou "Empate")
-  if (Array.isArray(bet.groupMatches) && bet.groupMatches.length) {
-    html += `
-      <div class="bet-card">
-        <h3><i class="fas fa-futbol"></i> Palpites - Fase de Grupos</h3>
-    `;
+        const userChoice = b.winner;                   // 'A' | 'B' | 'draw'
+        const userChoiceLabel = winnerLabel(match, userChoice);
 
-    // ordenar por group/matchId se vier info
-    const items = [...bet.groupMatches];
+        let chipClass = 'pending';
+        let resultLabel = 'Aguardando';
+        if (match.status === 'finished' && b.scoreA !== undefined && b.scoreB !== undefined) {
+          const resultWinner = computeWinnerFromScore(b.scoreA, b.scoreB);
+          resultLabel = winnerLabel(match, resultWinner);
+          chipClass = resultWinner === userChoice ? 'win' : 'lose';
+        } else if (match.status === 'finished' && (b.scoreA === undefined || b.scoreB === undefined)) {
+          // caso backend não inclua o placar no enrich; apenas marca como finished, sem calcular acerto/erro
+          chipClass = (b.points === 1) ? 'win' : 'lose';
+          resultLabel = (b.points === 1) ? 'Acertou' : 'Errou';
+        }
 
-    items.forEach(item => {
-      const chosenLabel = item.winner === 'A' ? (item.teamA || 'Time A')
-                         : item.winner === 'B' ? (item.teamB || 'Time B')
-                         : 'Empate';
-
-      // status finalizado => pinta win/lose
-      let pointsHTML = '';
-      let chipClass = 'pending';
-      if (item.status === 'finished') {
-        if ((item.points || 0) > 0) { chipClass = 'win'; pointsHTML = `<span style="color: var(--success); font-weight: 700;">+1 ponto</span>`; }
-        else { chipClass = 'lose'; pointsHTML = `<span style="color: var(--danger); font-weight: 700;">0 ponto</span>`; }
-      }
-
-      html += `
-        <div class="bet-item">
-          <div class="bet-header">
-            <span><strong>${item.matchName || `Jogo ${item.matchId}`}</strong></span>
-            <span>${item.status === 'finished' ? '✓ Finalizado' : '⏰ Pendente'}</span>
+        html += `
+          <div class="bet-item">
+            <div class="bet-header">
+              <span>${match.matchName || `Jogo ${b.matchId}`}</span>
+              <span>Palpite: <strong>${userChoiceLabel}</strong></span>
+            </div>
+            <div class="chips">
+              <span class="chip ${chipClass}">
+                ${match.status === 'finished' ? `Resultado: ${resultLabel}` : 'Pendente'}
+              </span>
+              <span class="chip">Pontos: ${Number(b.points || 0)}</span>
+            </div>
           </div>
-          <p><strong>Seu palpite:</strong> <span class="chip ${chipClass}">${chosenLabel}</span></p>
-          ${item.status === 'finished' ? `<p><strong>Pontuação:</strong> ${pointsHTML}</p>` : ``}
-        </div>
-      `;
-    });
+        `;
+      });
 
-    html += `</div>`;
+    $container().innerHTML = `<div class="bet-card">${html}</div>`;
+  } catch (err) {
+    console.error(err);
+    $container().innerHTML = `<p>Erro ao carregar seus palpites.</p>`;
+    toast('Erro ao carregar Meus Palpites', 'error');
   }
-
-  // pódio
-  if (bet.podium) {
-    html += `
-      <div class="bet-card">
-        <h3><i class="fas fa-trophy"></i> Pódio</h3>
-        <div class="chips">
-          <span class="chip">🥇 ${bet.podium.first || '-'}</span>
-          <span class="chip">🥈 ${bet.podium.second || '-'}</span>
-          <span class="chip">🥉 ${bet.podium.third || '-'}</span>
-        </div>
-      </div>
-    `;
-  }
-
-  el.innerHTML = html;
 }
