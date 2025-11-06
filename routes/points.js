@@ -1,71 +1,67 @@
 // routes/points.js
 const express = require('express');
 const router = express.Router();
-
 const { protect, admin } = require('../middleware/auth');
-const {
-  recalcGroupPointsFromFinishedMatches,
-  processPodiumForAllBets,
-  integrityOverview,
-} = require('../services/pointsService');
+const PointsService = require('../services/pointsService');
+const Bet = require('../models/Bet');
+const Match = require('../models/Match');
 
-// ======================
-// POST /api/points/recalculate-all  (admin)
-// Recalcula APENAS os pontos de JOGOS (fase de grupos) com base nas partidas finalizadas.
-// Mantém podiumPoints intocados. totalPoints é refeito = group + podium + bonus.
-// ======================
-router.post('/recalculate-all', protect, admin, async (req, res) => {
-  try {
-    const updated = await recalcGroupPointsFromFinishedMatches();
-    res.json({
-      success: true,
-      message: `Pontos de jogos recalculados para ${updated} apostas.`,
-      updatedCount: updated,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (err) {
-    console.error('Erro em /recalculate-all:', err);
-    res.status(500).json({ success: false, message: 'Erro ao recalcular pontos' });
-  }
-});
-
-// ======================
-// POST /api/points/process-podium  (admin)
-// Recebe { first, second, third } = pódio final real
-// Aplica a regra 7/4/2 e atualiza podiumPoints + totalPoints para todos.
-// ======================
+// ============== Definir pódio (admin) ==============
 router.post('/process-podium', protect, admin, async (req, res) => {
   try {
     const { first, second, third } = req.body || {};
     if (!first || !second || !third) {
-      return res.status(400).json({ success: false, message: 'Informe first, second e third' });
+      return res.status(400).json({ success: false, message: 'first, second e third são obrigatórios' });
     }
 
-    const updated = await processPodiumForAllBets({ first, second, third });
-
-    res.json({
+    const result = await PointsService.setPodium({ first, second, third });
+    return res.json({
       success: true,
-      message: `Pódio processado. ${updated} apostas atualizadas (7/4/2).`,
-      updatedCount: updated,
-      podium: { first, second, third },
-      timestamp: new Date().toISOString(),
+      message: 'Pódio definido e pontos recalculados',
+      updated: result.updated
     });
   } catch (err) {
-    console.error('Erro em /process-podium:', err);
+    console.error('❌ process-podium:', err);
     res.status(500).json({ success: false, message: 'Erro ao processar pódio' });
   }
 });
 
-// ======================
-// GET /api/points/integrity-check  (admin)
-// Resumo simples de integridade
-// ======================
+// ============== Recalcular todos os pontos (admin) ==============
+router.post('/recalculate-all', protect, admin, async (req, res) => {
+  try {
+    const result = await PointsService.recalculateAllPoints();
+    return res.json({
+      success: true,
+      message: `Pontos recalculados`,
+      updated: result.updated
+    });
+  } catch (err) {
+    console.error('❌ recalculate-all:', err);
+    res.status(500).json({ success: false, message: 'Erro ao recalcular pontos' });
+  }
+});
+
+// ============== Checagem de integridade (admin) ==============
 router.get('/integrity-check', protect, admin, async (req, res) => {
   try {
-    const info = await integrityOverview();
-    res.json({ success: true, data: info });
+    const betsCount = await Bet.countDocuments({});
+    const finishedMatches = await Match.countDocuments({ status: 'finished' });
+    const scheduledMatches = await Match.countDocuments({ status: 'scheduled' });
+    const inProgressMatches = await Match.countDocuments({ status: 'in_progress' });
+
+    return res.json({
+      success: true,
+      data: {
+        betsCount,
+        matches: {
+          finished: finishedMatches,
+          scheduled: scheduledMatches,
+          in_progress: inProgressMatches
+        }
+      }
+    });
   } catch (err) {
-    console.error('Erro em /integrity-check:', err);
+    console.error('❌ integrity-check:', err);
     res.status(500).json({ success: false, message: 'Erro ao verificar integridade' });
   }
 });
