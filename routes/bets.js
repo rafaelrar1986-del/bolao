@@ -3,7 +3,7 @@ const Bet = require('../models/Bet');
 const Match = require('../models/Match');
 const User = require('../models/User');
 const { protect } = require('../middleware/auth');
-
+const { protect, admin } = require('../middleware/auth');
 const router = express.Router();
 
 // -------------------------
