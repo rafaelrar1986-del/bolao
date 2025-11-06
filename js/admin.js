@@ -1,5 +1,5 @@
 // js/admin.js
-// Admin panel: listar, adicionar, editar, finalizar, reabrir e excluir partidas + utilitários
+// Admin: listar, adicionar, editar, finalizar, reabrir e excluir partidas + utilitários
 
 import { api } from './api.js';
 import { toast, openModal, closeModal } from './ui.js';
@@ -14,13 +14,7 @@ const AdminState = {
 
 // =============== BOOTSTRAP ===============
 export function initAdmin() {
-  // Esses botões costumam existir na aba Administração:
-  // - Adicionar Partida: openAddMatchModal()
-  // - Finalizar Partida (modal): openFinishMatchModal()
-  // - Definir Pódio: openSetPodiumModal()
-  // - Recalcular Pontos: recalculateAllPoints()
-  // - Verificar Integridade: checkDataIntegrity()
-  // As funções estão globais no window para serem chamadas pelos botões declarados no HTML.
+  // Expor handlers globais usados pelos botões presentes no HTML
   window.openAddMatchModal = openAddMatchModal;
   window.openFinishMatchModal = openFinishMatchModal;
   window.openSetPodiumModal = openSetPodiumModal;
@@ -30,7 +24,6 @@ export function initAdmin() {
   window.finishMatch = finishMatch;
 
   window.editMatch = editMatch;
-  window.deleteMatch = adminDeleteMatchForce;
   window.adminUnfinishMatch = adminUnfinishMatch;
   window.adminDeleteMatchForce = adminDeleteMatchForce;
 
@@ -38,7 +31,7 @@ export function initAdmin() {
   window.checkDataIntegrity = checkDataIntegrity;
   window.setPodium = setPodium;
 
-  // Carregar lista
+  // Carregar lista inicial
   loadAdminMatches();
 }
 
@@ -345,7 +338,7 @@ async function handleEditMatch(e) {
     status: document.getElementById('edit-match-status').value,
   };
 
-  // Só envia placar se tiver valor numérico e se status finished (ou se usuário quiser persistir)
+  // Só envia placar se informado
   const scoreAInput = document.getElementById('edit-score-a').value;
   const scoreBInput = document.getElementById('edit-score-b').value;
 
@@ -372,38 +365,61 @@ async function handleEditMatch(e) {
   }
 }
 
-// =============== REABRIR (UNFINISH) ===============
+// =============== REABRIR (UNFINISH) com fallback ===============
 async function adminUnfinishMatch(matchId) {
   if (!confirm('Reabrir esta partida? Isso limpará o placar e zerará os pontos deste jogo para todos os palpites.')) return;
 
   try {
-    const res = await api.post(`/api/matches/admin/unfinish/${matchId}`);
-    if (!res.success) throw new Error(res.message || 'Erro ao reabrir');
+    // 1) Tenta endpoint dedicado (se existir no backend)
+    let res = await api.post(`/api/matches/admin/unfinish/${matchId}`);
+    if (!res.success) throw new Error(res.message || 'Falha no unfinish dedicado');
 
     toast('Partida reaberta e pontos zerados do jogo', 'success');
-    closeModal('edit-match-modal'); // caso estivesse aberto
-    await loadAdminMatches();
-  } catch (err) {
-    console.error(err);
-    toast(err.message || 'Erro ao reabrir partida', 'error');
+  } catch (e1) {
+    // 2) Fallback usando /admin/edit + recálculo global
+    try {
+      await api.put(`/api/matches/admin/edit/${matchId}`, {
+        status: 'scheduled',
+        scoreA: null,
+        scoreB: null,
+      });
+      await api.post('/api/points/recalculate-all', {});
+      toast('Partida reaberta (fallback) e pontos recalculados', 'success');
+    } catch (e2) {
+      console.error(e2);
+      return toast(e2.message || 'Erro ao reabrir partida (fallback)', 'error');
+    }
   }
+
+  closeModal('edit-match-modal');
+  await loadAdminMatches();
 }
 
-// =============== EXCLUIR (FORCE) ===============
+// =============== EXCLUIR (FORCE) com fallback ===============
 async function adminDeleteMatchForce(matchId) {
   if (!confirm('Excluir DEFINITIVAMENTE a partida?\nOs pontos deste jogo serão zerados e a partida será removida.')) return;
 
   try {
-    const res = await api.del(`/api/matches/admin/delete/${matchId}?force=1`);
-    if (!res.success) throw new Error(res.message || 'Erro ao excluir');
-
+    // 1) Tenta endpoint com "force" (se existir no backend)
+    let res = await api.del(`/api/matches/admin/delete/${matchId}?force=1`);
+    if (!res.success) throw new Error(res.message || 'Falha no delete force');
     toast('Partida excluída', 'success');
-    closeModal('edit-match-modal'); // caso estivesse aberto
-    await loadAdminMatches();
-  } catch (err) {
-    console.error(err);
-    toast(err.message || 'Erro ao excluir partida', 'error');
+  } catch (e1) {
+    // 2) Fallback: tenta deletar normal
+    try {
+      const res2 = await api.del(`/api/matches/admin/delete/${matchId}`);
+      if (!res2.success) {
+        throw new Error(res2.message || 'Backend recusou exclusão (provável: há palpites associados).');
+      }
+      toast('Partida excluída (sem force)', 'success');
+    } catch (e2) {
+      console.error(e2);
+      return toast(e2.message || 'Erro ao excluir partida (fallback)', 'error');
+    }
   }
+
+  closeModal('edit-match-modal');
+  await loadAdminMatches();
 }
 
 // =============== PODIUM / REBUILD / INTEGRITY ===============
