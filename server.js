@@ -121,7 +121,6 @@ mongoose.connection.on('reconnected', () => {
 // ROTAS
 // ======================
 
-// Rotas simples
 app.get('/', (req, res) => {
   res.json({
     message: '🚀 Backend do Bolão da Copa funcionando!',
@@ -135,6 +134,8 @@ app.get('/', (req, res) => {
         'https://bolao-gamma.vercel.app',
         '*.vercel.app',
         '*.netlify.app',
+        'https://bolao5.pages.dev',   // ✅ ADICIONA AQUI TAMBÉM
+        '*.pages.dev',                // ✅ OPCIONAL: PERMITIR QUALQUER SUBDOMÍNIO pages.dev
         'localhost:3000',
         'localhost:5173'
       ]
@@ -218,7 +219,9 @@ app.use((error, req, res, next) => {
         'https://bolao-d2zh.vercel.app',
         'https://bolao-gamma.vercel.app',
         '*.vercel.app',
-        '*.netlify.app'
+        '*.netlify.app',
+        'https://bolao5.pages.dev',   // ✅ ADICIONA AQUI TAMBÉM
+        '*.pages.dev'                // ✅ OPCIONAL: PERMITIR QUALQUER SUBDOMÍNIO pages.dev
       ]
     });
   }
@@ -286,12 +289,15 @@ const server = app.listen(PORT, () => {
   console.log(`📊 MongoDB State: ${mongoose.connection.readyState === 1 ? '✅ Conectado' : '❌ Desconectado'}`);
   console.log(`🌐 Ambiente: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🕒 Iniciado em: ${new Date().toLocaleString('pt-BR')}`);
-  console.log('🌍 Domínios permitidos:');
+   console.log('🌍 Domínios permitidos:');
   console.log('   ✅ https://bolao-d2zh.vercel.app');
   console.log('   ✅ https://bolao-gamma.vercel.app');
+  console.log('   ✅ https://bolao5.pages.dev');         // ✅ NOVO
   console.log('   ✅ *.vercel.app');
   console.log('   ✅ *.netlify.app');
+  console.log('   ✅ *.pages.dev');                     // ✅ OPCIONAL
   console.log('   ✅ localhost:3000, 5173, 8000, 8080');
+
   console.log('='.repeat(50));
 });
 
