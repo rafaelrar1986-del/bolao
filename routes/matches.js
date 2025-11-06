@@ -4,97 +4,58 @@ const Bet = require('../models/Bet');
 const { protect, admin } = require('../middleware/auth');
 const router = express.Router();
 
-// =============== Helpers internos ===============
-
-async function recomputeBetTotals(betDoc) {
-  // Recalcula groupPoints e totalPoints a partir dos items
-  const groupPoints = (betDoc.groupMatches || []).reduce((sum, gm) => sum + (gm.points || 0), 0);
-  betDoc.groupPoints = groupPoints;
-  betDoc.totalPoints = (betDoc.podiumPoints || 0) + (betDoc.bonusPoints || 0) + groupPoints;
-  await betDoc.save();
-}
-
-async function zeroPointsForMatchAcrossBets(matchId) {
-  // Zera pontos do jogo em todos os bets e recalcula totais
-  const bets = await Bet.find({ 'groupMatches.matchId': matchId, hasSubmitted: true });
-  for (const bet of bets) {
-    let changed = false;
-    for (const gm of bet.groupMatches) {
-      if (gm.matchId === matchId) {
-        if (gm.points && gm.points !== 0) {
-          gm.points = 0;
-          changed = true;
-        }
-      }
-    }
-    if (changed) {
-      await recomputeBetTotals(bet);
-    }
-  }
-  // Atualiza ranking global, se existir método
-  if (typeof Bet.updateRanking === 'function') {
-    await Bet.updateRanking();
-  }
-}
-
-async function processMatchResults(match) {
-  // Processa pontos para uma partida finalizada (reuso do seu fluxo)
-  const matchId = match.matchId;
-  const bets = await Bet.find({
-    'groupMatches.matchId': matchId,
-    hasSubmitted: true,
-  }).populate('user', 'name');
-
-  for (const bet of bets) {
-    // Se o modelo tem método granular, use:
-    if (typeof bet.calculatePointsForMatch === 'function') {
-      await bet.calculatePointsForMatch(matchId, match);
-      await recomputeBetTotals(bet);
-    } else if (typeof bet.calculatePoints === 'function') {
-      // Fallback: recalcular passando apenas esse match
-      await bet.calculatePoints([match]);
-      await recomputeBetTotals(bet);
-    }
-  }
-
-  if (typeof Bet.updateRanking === 'function') {
-    await Bet.updateRanking();
-  }
-}
-
-// =============== Rotas públicas ===============
-
+// ======================
 // 📋 LISTAR TODOS OS JOGOS
+// ======================
 router.get('/', async (req, res) => {
   try {
     const matches = await Match.find().sort({ date: 1, time: 1, matchId: 1 });
-    res.json({ success: true, count: matches.length, data: matches, timestamp: new Date().toISOString() });
+    res.json({
+      success: true,
+      count: matches.length,
+      data: matches,
+      timestamp: new Date().toISOString()
+    });
   } catch (error) {
     console.error('❌ Erro ao buscar jogos:', error);
-    res.status(500).json({ success: false, message: 'Erro ao carregar lista de jogos' });
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao carregar lista de jogos'
+    });
   }
 });
 
-// 🔍 BUSCAR JOGO POR ID (matchId numérico ou _id)
+// ======================
+// 🔍 BUSCAR JOGO POR ID (matchId numérico ou _id do Mongo)
+// ======================
 router.get('/:id', async (req, res) => {
   try {
     const id = req.params.id;
     let match;
-    if (/^\d+$/.test(id)) match = await Match.findOne({ matchId: parseInt(id) });
-    else match = await Match.findById(id);
 
-    if (!match) return res.status(404).json({ success: false, message: 'Jogo não encontrado' });
+    if (/^\d+$/.test(id)) {
+      match = await Match.findOne({ matchId: parseInt(id, 10) });
+    } else {
+      match = await Match.findById(id);
+    }
+
+    if (!match) {
+      return res.status(404).json({ success: false, message: 'Jogo não encontrado' });
+    }
+
     res.json({ success: true, data: match });
   } catch (error) {
     console.error('❌ Erro ao buscar jogo:', error);
     if (error.name === 'CastError') {
-      return res.status(400).json({ success: false, message: 'ID do jogo inválido' });
+      return res.status(400).json({ success: false, message: 'ID inválido' });
     }
     res.status(500).json({ success: false, message: 'Erro ao buscar jogo' });
   }
 });
 
+// ======================
 // 📊 ESTATÍSTICAS DOS JOGOS
+// ======================
 router.get('/stats/summary', async (req, res) => {
   try {
     const total = await Match.countDocuments();
@@ -102,25 +63,33 @@ router.get('/stats/summary', async (req, res) => {
     const inProgress = await Match.countDocuments({ status: 'in_progress' });
     const finished = await Match.countDocuments({ status: 'finished' });
 
-    const nextMatches = await Match.find({ status: 'scheduled' })
+    const nextMatches = await Match.find({ status: { $in: ['scheduled', 'in_progress'] } })
       .sort({ date: 1, time: 1 })
       .limit(5)
-      .select('matchId teamA teamB date time group');
+      .select('matchId teamA teamB date time group status');
 
-    res.json({ success: true, data: { total, scheduled, inProgress, finished, nextMatches } });
+    res.json({
+      success: true,
+      data: { total, scheduled, inProgress, finished, nextMatches }
+    });
   } catch (error) {
     console.error('❌ Erro ao buscar estatísticas:', error);
     res.status(500).json({ success: false, message: 'Erro ao carregar estatísticas' });
   }
 });
 
+// ======================
 // 📅 PRÓXIMOS JOGOS
+// ======================
 router.get('/upcoming/next', async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 5;
-    const upcoming = await Match.find({ $or: [{ status: 'scheduled' }, { status: 'in_progress' }] })
+    const limit = parseInt(req.query.limit, 10) || 5;
+    const upcoming = await Match.find({
+      status: { $in: ['scheduled', 'in_progress'] }
+    })
       .sort({ date: 1, time: 1 })
       .limit(limit);
+
     res.json({ success: true, count: upcoming.length, data: upcoming });
   } catch (error) {
     console.error('❌ Erro ao buscar próximos jogos:', error);
@@ -128,11 +97,16 @@ router.get('/upcoming/next', async (req, res) => {
   }
 });
 
+// ======================
 // 📍 JOGOS POR GRUPO
+// ======================
 router.get('/group/:groupName', async (req, res) => {
   try {
     const groupName = req.params.groupName;
-    const matches = await Match.find({ group: new RegExp(groupName, 'i') }).sort({ date: 1, time: 1 });
+    const matches = await Match.find({
+      group: new RegExp(groupName, 'i')
+    }).sort({ date: 1, time: 1 });
+
     res.json({ success: true, group: groupName, count: matches.length, data: matches });
   } catch (error) {
     console.error('❌ Erro ao buscar jogos por grupo:', error);
@@ -140,42 +114,97 @@ router.get('/group/:groupName', async (req, res) => {
   }
 });
 
-// =============== Admin ===============
-
-// 🎯 INICIALIZAR (dev/prod com guard)
+// ======================
+// 🎯 INICIALIZAR JOGOS (APENAS ADMIN/DESENVOLVIMENTO)
+// ======================
 router.post('/initialize', protect, admin, async (req, res) => {
   try {
     const existing = await Match.countDocuments();
     if (existing > 0 && process.env.NODE_ENV === 'production') {
-      return res.status(400).json({ success: false, message: 'Jogos já inicializados (produção).' });
+      return res.status(400).json({
+        success: false,
+        message: 'Jogos já inicializados. Use reset apenas em desenvolvimento.'
+      });
     }
 
-    // ... (mantenha seus matches de seed aqui)
-    const initialMatches = []; // coloque seus seeds se quiser
+    // Exemplo minimalista — ajuste sua lista conforme quiser
+    const initialMatches = [
+      { matchId: 1, teamA: 'Brasil', teamB: 'Croácia', date: '13/06/2026', time: '16:00', group: 'Grupo A', stadium: 'Maracanã', status: 'scheduled' },
+      { matchId: 2, teamA: 'Alemanha', teamB: 'Japão', date: '14/06/2026', time: '13:00', group: 'Grupo A', stadium: 'Allianz Arena', status: 'scheduled' },
+      { matchId: 3, teamA: 'Argentina', teamB: 'Holanda', date: '14/06/2026', time: '16:00', group: 'Grupo B', stadium: 'La Bombonera', status: 'scheduled' }
+    ];
 
     if (existing > 0) await Match.deleteMany({});
+
     const created = await Match.insertMany(initialMatches);
-    res.json({ success: true, message: `${created.length} jogos inicializados`, count: created.length, data: created });
+    res.json({
+      success: true,
+      message: `${created.length} jogos inicializados`,
+      count: created.length,
+      data: created
+    });
   } catch (error) {
     console.error('❌ Erro ao inicializar jogos:', error);
     res.status(500).json({ success: false, message: 'Erro ao inicializar jogos' });
   }
 });
 
-// 👑 ADICIONAR PARTIDA
+// ======================
+// 🔄 RESETAR JOGOS (APENAS DESENVOLVIMENTO)
+// ======================
+router.delete('/reset', protect, admin, async (req, res) => {
+  try {
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(403).json({ success: false, message: 'Reset não permitido em produção' });
+    }
+    const deleted = await Match.deleteMany({});
+    res.json({
+      success: true,
+      message: `${deleted.deletedCount} jogos removidos`,
+      count: deleted.deletedCount
+    });
+  } catch (error) {
+    console.error('❌ Erro ao resetar jogos:', error);
+    res.status(500).json({ success: false, message: 'Erro ao resetar jogos' });
+  }
+});
+
+// ======================
+// 👑 ADMIN - LISTAR TODAS AS PARTIDAS (com contagem de palpites)
+// ======================
+router.get('/admin/all', protect, admin, async (req, res) => {
+  try {
+    const matches = await Match.find().sort({ matchId: 1 });
+
+    const withStats = await Promise.all(
+      matches.map(async (m) => {
+        const betsCount = await Bet.countDocuments({ 'groupMatches.matchId': m.matchId });
+        const obj = m.toObject();
+        return { ...obj, betsCount, hasBets: betsCount > 0, matchName: `${m.teamA} vs ${m.teamB}` };
+    }));
+
+    res.json({ success: true, count: withStats.length, data: withStats });
+  } catch (error) {
+    console.error('❌ Erro ao listar partidas admin:', error);
+    res.status(500).json({ success: false, message: 'Erro ao listar partidas' });
+  }
+});
+
+// ======================
+// 👑 ADMIN - ADICIONAR PARTIDA
+// ======================
 router.post('/admin/add', protect, admin, async (req, res) => {
   try {
-    const { matchId, teamA, teamB, date, time, group, stadium = 'A definir' } = req.body;
+    const { matchId, teamA, teamB, date, time, group, stadium = '' } = req.body;
+
     if (!matchId || !teamA || !teamB || !date || !time || !group) {
       return res.status(400).json({ success: false, message: 'Campos obrigatórios: matchId, teamA, teamB, date, time, group' });
     }
-    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(date)) return res.status(400).json({ success: false, message: 'Data inválida (DD/MM/AAAA)' });
-    if (!/^\d{2}:\d{2}$/.test(time)) return res.status(400).json({ success: false, message: 'Horário inválido (HH:MM)' });
 
     const exists = await Match.findOne({ matchId });
-    if (exists) return res.status(409).json({ success: false, message: `matchId ${matchId} já existe` });
+    if (exists) return res.status(409).json({ success: false, message: `Já existe uma partida com ID ${matchId}` });
 
-    const newMatch = await Match.create({
+    const created = await Match.create({
       matchId,
       teamA: teamA.trim(),
       teamB: teamB.trim(),
@@ -183,169 +212,180 @@ router.post('/admin/add', protect, admin, async (req, res) => {
       time,
       group: group.trim(),
       stadium: stadium.trim(),
-      status: 'scheduled',
-      isFinished: false,
-      winner: null,
-      scoreA: null,
-      scoreB: null,
+      status: 'scheduled'
     });
 
-    res.status(201).json({ success: true, message: 'Partida adicionada', data: newMatch });
+    res.status(201).json({ success: true, message: 'Partida adicionada', data: created });
   } catch (error) {
-    console.error('❌ ERRO AO ADICIONAR PARTIDA:', error);
+    console.error('❌ Erro ao adicionar partida:', error);
     if (error.code === 11000) return res.status(409).json({ success: false, message: 'ID da partida já existe' });
     res.status(500).json({ success: false, message: 'Erro ao adicionar partida' });
   }
 });
 
-// 👑 EDITAR PARTIDA (agora com transição de status)
+// ======================
+// 👑 ADMIN - EDITAR PARTIDA
+// ======================
 router.put('/admin/edit/:id', protect, admin, async (req, res) => {
   try {
     const id = req.params.id;
     const updates = req.body;
 
-    let match;
-    if (/^\d+$/.test(id)) match = await Match.findOne({ matchId: parseInt(id) });
-    else match = await Match.findById(id);
+    let match = /^\d+$/.test(id)
+      ? await Match.findOne({ matchId: parseInt(id, 10) })
+      : await Match.findById(id);
 
     if (!match) return res.status(404).json({ success: false, message: 'Partida não encontrada' });
 
     const allowed = ['teamA', 'teamB', 'date', 'time', 'group', 'stadium', 'status', 'scoreA', 'scoreB'];
-    const updateData = {};
-    allowed.forEach(f => { if (updates[f] !== undefined) updateData[f] = updates[f]; });
+    const set = {};
+    allowed.forEach((k) => { if (updates[k] !== undefined) set[k] = updates[k]; });
 
-    // Transições de status
-    if (updateData.status === 'finished') {
-      if (updateData.scoreA === undefined || updateData.scoreB === undefined) {
-        return res.status(400).json({ success: false, message: 'Para finalizar, informe scoreA e scoreB' });
-      }
-      updateData.isFinished = true;
-      const a = parseInt(updateData.scoreA); const b = parseInt(updateData.scoreB);
-      updateData.winner = a > b ? 'teamA' : a < b ? 'teamB' : 'draw';
+    // Se status voltar a não-finalizado, limpar placar
+    if (set.status && set.status !== 'finished') {
+      set.scoreA = null;
+      set.scoreB = null;
     }
 
-    // Se voltar para scheduled, limpa placar e winner e zera pontos do jogo
-    const goingToScheduled = updateData.status === 'scheduled' && match.status !== 'scheduled';
+    const updated = await Match.findByIdAndUpdate(match._id, set, { new: true, runValidators: true });
 
-    const updatedMatch = await Match.findByIdAndUpdate(
-      match._id,
-      {
-        ...updateData,
-        ...(goingToScheduled ? { scoreA: null, scoreB: null, isFinished: false, winner: null } : {}),
-      },
-      { new: true, runValidators: true }
-    );
-
-    // Pós-processamento de pontos
-    if (updateData.status === 'finished') {
-      await processMatchResults(updatedMatch);
-    } else if (goingToScheduled) {
-      await zeroPointsForMatchAcrossBets(updatedMatch.matchId);
+    // Se finalizou via edição, recalcular tudo
+    if (updated.status === 'finished') {
+      const finishedMatches = await Match.find({ status: 'finished' });
+      await Bet.recalculateAllPoints(finishedMatches);
+      await Bet.updateRanking();
     }
 
-    res.json({ success: true, message: 'Partida atualizada', data: updatedMatch });
+    res.json({ success: true, message: 'Partida atualizada', data: updated });
   } catch (error) {
-    console.error('❌ ERRO AO EDITAR PARTIDA:', error);
+    console.error('❌ Erro ao editar partida:', error);
     res.status(500).json({ success: false, message: 'Erro ao editar partida' });
   }
 });
 
-// 👑 FINALIZAR PARTIDA (atalho)
+// ======================
+// 👑 ADMIN - FINALIZAR PARTIDA
+// ======================
 router.post('/admin/finish/:id', protect, admin, async (req, res) => {
   try {
     const id = req.params.id;
     const { scoreA, scoreB } = req.body;
-
     if (scoreA === undefined || scoreB === undefined) {
       return res.status(400).json({ success: false, message: 'scoreA e scoreB são obrigatórios' });
     }
 
     let match;
-    if (/^\d+$/.test(id)) match = await Match.findOne({ matchId: parseInt(id) });
-    else match = await Match.findById(id);
+    if (/^\d+$/.test(id)) {
+      match = await Match.findOne({ matchId: parseInt(id, 10) });
+      if (!match) return res.status(404).json({ success: false, message: 'Partida não encontrada' });
+      await Match.finishMatch(match.matchId, scoreA, scoreB);
+    } else {
+      match = await Match.findById(id);
+      if (!match) return res.status(404).json({ success: false, message: 'Partida não encontrada' });
+      await Match.finishMatch(match.matchId, scoreA, scoreB);
+    }
 
-    if (!match) return res.status(404).json({ success: false, message: 'Partida não encontrada' });
-    if (match.status === 'finished') return res.status(400).json({ success: false, message: 'Partida já finalizada' });
+    // Recalcular todos os pontos com base nas partidas finalizadas
+    const finishedMatches = await Match.find({ status: 'finished' });
+    await Bet.recalculateAllPoints(finishedMatches);
+    await Bet.updateRanking();
 
-    const a = parseInt(scoreA), b = parseInt(scoreB);
-    const winner = a > b ? 'teamA' : a < b ? 'teamB' : 'draw';
-
-    const updated = await Match.findByIdAndUpdate(
-      match._id,
-      { scoreA: a, scoreB: b, status: 'finished', isFinished: true, winner },
-      { new: true, runValidators: true }
-    );
-
-    await processMatchResults(updated);
-
+    const updated = await Match.findOne({ matchId: match.matchId });
     res.json({
       success: true,
-      message: 'Partida finalizada e pontos calculados',
-      data: updated,
-      stats: { result: `${a}-${b}`, winner: winner === 'draw' ? 'Empate' : updated[winner] }
+      message: 'Partida finalizada e pontos recalculados',
+      data: updated
     });
   } catch (error) {
-    console.error('❌ ERRO AO FINALIZAR PARTIDA:', error);
+    console.error('❌ Erro ao finalizar partida:', error);
     res.status(500).json({ success: false, message: 'Erro ao finalizar partida' });
   }
 });
 
-// 👑 NOVO: REABRIR/“DESFINALIZAR” PARTIDA
+// ======================
+// 👑 ADMIN - REABRIR (UNFINISH) PARTIDA
+// ======================
 router.post('/admin/unfinish/:id', protect, admin, async (req, res) => {
   try {
     const id = req.params.id;
-
     let match;
-    if (/^\d+$/.test(id)) match = await Match.findOne({ matchId: parseInt(id) });
-    else match = await Match.findById(id);
 
+    if (/^\d+$/.test(id)) {
+      match = await Match.findOne({ matchId: parseInt(id, 10) });
+    } else {
+      match = await Match.findById(id);
+    }
     if (!match) return res.status(404).json({ success: false, message: 'Partida não encontrada' });
 
-    const updated = await Match.findByIdAndUpdate(
-      match._id,
-      { status: 'scheduled', isFinished: false, scoreA: null, scoreB: null, winner: null },
-      { new: true, runValidators: true }
+    await Match.unfinishMatch(match.matchId, 'scheduled');
+
+    // Opcional: zerar pontos do jogo reaberto antes de recalc (para consistência visual)
+    await Bet.updateMany(
+      { 'groupMatches.matchId': match.matchId },
+      { $set: { 'groupMatches.$[elem].points': 0 } },
+      { arrayFilters: [{ 'elem.matchId': match.matchId }] }
     );
 
-    await zeroPointsForMatchAcrossBets(updated.matchId);
+    // Recalcular com base nas partidas finalizadas restantes
+    const finishedMatches = await Match.find({ status: 'finished' });
+    await Bet.recalculateAllPoints(finishedMatches);
+    await Bet.updateRanking();
 
-    res.json({ success: true, message: 'Partida reaberta (status: scheduled) e pontos zerados do jogo', data: updated });
+    const updated = await Match.findOne({ matchId: match.matchId });
+    res.json({
+      success: true,
+      message: 'Partida reaberta; placar limpo e pontos recalculados',
+      data: updated
+    });
   } catch (error) {
-    console.error('❌ ERRO AO REABRIR PARTIDA:', error);
+    console.error('❌ Erro ao reabrir partida:', error);
     res.status(500).json({ success: false, message: 'Erro ao reabrir partida' });
   }
 });
 
-// 👑 EXCLUIR PARTIDA (agora com ?force=1)
+// ======================
+// 👑 ADMIN - EXCLUIR PARTIDA (com ?force=1 para forçar)
+// ======================
 router.delete('/admin/delete/:id', protect, admin, async (req, res) => {
   try {
     const id = req.params.id;
-    const force = String(req.query.force || '') === '1';
+    const force = String(req.query.force || '').trim() === '1';
 
-    let match;
-    if (/^\d+$/.test(id)) match = await Match.findOne({ matchId: parseInt(id) });
-    else match = await Match.findById(id);
+    let match = /^\d+$/.test(id)
+      ? await Match.findOne({ matchId: parseInt(id, 10) })
+      : await Match.findById(id);
 
     if (!match) return res.status(404).json({ success: false, message: 'Partida não encontrada' });
 
     const betsWithThisMatch = await Bet.countDocuments({ 'groupMatches.matchId': match.matchId });
 
-    if (betsWithThisMatch > 0 && !force) {
+    if (!force && betsWithThisMatch > 0) {
       return res.status(400).json({
         success: false,
-        message: `Existem ${betsWithThisMatch} palpites ligados a esta partida. Use ?force=1 para excluir e zerar pontos desse jogo nos palpites.`,
+        message: `Não é possível excluir: existem ${betsWithThisMatch} palpites associados. Use ?force=1 para forçar.`
       });
     }
 
-    if (betsWithThisMatch > 0 && force) {
-      await zeroPointsForMatchAcrossBets(match.matchId);
+    // Se forçar: remover a partida e limpar esse jogo dos palpites
+    if (force) {
+      // Remove o jogo dos arrays de palpites
+      await Bet.updateMany(
+        { 'groupMatches.matchId': match.matchId },
+        { $pull: { groupMatches: { matchId: match.matchId } } }
+      );
     }
 
-    await Match.findByIdAndDelete(match._id);
+    // Excluir a partida
+    await Match.deleteByMatchId(match.matchId);
+
+    // Recalcular pontos (agora sem esse jogo)
+    const finishedMatches = await Match.find({ status: 'finished' });
+    await Bet.recalculateAllPoints(finishedMatches);
+    await Bet.updateRanking();
 
     res.json({
       success: true,
-      message: 'Partida excluída com sucesso',
+      message: `Partida ${match.matchId} excluída${force ? ' (forçado)' : ''}`,
       deletedMatch: {
         matchId: match.matchId,
         teams: `${match.teamA} vs ${match.teamB}`,
@@ -353,34 +393,18 @@ router.delete('/admin/delete/:id', protect, admin, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('❌ ERRO AO EXCLUIR PARTIDA:', error);
+    console.error('❌ Erro ao excluir partida:', error);
     res.status(500).json({ success: false, message: 'Erro ao excluir partida' });
   }
 });
 
-// 👑 ADMIN - LISTAR TODAS
-router.get('/admin/all', protect, admin, async (req, res) => {
-  try {
-    const matches = await Match.find().sort({ matchId: 1 });
-    const withStats = await Promise.all(
-      matches.map(async (m) => {
-        const betsCount = await Bet.countDocuments({ 'groupMatches.matchId': m.matchId });
-        const o = m.toObject();
-        return { ...o, betsCount, hasBets: betsCount > 0, matchName: `${m.teamA} vs ${m.teamB}` };
-      })
-    );
-    res.json({ success: true, count: withStats.length, data: withStats });
-  } catch (error) {
-    console.error('❌ ERRO AO LISTAR PARTIDAS ADMIN:', error);
-    res.status(500).json({ success: false, message: 'Erro ao listar partidas' });
-  }
-});
-
-// 🌐 TESTE
+// ======================
+// 🌐 ROTA DE STATUS/TESTE
+// ======================
 router.get('/test/hello', (req, res) => {
   res.json({
     success: true,
-    message: 'Rotas de jogos OK',
+    message: 'Rotas de jogos funcionando!',
     timestamp: new Date().toISOString(),
     endpoints: [
       'GET    /api/matches',
@@ -389,12 +413,14 @@ router.get('/test/hello', (req, res) => {
       'GET    /api/matches/upcoming/next',
       'GET    /api/matches/group/:groupName',
       'POST   /api/matches/initialize',
-      'DELETE /api/matches/admin/delete/:id?force=1',
+      'DELETE /api/matches/reset',
+      'GET    /api/matches/admin/all',
       'POST   /api/matches/admin/add',
       'PUT    /api/matches/admin/edit/:id',
-      'GET    /api/matches/admin/all',
       'POST   /api/matches/admin/finish/:id',
-      'POST   /api/matches/admin/unfinish/:id'
+      'POST   /api/matches/admin/unfinish/:id',
+      'DELETE /api/matches/admin/delete/:id?force=1',
+      'GET    /api/matches/test/hello'
     ]
   });
 });
