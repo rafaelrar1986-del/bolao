@@ -1,733 +1,550 @@
-const mongoose = require('mongoose');
+const express = require('express');
+const Bet = require('../models/Bet');
+const Match = require('../models/Match');
+const User = require('../models/User');
+const { protect } = require('../middleware/auth');
 
-const betSchema = new mongoose.Schema({
-  user: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: [true, 'Usuário é obrigatório'],
-    unique: true,
-    index: true
-  },
-  groupMatches: [{
-    matchId: {
-      type: Number,
-      required: [true, 'ID do jogo é obrigatório'],
-      min: [1, 'ID do jogo deve ser maior que 0']
-    },
-    bet: {
-      type: String,
-      required: [true, 'Palpite é obrigatório'],
-      trim: true,
-      match: [/^\d+\s*-\s*\d+$/, 'Formato de palpite inválido. Use: 2-1, 0-0, etc.']
-    },
-    scoreA: {
-      type: Number,
-      min: [0, 'Placar não pode ser negativo'],
-      max: [15, 'Placar muito alto'],
-      default: null
-    },
-    scoreB: {
-      type: Number,
-      min: [0, 'Placar não pode ser negativo'],
-      max: [15, 'Placar muito alto'],
-      default: null
-    },
-    points: {
-      type: Number,
-      min: [0, 'Pontos não podem ser negativos'],
-      max: [1, 'Pontuação máxima por jogo é 1 ponto'],
-      default: 0
-    },
-    calculated: {
-      type: Boolean,
-      default: false
-    },
-    result: {
-      type: String,  // ✅ STRING SIMPLES - 'teamA', 'teamB', 'draw'
-      default: null
-    },
-    processedAt: {
-      type: Date,
-      default: null
-    }
-  }],
-  podium: {
-    first: {
-      type: String,  // ✅ STRING SIMPLES
-      required: [function() { return this.hasSubmitted; }, '1º lugar é obrigatório'],
-      trim: true,
-      minlength: [2, 'Nome do time deve ter pelo menos 2 caracteres'],
-      maxlength: [50, 'Nome do time muito longo']
-    },
-    second: {
-      type: String,  // ✅ STRING SIMPLES
-      required: [function() { return this.hasSubmitted; }, '2º lugar é obrigatório'],
-      trim: true,
-      minlength: [2, 'Nome do time deve ter pelo menos 2 caracteres'],
-      maxlength: [50, 'Nome do time muito longo']
-    },
-    third: {
-      type: String,  // ✅ STRING SIMPLES
-      required: [function() { return this.hasSubmitted; }, '3º lugar é obrigatório'],
-      trim: true,
-      minlength: [2, 'Nome do time deve ter pelo menos 2 caracteres'],
-      maxlength: [50, 'Nome do time muito longo']
-    },
-    points: {
-      type: Number,
-      min: [0, 'Pontos não podem ser negativos'],
-      default: 0
-    },
-    calculated: {
-      type: Boolean,
-      default: false
-    }
-  },
-  totalPoints: {
-    type: Number,
-    min: [0, 'Pontuação total não pode ser negativa'],
-    default: 0
-  },
-  groupPoints: {
-    type: Number,
-    min: [0, 'Pontos dos jogos não podem ser negativos'],
-    default: 0
-  },
-  podiumPoints: {
-    type: Number,
-    min: [0, 'Pontos do pódio não podem ser negativos'],
-    default: 0
-  },
-  bonusPoints: {
-    type: Number,
-    min: [0, 'Pontos bônus não podem ser negativos'],
-    default: 0
-  },
-  firstSubmission: {
-    type: Date,
-    default: null
-  },
-  lastUpdate: {
-    type: Date,
-    default: null
-  },
-  hasSubmitted: {
-    type: Boolean,
-    default: false
-  },
-  isCalculated: {
-    type: Boolean,
-    default: false
-  },
-  rankingPosition: {
-    type: Number,
-    default: 0
-  },
-  lastPointsCalculation: {
-    type: Date,
-    default: null
-  }
-}, {
-  timestamps: true,
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
-});
+const router = express.Router();
+
+// -------------------------
+// Helpers locais (labels e acertos)
+// -------------------------
+function outcomeFromScore(a, b) {
+  if (a > b) return 'A';
+  if (b > a) return 'B';
+  return 'D';
+}
+function outcomeFromBetString(scoreStr) {
+  if (!scoreStr) return null;
+  if (scoreStr === 'A' || scoreStr === 'B' || scoreStr === 'D') return scoreStr;
+  const m = String(scoreStr).match(/^(\d+)\s*-\s*(\d+)$/);
+  if (!m) return null;
+  const a = parseInt(m[1], 10);
+  const b = parseInt(m[2], 10);
+  return outcomeFromScore(a, b);
+}
+function betChoiceLabel(betStr, teamA, teamB) {
+  const out = outcomeFromBetString(betStr);
+  if (out === 'A') return teamA;
+  if (out === 'B') return teamB;
+  if (out === 'D') return 'Empate';
+  return betStr || '-';
+}
 
 // ======================
-// MIDDLEWARES (HOOKS)
+// 🌐 ROTA RAIZ - INFORMATIVA
 // ======================
-
-// 🔥 MIDDLEWARE PRE-SAVE: Processar scores dos palpites
-betSchema.pre('save', function(next) {
-  // Processar cada palpite para extrair scores e resultado
-  this.groupMatches.forEach(matchBet => {
-    if (matchBet.bet && !matchBet.calculated) {
-      try {
-        const scores = matchBet.bet.split('-').map(score => parseInt(score.trim()));
-        if (scores.length === 2 && !isNaN(scores[0]) && !isNaN(scores[1])) {
-          matchBet.scoreA = scores[0];
-          matchBet.scoreB = scores[1];
-          
-          // 🔥 CALCULAR RESULTADO DO PALPITE (não pontos ainda)
-          if (scores[0] > scores[1]) {
-            matchBet.result = 'teamA';
-          } else if (scores[1] > scores[0]) {
-            matchBet.result = 'teamB';
-          } else {
-            matchBet.result = 'draw';
-          }
-          
-          matchBet.calculated = true;
-        }
-      } catch (error) {
-        console.warn(`⚠️ Erro ao processar palpite: ${matchBet.bet}`);
-      }
-    }
+router.get('/', (req, res) => {
+  res.json({
+    success: true,
+    message: '🏆 API de Palpites do Bolão da Copa 2026!',
+    version: '1.0.0',
+    endpoints: {
+      'GET  /api/bets': 'Esta página de informações',
+      'GET  /api/bets/my-bets': 'Buscar meus palpites (protegido)',
+      'POST /api/bets/save': 'Salvar palpites (protegido)',
+      'GET  /api/bets/status': 'Verificar status (protegido)',
+      'GET  /api/bets/leaderboard': 'Ver classificação (protegido)',
+      'GET  /api/bets/stats/overview': 'Estatísticas (protegido)',
+      'GET  /api/bets/all-bets': 'Todos os palpites (protegido, com filtros)',
+      'GET  /api/bets/matches-for-filter': 'Partidas p/ filtro (protegido)',
+      'GET  /api/bets/users-for-filter': 'Usuários p/ filtro (protegido)',
+      'GET  /api/bets/all-bets/stats': 'Estatísticas dos palpites (protegido)',
+      'POST /api/bets/simulate-points': 'Simular pontuação (admin)',
+      'POST /api/bets/recalculate-all': 'Recalcular pontos (admin)',
+      'GET  /api/bets/test': 'Rota de teste (protegido)'
+    },
+    instructions: 'Use as rotas específicas acima para interagir com a API',
+    timestamp: new Date().toISOString()
   });
-
-  // Atualizar lastUpdate quando houver mudanças
-  if (this.isModified() && !this.isModified('lastUpdate')) {
-    this.lastUpdate = new Date();
-  }
-
-  // Definir firstSubmission na primeira submissão
-  if (this.hasSubmitted && !this.firstSubmission) {
-    this.firstSubmission = new Date();
-  }
-
-  next();
 });
 
-// 🔥 MIDDLEWARE PRE-SAVE: Validar pódio único
-betSchema.pre('save', function(next) {
-  if (this.hasSubmitted && this.podium.first && this.podium.second && this.podium.third) {
-    const podiumTeams = [this.podium.first, this.podium.second, this.podium.third];
-    const uniqueTeams = [...new Set(podiumTeams)];
-    
-    if (uniqueTeams.length !== 3) {
-      const error = new Error('Times do pódio devem ser diferentes');
-      return next(error);
+// ======================
+// 🎯 BUSCAR PALPITES DO USUÁRIO (enriquecido)
+// ======================
+router.get('/my-bets', protect, async (req, res) => {
+  try {
+    const userBet = await Bet.findOne({ user: req.user._id })
+      .populate('user', 'name email');
+
+    if (!userBet) {
+      return res.json({
+        success: true,
+        data: null,
+        message: 'Você ainda não enviou seus palpites. Use a rota /save para enviar.',
+        hasSubmitted: false,
+        canEdit: true
+      });
     }
-  }
-  next();
-});
 
-// ======================
-// VIRTUAIS (CAMPOS CALCULADOS)
-// ======================
+    const matches = await Match.find().lean();
 
-// 🔥 VIRTUAL: Quantidade de palpites feitos
-betSchema.virtual('betsCount').get(function() {
-  return this.groupMatches.length;
-});
+    const betsWithTeamNames = userBet.groupMatches.map((bet) => {
+      const match = matches.find((m) => m.matchId === bet.matchId);
+      const teamA = match ? match.teamA : 'Time A';
+      const teamB = match ? match.teamB : 'Time B';
+      const label = betChoiceLabel(bet.bet, teamA, teamB);
 
-// 🔥 VIRTUAL: Verificar se pódio está completo
-betSchema.virtual('isPodiumComplete').get(function() {
-  return !!(this.podium.first && this.podium.second && this.podium.third);
-});
+      let isCorrect = null;
+      if (match && match.status === 'finished') {
+        const realOutcome = outcomeFromScore(match.scoreA, match.scoreB);
+        const betOutcome  = outcomeFromBetString(bet.bet);
+        isCorrect = !!(betOutcome && betOutcome === realOutcome);
+      }
 
-// 🔥 VIRTUAL: Pontos totais dos jogos (calculado)
-betSchema.virtual('calculatedGroupPoints').get(function() {
-  return this.groupMatches.reduce((sum, match) => sum + (match.points || 0), 0);
-});
+      return {
+        ...(bet.toObject ? bet.toObject() : bet),
+        teamA,
+        teamB,
+        matchName: match ? `${teamA} vs ${teamB}` : `Jogo ${bet.matchId}`,
+        date: match ? match.date : null,
+        time: match ? match.time : null,
+        group: match ? match.group : null,
+        stadium: match ? match.stadium : null,
+        status: match ? match.status : 'scheduled',
+        betChoiceLabel: label,
+        isCorrect
+      };
+    });
 
-// 🔥 VIRTUAL: Acertos nos jogos
-betSchema.virtual('correctBets').get(function() {
-  return this.groupMatches.filter(match => match.points > 0).length;
-});
+    const userBetData = userBet.toObject ? userBet.toObject() : userBet;
 
-// 🔥 VIRTUAL: Porcentagem de acertos
-betSchema.virtual('accuracyRate').get(function() {
-  if (this.groupMatches.length === 0) return 0;
-  return ((this.correctBets / this.groupMatches.length) * 100).toFixed(1);
-});
-
-// 🔥 VIRTUAL: Nome do usuário (para facilitar)
-betSchema.virtual('userName').get(function() {
-  return this.user ? this.user.name : 'Usuário';
-});
-
-// ======================
-// MÉTODOS DE INSTÂNCIA (ATUALIZADOS)
-// ======================
-
-// 🔥 MÉTODO: Adicionar palpite para um jogo
-betSchema.methods.addMatchBet = function(matchId, betString) {
-  const existingBetIndex = this.groupMatches.findIndex(bet => bet.matchId === matchId);
-  
-  if (existingBetIndex >= 0) {
-    // Atualizar palpite existente
-    this.groupMatches[existingBetIndex].bet = betString;
-    this.groupMatches[existingBetIndex].calculated = false; // Recalcular
-    this.groupMatches[existingBetIndex].points = 0; // Resetar pontos
-    this.groupMatches[existingBetIndex].processedAt = null;
-  } else {
-    // Adicionar novo palpite
-    this.groupMatches.push({
-      matchId: matchId,
-      bet: betString,
-      calculated: false,
-      points: 0
+    res.json({
+      success: true,
+      data: {
+        ...userBetData,
+        groupMatches: betsWithTeamNames
+      },
+      hasSubmitted: userBetData.hasSubmitted,
+      canEdit: !userBetData.hasSubmitted
+    });
+  } catch (error) {
+    console.error('❌ ERRO AO BUSCAR PALPITES:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao buscar seus palpites',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
-  
-  return this.save();
-};
+});
 
-// 🔥 MÉTODO: Definir pódio
-betSchema.methods.setPodium = function(first, second, third) {
-  this.podium.first = first;
-  this.podium.second = second;
-  this.podium.third = third;
-  this.podium.calculated = false; // Marcar para recalcular pontos
-  this.podium.points = 0; // Resetar pontos
-  return this.save();
-};
+// ======================
+// 💾 SALVAR PALPITES (APENAS UMA VEZ)
+// ======================
+router.post('/save', protect, async (req, res) => {
+  try {
+    const { groupMatches, podium } = req.body;
+    const userId = req.user._id;
 
-// 🔥 MÉTODO: Submeter palpites final
-betSchema.methods.submitBets = function() {
-  if (this.groupMatches.length === 0) {
-    throw new Error('Adicione palpites antes de submeter');
-  }
-  
-  if (!this.isPodiumComplete) {
-    throw new Error('Preencha todas as posições do pódio');
-  }
-  
-  this.hasSubmitted = true;
-  this.firstSubmission = this.firstSubmission || new Date();
-  return this.save();
-};
+    if (!groupMatches || !podium) {
+      return res.status(400).json({
+        success: false,
+        message: 'Dados incompletos. São necessários: groupMatches e podium'
+      });
+    }
+    if (!podium.first || !podium.second || !podium.third) {
+      return res.status(400).json({
+        success: false,
+        message: 'Preencha todas as posições do pódio (1º, 2º e 3º lugar)'
+      });
+    }
 
-// 🔥 MÉTODO PRINCIPAL: Calcular pontos baseado apenas no RESULTADO (ATUALIZADO)
-betSchema.methods.calculatePoints = async function(actualMatches = [], actualPodium = null) {
-  console.log(`🏆 CALCULANDO PONTOS para ${this.userName}`);
-  
-  let groupPoints = 0;
-  let podiumPoints = 0;
-  let updatedMatches = 0;
-  
-  // 🔥 CALCULAR PONTOS DOS JOGOS (1 ponto por acerto de resultado)
-  this.groupMatches.forEach(matchBet => {
-    const actualMatch = actualMatches.find(m => m.matchId === matchBet.matchId);
-    
-    if (actualMatch && actualMatch.status === 'finished' && actualMatch.winner) {
-      const previousPoints = matchBet.points || 0;
-      
-      // 🔥 COMPARAR APENAS O RESULTADO (vencedor/empate)
-      if (matchBet.result === actualMatch.winner) {
-        matchBet.points = 1; // 1 ponto por acertar o resultado
-        groupPoints += 1;
-        
-        if (previousPoints === 0) {
-          console.log(`✅ ACERTOU Jogo ${matchBet.matchId}! +1 ponto`);
-          updatedMatches++;
-        }
-      } else {
-        matchBet.points = 0;
-        if (previousPoints > 0) {
-          console.log(`🔄 PERDEU PONTOS Jogo ${matchBet.matchId}! -1 ponto`);
-          updatedMatches++;
-        }
-      }
-      
-      matchBet.processedAt = new Date();
+    let userBet = await Bet.findOne({ user: userId });
+    if (userBet && userBet.hasSubmitted) {
+      return res.status(409).json({
+        success: false,
+        message: 'Você já enviou seus palpites! Não é possível alterá-los.',
+        firstSubmission: userBet.firstSubmission,
+        canEdit: false
+      });
+    }
+
+    const matchIds = Object.keys(groupMatches).map((id) => parseInt(id, 10));
+    const existingMatches = await Match.find({ matchId: { $in: matchIds } }).select('matchId');
+    const existingMatchIds = existingMatches.map((m) => m.matchId);
+    const invalidMatches = matchIds.filter((id) => !existingMatchIds.includes(id));
+    if (invalidMatches.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `IDs de jogos inválidos: ${invalidMatches.join(', ')}`
+      });
+    }
+
+    const now = new Date();
+    if (!userBet) {
+      userBet = new Bet({
+        user: userId,
+        firstSubmission: now,
+        lastUpdate: now,
+        hasSubmitted: true
+      });
     } else {
-      // Resetar pontos se a partida não está finalizada
-      if (matchBet.points > 0) {
-        matchBet.points = 0;
-        matchBet.processedAt = null;
-        updatedMatches++;
-      }
+      userBet.firstSubmission = userBet.firstSubmission || now;
+      userBet.lastUpdate = now;
+      userBet.hasSubmitted = true;
     }
+
+    // Salva palpite como "1-0/0-0/0-1" (mantém compatibilidade com front atual)
+    userBet.groupMatches = Object.entries(groupMatches).map(([matchId, bet]) => {
+      const score = String(bet).split('-').map((n) => parseInt(String(n).trim(), 10));
+      return {
+        matchId: parseInt(matchId, 10),
+        bet: bet,
+        scoreA: Number.isFinite(score[0]) ? score[0] : 0,
+        scoreB: Number.isFinite(score[1]) ? score[1] : 0,
+        points: 0
+      };
+    });
+
+    userBet.podium = {
+      first: podium.first.trim(),
+      second: podium.second.trim(),
+      third: podium.third.trim()
+    };
+
+    userBet.totalPoints = 0;
+    userBet.groupPoints = 0;
+    userBet.podiumPoints = 0;
+    userBet.bonusPoints = 0;
+
+    await userBet.save();
+    await userBet.populate('user', 'name email');
+
+    res.status(201).json({
+      success: true,
+      message: 'Palpites enviados com sucesso! Não será possível alterá-los.',
+      data: userBet,
+      firstSubmission: true,
+      canEdit: false,
+      submissionDate: userBet.firstSubmission
+    });
+  } catch (error) {
+    console.error('❌ ERRO AO SALVAR PALPITES:', error);
+
+    if (error.name === 'ValidationError') {
+      const errors = Object.values(error.errors).map((err) => err.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Dados inválidos',
+        errors
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao salvar palpites'
+    });
+  }
+});
+
+// ======================
+// 🔍 VERIFICAR STATUS DOS PALPITES
+// ======================
+router.get('/status', protect, async (req, res) => {
+  try {
+    const userBet = await Bet.findOne({ user: req.user._id });
+
+    const status = {
+      hasSubmitted: userBet ? userBet.hasSubmitted : false,
+      firstSubmission: userBet ? userBet.firstSubmission : null,
+      lastUpdate: userBet ? userBet.lastUpdate : null,
+      canEdit: !userBet || !userBet.hasSubmitted,
+      matchesCount: userBet ? userBet.groupMatches.length : 0,
+      hasPodium: userBet
+        ? !!(userBet.podium.first && userBet.podium.second && userBet.podium.third)
+        : false
+    };
+
+    res.json({
+      success: true,
+      data: status
+    });
+  } catch (error) {
+    console.error('❌ ERRO AO VERIFICAR STATUS:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao verificar status dos palpites'
+    });
+  }
+});
+
+// ======================
+// 🏆 CLASSIFICAÇÃO (LEADERBOARD)
+// ======================
+router.get('/leaderboard', protect, async (req, res) => {
+  try {
+    const leaderboard = await Bet.find({ hasSubmitted: true })
+      .populate('user', 'name email')
+      .select('user totalPoints groupPoints podiumPoints bonusPoints lastUpdate podium')
+      .sort({ totalPoints: -1, lastUpdate: 1 })
+      .lean();
+
+    const rankedLeaderboard = leaderboard.map((bet, index) => ({
+      position: index + 1,
+      user: bet.user,
+      totalPoints: bet.totalPoints || 0,
+      groupPoints: bet.groupPoints || 0,
+      podiumPoints: bet.podiumPoints || 0,
+      bonusPoints: bet.bonusPoints || 0,
+      podium: bet.podium
+        ? { first: bet.podium.first, second: bet.podium.second, third: bet.podium.third }
+        : null,
+      lastUpdate: bet.lastUpdate
+    }));
+
+    res.json({
+      success: true,
+      data: rankedLeaderboard,
+      count: rankedLeaderboard.length,
+      updatedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ ERRO AO BUSCAR LEADERBOARD:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao carregar classificação'
+    });
+  }
+});
+
+// ======================
+// 📊 ESTATÍSTICAS (simples)
+// ======================
+router.get('/stats/overview', protect, async (req, res) => {
+  try {
+    const totalBets = await Bet.countDocuments({ hasSubmitted: true });
+    const totalUsers = await Bet.distinct('user', { hasSubmitted: true });
+
+    const recentBets = await Bet.find({ hasSubmitted: true })
+      .populate('user', 'name')
+      .sort({ lastUpdate: -1 })
+      .limit(5)
+      .select('user lastUpdate');
+
+    const podiumStats = await Bet.aggregate([
+      { $match: { hasSubmitted: true } },
+      {
+        $group: {
+          _id: '$podium.first',
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { count: -1 } },
+      { $limit: 5 }
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        totalSubmissions: totalBets,
+        totalParticipants: totalUsers.length,
+        recentSubmissions: recentBets,
+        topChampions: podiumStats
+      }
+    });
+  } catch (error) {
+    console.error('❌ ERRO AO BUSCAR ESTATÍSTICAS:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao carregar estatísticas'
+    });
+  }
+});
+
+// ======================
+// 👁️ TODOS OS PALPITES (com filtros)
+// ======================
+router.get('/all-bets', protect, async (req, res) => {
+  try {
+    const { search, matchId, userId, group, sortBy = 'user' } = req.query;
+
+    let query = { hasSubmitted: true };
+
+    if (userId) {
+      query.user = userId;
+    } else if (search) {
+      const users = await User.find({
+        name: { $regex: search, $options: 'i' }
+      }).select('_id');
+      query.user = { $in: users.map((u) => u._id) };
+    }
+
+    if (matchId) {
+      query['groupMatches.matchId'] = parseInt(matchId, 10);
+    }
+
+    if (group) {
+      const matchesInGroup = await Match.find({
+        group: new RegExp(group, 'i')
+      }).select('matchId');
+
+      const matchIds = matchesInGroup.map((m) => m.matchId);
+      query['groupMatches.matchId'] = { $in: matchIds };
+    }
+
+    let betsQuery = Bet.find(query)
+      .populate('user', 'name email')
+      .select('user groupMatches podium totalPoints groupPoints podiumPoints firstSubmission lastUpdate');
+
+    if (sortBy === 'user') {
+      betsQuery = betsQuery.sort('user.name');
+    } else if (sortBy === 'points') {
+      betsQuery = betsQuery.sort('-totalPoints');
+    } else if (sortBy === 'date') {
+      betsQuery = betsQuery.sort('-firstSubmission');
+    }
+
+    const allBets = await betsQuery.lean();
+
+    const matches = await Match.find().lean();
+
+    // Enriquecer com nomes, labels e acerto/erro
+    const enrichedBets = allBets.map((bet) => {
+      const enrichedMatches = bet.groupMatches.map((betMatch) => {
+        const match = matches.find((m) => m.matchId === betMatch.matchId);
+        const teamA = match ? match.teamA : 'Time A';
+        const teamB = match ? match.teamB : 'Time B';
+
+        const betLabel = betChoiceLabel(betMatch.bet, teamA, teamB);
+
+        let isCorrect = null;
+        if (match && match.status === 'finished') {
+          const realOutcome = outcomeFromScore(match.scoreA, match.scoreB);
+          const betOutcome = outcomeFromBetString(betMatch.bet);
+          isCorrect = !!(betOutcome && betOutcome === realOutcome);
+        }
+
+        return {
+          ...betMatch,
+          teamA,
+          teamB,
+          matchName: match ? `${teamA} vs ${teamB}` : `Jogo ${betMatch.matchId}`,
+          date: match ? match.date : null,
+          group: match ? match.group : null,
+          status: match ? match.status : 'scheduled',
+          betChoiceLabel: betLabel,
+          isCorrect
+        };
+      });
+
+      return {
+        ...bet,
+        groupMatches: enrichedMatches,
+        userName: bet.user.name,
+        // ocultar e-mail em respostas públicas do front (mas mantemos no objeto raiz)
+        // userEmail: bet.user.email,
+      };
+    });
+
+    const stats = {
+      totalBets: enrichedBets.length,
+      totalUsers: [...new Set(enrichedBets.map((bet) => String(bet.user._id)))].length,
+      totalMatches: [...new Set(enrichedBets.flatMap((bet) => bet.groupMatches.map((m) => m.matchId)))].length
+    };
+
+    res.json({
+      success: true,
+      data: enrichedBets,
+      stats,
+      searchParams: { search, matchId, userId, group, sortBy }
+    });
+  } catch (error) {
+    console.error('❌ ERRO AO BUSCAR TODOS OS PALPITES:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao buscar palpites'
+    });
+  }
+});
+
+// ======================
+// 🔍 PARTIDAS PARA FILTRO
+// ======================
+router.get('/matches-for-filter', protect, async (req, res) => {
+  try {
+    const matches = await Match.find().select('matchId teamA teamB group date').sort('matchId');
+    res.json({ success: true, data: matches });
+  } catch (error) {
+    console.error('❌ ERRO AO BUSCAR PARTIDAS:', error);
+    res.status(500).json({ success: false, message: 'Erro ao buscar partidas' });
+  }
+});
+
+// ======================
+// 👥 USUÁRIOS PARA FILTRO
+// ======================
+router.get('/users-for-filter', protect, async (req, res) => {
+  try {
+    const users = await User.find().select('_id name').sort('name'); // não retornamos email
+    res.json({ success: true, data: users });
+  } catch (error) {
+    console.error('❌ ERRO AO BUSCAR USUÁRIOS:', error);
+    res.status(500).json({ success: false, message: 'Erro ao buscar usuários' });
+  }
+});
+
+// ======================
+// 📊 ESTATÍSTICAS DETALHADAS DOS PALPITES
+// ======================
+router.get('/all-bets/stats', protect, async (req, res) => {
+  try {
+    const totalBets = await Bet.countDocuments({ hasSubmitted: true });
+    const totalUsers = await Bet.distinct('user', { hasSubmitted: true });
+
+    const popularMatchesAgg = await Bet.aggregate([
+      { $match: { hasSubmitted: true } },
+      { $unwind: '$groupMatches' },
+      {
+        $group: {
+          _id: '$groupMatches.matchId',
+          betCount: { $sum: 1 }
+        }
+      },
+      { $sort: { betCount: -1 } },
+      { $limit: 5 }
+    ]);
+
+    const matches = await Match.find();
+    const enrichedPopularMatches = popularMatchesAgg.map((popular) => {
+      const match = matches.find((m) => m.matchId === popular._id);
+      return {
+        matchId: popular._id,
+        matchName: match ? `${match.teamA} vs ${match.teamB}` : `Jogo ${popular._id}`,
+        betCount: popular.betCount
+      };
+    });
+
+    // média de pontos total (opcional)
+    const avgAgg = await Bet.aggregate([
+      { $match: { hasSubmitted: true } },
+      { $group: { _id: null, avgTotal: { $avg: '$totalPoints' } } }
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        totalParticipants: totalUsers.length,
+        totalSubmissions: totalBets,
+        popularMatches: enrichedPopularMatches,
+        averagePoints: avgAgg[0]?.avgTotal ? Math.round(avgAgg[0].avgTotal * 100) / 100 : 0
+      }
+    });
+  } catch (error) {
+    console.error('❌ ERRO AO BUSCAR ESTATÍSTICAS:', error);
+    res.status(500).json({ success: false, message: 'Erro ao buscar estatísticas' });
+  }
+});
+
+// ======================
+// 🌐 TEST
+// ======================
+router.get('/test', protect, (req, res) => {
+  res.json({
+    success: true,
+    message: '✅ Rotas de palpites funcionando!',
+    user: { id: req.user._id, name: req.user.name, email: req.user.email },
+    timestamp: new Date().toISOString()
   });
-  
-  // 🔥 CALCULAR PONTOS DO PÓDIO (se fornecido)
-  if (actualPodium && this.podium.first && this.podium.second && this.podium.third) {
-    console.log('🏅 CALCULANDO PÓDIO:');
-    console.log('- Palpite:', this.podium);
-    console.log('- Real:', actualPodium);
-    
-    const previousPodiumPoints = this.podium.points || 0;
-    podiumPoints = 0;
-    
-    if (this.podium.first === actualPodium.first) {
-      podiumPoints += 10;
-      console.log('✅ Acertou campeão! +10 pontos');
-    }
-    if (this.podium.second === actualPodium.second) {
-      podiumPoints += 7;
-      console.log('✅ Acertou vice! +7 pontos');
-    }
-    if (this.podium.third === actualPodium.third) {
-      podiumPoints += 4;
-      console.log('✅ Acertou terceiro! +4 pontos');
-    }
-    
-    this.podium.points = podiumPoints;
-    this.podium.calculated = true;
-    
-    if (podiumPoints !== previousPodiumPoints) {
-      console.log(`🔄 Pódio atualizado: ${previousPodiumPoints} → ${podiumPoints} pontos`);
-      updatedMatches++;
-    }
-  }
-  
-  // Calcular totais
-  this.groupPoints = groupPoints;
-  this.podiumPoints = podiumPoints;
-  this.totalPoints = groupPoints + podiumPoints + this.bonusPoints;
-  this.isCalculated = true;
-  this.lastPointsCalculation = new Date();
+});
 
-  console.log(`📊 PONTUAÇÃO FINAL para ${this.userName}:`);
-  console.log(`- Jogos: ${groupPoints} pontos`);
-  console.log(`- Pódio: ${podiumPoints} pontos`);
-  console.log(`- Bônus: ${this.bonusPoints} pontos`);
-  console.log(`- TOTAL: ${this.totalPoints} pontos`);
-  console.log(`- Atualizações: ${updatedMatches} itens modificados`);
-
-  await this.save();
-  return {
-    groupPoints,
-    podiumPoints,
-    totalPoints: this.totalPoints,
-    updatedMatches,
-    user: this.userName
-  };
-};
-
-// 🔥 MÉTODO: Calcular pontos para uma partida específica (NOVO)
-betSchema.methods.calculatePointsForMatch = async function(matchId, actualMatch) {
-  console.log(`🎯 Calculando pontos para jogo ${matchId} - ${this.userName}`);
-  
-  const matchBet = this.groupMatches.find(bet => bet.matchId === matchId);
-  
-  if (!matchBet) {
-    console.log(`⚠️ Usuário ${this.userName} não tem palpite para jogo ${matchId}`);
-    return { points: 0, updated: false };
-  }
-  
-  if (!actualMatch || actualMatch.status !== 'finished' || !actualMatch.winner) {
-    console.log(`⚠️ Jogo ${matchId} não está finalizado`);
-    return { points: 0, updated: false };
-  }
-  
-  const previousPoints = matchBet.points || 0;
-  let newPoints = 0;
-  
-  // 🔥 COMPARAR RESULTADO (1 ponto por acerto)
-  if (matchBet.result === actualMatch.winner) {
-    newPoints = 1;
-    console.log(`✅ ${this.userName} ACERTOU jogo ${matchId}! +1 ponto`);
-  } else {
-    newPoints = 0;
-    console.log(`❌ ${this.userName} ERROU jogo ${matchId}! 0 pontos`);
-  }
-  
-  // Atualizar apenas se mudou
-  if (previousPoints !== newPoints) {
-    matchBet.points = newPoints;
-    matchBet.processedAt = new Date();
-    
-    // Recalcular totais
-    await this.calculateGroupPointsTotal();
-    
-    console.log(`🔄 ${this.userName}: Jogo ${matchId} ${previousPoints} → ${newPoints} pontos`);
-    
-    await this.save();
-    return { points: newPoints, updated: true };
-  }
-  
-  return { points: newPoints, updated: false };
-};
-
-// 🔥 MÉTODO: Recalcular apenas pontos dos jogos (NOVO)
-betSchema.methods.calculateGroupPointsTotal = async function() {
-  const groupPoints = this.groupMatches.reduce((sum, match) => sum + (match.points || 0), 0);
-  
-  if (this.groupPoints !== groupPoints) {
-    this.groupPoints = groupPoints;
-    this.totalPoints = groupPoints + this.podiumPoints + this.bonusPoints;
-    this.lastPointsCalculation = new Date();
-    console.log(`🔄 ${this.userName}: Pontos jogos atualizado ${this.groupPoints} → ${groupPoints}`);
-  }
-  
-  return groupPoints;
-};
-
-// 🔥 MÉTODO: Simular pontuação (para preview)
-betSchema.methods.simulatePoints = function(actualMatches = [], actualPodium = null) {
-  let simulatedGroupPoints = 0;
-  let simulatedPodiumPoints = 0;
-  
-  // Simular pontos dos jogos
-  this.groupMatches.forEach(matchBet => {
-    const actualMatch = actualMatches.find(m => m.matchId === matchBet.matchId);
-    
-    if (actualMatch && actualMatch.status === 'finished' && actualMatch.winner) {
-      if (matchBet.result === actualMatch.winner) {
-        simulatedGroupPoints += 1;
-      }
-    }
-  });
-  
-  // Simular pontos do pódio
-  if (actualPodium) {
-    if (this.podium.first === actualPodium.first) simulatedPodiumPoints += 10;
-    if (this.podium.second === actualPodium.second) simulatedPodiumPoints += 7;
-    if (this.podium.third === actualPodium.third) simulatedPodiumPoints += 4;
-  }
-  
-  const totalPoints = simulatedGroupPoints + simulatedPodiumPoints + this.bonusPoints;
-  
-  return {
-    groupPoints: simulatedGroupPoints,
-    podiumPoints: simulatedPodiumPoints,
-    totalPoints: totalPoints,
-    bonusPoints: this.bonusPoints,
-    correctBets: this.groupMatches.filter(matchBet => {
-      const actualMatch = actualMatches.find(m => m.matchId === matchBet.matchId);
-      return actualMatch && actualMatch.status === 'finished' && 
-             matchBet.result === actualMatch.winner;
-    }).length,
-    totalMatches: actualMatches.filter(m => m.status === 'finished').length
-  };
-};
-
-// 🔥 MÉTODO: Adicionar pontos bônus
-betSchema.methods.addBonusPoints = function(points, reason = '') {
-  const previousBonus = this.bonusPoints;
-  this.bonusPoints += points;
-  
-  // Recalcular total
-  this.totalPoints = this.groupPoints + this.podiumPoints + this.bonusPoints;
-  
-  console.log(`🎁 Bônus adicionado para ${this.userName}: +${points} pontos (${reason})`);
-  console.log(`📊 Bônus: ${previousBonus} → ${this.bonusPoints} pontos`);
-  
-  return this.save();
-};
-
-// 🔥 MÉTODO: Resetar cálculo
-betSchema.methods.resetCalculation = function() {
-  console.log(`🔄 Resetando cálculo para ${this.userName}`);
-  
-  this.groupMatches.forEach(match => {
-    match.points = 0;
-    match.processedAt = null;
-  });
-  
-  this.podium.points = 0;
-  this.podium.calculated = false;
-  this.groupPoints = 0;
-  this.podiumPoints = 0;
-  this.totalPoints = 0;
-  this.bonusPoints = 0;
-  this.isCalculated = false;
-  this.lastPointsCalculation = null;
-  
-  return this.save();
-};
-
-// 🔥 MÉTODO: Obter estatísticas detalhadas (NOVO)
-betSchema.methods.getDetailedStats = function(actualMatches = []) {
-  const finishedMatches = actualMatches.filter(m => m.status === 'finished');
-  const userBets = this.groupMatches;
-  
-  const stats = {
-    totalBets: userBets.length,
-    finishedMatches: finishedMatches.length,
-    correctBets: userBets.filter(bet => {
-      const match = finishedMatches.find(m => m.matchId === bet.matchId);
-      return match && bet.result === match.winner;
-    }).length,
-    accuracy: 0,
-    pointsBreakdown: {
-      group: this.groupPoints,
-      podium: this.podiumPoints,
-      bonus: this.bonusPoints,
-      total: this.totalPoints
-    },
-    recentUpdates: this.groupMatches
-      .filter(bet => bet.processedAt)
-      .sort((a, b) => new Date(b.processedAt) - new Date(a.processedAt))
-      .slice(0, 5)
-      .map(bet => ({
-        matchId: bet.matchId,
-        points: bet.points,
-        processedAt: bet.processedAt
-      }))
-  };
-  
-  stats.accuracy = stats.totalBets > 0 ? (stats.correctBets / stats.totalBets) * 100 : 0;
-  
-  return stats;
-};
-
-// ======================
-// MÉTODOS ESTÁTICOS (ATUALIZADOS)
-// ======================
-
-// 🔥 MÉTODO ESTÁTICO: Buscar palpites por usuário
-betSchema.statics.findByUser = function(userId) {
-  return this.findOne({ user: userId })
-    .populate('user', 'name email');
-};
-
-// 🔥 MÉTODO ESTÁTICO: Buscar todos os palpites submetidos
-betSchema.statics.findSubmittedBets = function() {
-  return this.find({ hasSubmitted: true })
-    .populate('user', 'name email')
-    .sort({ totalPoints: -1, firstSubmission: 1 });
-};
-
-// 🔥 MÉTODO ESTÁTICO: Recalcular todos os pontos (ATUALIZADO)
-betSchema.statics.recalculateAllPoints = async function(actualMatches = [], actualPodium = null) {
-  console.log('🔄 RECALCULANDO TODOS OS PONTOS...');
-  
-  const bets = await this.find({ hasSubmitted: true }).populate('user', 'name');
-  let updatedCount = 0;
-  let totalUpdatedMatches = 0;
-  
-  for (const bet of bets) {
-    try {
-      const result = await bet.calculatePoints(actualMatches, actualPodium);
-      if (result.updatedMatches > 0) {
-        updatedCount++;
-        totalUpdatedMatches += result.updatedMatches;
-      }
-    } catch (error) {
-      console.error(`❌ Erro ao recalcular pontos para ${bet.userName}:`, error);
-    }
-  }
-  
-  console.log(`✅ ${updatedCount}/${bets.length} palpites atualizados, ${totalUpdatedMatches} itens modificados`);
-  return { updatedBets: updatedCount, totalBets: bets.length, updatedItems: totalUpdatedMatches };
-};
-
-// 🔥 MÉTODO ESTÁTICO: Recalcular pontos para uma partida específica (NOVO)
-betSchema.statics.recalculatePointsForMatch = async function(matchId, actualMatch) {
-  console.log(`🎯 RECALCULANDO PONTOS para partida ${matchId}...`);
-  
-  const bets = await this.find({ 
-    'groupMatches.matchId': matchId,
-    hasSubmitted: true 
-  }).populate('user', 'name');
-  
-  let updatedCount = 0;
-  
-  for (const bet of bets) {
-    try {
-      const result = await bet.calculatePointsForMatch(matchId, actualMatch);
-      if (result.updated) {
-        updatedCount++;
-      }
-    } catch (error) {
-      console.error(`❌ Erro ao recalcular pontos para ${bet.userName}:`, error);
-    }
-  }
-  
-  console.log(`✅ ${updatedCount}/${bets.length} palpites atualizados para partida ${matchId}`);
-  return { updatedBets: updatedCount, totalBets: bets.length };
-};
-
-// 🔥 MÉTODO ESTÁTICO: Atualizar ranking
-betSchema.statics.updateRanking = async function() {
-  const bets = await this.find({ hasSubmitted: true })
-    .sort({ totalPoints: -1, firstSubmission: 1 })
-    .populate('user', 'name');
-  
-  let position = 1;
-  for (const bet of bets) {
-    bet.rankingPosition = position;
-    await bet.save();
-    position++;
-  }
-  
-  console.log(`🏆 Ranking atualizado: ${bets.length} participantes`);
-  return bets.length;
-};
-
-// 🔥 MÉTODO ESTÁTICO: Estatísticas gerais
-betSchema.statics.getGlobalStats = async function() {
-  const totalBets = await this.countDocuments({ hasSubmitted: true });
-  const totalPoints = await this.aggregate([
-    { $match: { hasSubmitted: true } },
-    { $group: { _id: null, total: { $sum: '$totalPoints' } } }
-  ]);
-  
-  const avgPoints = totalPoints.length > 0 ? totalPoints[0].total / totalBets : 0;
-  
-  // Estatísticas de pontos
-  const pointsStats = await this.aggregate([
-    { $match: { hasSubmitted: true } },
-    { 
-      $group: {
-        _id: null,
-        avgGroupPoints: { $avg: '$groupPoints' },
-        avgPodiumPoints: { $avg: '$podiumPoints' },
-        maxPoints: { $max: '$totalPoints' },
-        minPoints: { $min: '$totalPoints' }
-      }
-    }
-  ]);
-  
-  return {
-    totalParticipants: totalBets,
-    totalPoints: totalPoints.length > 0 ? totalPoints[0].total : 0,
-    averagePoints: Math.round(avgPoints * 100) / 100,
-    calculatedBets: await this.countDocuments({ isCalculated: true }),
-    pointsStats: pointsStats.length > 0 ? pointsStats[0] : {}
-  };
-};
-
-// 🔥 MÉTODO ESTÁTICO: Buscar palpites para um jogo específico
-betSchema.statics.findBetsForMatch = function(matchId) {
-  return this.find({
-    'groupMatches.matchId': matchId,
-    hasSubmitted: true
-  })
-  .populate('user', 'name')
-  .select('user groupMatches.$ totalPoints groupPoints');
-};
-
-// 🔥 MÉTODO ESTÁTICO: Estatísticas de participação
-betSchema.statics.getParticipationStats = function() {
-  return this.aggregate([
-    {
-      $group: {
-        _id: '$hasSubmitted',
-        count: { $sum: 1 }
-      }
-    }
-  ]);
-};
-
-// 🔥 MÉTODO ESTÁTICO: Top participantes (NOVO)
-betSchema.statics.getTopParticipants = async function(limit = 10) {
-  return this.find({ hasSubmitted: true })
-    .populate('user', 'name')
-    .sort({ totalPoints: -1, firstSubmission: 1 })
-    .limit(limit)
-    .select('user totalPoints groupPoints podiumPoints bonusPoints rankingPosition');
-};
-
-// 🔥 MÉTODO ESTÁTICO: Limpar cálculos (para testes) (NOVO)
-betSchema.statics.resetAllCalculations = async function() {
-  console.log('🔄 LIMPANDO TODOS OS CÁLCULOS...');
-  
-  const result = await this.updateMany(
-    { hasSubmitted: true },
-    {
-      $set: {
-        'groupMatches.$[].points': 0,
-        'groupMatches.$[].processedAt': null,
-        'podium.points': 0,
-        'podium.calculated': false,
-        'groupPoints': 0,
-        'podiumPoints': 0,
-        'totalPoints': 0,
-        'bonusPoints': 0,
-        'isCalculated': false,
-        'lastPointsCalculation': null
-      }
-    }
-  );
-  
-  console.log(`✅ ${result.modifiedCount} palpites resetados`);
-  return result.modifiedCount;
-};
-
-// ======================
-// ÍNDICES PARA PERFORMANCE
-// ======================
-betSchema.index({ user: 1 });
-betSchema.index({ hasSubmitted: 1 });
-betSchema.index({ totalPoints: -1 });
-betSchema.index({ 'groupMatches.matchId': 1 });
-betSchema.index({ firstSubmission: -1 });
-betSchema.index({ rankingPosition: 1 });
-betSchema.index({ lastPointsCalculation: -1 });
-
-module.exports = mongoose.model('Bet', betSchema);
+module.exports = router;
