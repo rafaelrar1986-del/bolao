@@ -1,174 +1,470 @@
+// js/admin.js
+// Admin panel: listar, adicionar, editar, finalizar, reabrir e excluir partidas + utilitários
+
 import { api } from './api.js';
-import { $, toast, createModal, confirmDialog } from './ui.js';
+import { toast, openModal, closeModal } from './ui.js';
 
-export async function loadAdminMatches(){
-  const box = $('#admin-matches-list');
-  box.innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin"></i> Carregando...</div>';
-  try{
-    const res = await api.adminAll();
-    const rows = (res.data||[]).map(m=>{
-      const statusColor = m.status;
-      const score = m.status==='finished' ? `${m.scoreA} - ${m.scoreB}` : '-- : --';
-      return `<tr>
-        <td>${m.matchId}</td>
-        <td><strong>${m.teamA}</strong> vs <strong>${m.teamB}</strong></td>
-        <td>${m.group}</td>
-        <td><span class="badge ${statusColor}">${m.status}</span></td>
-        <td>${score}</td>
-        <td>${m.betsCount||0}</td>
-        <td>
-          <button class="btn btn-info btn-small" data-edit="${m.matchId}"><i class="fas fa-edit"></i></button>
-          ${m.status!=='finished' ? `<button class="btn btn-success btn-small" data-finish="${m.matchId}"><i class="fas fa-whistle"></i></button>`:''}
-        </td>
-      </tr>`;
-    }).join('');
-    box.innerHTML = `<table class="table">
-      <thead><tr><th>ID</th><th>Partida</th><th>Grupo</th><th>Status</th><th>Placar</th><th>Palpites</th><th>Ações</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>`;
+// Elementos fixos esperados no HTML
+const $adminMatchesList = () => document.getElementById('admin-matches-list');
 
-    box.querySelectorAll('[data-edit]').forEach(btn=>btn.addEventListener('click', ()=>openEditModal(btn.dataset.edit)));
-    box.querySelectorAll('[data-finish]').forEach(btn=>btn.addEventListener('click', ()=>openFinishModal(btn.dataset.finish)));
-  }catch(err){
-    box.innerHTML = `<p>Erro: ${err.message}</p>`;
+// Estado local simples
+const AdminState = {
+  matches: [],
+};
+
+// =============== BOOTSTRAP ===============
+export function initAdmin() {
+  // Esses botões costumam existir na aba Administração:
+  // - Adicionar Partida: openAddMatchModal()
+  // - Finalizar Partida (modal): openFinishMatchModal()
+  // - Definir Pódio: openSetPodiumModal()
+  // - Recalcular Pontos: recalculateAllPoints()
+  // - Verificar Integridade: checkDataIntegrity()
+  // As funções estão globais no window para serem chamadas pelos botões declarados no HTML.
+  window.openAddMatchModal = openAddMatchModal;
+  window.openFinishMatchModal = openFinishMatchModal;
+  window.openSetPodiumModal = openSetPodiumModal;
+
+  window.handleAddMatch = handleAddMatch;
+  window.prepareFinishMatch = prepareFinishMatch;
+  window.finishMatch = finishMatch;
+
+  window.editMatch = editMatch;
+  window.deleteMatch = adminDeleteMatchForce;
+  window.adminUnfinishMatch = adminUnfinishMatch;
+  window.adminDeleteMatchForce = adminDeleteMatchForce;
+
+  window.recalculateAllPoints = recalculateAllPoints;
+  window.checkDataIntegrity = checkDataIntegrity;
+  window.setPodium = setPodium;
+
+  // Carregar lista
+  loadAdminMatches();
+}
+
+// =============== LISTAR PARTIDAS ===============
+export async function loadAdminMatches() {
+  try {
+    const res = await api.get('/api/matches/admin/all');
+    if (!res.success) throw new Error(res.message || 'Erro ao listar partidas');
+
+    AdminState.matches = res.data || [];
+    renderAdminMatches(AdminState.matches);
+  } catch (err) {
+    console.error(err);
+    if ($adminMatchesList()) {
+      $adminMatchesList().innerHTML = '<p>Erro ao carregar partidas.</p>';
+    }
+    toast('Erro ao carregar partidas', 'error');
   }
 }
 
-export function bindAdminButtons(){
-  $('#btn-open-add-modal').addEventListener('click', openAddModal);
-  $('#btn-open-finish-modal').addEventListener('click', ()=>openFinishModal());
-  $('#btn-open-podium-modal').addEventListener('click', openPodiumModal);
-  $('#btn-recalc').addEventListener('click', async ()=>{
-    try{ await api.recalcAll(); toast('success','Recalculo concluído'); }catch(e){ toast('error',e.message); }
+function renderAdminMatches(matchesList) {
+  const container = $adminMatchesList();
+  if (!container) return;
+
+  if (!matchesList || matchesList.length === 0) {
+    container.innerHTML = '<p>Nenhuma partida encontrada.</p>';
+    return;
+  }
+
+  let html = `
+    <table class="table" style="font-size: 0.92rem;">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Partida</th>
+          <th>Grupo</th>
+          <th>Status</th>
+          <th>Placar</th>
+          <th>Palpites</th>
+          <th style="min-width:260px">Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+
+  matchesList.forEach((match) => {
+    const statusClass =
+      match.status === 'finished'
+        ? 'badge finished'
+        : match.status === 'in_progress'
+        ? 'badge in_progress'
+        : 'badge scheduled';
+
+    const score =
+      match.status === 'finished'
+        ? `${match.scoreA ?? 0} - ${match.scoreB ?? 0}`
+        : '-- : --';
+
+    html += `
+      <tr>
+        <td>${match.matchId}</td>
+        <td><strong>${match.teamA}</strong> vs <strong>${match.teamB}</strong></td>
+        <td>${match.group}</td>
+        <td><span class="${statusClass}">${match.status}</span></td>
+        <td>${score}</td>
+        <td>${match.betsCount || 0}</td>
+        <td style="display:flex; gap:6px; flex-wrap:wrap">
+          <button class="btn btn-small btn-info" onclick="editMatch(${match.matchId})">
+            <i class="fas fa-edit"></i> Editar
+          </button>
+          ${
+            match.status !== 'finished'
+              ? `<button class="btn btn-small btn-success" onclick="prepareFinishMatch(${match.matchId})">
+                  <i class="fas fa-whistle"></i> Finalizar
+                </button>`
+              : `<button class="btn btn-small btn-warning" onclick="adminUnfinishMatch(${match.matchId})">
+                  <i class="fas fa-undo"></i> Reabrir
+                </button>`
+          }
+          <button class="btn btn-small btn-danger" onclick="adminDeleteMatchForce(${match.matchId})">
+            <i class="fas fa-trash"></i> Excluir
+          </button>
+        </td>
+      </tr>
+    `;
   });
-  $('#btn-integrity').addEventListener('click', async ()=>{
-    try{ const r = await api.integrity(); toast('info',`Erros: ${r.data.errors?.length||0} | Avisos: ${r.data.warnings?.length||0}`); }catch(e){ toast('error',e.message); }
-  });
+
+  html += '</tbody></table>';
+  container.innerHTML = html;
 }
 
-function openAddModal(){
-  const modal = createModal('add-match-modal','Adicionar Partida',`
-    <form id="add-match-form" class="auth-form">
-      <div class="form-row">
-        <div class="form-group"><label>ID</label><input id="match-id" type="number" min="1" required/></div>
-        <div class="form-group"><label>Grupo</label><input id="match-group" required/></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Time A</label><input id="team-a" required/></div>
-        <div class="form-group"><label>Time B</label><input id="team-b" required/></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Data (DD/MM/AAAA)</label><input id="match-date" placeholder="13/06/2026" required/></div>
-        <div class="form-group"><label>Hora (HH:MM)</label><input id="match-time" placeholder="16:00" required/></div>
-      </div>
-      <div class="form-group"><label>Estádio</label><input id="match-stadium"/></div>
-      <button class="btn btn-success" type="submit">Adicionar</button>
-    </form>`);
-  modal.querySelector('#add-match-form').addEventListener('submit', async (e)=>{
-    e.preventDefault();
-    const payload = {
-      matchId: parseInt($('#match-id',modal).value,10),
-      teamA: $('#team-a',modal).value.trim(),
-      teamB: $('#team-b',modal).value.trim(),
-      date: $('#match-date',modal).value.trim(),
-      time: $('#match-time',modal).value.trim(),
-      group: $('#match-group',modal).value.trim(),
-      stadium: $('#match-stadium',modal).value.trim()
-    };
-    try{ await api.adminAdd(payload); toast('success','Partida adicionada'); modal.remove(); loadAdminMatches(); }catch(e){ toast('error',e.message); }
-  });
+// =============== MODAL: ADICIONAR PARTIDA ===============
+function openAddMatchModal() {
+  const modal = document.getElementById('add-match-modal');
+  if (!modal) return toast('Modal de adicionar partida não encontrado', 'error');
+  openModal('add-match-modal');
+
+  // Garante submit handler atualizado
+  const form = document.getElementById('add-match-form');
+  if (form) {
+    form.removeEventListener('submit', handleAddMatch);
+    form.addEventListener('submit', handleAddMatch);
+  }
 }
 
-async function openEditModal(matchId){
-  // fetch one from admin list to prefill
-  try{
-    const res = await api.adminAll();
-    const m = (res.data||[]).find(x=>String(x.matchId)===String(matchId));
-    if(!m){ toast('error','Partida não encontrada'); return; }
-    const modal = createModal('edit-match-modal','Editar Partida',`
-      <form id="edit-match-form" class="auth-form">
-        <input type="hidden" id="edit-id" value="${m.matchId}" />
-        <div class="form-row">
-          <div class="form-group"><label>Time A</label><input id="edit-team-a" value="${m.teamA}" required/></div>
-          <div class="form-group"><label>Time B</label><input id="edit-team-b" value="${m.teamB}" required/></div>
-        </div>
-        <div class="form-row">
-          <div class="form-group"><label>Data (DD/MM/AAAA)</label><input id="edit-date" value="${m.date}" required/></div>
-          <div class="form-group"><label>Hora (HH:MM)</label><input id="edit-time" value="${m.time}" required/></div>
-        </div>
-        <div class="form-row">
-          <div class="form-group"><label>Grupo</label><input id="edit-group" value="${m.group}" required/></div>
-          <div class="form-group"><label>Estádio</label><input id="edit-stadium" value="${m.stadium||''}" /></div>
-        </div>
-        <div class="form-row">
-          <div class="form-group"><label>Status</label>
-            <select id="edit-status">
-              <option value="scheduled" ${m.status==='scheduled'?'selected':''}>Agendado</option>
-              <option value="in_progress" ${m.status==='in_progress'?'selected':''}>Em andamento</option>
-              <option value="finished" ${m.status==='finished'?'selected':''}>Finalizado</option>
-            </select>
-          </div>
-          <div class="form-group"><label>Placar A</label><input id="edit-score-a" type="number" min="0" max="20" value="${m.scoreA??''}" /></div>
-          <div class="form-group"><label>Placar B</label><input id="edit-score-b" type="number" min="0" max="20" value="${m.scoreB??''}" /></div>
-        </div>
-        <button class="btn btn-success" type="submit">Salvar</button>
-      </form>`);
-    modal.querySelector('#edit-match-form').addEventListener('submit', async (e)=>{
-      e.preventDefault();
-      const id = $('#edit-id',modal).value;
-      const payload = {
-        teamA: $('#edit-team-a',modal).value.trim(),
-        teamB: $('#edit-team-b',modal).value.trim(),
-        date: $('#edit-date',modal).value.trim(),
-        time: $('#edit-time',modal).value.trim(),
-        group: $('#edit-group',modal).value.trim(),
-        stadium: $('#edit-stadium',modal).value.trim(),
-        status: $('#edit-status',modal).value
-      };
-      const sa = $('#edit-score-a',modal).value;
-      const sb = $('#edit-score-b',modal).value;
-      if(sa!=='' && sb!==''){ payload.scoreA = parseInt(sa,10); payload.scoreB = parseInt(sb,10); }
-      try{ await api.adminEdit(id,payload); toast('success','Atualizado'); modal.remove(); loadAdminMatches(); }catch(e){ toast('error',e.message); }
+async function handleAddMatch(e) {
+  e.preventDefault();
+  const payload = {
+    matchId: parseInt(document.getElementById('match-id').value),
+    teamA: document.getElementById('team-a').value.trim(),
+    teamB: document.getElementById('team-b').value.trim(),
+    date: document.getElementById('match-date').value.trim(),
+    time: document.getElementById('match-time').value.trim(),
+    group: document.getElementById('match-group').value.trim(),
+    stadium: document.getElementById('match-stadium').value.trim(),
+  };
+
+  try {
+    const res = await api.post('/api/matches/admin/add', payload);
+    if (!res.success) throw new Error(res.message || 'Erro ao adicionar');
+
+    toast('Partida adicionada!', 'success');
+    closeModal('add-match-modal');
+    const form = document.getElementById('add-match-form');
+    if (form) form.reset();
+    await loadAdminMatches();
+  } catch (err) {
+    console.error(err);
+    toast(err.message || 'Erro ao adicionar partida', 'error');
+  }
+}
+
+// =============== MODAL: FINALIZAR PARTIDA ===============
+function openFinishMatchModal() {
+  // Preenche o select
+  const select = document.getElementById('finish-match-select');
+  if (!select) return toast('Modal de finalizar partida não encontrado', 'error');
+
+  select.innerHTML = '<option value="">Selecione uma partida</option>';
+  AdminState.matches
+    .filter((m) => m.status !== 'finished')
+    .forEach((m) => {
+      const opt = document.createElement('option');
+      opt.value = m.matchId;
+      opt.textContent = `${m.teamA} vs ${m.teamB} (${m.group})`;
+      select.appendChild(opt);
     });
-  }catch(e){ toast('error',e.message); }
+
+  openModal('finish-match-modal');
 }
 
-async function openFinishModal(matchId){
-  // If id not provided, open select
-  const res = await api.adminAll();
-  const options = (res.data||[]).filter(x=>x.status!=='finished').map(x=>`<option value="${x.matchId}">${x.matchId} - ${x.teamA} vs ${x.teamB}</option>`).join('');
-  const modal = createModal('finish-modal','Finalizar Partida',`
-    <div class="form-group"><label>Partida</label>
-      <select id="finish-select"><option value="">Selecione...</option>${options}</select>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label>Placar A</label><input id="finish-a" type="number" min="0" max="20"/></div>
-      <div class="form-group"><label>Placar B</label><input id="finish-b" type="number" min="0" max="20"/></div>
-    </div>
-    <button id="finish-btn" class="btn btn-success">Finalizar</button>
-  `);
-  if(matchId){ $('#finish-select',modal).value = matchId; }
-  $('#finish-btn',modal).addEventListener('click', async ()=>{
-    const id = $('#finish-select',modal).value;
-    const a = $('#finish-a',modal).value;
-    const b = $('#finish-b',modal).value;
-    if(!id||a===''||b===''){ return toast('warning','Preencha tudo'); }
-    try{ await api.adminFinish(id,{scoreA:parseInt(a,10),scoreB:parseInt(b,10)}); toast('success','Finalizado'); modal.remove(); loadAdminMatches(); }catch(e){ toast('error',e.message); }
-  });
+function prepareFinishMatch(matchId) {
+  // Abre o modal e seleciona a partida
+  openFinishMatchModal();
+  const select = document.getElementById('finish-match-select');
+  if (select) {
+    select.value = String(matchId);
+    loadMatchDetails();
+  }
 }
 
-function openPodiumModal(){
-  const modal = createModal('podium-modal','Definir Pódio',`
-    <div class="form-group"><label>🥇 1º (7 pts)</label><input id="podium-first"/></div>
-    <div class="form-group"><label>🥈 2º (4 pts)</label><input id="podium-second"/></div>
-    <div class="form-group"><label>🥉 3º (2 pts)</label><input id="podium-third"/></div>
-    <button id="podium-btn" class="btn btn-success">Salvar Pódio</button>
-  `);
-  $('#podium-btn',modal).addEventListener('click', async ()=>{
-    const first = $('#podium-first',modal).value.trim();
-    const second = $('#podium-second',modal).value.trim();
-    const third = $('#podium-third',modal).value.trim();
-    if(!first||!second||!third) return toast('warning','Preencha o pódio completo');
-    try{ await api.processPodium({first,second,third}); toast('success','Pódio definido'); modal.remove(); }catch(e){ toast('error',e.message); }
-  });
+window.loadMatchDetails = function loadMatchDetails() {
+  const select = document.getElementById('finish-match-select');
+  const detailsDiv = document.getElementById('match-details');
+  if (!select || !detailsDiv) return;
+
+  const matchId = Number(select.value);
+  if (!matchId) {
+    detailsDiv.style.display = 'none';
+    return;
+  }
+  const match = AdminState.matches.find((m) => m.matchId === matchId);
+  if (!match) return;
+
+  document.getElementById('selected-match-name').textContent = `${match.teamA} vs ${match.teamB}`;
+  detailsDiv.style.display = 'block';
+};
+
+async function finishMatch() {
+  const matchId = Number(document.getElementById('finish-match-select').value);
+  const scoreA = Number(document.getElementById('score-a').value);
+  const scoreB = Number(document.getElementById('score-b').value);
+
+  if (!matchId || Number.isNaN(scoreA) || Number.isNaN(scoreB)) {
+    return toast('Preencha match e placar', 'warning');
+  }
+
+  try {
+    const res = await api.post(`/api/matches/admin/finish/${matchId}`, { scoreA, scoreB });
+    if (!res.success) throw new Error(res.message || 'Erro ao finalizar');
+
+    toast('Partida finalizada + pontos recalculados', 'success');
+    closeModal('finish-match-modal');
+    await loadAdminMatches();
+  } catch (err) {
+    console.error(err);
+    toast(err.message || 'Erro ao finalizar partida', 'error');
+  }
 }
+
+// =============== MODAL: EDITAR PARTIDA ===============
+function editMatch(matchId) {
+  const match = AdminState.matches.find((m) => m.matchId === Number(matchId));
+  if (!match) return toast('Partida não encontrada', 'error');
+
+  // Remove modal anterior (se houver)
+  const existing = document.getElementById('edit-match-modal');
+  if (existing) existing.remove();
+
+  const html = `
+    <div id="edit-match-modal" class="modal active">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 class="modal-title">Editar Partida</h3>
+          <button class="close-modal" onclick="closeModal('edit-match-modal')">&times;</button>
+        </div>
+        <form id="edit-match-form">
+          <input type="hidden" id="edit-match-id" value="${match.matchId}">
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="edit-team-a">Time A</label>
+              <input id="edit-team-a" value="${match.teamA}" required>
+            </div>
+            <div class="form-group">
+              <label for="edit-team-b">Time B</label>
+              <input id="edit-team-b" value="${match.teamB}" required>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="edit-match-date">Data (DD/MM/AAAA)</label>
+              <input id="edit-match-date" value="${match.date || ''}" placeholder="DD/MM/AAAA" required>
+            </div>
+            <div class="form-group">
+              <label for="edit-match-time">Horário (HH:MM)</label>
+              <input id="edit-match-time" value="${match.time || ''}" placeholder="HH:MM" required>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="edit-match-group">Grupo</label>
+              <input id="edit-match-group" value="${match.group || ''}" required>
+            </div>
+            <div class="form-group">
+              <label for="edit-match-stadium">Estádio</label>
+              <input id="edit-match-stadium" value="${match.stadium || ''}">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="edit-match-status">Status</label>
+              <select id="edit-match-status">
+                <option value="scheduled" ${match.status === 'scheduled' ? 'selected' : ''}>Agendado</option>
+                <option value="in_progress" ${match.status === 'in_progress' ? 'selected' : ''}>Em andamento</option>
+                <option value="finished" ${match.status === 'finished' ? 'selected' : ''}>Finalizado</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="edit-score-a">Placar A</label>
+              <input id="edit-score-a" type="number" min="0" max="50" value="${match.scoreA ?? ''}">
+            </div>
+            <div class="form-group">
+              <label for="edit-score-b">Placar B</label>
+              <input id="edit-score-b" type="number" min="0" max="50" value="${match.scoreB ?? ''}">
+            </div>
+          </div>
+
+          <div class="form-row" style="gap:8px; margin-top:8px;">
+            <button type="submit" class="btn btn-success"><i class="fas fa-save"></i> Salvar</button>
+            ${
+              match.status !== 'finished'
+                ? `<button type="button" class="btn btn-warning" onclick="prepareFinishMatch(${match.matchId})"><i class="fas fa-whistle"></i> Finalizar</button>`
+                : `<button type="button" class="btn btn-warning" onclick="adminUnfinishMatch(${match.matchId})"><i class="fas fa-undo"></i> Reabrir</button>`
+            }
+            <button type="button" class="btn btn-danger" onclick="adminDeleteMatchForce(${match.matchId})"><i class="fas fa-trash"></i> Excluir</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+
+  document.body.insertAdjacentHTML('beforeend', html);
+
+  // Submit handler
+  const form = document.getElementById('edit-match-form');
+  form.addEventListener('submit', handleEditMatch);
+}
+
+async function handleEditMatch(e) {
+  e.preventDefault();
+  const matchId = Number(document.getElementById('edit-match-id').value);
+
+  const updates = {
+    teamA: document.getElementById('edit-team-a').value.trim(),
+    teamB: document.getElementById('edit-team-b').value.trim(),
+    date: document.getElementById('edit-match-date').value.trim(),
+    time: document.getElementById('edit-match-time').value.trim(),
+    group: document.getElementById('edit-match-group').value.trim(),
+    stadium: document.getElementById('edit-match-stadium').value.trim(),
+    status: document.getElementById('edit-match-status').value,
+  };
+
+  // Só envia placar se tiver valor numérico e se status finished (ou se usuário quiser persistir)
+  const scoreAInput = document.getElementById('edit-score-a').value;
+  const scoreBInput = document.getElementById('edit-score-b').value;
+
+  if (scoreAInput !== '') updates.scoreA = Number(scoreAInput);
+  if (scoreBInput !== '') updates.scoreB = Number(scoreBInput);
+
+  // Se status finished, exigir scoreA/scoreB
+  if (updates.status === 'finished') {
+    if (updates.scoreA === undefined || updates.scoreB === undefined) {
+      return toast('Para finalizar, informe scoreA e scoreB', 'warning');
+    }
+  }
+
+  try {
+    const res = await api.put(`/api/matches/admin/edit/${matchId}`, updates);
+    if (!res.success) throw new Error(res.message || 'Erro ao editar');
+
+    toast('Partida atualizada', 'success');
+    closeModal('edit-match-modal');
+    await loadAdminMatches();
+  } catch (err) {
+    console.error(err);
+    toast(err.message || 'Erro ao editar partida', 'error');
+  }
+}
+
+// =============== REABRIR (UNFINISH) ===============
+async function adminUnfinishMatch(matchId) {
+  if (!confirm('Reabrir esta partida? Isso limpará o placar e zerará os pontos deste jogo para todos os palpites.')) return;
+
+  try {
+    const res = await api.post(`/api/matches/admin/unfinish/${matchId}`);
+    if (!res.success) throw new Error(res.message || 'Erro ao reabrir');
+
+    toast('Partida reaberta e pontos zerados do jogo', 'success');
+    closeModal('edit-match-modal'); // caso estivesse aberto
+    await loadAdminMatches();
+  } catch (err) {
+    console.error(err);
+    toast(err.message || 'Erro ao reabrir partida', 'error');
+  }
+}
+
+// =============== EXCLUIR (FORCE) ===============
+async function adminDeleteMatchForce(matchId) {
+  if (!confirm('Excluir DEFINITIVAMENTE a partida?\nOs pontos deste jogo serão zerados e a partida será removida.')) return;
+
+  try {
+    const res = await api.del(`/api/matches/admin/delete/${matchId}?force=1`);
+    if (!res.success) throw new Error(res.message || 'Erro ao excluir');
+
+    toast('Partida excluída', 'success');
+    closeModal('edit-match-modal'); // caso estivesse aberto
+    await loadAdminMatches();
+  } catch (err) {
+    console.error(err);
+    toast(err.message || 'Erro ao excluir partida', 'error');
+  }
+}
+
+// =============== PODIUM / REBUILD / INTEGRITY ===============
+async function setPodium() {
+  const first = document.getElementById('podium-first')?.value;
+  const second = document.getElementById('podium-second')?.value;
+  const third = document.getElementById('podium-third')?.value;
+
+  if (!first || !second || !third) {
+    return toast('Selecione todas as posições do pódio', 'warning');
+  }
+
+  try {
+    const res = await api.post('/api/points/process-podium', { first, second, third });
+    if (!res.success) throw new Error(res.message || 'Erro ao processar pódio');
+
+    toast('Pódio definido + pontos recalculados', 'success');
+    closeModal('set-podium-modal');
+  } catch (err) {
+    console.error(err);
+    toast(err.message || 'Erro ao definir pódio', 'error');
+  }
+}
+
+async function recalculateAllPoints() {
+  try {
+    const res = await api.post('/api/points/recalculate-all', {});
+    if (!res.success) throw new Error(res.message || 'Erro ao recalcular');
+
+    toast('Todos os pontos recalculados', 'success');
+  } catch (err) {
+    console.error(err);
+    toast(err.message || 'Erro ao recalcular pontos', 'error');
+  }
+}
+
+async function checkDataIntegrity() {
+  try {
+    const res = await api.get('/api/points/integrity-check');
+    if (!res.success) throw new Error(res.message || 'Erro ao verificar integridade');
+
+    const errors = res.data?.errors?.length || 0;
+    const warnings = res.data?.warnings?.length || 0;
+    toast(`Integridade OK • Erros: ${errors} • Avisos: ${warnings}`, errors ? 'warning' : 'success');
+  } catch (err) {
+    console.error(err);
+    toast(err.message || 'Erro na verificação de integridade', 'error');
+  }
+}
+
+// =============== MODAIS AUXILIARES PÚBLICOS ===============
+function openSetPodiumModal() {
+  const modal = document.getElementById('set-podium-modal');
+  if (!modal) return toast('Modal de pódio não encontrado', 'error');
+  openModal('set-podium-modal');
+}
+
+function openFinishMatchModalIfNotOpen() {
+  const modal = document.getElementById('finish-match-modal');
+  if (!modal) return toast('Modal de finalizar partida não encontrado', 'error');
+  openModal('finish-match-modal');
+}
+
+export { openAddMatchModal, openFinishMatchModal, openSetPodiumModal };
