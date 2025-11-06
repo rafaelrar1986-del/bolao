@@ -24,6 +24,8 @@ const allowedOrigins = [
   'https://bolao-gamma.vercel.app',
   /\.vercel\.app$/, // todos os subdomínios vercel
   /\.netlify\.app$/, // todos os subdomínios netlify
+  'https://bolao5.pages.dev',   // ✅ ADICIONE ESTA LINHA
+  /\.pages\.dev$/,   
   'http://localhost:3000',
   'http://localhost:5173',
   'http://localhost:8000',
