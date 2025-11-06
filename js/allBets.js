@@ -1,117 +1,137 @@
+// js/allBets.js
 import { api } from './api.js';
-import { $, $$, toast } from './ui.js';
+import { toast } from './ui.js';
 
-const STATE = {
-  data: [],
+const AB_STATE = {
+  all: [],
   page: 1,
-  pageSize: 5,
-  filter: { search:'', matchId:'', group:'', sortBy:'user' }
+  pageSize: 5
 };
 
-export async function initAllBets(){
-  await Promise.all([loadMatchesForFilter(), loadAllBets(true)]);
-  bindActions();
+const $container = () => document.getElementById('all-bets-container');
+const $pagination = () => document.getElementById('all-bets-pagination');
+
+export async function initAllBets() {
+  await preloadFilters();
+  bindFilterButtons();
+  await fetchAndRender(); // lista inicial
 }
 
-function bindActions(){
-  $('#btn-search').addEventListener('click', ()=>{
-    STATE.page = 1;
-    STATE.filter = {
-      search: $('#filter-search').value.trim(),
-      matchId: $('#filter-match').value,
-      group: $('#filter-group').value.trim(),
-      sortBy: $('#filter-sort').value
-    };
-    loadAllBets(false);
+function bindFilterButtons() {
+  document.getElementById('btn-search')?.addEventListener('click', async () => {
+    AB_STATE.page = 1;
+    await fetchAndRender();
   });
-  $('#btn-clear').addEventListener('click', ()=>{
-    $('#filter-search').value='';
-    $('#filter-match').value='';
-    $('#filter-group').value='';
-    $('#filter-sort').value='user';
-    STATE.page=1;
-    STATE.filter = { search:'', matchId:'', group:'', sortBy:'user' };
-    loadAllBets(false);
+  document.getElementById('btn-clear')?.addEventListener('click', async () => {
+    document.getElementById('filter-search').value = '';
+    document.getElementById('filter-match').value = '';
+    document.getElementById('filter-group').value = '';
+    document.getElementById('filter-sort').value = 'user';
+    AB_STATE.page = 1;
+    await fetchAndRender();
   });
 }
 
-async function loadMatchesForFilter(){
-  try{
-    const res = await api.matchesForFilter();
-    const sel = $('#filter-match');
-    sel.innerHTML = '<option value="">Todas</option>' + (res.data||[]).map(m=>`<option value="${m.matchId}">${m.matchId} - ${m.teamA} vs ${m.teamB}</option>`).join('');
-  }catch(e){/* ignore */}
-}
-
-async function loadAllBets(firstLoad){
-  const cont = $('#all-bets-container');
-  cont.innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin"></i> Carregando...</div>';
-  try{
-    const params = { ...STATE.filter };
-    const res = await api.allBets(params);
-    const enriched = (res.data||[]).map(userBet => {
-      // Se um matchId foi filtrado, mostrar só os palpites daquela partida
-      if(STATE.filter.matchId){
-        const wanted = parseInt(STATE.filter.matchId,10);
-        return { ...userBet, groupMatches: userBet.groupMatches.filter(m=>m.matchId===wanted) };
+async function preloadFilters() {
+  try {
+    const res = await api.get('/api/bets/matches-for-filter');
+    if (res.success) {
+      const sel = document.getElementById('filter-match');
+      if (sel) {
+        sel.innerHTML = '<option value="">Todas</option>';
+        (res.data || []).forEach(m => {
+          const opt = document.createElement('option');
+          opt.value = m.matchId;
+          opt.textContent = `${m.matchId} • ${m.teamA} vs ${m.teamB} (${m.group})`;
+          sel.appendChild(opt);
+        });
       }
-      return userBet;
-    }).filter(u => u.groupMatches && u.groupMatches.length>0); // filtra vazios quando matchId setado
+    }
+  } catch (_) {}
+}
 
-    STATE.data = enriched;
-    renderList();
-  }catch(err){
-    cont.innerHTML = `<p>Erro ao carregar: ${err.message}</p>`;
+async function fetchAndRender() {
+  try {
+    const search = document.getElementById('filter-search').value.trim();
+    const matchId = document.getElementById('filter-match').value;
+    const group = document.getElementById('filter-group').value.trim();
+    const sortBy = document.getElementById('filter-sort').value;
+
+    const qs = new URLSearchParams();
+    if (search) qs.set('search', search);
+    if (matchId) qs.set('matchId', matchId);
+    if (group) qs.set('group', group);
+    if (sortBy) qs.set('sortBy', sortBy);
+
+    const res = await api.get(`/api/bets/all-bets?${qs.toString()}`);
+    if (!res.success) throw new Error(res.message || 'Erro');
+    AB_STATE.all = res.data || [];
+    renderPage();
+  } catch (e) {
+    console.error(e);
+    if ($container()) $container().innerHTML = '<p>Erro ao buscar apostas</p>';
   }
 }
 
-function renderList(){
-  const cont = $('#all-bets-container');
-  if(!STATE.data.length){ cont.innerHTML = '<p>Nada encontrado.</p>'; $('#all-bets-pagination').innerHTML=''; return; }
-  const start = (STATE.page-1)*STATE.pageSize;
-  const pageItems = STATE.data.slice(start, start+STATE.pageSize);
+function renderPage() {
+  const el = $container();
+  if (!el) return;
 
-  cont.innerHTML = pageItems.map(u => userBlock(u)).join('');
+  const start = (AB_STATE.page - 1) * AB_STATE.pageSize;
+  const end = start + AB_STATE.pageSize;
+  const pageItems = AB_STATE.all.slice(start, end);
+
+  if (!pageItems.length) {
+    el.innerHTML = '<p>Nenhum resultado para os filtros aplicados.</p>';
+    $pagination().innerHTML = '';
+    return;
+  }
+
+  el.innerHTML = pageItems.map(userBlock).join('');
   renderPagination();
 }
 
-function userBlock(u){
-  // Cabeçalho só com nome (sem email)
-  const header = `<div class="user-bets-header">
-    <div><strong>${u.userName}</strong></div>
-    <div>Pontos: <strong>${u.totalPoints||0}</strong></div>
-  </div>`;
-
-  const chips = u.groupMatches.map(gm=>{
-    const correct = resolveOutcome(gm);
-    const userChoice = gm.bet === 'A' ? gm.teamA : gm.bet === 'B' ? gm.teamB : 'Empate';
-    const status = (gm.status==='finished')
-      ? (gm.bet === correct ? 'win':'lose') : 'pending';
-    return `<span class="chip ${status}" title="${gm.matchName}">${gm.matchName}: ${userChoice}</span>`;
+function userBlock(entry) {
+  // entry.bets[] tem { matchId, choice(A/B/draw), matchName, teamA, teamB, status, points? }
+  const chips = entry.bets.map(b => {
+    const label = b.choice === 'A' ? (b.teamA || 'Time A')
+                : b.choice === 'B' ? (b.teamB || 'Time B')
+                : 'Empate';
+    let cls = 'pending';
+    if (b.status === 'finished') {
+      cls = (b.points || 0) > 0 ? 'win' : 'lose';
+    }
+    return `<span class="chip ${cls}">${b.matchName || `Jogo ${b.matchId}`} • <strong>${label}</strong></span>`;
   }).join('');
 
-  return `<div class="user-bets-compact">
-    ${header}
-    <div class="chips">${chips || '<em>Sem palpites</em>'}</div>
-  </div>`;
+  return `
+    <div class="user-bets-compact">
+      <div class="user-bets-header">
+        <div><strong>${entry.userName}</strong></div>
+        <div><strong>${entry.totalPoints || 0}</strong> pts</div>
+      </div>
+      <div class="chips">${chips}</div>
+    </div>
+  `;
 }
 
-function resolveOutcome(gm){
-  if(gm.status!=='finished' || gm.scoreA==null || gm.scoreB==null) return null;
-  if(gm.scoreA>gm.scoreB) return 'A';
-  if(gm.scoreB>gm.scoreA) return 'B';
-  return 'D';
-}
+function renderPagination() {
+  const el = $pagination();
+  if (!el) return;
 
-function renderPagination(){
-  const totalPages = Math.ceil(STATE.data.length / STATE.pageSize) || 1;
-  const pag = $('#all-bets-pagination');
-  pag.innerHTML = '';
-  for(let p=1;p<=totalPages;p++){
-    const b = document.createElement('button');
-    b.className = 'page-btn'+(p===STATE.page?' active':'');
-    b.textContent = p;
-    b.addEventListener('click', ()=>{ STATE.page=p; renderList(); });
-    pag.appendChild(b);
+  const totalPages = Math.ceil(AB_STATE.all.length / AB_STATE.pageSize);
+  if (totalPages <= 1) { el.innerHTML = ''; return; }
+
+  let html = '';
+  for (let p = 1; p <= totalPages; p++) {
+    html += `<button class="page-btn ${p === AB_STATE.page ? 'active' : ''}" data-p="${p}">${p}</button>`;
   }
+  el.innerHTML = html;
+
+  el.querySelectorAll('.page-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      AB_STATE.page = Number(btn.dataset.p);
+      renderPage();
+    });
+  });
 }
