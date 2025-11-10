@@ -1,18 +1,23 @@
-// models/Setting.js
 const mongoose = require('mongoose');
 
-const SettingsSchema = new mongoose.Schema(
-  {
-    key: { type: String, required: true, unique: true, index: true },
-    podium: {
-      first: { type: String },
-      second: { type: String },
-      third: { type: String }
-    },
-    // flag global para abrir/fechar envios de apostas
-    betsOpen: { type: Boolean, default: true }
-  },
-  { collection: 'settings', timestamps: true }
-);
+const SettingSchema = new mongoose.Schema({
+  key: { type: String, required: true, unique: true, index: true },
+  value: { type: mongoose.Schema.Types.Mixed, required: true },
+}, { timestamps: true });
 
-module.exports = mongoose.models.Setting || mongoose.model('Setting', SettingsSchema);
+SettingSchema.statics.get = async function(key, defaultValue=null) {
+  const doc = await this.findOne({ key });
+  return doc ? doc.value : defaultValue;
+};
+
+SettingSchema.statics.set = async function(key, value) {
+  const existing = await this.findOne({ key });
+  if (existing) {
+    existing.value = value;
+    await existing.save();
+    return existing;
+  }
+  return this.create({ key, value });
+};
+
+module.exports = mongoose.models.Setting || mongoose.model('Setting', SettingSchema);

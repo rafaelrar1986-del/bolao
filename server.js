@@ -4,8 +4,6 @@ const cors = require('cors');
 require('dotenv').config();
 
 const app = express();
-// registra modelos globais
-require('./models/Setting');
 
 // ======================
 // CONFIGURAÇÃO DE VARIÁVEIS DE AMBIENTE
@@ -180,11 +178,13 @@ const authRoutes = require('./routes/auth');
 const matchesRoutes = require('./routes/matches');
 const betsRoutes = require('./routes/bets');
 const pointsRoutes = require('./routes/points'); // 👈 NOVA ROTA
+const adminRoutes = require('./routes/admin');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/matches', matchesRoutes);
 app.use('/api/bets', betsRoutes);
 app.use('/api/points', pointsRoutes); // 👈 NOVA ROTA
+app.use('/api/admin', adminRoutes);
 
 // ======================
 // MIDDLEWARES DE ERRO - NOVOS

@@ -4,7 +4,6 @@ const Bet = require('../models/Bet');
 const Match = require('../models/Match');
 const User = require('../models/User');
 const { protect, admin } = require('../middleware/auth');
-const Setting = require('../models/Setting');
 
 const router = express.Router();
 
@@ -92,13 +91,20 @@ router.get('/my-bets', protect, async (req, res) => {
  * }
  */
 router.post('/save', protect, async (req, res) => {
+  // 🔒 Bloqueio de envio (global e por usuário)
   try {
-    const doc = await Setting.findOne({ key: 'bets-open' }).lean();
-    const isOpen = doc?.betsOpen !== undefined ? !!doc.betsOpen : true;
-    if (!isOpen && !req.user?.isAdmin) {
-      return res.status(403).json({ success: false, message: 'Envio de apostas está bloqueado no momento' });
+    const Setting = require('../models/Setting');
+    const globalLocked = await Setting.get('betsLocked', false);
+    if (globalLocked) {
+      return res.status(403).json({ success: false, message: 'Envio de palpites está temporariamente bloqueado pelo administrador.' });
     }
-  } catch(e) { return res.status(500).json({ success: false, message: 'Erro ao verificar status' }); }
+    const me = await User.findById(req.user._id).lean();
+    if (me?.betsBlocked) {
+      return res.status(403).json({ success: false, message: 'Seu envio de palpites está bloqueado pelo administrador.' });
+    }
+  } catch (lockErr) {
+    console.error('Erro ao verificar bloqueio de apostas:', lockErr);
+  }
 
   try {
     const { groupMatches, podium } = req.body;
@@ -360,40 +366,5 @@ router.post('/admin/reset-all', protect, admin, async (req, res) => {
     return res.status(500).json({ success: false, message: 'Erro ao resetar apostas' });
   }
 });
-
-
-
-/**
- * 🔒 Admin: status de abertura dos envios de apostas
- */
-router.get('/admin/status', protect, admin, async (req, res) => {
-  try {
-    const doc = await Setting.findOne({ key: 'bets-open' }).lean();
-    const open = doc?.betsOpen !== undefined ? !!doc.betsOpen : true;
-    return res.json({ success: true, open });
-  } catch (e) {
-    console.error('GET /admin/status error:', e);
-    return res.status(500).json({ success: false, message: 'Erro ao obter status' });
-  }
-});
-
-/**
- * 🔒 Admin: abrir/fechar envios
- * body: { open: true|false }
- */
-router.post('/admin/set-open', protect, admin, async (req, res) => {
-  try {
-    const { open } = req.body || {};
-    if (typeof open !== 'boolean') {
-      return res.status(400).json({ success: false, message: 'Campo booleano "open" é obrigatório' });
-    }
-    await Setting.updateOne({ key: 'bets-open' }, { $set: { betsOpen: open } }, { upsert: true });
-    return res.json({ success: true, open });
-  } catch (e) {
-    console.error('POST /admin/set-open error:', e);
-    return res.status(500).json({ success: false, message: 'Erro ao alterar status' });
-  }
-});
-
 
 module.exports = router;

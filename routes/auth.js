@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs'); // (usado no modelo se passwordVersion=1)
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto'); // (fallback usado no modelo)
 const User = require('../models/User');
-const { protect, admin } = require('../middleware/auth');
+const { protect } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -266,28 +266,5 @@ router.get('/test', protect, (req, res) => {
     timestamp: new Date().toISOString()
   });
 });
-
-
-
-// =============== 🔥 ADMIN: Deletar usuário por ID (cascata básica) ===============
-router.delete('/admin/delete/:id', protect, admin, async (req, res) => {
-  try {
-    const userId = req.params.id;
-    if (!userId) return res.status(400).json({ success: false, message: 'ID obrigatório' });
-
-    // Remove dependências
-    await Promise.all([
-      require('../models/Bet').deleteMany({ user: userId }),
-      require('../models/User').deleteOne({ _id: userId }),
-      // add extras se existirem: Sessions/Tokens etc.
-    ]);
-
-    return res.json({ success: true, message: 'Usuário deletado' });
-  } catch (e) {
-    console.error('DELETE /admin/delete/:id error:', e);
-    return res.status(500).json({ success: false, message: 'Erro ao deletar usuário' });
-  }
-});
-
 
 module.exports = router;
