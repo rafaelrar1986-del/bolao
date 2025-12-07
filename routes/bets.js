@@ -93,6 +93,7 @@ router.get('/my-bets', protect, async (req, res) => {
 router.post('/save', protect, async (req, res) => {
   try {
     const { groupMatches, podium, knockoutQualifiers } = req.body;
+    console.log('[bets.save] payload knockoutQualifiers=', JSON.stringify(knockoutQualifiers));
 
     if (!groupMatches || typeof groupMatches !== 'object') {
       return res.status(400).json({ success: false, message: 'groupMatches inválido' });
@@ -223,6 +224,27 @@ router.post('/save', protect, async (req, res) => {
         qualifierPoints: 0
       });
     });
+
+    
+    // --- Garantir que knockoutQualifiers do payload sejam aplicados a gmMap (robustez)
+    if (knockoutQualifiers && typeof knockoutQualifiers === 'object') {
+      Object.entries(knockoutQualifiers).forEach(([k, v]) => {
+        const idn = Number(k);
+        if (!idn) return;
+        const eb = gmMap.get(idn);
+        if (eb) {
+          if (v === 'A' || v === 'B') {
+            eb.qualifier = v;
+          } else {
+            eb.qualifier = null;
+          }
+          // garantir campo qualifierPoints se não existir
+          if (typeof eb.qualifierPoints === 'undefined') eb.qualifierPoints = 0;
+          gmMap.set(idn, eb);
+        }
+      });
+    }
+    console.log('[bets.save] after apply knockoutQualifiers, sample gm:', Array.from(gmMap.values()).slice(0,5));
 
     const gmArray = Array.from(gmMap.values());
 
