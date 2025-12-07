@@ -90,9 +90,11 @@ router.get('/my-bets', protect, async (req, res) => {
  *   podium: { first, second, third }
  * }
  */
+// POST /api/bets/save
 router.post('/save', protect, async (req, res) => {
   try {
     const { groupMatches, podium, knockoutQualifiers } = req.body;
+    console.log('[bets.save] payload groupMatches=', JSON.stringify(groupMatches));
     console.log('[bets.save] payload knockoutQualifiers=', JSON.stringify(knockoutQualifiers));
 
     if (!groupMatches || typeof groupMatches !== 'object') {
@@ -101,6 +103,156 @@ router.post('/save', protect, async (req, res) => {
 
     // Busca aposta existente (se houver)
     const existing = await Bet.findOne({ user: req.user._id });
+
+    /**
+     * PÓDIO
+     * - Primeiro envio: exige pódio completo.
+     * - Envios posteriores: mantém o pódio já salvo e ignora mudanças.
+     */
+    let podiumPayload = {
+      first: '',
+      second: '',
+      third: ''
+    };
+
+    const hasExistingPodium = !!(existing && existing.podium && existing.podium.first && existing.podium.second && existing.podium.third);
+
+    if (hasExistingPodium) {
+      podiumPayload = {
+        first: existing.podium.first,
+        second: existing.podium.second,
+        third: existing.podium.third
+      };
+    } else {
+      if (!podium || !podium.first || !podium.second || !podium.third) {
+        return res.status(400).json({ success: false, message: 'Pódio incompleto' });
+      }
+      podiumPayload = {
+        first: String(podium.first).trim(),
+        second: String(podium.second).trim(),
+        third: String(podium.third).trim()
+      };
+    }
+
+    // Mapa matchId -> palpite existente
+    const gmMap = new Map();
+
+    if (existing && Array.isArray(existing.groupMatches)) {
+      existing.groupMatches.forEach((b) => {
+        if (!b || typeof b.matchId !== 'number') return;
+        gmMap.set(b.matchId, {
+          matchId: b.matchId,
+          winner: b.winner,
+          points: b.points || 0,
+          qualifier: b.qualifier || null,
+          qualifierPoints: b.qualifierPoints || 0
+        });
+      });
+    }
+
+    // Mescla novos palpites
+    Object.entries(groupMatches).forEach(([matchId, choice]) => {
+      if (!['A', 'B', 'draw'].includes(choice)) {
+        throw new Error(`Escolha inválida para matchId ${matchId}: ${choice}`);
+      }
+      const idNum = Number(matchId);
+      if (!idNum) return;
+
+      const existingBet = gmMap.get(idNum);
+      if (existingBet) {
+        // Se já existe e é igual, mantém; se é diferente, ignoramos (não deixamos editar palpite antigo)
+        if (existingBet.winner !== choice) {
+          return;
+        }
+
+        // Podemos atualizar o classificado se vier no payload
+        if (knockoutQualifiers && Object.prototype.hasOwnProperty.call(knockoutQualifiers, String(idNum))) {
+          const q = knockoutQualifiers[String(idNum)];
+          if (q === 'A' || q === 'B') {
+            existingBet.qualifier = q;
+          }
+        }
+
+        gmMap.set(idNum, existingBet);
+        return;
+      }
+
+      // Novo palpite: já pode vir com classificado (apenas mata-mata)
+      let qualifier = null;
+      if (knockoutQualifiers && Object.prototype.hasOwnProperty.call(knockoutQualifiers, String(idNum))) {
+        const q = knockoutQualifiers[String(idNum)];
+        if (q === 'A' || q === 'B') {
+          qualifier = q;
+        }
+      }
+
+      gmMap.set(idNum, {
+        matchId: idNum,
+        winner: choice,
+        points: 0,
+        qualifier,
+        qualifierPoints: 0
+      });
+    });
+
+    // 🔐 Garantir que knockoutQualifiers do payload sejam aplicados no mapa (reforço)
+    if (knockoutQualifiers && typeof knockoutQualifiers === 'object') {
+      Object.entries(knockoutQualifiers).forEach(([k, v]) => {
+        const idn = Number(k);
+        if (!idn) return;
+        const eb = gmMap.get(idn);
+        if (eb) {
+          if (v === 'A' || v === 'B') {
+            eb.qualifier = v;
+          } else {
+            eb.qualifier = null;
+          }
+          if (typeof eb.qualifierPoints === 'undefined') eb.qualifierPoints = 0;
+          gmMap.set(idn, eb);
+        }
+      });
+    }
+
+    console.log('[bets.save] after merge gmMap =', Array.from(gmMap.values()));
+
+    const gmArray = Array.from(gmMap.values());
+
+    const now = new Date();
+    const payload = {
+      user: req.user._id,
+      groupMatches: gmArray,
+      podium: podiumPayload,
+      hasSubmitted: true,
+      firstSubmission: existing?.firstSubmission || now,
+      lastUpdate: now,
+      totalPoints: 0,
+      groupPoints: 0,
+      podiumPoints: existing?.podiumPoints || 0,
+      bonusPoints: existing?.bonusPoints || 0
+    };
+
+    let saved;
+    if (existing) {
+      saved = await Bet.findOneAndUpdate(
+        { _id: existing._id },
+        payload,
+        { new: true, runValidators: true }
+      );
+    } else {
+      saved = await Bet.create(payload);
+    }
+
+    return res.json({
+      success: true,
+      message: 'Palpites salvos com sucesso',
+      hasSubmitted: true,
+      data: saved
+    });
+  } catch (error) {
+    console.error('POST /api/bets/save error:', error);
+    return res.status(500).json({ success: false, message: 'Erro ao salvar palpites', error: error.message });
+  }
+});
 
     /**
      * PÓDIO
