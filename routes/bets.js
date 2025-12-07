@@ -63,7 +63,7 @@ router.get('/my-bets', protect, async (req, res) => {
         teamA,
         teamB,
         status: m?.status || 'scheduled',
-        // rotulo amigável do palpite
+        // rótulo amigável do palpite
         choiceLabel: toWinnerLabel(b.winner, teamA, teamB)
       };
     });
@@ -83,16 +83,18 @@ router.get('/my-bets', protect, async (req, res) => {
 });
 
 /**
- * 💾 Salvar palpites (1x)
+ * 💾 Salvar palpites
  * Espera:
  * {
  *   groupMatches: { [matchId]: 'A'|'B'|'draw', ... },
- *   podium: { first, second, third }
+ *   podium: { first, second, third },
+ *   knockoutQualifiers: { [matchId]: 'A'|'B' } // apenas mata-mata
  * }
  */
 router.post('/save', protect, async (req, res) => {
   try {
     const { groupMatches, podium, knockoutQualifiers } = req.body;
+    console.log('[bets.save] payload groupMatches=', JSON.stringify(groupMatches));
     console.log('[bets.save] payload knockoutQualifiers=', JSON.stringify(knockoutQualifiers));
 
     if (!groupMatches || typeof groupMatches !== 'object') {
@@ -155,7 +157,7 @@ router.post('/save', protect, async (req, res) => {
       });
     }
 
-    // Mescla novos palpites
+    // Mescla novos palpites (resultado + qualifier)
     Object.entries(groupMatches).forEach(([matchId, choice]) => {
       if (!['A', 'B', 'draw'].includes(choice)) {
         throw new Error(`Escolha inválida para matchId ${matchId}: ${choice}`);
@@ -170,12 +172,11 @@ router.post('/save', protect, async (req, res) => {
           return;
         }
 
-        // Porém podemos atualizar o classificado (qualifier) para jogos de mata-mata,
-        // desde que venha algo válido no payload.
+        // Podemos atualizar o classificado se vier no payload
         if (knockoutQualifiers && Object.prototype.hasOwnProperty.call(knockoutQualifiers, String(idNum))) {
-          const q = knockoutQualifiers[String(idNum)];
-          if (q === 'A' || q === 'B') {
-            existingBet.qualifier = q;
+          const qExisting = knockoutQualifiers[String(idNum)];
+          if (qExisting === 'A' || qExisting === 'B') {
+            existingBet.qualifier = qExisting;
           }
         }
 
@@ -186,33 +187,9 @@ router.post('/save', protect, async (req, res) => {
       // Novo palpite: já pode vir com classificado (apenas mata-mata)
       let qualifier = null;
       if (knockoutQualifiers && Object.prototype.hasOwnProperty.call(knockoutQualifiers, String(idNum))) {
-        const q = knockoutQualifiers[String(idNum)];
-        if (q === 'A' || q === 'B') {
-          qualifier = q;
-        }
-      }
-
-      gmMap.set(idNum, {
-        matchId: idNum,
-        winner: choice,
-        points: 0,
-        qualifier,
-        qualifierPoints: 0
-      });
-    });tingBet.tingBet.qualifier = q;
-          }
-        }
-
-        gmMap.set(idNum, existingBet);
-        return;
-      }
-
-      // Novo palpite: já pode vir com classificado (apenas mata-mata)
-      let qualifier = null;
-      if (knockoutQualifiers && Object.prototype.hasOwnProperty.call(knockoutQualifiers, String(idNum))) {
-        const q = knockoutQualifiers[String(idNum)];
-        if (q === 'A' || q === 'B') {
-          qualifier = q;
+        const qNew = knockoutQualifiers[String(idNum)];
+        if (qNew === 'A' || qNew === 'B') {
+          qualifier = qNew;
         }
       }
 
@@ -225,8 +202,7 @@ router.post('/save', protect, async (req, res) => {
       });
     });
 
-    
-    // --- Garantir que knockoutQualifiers do payload sejam aplicados a gmMap (robustez)
+    // 🔐 Garantir que knockoutQualifiers sejam aplicados (reforço)
     if (knockoutQualifiers && typeof knockoutQualifiers === 'object') {
       Object.entries(knockoutQualifiers).forEach(([k, v]) => {
         const idn = Number(k);
@@ -238,13 +214,13 @@ router.post('/save', protect, async (req, res) => {
           } else {
             eb.qualifier = null;
           }
-          // garantir campo qualifierPoints se não existir
           if (typeof eb.qualifierPoints === 'undefined') eb.qualifierPoints = 0;
           gmMap.set(idn, eb);
         }
       });
     }
-    console.log('[bets.save] after apply knockoutQualifiers, sample gm:', Array.from(gmMap.values()).slice(0,5));
+
+    console.log('[bets.save] after merge gmMap =', Array.from(gmMap.values()).slice(0, 5));
 
     const gmArray = Array.from(gmMap.values());
 
@@ -277,6 +253,7 @@ router.post('/save', protect, async (req, res) => {
     return res.status(500).json({ success: false, message: e.message || 'Erro ao salvar palpites' });
   }
 });
+
 router.get('/status', protect, async (req, res) => {
   try {
     const bet = await Bet.findOne({ user: req.user._id }).lean();
