@@ -163,7 +163,7 @@ router.post('/admin/finish/:matchId', protect, admin, async (req, res) => {
 
     const match = await Match.findOneAndUpdate(
       { matchId },
-      { $set: { scoreA, scoreB, status: 'finished' } },
+      { $set: { scoreA, scoreB, status: 'finished', qualifiedSide: (typeof req.body.qualifiedSide !== 'undefined' ? req.body.qualifiedSide : undefined) } },
       { new: true }
     );
 
@@ -178,13 +178,13 @@ router.post('/admin/finish/:matchId', protect, admin, async (req, res) => {
     for await (const bet of cursor) {
       bet.groupMatches = (bet.groupMatches || []).map(gm => {
         if (gm.matchId === matchId) {
-          const isKnockout = (match.phase === 'knockout');
-
           const hitResult = gm.winner && gm.winner === resultWinner;
 
           let hitQualifier = false;
-          if (isKnockout && gm.qualifier && (gm.qualifier === 'A' || gm.qualifier === 'B')) {
-            if (resultWinner && resultWinner !== 'draw' && gm.qualifier === resultWinner) {
+          // Prefer explicit qualifiedSide set on match (admin) when available, otherwise use resultWinner
+          const realQualifier = (typeof match.qualifiedSide !== 'undefined' && match.qualifiedSide) ? match.qualifiedSide : resultWinner;
+          if (gm.qualifier && (gm.qualifier === 'A' || gm.qualifier === 'B')) {
+            if (realQualifier && realQualifier !== 'draw' && gm.qualifier === realQualifier) {
               hitQualifier = true;
             }
           }

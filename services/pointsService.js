@@ -80,15 +80,15 @@ async function recalculateAllPoints() {
         continue;
       }
 
-      const isKnockout = (m.phase === 'knockout');
-
       const real = winnerFromScores(Number(m.scoreA), Number(m.scoreB));
       const hitResult = real && gm.winner && real === gm.winner;
 
+      // Prefer match.qualifiedSide if admin provided who advanced (useful for draws resolved by penalties)
+      const realQualifier = (typeof m.qualifiedSide !== 'undefined' && m.qualifiedSide) ? m.qualifiedSide : real;
+
       let hitQualifier = false;
-      if (isKnockout && gm.qualifier && (gm.qualifier === 'A' || gm.qualifier === 'B')) {
-        // No nosso modelo, o classificado é o mesmo vencedor do jogo (sem pênaltis separados)
-        if (real && real !== 'draw' && gm.qualifier === real) {
+      if (gm.qualifier && (gm.qualifier === 'A' || gm.qualifier === 'B')) {
+        if (realQualifier && realQualifier !== 'draw' && gm.qualifier === realQualifier) {
           hitQualifier = true;
         }
       }

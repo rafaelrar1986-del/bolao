@@ -18,6 +18,9 @@ const MatchSchema = new Schema(
     group: { type: String, required: true, trim: true },
     // phase indica se é 'group' (fase de grupos) ou 'knockout' (mata-mata)
     phase: { type: String, enum: ['group','knockout'], default: 'group', index: true },
+
+    // Em partidas eliminatórias (mata-mata), campo que indica quem foi classificado: 'A' | 'B' | null
+    qualifiedSide: { type: String, enum: ['A','B', null], default: null },
     stadium: { type: String, default: '', trim: true },
 
     // Datas no formato texto (DD/MM/AAAA, HH:MM) como você usa no front;
