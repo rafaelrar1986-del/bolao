@@ -168,13 +168,59 @@ router.post('/save', protect, async (req, res) => {
         if (existingBet.winner !== choice) {
           return;
         }
+
+        // Porém podemos atualizar o classificado (qualifier) para jogos de mata-mata,
+        // desde que venha algo válido no payload.
+        if (knockoutQualifiers && Object.prototype.hasOwnProperty.call(knockoutQualifiers, String(idNum))) {
+          const q = knockoutQualifiers[String(idNum)];
+          if (q === 'A' || q === 'B') {
+            existingBet.qualifier = q;
+          }
+        }
+
+        gmMap.set(idNum, existingBet);
         return;
+      }
+
+      // Novo palpite: já pode vir com classificado (apenas mata-mata)
+      let qualifier = null;
+      if (knockoutQualifiers && Object.prototype.hasOwnProperty.call(knockoutQualifiers, String(idNum))) {
+        const q = knockoutQualifiers[String(idNum)];
+        if (q === 'A' || q === 'B') {
+          qualifier = q;
+        }
       }
 
       gmMap.set(idNum, {
         matchId: idNum,
         winner: choice,
-        points: 0
+        points: 0,
+        qualifier,
+        qualifierPoints: 0
+      });
+    });tingBet.tingBet.qualifier = q;
+          }
+        }
+
+        gmMap.set(idNum, existingBet);
+        return;
+      }
+
+      // Novo palpite: já pode vir com classificado (apenas mata-mata)
+      let qualifier = null;
+      if (knockoutQualifiers && Object.prototype.hasOwnProperty.call(knockoutQualifiers, String(idNum))) {
+        const q = knockoutQualifiers[String(idNum)];
+        if (q === 'A' || q === 'B') {
+          qualifier = q;
+        }
+      }
+
+      gmMap.set(idNum, {
+        matchId: idNum,
+        winner: choice,
+        points: 0,
+        qualifier,
+        qualifierPoints: 0
       });
     });
 
