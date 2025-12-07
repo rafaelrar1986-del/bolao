@@ -13,196 +13,86 @@ const router = express.Router();
 function toWinnerLabel(choice, teamA, teamB) {
   if (choice === 'A') return teamA || 'Time A';
   if (choice === 'B') return teamB || 'Time B';
-  if (choice === 'draw') return 'Empate';
-  return '-';
-}
-
-function sanitizeId(id) {
-  if (!id) return null;
-  return String(id).trim();
+  return 'Empate';
 }
 
 /**
- * GET /api/bets/my-bets
- * Retorna os palpites (groupMatches + podium + flags) do usuário logado
+ * 🌐 Info
+ */
+router.get('/', (req, res) => {
+  res.json({
+    success: true,
+    message: '🏆 API de Palpites do Bolão 2026',
+    version: '1.0.0',
+    endpoints: {
+      'GET  /api/bets/my-bets': 'Meus palpites (protegido)',
+      'POST /api/bets/save': 'Enviar palpites (protegido, 1x)',
+      'GET  /api/bets/status': 'Status dos palpites (protegido)',
+      'GET  /api/bets/leaderboard': 'Ranking (protegido)',
+      'GET  /api/bets/all-bets': 'Todos os palpites, com filtros (protegido)',
+      'GET  /api/bets/matches-for-filter': 'Lista de partidas p/ filtros (protegido)',
+      'GET  /api/bets/users-for-filter': 'Lista de usuários p/ filtros (protegido)',
+      'POST /api/bets/admin/reset-all': '⚠️ Resetar TODAS as apostas (admin)'
+    }
+  });
+});
+
+/**
+ * 🎯 Meus palpites (enriquecidos com nomes dos times)
  */
 router.get('/my-bets', protect, async (req, res) => {
   try {
     const bet = await Bet.findOne({ user: req.user._id }).lean();
+    const matches = await Match.find().lean();
 
     if (!bet) {
       return res.json({
         success: true,
-        hasSubmitted: false,
-        data: {
-          groupMatches: [],
-          podium: null
-        }
+        data: null,
+        hasSubmitted: false
       });
     }
 
-    return res.json({
-      success: true,
-      hasSubmitted: !!bet.hasSubmitted,
-      data: {
-        groupMatches: bet.groupMatches || [],
-        podium: bet.podium || null
-      }
-    });
-  } catch (error) {
-    console.error('GET /api/bets/my-bets error:', error);
-    return res.status(500).json({ success: false, message: 'Erro ao carregar palpites' });
-  }
-});
-
-/**
- * GET /api/bets/status
- * Retorna se o usuário já enviou ou não
- */
-router.get('/status', protect, async (req, res) => {
-  try {
-    const bet = await Bet.findOne({ user: req.user._id }).select('hasSubmitted').lean();
-    return res.json({
-      success: true,
-      hasSubmitted: !!(bet && bet.hasSubmitted)
-    });
-  } catch (error) {
-    console.error('GET /api/bets/status error:', error);
-    return res.status(500).json({ success: false, message: 'Erro ao buscar status das apostas' });
-  }
-});
-
-/**
- * GET /api/bets/ranking
- * Ranking geral de usuários, com paginação simples
- */
-router.get('/ranking', protect, async (req, res) => {
-  try {
-    const page = Number(req.query.page) || 1;
-    const pageSize = Math.min(Number(req.query.pageSize) || 50, 200);
-
-    const skip = (page - 1) * pageSize;
-
-    const [totalCount, bets] = await Promise.all([
-      Bet.countDocuments({}),
-      Bet.find({})
-        .sort({ totalPoints: -1, lastUpdate: 1 })
-        .skip(skip)
-        .limit(pageSize)
-        .populate('user', 'name email')
-        .lean()
-    ]);
-
-    // Identificar posição do usuário logado
-    let myPosition = null;
-    if (req.user && req.user._id) {
-      const myBets = await Bet.findOne({ user: req.user._id })
-        .select('totalPoints lastUpdate')
-        .lean();
-      if (myBets) {
-        const betterCount = await Bet.countDocuments({
-          $or: [
-            { totalPoints: { $gt: myBets.totalPoints } },
-            {
-              totalPoints: myBets.totalPoints,
-              lastUpdate: { $lt: myBets.lastUpdate }
-            }
-          ]
-        });
-        myPosition = betterCount + 1;
-      }
-    }
-
-    return res.json({
-      success: true,
-      page,
-      pageSize,
-      totalCount,
-      data: bets.map((b, idx) => ({
-        position: skip + idx + 1,
-        userId: b.user?._id,
-        name: b.user?.name || 'Usuário',
-        totalPoints: b.totalPoints || 0,
-        groupPoints: b.groupPoints || 0,
-        podiumPoints: b.podiumPoints || 0,
-        bonusPoints: b.bonusPoints || 0,
-        lastUpdate: b.lastUpdate
-      })),
-      myPosition
-    });
-  } catch (error) {
-    console.error('GET /api/bets/ranking error:', error);
-    return res.status(500).json({ success: false, message: 'Erro ao buscar ranking' });
-  }
-});
-
-/**
- * GET /api/bets/admin/summary
- * Resumo admin de apostas por partida
- */
-router.get('/admin/summary', protect, admin, async (req, res) => {
-  try {
-    const matches = await Match.find({}).lean();
-    const bets = await Bet.find({}).lean();
-
-    const matchMap = new Map();
-    matches.forEach((m) => {
-      matchMap.set(m.matchId, m);
-    });
-
-    const summary = [];
-
-    matches.forEach((m) => {
-      const entry = {
-        matchId: m.matchId,
-        phase: m.phase,
-        group: m.group,
-        teamA: m.teamA,
-        teamB: m.teamB,
-        status: m.status,
-        totalBets: 0,
-        winnerA: 0,
-        winnerB: 0,
-        draw: 0
+    const gm = (bet.groupMatches || []).map((b) => {
+      const m = matches.find(x => x.matchId === b.matchId);
+      const teamA = m?.teamA || 'Time A';
+      const teamB = m?.teamB || 'Time B';
+      return {
+        ...b,
+        matchName: m ? `${m.teamA} vs ${m.teamB}` : `Jogo ${b.matchId}`,
+        teamA,
+        teamB,
+        status: m?.status || 'scheduled',
+        // rotulo amigável do palpite
+        choiceLabel: toWinnerLabel(b.winner, teamA, teamB)
       };
-
-      bets.forEach((b) => {
-        (b.groupMatches || []).forEach((gm) => {
-          if (gm.matchId === m.matchId) {
-            entry.totalBets += 1;
-            if (gm.winner === 'A') entry.winnerA += 1;
-            if (gm.winner === 'B') entry.winnerB += 1;
-            if (gm.winner === 'draw') entry.draw += 1;
-          }
-        });
-      });
-
-      summary.push(entry);
     });
 
     return res.json({
       success: true,
-      data: summary
+      data: {
+        ...bet,
+        groupMatches: gm
+      },
+      hasSubmitted: !!bet.hasSubmitted
     });
-  } catch (error) {
-    console.error('GET /api/bets/admin/summary error:', error);
-    return res.status(500).json({ success: false, message: 'Erro ao buscar resumo admin' });
+  } catch (e) {
+    console.error('GET /my-bets error:', e);
+    res.status(500).json({ success: false, message: 'Erro ao carregar palpites' });
   }
 });
 
 /**
- * POST /api/bets/save
- * Salva/atualiza palpites do usuário.
- * Agora suporta classificado do mata-mata (qualifier) via knockoutQualifiers.
+ * 💾 Salvar palpites (1x)
+ * Espera:
+ * {
+ *   groupMatches: { [matchId]: 'A'|'B'|'draw', ... },
+ *   podium: { first, second, third }
+ * }
  */
 router.post('/save', protect, async (req, res) => {
   try {
-    const body = req.body || {};
-    const groupMatches = body.groupMatches || {};
-    const podium = body.podium || {};
-    const knockoutQualifiers = body.knockoutQualifiers || {};
-
-    console.log('[bets.save] payload groupMatches=', JSON.stringify(groupMatches));
+    const { groupMatches, podium, knockoutQualifiers } = req.body;
     console.log('[bets.save] payload knockoutQualifiers=', JSON.stringify(knockoutQualifiers));
 
     if (!groupMatches || typeof groupMatches !== 'object') {
@@ -217,12 +107,7 @@ router.post('/save', protect, async (req, res) => {
      * - Primeiro envio: exige pódio completo.
      * - Envios posteriores: mantém o pódio já salvo e ignora mudanças.
      */
-    let podiumPayload = {
-      first: '',
-      second: '',
-      third: ''
-    };
-
+    let podiumPayload;
     const hasExistingPodium =
       existing &&
       existing.podium &&
@@ -231,7 +116,7 @@ router.post('/save', protect, async (req, res) => {
       existing.podium.third;
 
     if (hasExistingPodium) {
-      // Mantém o pódio que já estava salvo
+      // Mantém pódio anterior (frontend já trava edição)
       podiumPayload = {
         first: existing.podium.first,
         second: existing.podium.second,
@@ -270,11 +155,10 @@ router.post('/save', protect, async (req, res) => {
       });
     }
 
-    // Mescla novos palpites (resultado)
-    Object.keys(groupMatches).forEach((matchId) => {
-      const choice = groupMatches[matchId];
-      if (['A', 'B', 'draw'].indexOf(choice) === -1) {
-        throw new Error('Escolha inválida para matchId ' + matchId + ': ' + choice);
+    // Mescla novos palpites
+    Object.entries(groupMatches).forEach(([matchId, choice]) => {
+      if (!['A', 'B', 'draw'].includes(choice)) {
+        throw new Error(`Escolha inválida para matchId ${matchId}: ${choice}`);
       }
       const idNum = Number(matchId);
       if (!idNum) return;
@@ -286,11 +170,12 @@ router.post('/save', protect, async (req, res) => {
           return;
         }
 
-        // Podemos atualizar o classificado se vier no payload
+        // Porém podemos atualizar o classificado (qualifier) para jogos de mata-mata,
+        // desde que venha algo válido no payload.
         if (knockoutQualifiers && Object.prototype.hasOwnProperty.call(knockoutQualifiers, String(idNum))) {
-          const qExisting = knockoutQualifiers[String(idNum)];
-          if (qExisting === 'A' || qExisting === 'B') {
-            existingBet.qualifier = qExisting;
+          const q = knockoutQualifiers[String(idNum)];
+          if (q === 'A' || q === 'B') {
+            existingBet.qualifier = q;
           }
         }
 
@@ -301,9 +186,9 @@ router.post('/save', protect, async (req, res) => {
       // Novo palpite: já pode vir com classificado (apenas mata-mata)
       let qualifier = null;
       if (knockoutQualifiers && Object.prototype.hasOwnProperty.call(knockoutQualifiers, String(idNum))) {
-        const qNew = knockoutQualifiers[String(idNum)];
-        if (qNew === 'A' || qNew === 'B') {
-          qualifier = qNew;
+        const q = knockoutQualifiers[String(idNum)];
+        if (q === 'A' || q === 'B') {
+          qualifier = q;
         }
       }
 
@@ -311,15 +196,39 @@ router.post('/save', protect, async (req, res) => {
         matchId: idNum,
         winner: choice,
         points: 0,
-        qualifier: qualifier,
+        qualifier,
+        qualifierPoints: 0
+      });
+    });tingBet.tingBet.qualifier = q;
+          }
+        }
+
+        gmMap.set(idNum, existingBet);
+        return;
+      }
+
+      // Novo palpite: já pode vir com classificado (apenas mata-mata)
+      let qualifier = null;
+      if (knockoutQualifiers && Object.prototype.hasOwnProperty.call(knockoutQualifiers, String(idNum))) {
+        const q = knockoutQualifiers[String(idNum)];
+        if (q === 'A' || q === 'B') {
+          qualifier = q;
+        }
+      }
+
+      gmMap.set(idNum, {
+        matchId: idNum,
+        winner: choice,
+        points: 0,
+        qualifier,
         qualifierPoints: 0
       });
     });
 
-    // Reaplica knockoutQualifiers por garantia
+    
+    // --- Garantir que knockoutQualifiers do payload sejam aplicados a gmMap (robustez)
     if (knockoutQualifiers && typeof knockoutQualifiers === 'object') {
-      Object.keys(knockoutQualifiers).forEach((k) => {
-        const v = knockoutQualifiers[k];
+      Object.entries(knockoutQualifiers).forEach(([k, v]) => {
         const idn = Number(k);
         if (!idn) return;
         const eb = gmMap.get(idn);
@@ -329,13 +238,13 @@ router.post('/save', protect, async (req, res) => {
           } else {
             eb.qualifier = null;
           }
+          // garantir campo qualifierPoints se não existir
           if (typeof eb.qualifierPoints === 'undefined') eb.qualifierPoints = 0;
           gmMap.set(idn, eb);
         }
       });
     }
-
-    console.log('[bets.save] after merge gmMap =', Array.from(gmMap.values()));
+    console.log('[bets.save] after apply knockoutQualifiers, sample gm:', Array.from(gmMap.values()).slice(0,5));
 
     const gmArray = Array.from(gmMap.values());
 
@@ -345,114 +254,207 @@ router.post('/save', protect, async (req, res) => {
       groupMatches: gmArray,
       podium: podiumPayload,
       hasSubmitted: true,
-      firstSubmission: existing && existing.firstSubmission ? existing.firstSubmission : now,
+      firstSubmission: existing?.firstSubmission || now,
       lastUpdate: now,
-      // pontos vão ser recalculados pelos serviços / admin
-      totalPoints: existing && typeof existing.totalPoints === 'number' ? existing.totalPoints : 0,
-      groupPoints: existing && typeof existing.groupPoints === 'number' ? existing.groupPoints : 0,
-      podiumPoints: existing && typeof existing.podiumPoints === 'number' ? existing.podiumPoints : 0,
-      bonusPoints: existing && typeof existing.bonusPoints === 'number' ? existing.bonusPoints : 0
+      totalPoints: 0,
+      groupPoints: 0,
+      podiumPoints: 0,
+      bonusPoints: 0
     };
 
-    let saved;
-    if (existing) {
-      saved = await Bet.findOneAndUpdate(
-        { _id: existing._id },
-        payload,
-        { new: true, runValidators: true }
-      );
-    } else {
-      saved = await Bet.create(payload);
-    }
+    const bet = await Bet.findOneAndUpdate(
+      { user: req.user._id },
+      { $set: payload },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
 
-    return res.json({
-      success: true,
-      message: 'Palpites salvos com sucesso',
-      hasSubmitted: true,
-      data: saved
-    });
-  } catch (error) {
-    console.error('POST /api/bets/save error:', error);
-    if (error && error.name === 'ValidationError') {
-      return res.status(400).json({ success: false, message: 'Dados inválidos', errors: error.errors });
+    return res.json({ success: true, message: 'Palpites enviados!', data: { id: bet._id } });
+  } catch (e) {
+    console.error('POST /save error:', e);
+    if (e.name === 'ValidationError') {
+      return res.status(400).json({ success: false, message: 'Dados inválidos', errors: e.errors });
     }
-    return res.status(500).json({ success: false, message: error.message || 'Erro ao salvar palpites' });
+    return res.status(500).json({ success: false, message: e.message || 'Erro ao salvar palpites' });
+  }
+});
+router.get('/status', protect, async (req, res) => {
+  try {
+    const bet = await Bet.findOne({ user: req.user._id }).lean();
+    const status = {
+      hasSubmitted: !!bet?.hasSubmitted,
+      firstSubmission: bet?.firstSubmission || null,
+      lastUpdate: bet?.lastUpdate || null,
+      matchesCount: bet?.groupMatches?.length || 0,
+      hasPodium: !!(bet?.podium?.first && bet?.podium?.second && bet?.podium?.third)
+    };
+    res.json({ success: true, data: status });
+  } catch (e) {
+    console.error('GET /status error:', e);
+    res.status(500).json({ success: false, message: 'Erro ao verificar status' });
   }
 });
 
 /**
- * POST /api/bets/admin/recalculate
- * Recalcula pontos de todos os usuários (admin)
+ * 🏆 Leaderboard
+ * (Somente ordena por totalPoints desc; cálculo dos pontos é feito em outros fluxos)
  */
-router.post('/admin/recalculate', protect, admin, async (req, res) => {
+router.get('/leaderboard', protect, async (req, res) => {
   try {
-    const matches = await Match.find({}).lean();
-    const bets = await Bet.find({}).lean();
+    const bets = await Bet.find({ hasSubmitted: true })
+      .populate('user', 'name')
+      .select('user totalPoints groupPoints podiumPoints bonusPoints lastUpdate podium')
+      .sort({ totalPoints: -1, lastUpdate: 1 })
+      .lean();
 
-    const matchMap = new Map();
-    matches.forEach((m) => {
-      matchMap.set(m.matchId, m);
-    });
+    const ranked = bets.map((b, i) => ({
+      position: i + 1,
+      user: b.user, // { _id, name }
+      totalPoints: b.totalPoints || 0,
+      groupPoints: b.groupPoints || 0,
+      podiumPoints: b.podiumPoints || 0,
+      bonusPoints: b.bonusPoints || 0,
+      podium: b.podium || null,
+      lastUpdate: b.lastUpdate
+    }));
 
-    const winnerFromScores = (scoreA, scoreB) => {
-      if (scoreA > scoreB) return 'A';
-      if (scoreB > scoreA) return 'B';
-      return 'draw';
-    };
+    res.json({ success: true, data: ranked, count: ranked.length });
+  } catch (e) {
+    console.error('GET /leaderboard error:', e);
+    res.status(500).json({ success: false, message: 'Erro ao carregar ranking' });
+  }
+});
 
-    for (const bet of bets) {
-      let groupPoints = 0;
+/**
+ * 👁️ Todos os palpites (com filtros)
+ * Query:
+ *  - search: nome do usuário (regex)
+ *  - matchId: filtra por partida; ao usar, SOMENTE os palpites dessa partida são retornados por usuário
+ *  - group: nome do grupo (ex: "Grupo A") -> filtra usuários que tenham palpites em partidas desse grupo
+ *  - sortBy: 'user' | 'points' | 'date'
+ */
+router.get('/all-bets', protect, async (req, res) => {
+  try {
+    const { search, matchId, group, sortBy = 'user' } = req.query;
 
-      (bet.groupMatches || []).forEach((gm) => {
-        const m = matchMap.get(gm.matchId);
-        if (!m || m.status !== 'finished') {
-          gm.points = 0;
-          gm.qualifierPoints = 0;
-          return;
-        }
+    // Base query
+    let query = { hasSubmitted: true };
 
-        const real = winnerFromScores(Number(m.scoreA), Number(m.scoreB));
-        const hitResult = real && gm.winner && real === gm.winner;
+    // Filtro por usuário (nome)
+    if (search) {
+      const users = await User.find({ name: { $regex: search, $options: 'i' } }).select('_id').lean();
+      query.user = { $in: users.map(u => u._id) };
+    }
 
-        let hitQualifier = false;
-        const realQualifier = m.qualifiedSide || real;
-        if (gm.qualifier && (gm.qualifier === 'A' || gm.qualifier === 'B')) {
-          if (realQualifier && realQualifier !== 'draw' && gm.qualifier === realQualifier) {
-            hitQualifier = true;
-          }
-        }
+    // Se grupo informado, limita matchIds ao grupo
+    let groupMatchIds = null;
+    if (group) {
+      const matchesInGroup = await Match.find({ group: { $regex: group, $options: 'i' } })
+        .select('matchId')
+        .lean();
+      groupMatchIds = matchesInGroup.map(m => m.matchId);
+      if (groupMatchIds.length > 0) {
+        query['groupMatches.matchId'] = { $in: groupMatchIds };
+      } else {
+        // nenhum jogo naquele grupo -> resultado vazio
+        return res.json({ success: true, data: [], stats: { totalBets: 0, totalUsers: 0, totalMatches: 0 } });
+      }
+    }
 
-        gm.qualifierPoints = hitQualifier ? 1 : 0;
-        gm.points = (hitResult ? 1 : 0) + (hitQualifier ? 1 : 0);
-        groupPoints += gm.points;
+    // Se matchId informado, filtra por ele na query
+    const matchIdNum = matchId ? Number(matchId) : null;
+    if (matchIdNum) {
+      query['groupMatches.matchId'] = matchIdNum;
+    }
+
+    // Busca apostas
+    let betsQuery = Bet.find(query)
+      .populate('user', 'name')
+      .select('user groupMatches podium totalPoints groupPoints podiumPoints firstSubmission lastUpdate')
+      .lean();
+
+    // Ordenação
+    if (sortBy === 'user') betsQuery = betsQuery.sort('user.name');
+    else if (sortBy === 'points') betsQuery = betsQuery.sort('-totalPoints');
+    else if (sortBy === 'date') betsQuery = betsQuery.sort('-firstSubmission');
+
+    const bets = await betsQuery;
+    const matches = await Match.find().lean();
+
+    // Enriquecer + aplicar regra: se matchId foi passado, retorna apenas os palpites daquela partida em cada usuário
+    const enriched = bets.map(b => {
+      // filtra matches por grupo (se aplicável) e por matchId (se aplicável)
+      let gm = b.groupMatches || [];
+      if (groupMatchIds) {
+        gm = gm.filter(x => groupMatchIds.includes(x.matchId));
+      }
+      if (matchIdNum) {
+        gm = gm.filter(x => x.matchId === matchIdNum);
+      }
+
+      const viewBets = gm.map(g => {
+        const m = matches.find(x => x.matchId === g.matchId);
+        const teamA = m?.teamA || 'Time A';
+        const teamB = m?.teamB || 'Time B';
+        return {
+          matchId: g.matchId,
+          choice: g.winner,                // 'A' | 'B' | 'draw' (armazenado)
+          choiceLabel: toWinnerLabel(g.winner, teamA, teamB), // rótulo amigável
+          matchName: m ? `${m.teamA} vs ${m.teamB}` : `Jogo ${g.matchId}`,
+          teamA,
+          teamB,
+          status: m?.status || 'scheduled'
+        };
       });
 
-      bet.groupPoints = groupPoints;
-      bet.totalPoints = (bet.groupPoints || 0) + (bet.podiumPoints || 0) + (bet.bonusPoints || 0);
+      return {
+        userName: b.user?.name || 'Usuário',
+        podium: b.podium || null,
+        totalPoints: b.totalPoints || 0,
+        bets: viewBets
+      };
+    });
 
-      await Bet.updateOne(
-        { _id: bet._id },
-        {
-          $set: {
-            groupMatches: bet.groupMatches,
-            groupPoints: bet.groupPoints,
-            totalPoints: bet.totalPoints,
-            lastUpdate: new Date()
-          }
-        }
-      );
-    }
+    const stats = {
+      totalBets: enriched.length,
+      totalUsers: new Set(enriched.map(e => e.userName)).size,
+      totalMatches: new Set(enriched.flatMap(e => e.bets.map(x => x.matchId))).size
+    };
 
-    return res.json({ success: true, message: 'Recalculo de pontos concluído' });
-  } catch (error) {
-    console.error('POST /api/bets/admin/recalculate error:', error);
-    return res.status(500).json({ success: false, message: 'Erro ao recalcular pontos' });
+    res.json({ success: true, data: enriched, stats, searchParams: { search, matchId, group, sortBy } });
+  } catch (e) {
+    console.error('GET /all-bets error:', e);
+    res.status(500).json({ success: false, message: 'Erro ao carregar apostas' });
   }
 });
 
 /**
- * POST /api/bets/admin/reset-all
- * Zera todas as apostas (admin)
+ * 🔍 Partidas para filtro
+ */
+router.get('/matches-for-filter', protect, async (req, res) => {
+  try {
+    const matches = await Match.find().select('matchId teamA teamB group date').sort('matchId').lean();
+    res.json({ success: true, data: matches });
+  } catch (e) {
+    console.error('GET /matches-for-filter error:', e);
+    res.status(500).json({ success: false, message: 'Erro ao buscar partidas' });
+  }
+});
+
+/**
+ * 👥 Usuários para filtro
+ */
+router.get('/users-for-filter', protect, async (req, res) => {
+  try {
+    const users = await User.find().select('_id name').sort('name').lean();
+    res.json({ success: true, data: users });
+  } catch (e) {
+    console.error('GET /users-for-filter error:', e);
+    res.status(500).json({ success: false, message: 'Erro ao buscar usuários' });
+  }
+});
+
+/**
+ * ⚠️ Admin: resetar TODAS as apostas
  */
 router.post('/admin/reset-all', protect, admin, async (req, res) => {
   try {
