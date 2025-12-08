@@ -281,20 +281,38 @@ router.get('/leaderboard', protect, async (req, res) => {
   try {
     const bets = await Bet.find({ hasSubmitted: true })
       .populate('user', 'name')
-      .select('user totalPoints groupPoints podiumPoints bonusPoints lastUpdate podium')
+      .select('user totalPoints groupPoints podiumPoints bonusPoints lastUpdate podium groupMatches')
       .sort({ totalPoints: -1, lastUpdate: 1 })
       .lean();
 
-    const ranked = bets.map((b, i) => ({
-      position: i + 1,
-      user: b.user, // { _id, name }
-      totalPoints: b.totalPoints || 0,
-      groupPoints: b.groupPoints || 0,
-      podiumPoints: b.podiumPoints || 0,
-      bonusPoints: b.bonusPoints || 0,
-      podium: b.podium || null,
-      lastUpdate: b.lastUpdate
-    }));
+    const ranked = bets.map((b, i) => {
+      const groupPhasePoints = (b.groupMatches || []).reduce((sum, gm) => {
+        if (gm.matchId >= 1 && gm.matchId <= 72) {
+          return sum + (gm.points || 0);
+        }
+        return sum;
+      }, 0);
+
+      const knockoutPoints = (b.groupMatches || []).reduce((sum, gm) => {
+        if (gm.matchId >= 73) {
+          return sum + (gm.points || 0);
+        }
+        return sum;
+      }, 0);
+
+      return {
+        position: i + 1,
+        user: b.user, // { _id, name }
+        totalPoints: b.totalPoints || 0,
+        groupPoints: b.groupPoints || 0,
+        groupPhasePoints,
+        knockoutPoints,
+        podiumPoints: b.podiumPoints || 0,
+        bonusPoints: b.bonusPoints || 0,
+        podium: b.podium || null,
+        lastUpdate: b.lastUpdate
+      };
+    });
 
     res.json({ success: true, data: ranked, count: ranked.length });
   } catch (e) {
