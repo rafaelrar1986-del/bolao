@@ -122,7 +122,8 @@ router.post('/save', protect, async (req, res) => {
       podiumPayload = {
         first: existing.podium.first,
         second: existing.podium.second,
-        third: existing.podium.third
+        third: existing.podium.third,
+        fourth: existing.podium.fourth || ''
       };
     } else {
       // Primeiro envio: exige pódio completo
@@ -132,7 +133,8 @@ router.post('/save', protect, async (req, res) => {
       podiumPayload = {
         first: String(podium.first).trim(),
         second: String(podium.second).trim(),
-        third: String(podium.third).trim()
+        third: String(podium.third).trim(),
+      fourth: podium.fourth ? String(podium.fourth).trim() : ''
       };
     }
 

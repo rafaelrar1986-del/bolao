@@ -13,7 +13,8 @@ const SettingsSchema = new mongoose.Schema(
     podium: {
       first: { type: String },
       second: { type: String },
-      third: { type: String }
+      third: { type: String },
+      fourth: { type: String }
     }
   },
   { timestamps: true }
