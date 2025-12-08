@@ -9,12 +9,12 @@ const Match = require('../models/Match');
 // ============== Definir pódio (admin) ==============
 router.post('/process-podium', protect, admin, async (req, res) => {
   try {
-    const { first, second, third } = req.body || {};
-    if (!first || !second || !third) {
-      return res.status(400).json({ success: false, message: 'first, second e third são obrigatórios' });
+    const { first, second, third, fourth } = req.body || {};
+    if (!first || !second || !third || !fourth) {
+      return res.status(400).json({ success: false, message: 'first, second, third e fourth são obrigatórios' });
     }
 
-    const result = await PointsService.setPodium({ first, second, third });
+    const result = await PointsService.setPodium({ first, second, third, fourth });
     return res.json({
       success: true,
       message: 'Pódio definido e pontos recalculados',

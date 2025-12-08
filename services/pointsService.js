@@ -13,7 +13,8 @@ const SettingsSchema = new mongoose.Schema(
     podium: {
       first: { type: String },
       second: { type: String },
-      third: { type: String }
+      third: { type: String },
+      fourth: { type: String }
     }
   },
   { timestamps: true }
@@ -34,10 +35,10 @@ async function getPodium() {
   return doc?.podium || null;
 }
 
-async function setPodium({ first, second, third }) {
+async function setPodium({ first, second, third, fourth }) {
   await Setting.updateOne(
     { key: 'podium' },
-    { $set: { podium: { first, second, third } } },
+    { $set: { podium: { first, second, third, fourth } } },
     { upsert: true }
   );
   // Após definir pódio, já recalculamos todos os pontos:
