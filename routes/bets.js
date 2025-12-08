@@ -53,17 +53,19 @@ router.get('/my-bets', protect, async (req, res) => {
       });
     }
 
-   return {
-  matchId: g.matchId,
-  choice: g.winner,
-  qualifier: g.qualifier, // ✅ envia o classificado
-  choiceLabel: toWinnerLabel(g.winner, teamA, teamB),
-  matchName: m ? `${m.teamA} vs ${m.teamB}` : `Jogo ${g.matchId}`,
-  teamA,
-  teamB,
-  status: m?.status || 'scheduled'
-};
-
+    const gm = (bet.groupMatches || []).map((b) => {
+      const m = matches.find(x => x.matchId === b.matchId);
+      const teamA = m?.teamA || 'Time A';
+      const teamB = m?.teamB || 'Time B';
+      return {
+        ...b,
+        matchName: m ? `${m.teamA} vs ${m.teamB}` : `Jogo ${b.matchId}`,
+        teamA,
+        teamB,
+        status: m?.status || 'scheduled',
+        // rótulo amigável do palpite
+        choiceLabel: toWinnerLabel(b.winner, teamA, teamB)
+      };
     });
 
     return res.json({
