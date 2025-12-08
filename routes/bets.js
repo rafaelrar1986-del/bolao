@@ -373,14 +373,16 @@ router.get('/all-bets', protect, async (req, res) => {
         const teamA = m?.teamA || 'Time A';
         const teamB = m?.teamB || 'Time B';
         return {
-          matchId: g.matchId,
-          choice: g.winner,                // 'A' | 'B' | 'draw' (armazenado)
-          choiceLabel: toWinnerLabel(g.winner, teamA, teamB), // rótulo amigável
-          matchName: m ? `${m.teamA} vs ${m.teamB}` : `Jogo ${g.matchId}`,
-          teamA,
-          teamB,
-          status: m?.status || 'scheduled'
-        };
+  matchId: g.matchId,
+  choice: g.winner,
+  qualifier: g.qualifier,   // ✅ AQUI
+  choiceLabel: toWinnerLabel(g.winner, teamA, teamB),
+  matchName: m ? `${m.teamA} vs ${m.teamB}` : `Jogo ${g.matchId}`,
+  teamA,
+  teamB,
+  status: m?.status || 'scheduled'
+};
+
       });
 
       return {
