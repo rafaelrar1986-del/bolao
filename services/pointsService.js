@@ -13,7 +13,8 @@ const SettingsSchema = new mongoose.Schema(
     podium: {
       first: { type: String },
       second: { type: String },
-      third: { type: String }
+      third: { type: String },
+      fourth: { type: String }
     }
   },
   { timestamps: true }
@@ -34,10 +35,10 @@ async function getPodium() {
   return doc?.podium || null;
 }
 
-async function setPodium({ first, second, third }) {
+async function setPodium({ first, second, third, fourth }) {
   await Setting.updateOne(
     { key: 'podium' },
-    { $set: { podium: { first, second, third } } },
+    { $set: { podium: { first, second, third, fourth } } },
     { upsert: true }
   );
   // Após definir pódio, já recalculamos todos os pontos:
@@ -104,6 +105,7 @@ async function recalculateAllPoints() {
       if (bet.podium.first && bet.podium.first === podium.first) podiumPoints += 7;
       if (bet.podium.second && bet.podium.second === podium.second) podiumPoints += 4;
       if (bet.podium.third && bet.podium.third === podium.third) podiumPoints += 2;
+      if (bet.podium.fourth && bet.podium.fourth === podium.fourth) podiumPoints += 2;
     }
 
     bet.groupPoints = groupPoints;
@@ -118,8 +120,23 @@ async function recalculateAllPoints() {
   return { ok: true, updated };
 }
 
+
+
+async function resetPodium() {
+  // Remove pódio definido
+  await Setting.updateOne(
+    { key: 'podium' },
+    { $unset: { podium: '' } },
+    { upsert: true }
+  );
+  // Recalcula pontos (sem pódio)
+  const result = await recalculateAllPoints();
+  return { ok: true, updated: result.updated };
+}
+
 module.exports = {
   getPodium,
   setPodium,
-  recalculateAllPoints
+  recalculateAllPoints,
+  resetPodium
 };

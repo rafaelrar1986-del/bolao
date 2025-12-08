@@ -9,12 +9,12 @@ const Match = require('../models/Match');
 // ============== Definir pódio (admin) ==============
 router.post('/process-podium', protect, admin, async (req, res) => {
   try {
-    const { first, second, third } = req.body || {};
-    if (!first || !second || !third) {
-      return res.status(400).json({ success: false, message: 'first, second e third são obrigatórios' });
+    const { first, second, third, fourth } = req.body || {};
+    if (!first || !second || !third || !fourth) {
+      return res.status(400).json({ success: false, message: 'first, second, third e fourth são obrigatórios' });
     }
 
-    const result = await PointsService.setPodium({ first, second, third });
+    const result = await PointsService.setPodium({ first, second, third, fourth });
     return res.json({
       success: true,
       message: 'Pódio definido e pontos recalculados',
@@ -25,6 +25,23 @@ router.post('/process-podium', protect, admin, async (req, res) => {
     res.status(500).json({ success: false, message: 'Erro ao processar pódio' });
   }
 });
+
+
+// ============== Zerar pódio (admin) ==============
+router.post('/podium/reset', protect, admin, async (req, res) => {
+  try {
+    const result = await PointsService.resetPodium();
+    return res.json({
+      success: true,
+      message: 'Pódio zerado e pontos recalculados',
+      updated: result.updated
+    });
+  } catch (err) {
+    console.error('❌ reset-podium:', err);
+    res.status(500).json({ success: false, message: 'Erro ao zerar pódio' });
+  }
+});
+
 
 // ============== Recalcular todos os pontos (admin) ==============
 router.post('/recalculate-all', protect, admin, async (req, res) => {

@@ -122,7 +122,8 @@ router.post('/save', protect, async (req, res) => {
       podiumPayload = {
         first: existing.podium.first,
         second: existing.podium.second,
-        third: existing.podium.third
+        third: existing.podium.third,
+        fourth: existing.podium.fourth || ''
       };
     } else {
       // Primeiro envio: exige pódio completo
@@ -132,7 +133,8 @@ router.post('/save', protect, async (req, res) => {
       podiumPayload = {
         first: String(podium.first).trim(),
         second: String(podium.second).trim(),
-        third: String(podium.third).trim()
+        third: String(podium.third).trim(),
+        fourth: podium.fourth ? String(podium.fourth).trim() : ''
       };
     }
 
@@ -277,56 +279,29 @@ router.get('/status', protect, async (req, res) => {
  */
 router.get('/leaderboard', protect, async (req, res) => {
   try {
-    const [bets, matches] = await Promise.all([
-      Bet.find({ hasSubmitted: true })
-        .populate('user', 'name')
-        .select('user totalPoints groupPoints podiumPoints bonusPoints lastUpdate podium groupMatches')
-        .sort({ totalPoints: -1, lastUpdate: 1 })
-        .lean(),
-      Match.find().select('matchId phase').lean()
-    ]);
+    const bets = await Bet.find({ hasSubmitted: true })
+      .populate('user', 'name')
+      .select('user totalPoints groupPoints podiumPoints bonusPoints lastUpdate podium')
+      .sort({ totalPoints: -1, lastUpdate: 1 })
+      .lean();
 
-    const matchMap = new Map(matches.map(m => [m.matchId, m]));
-
-    const ranked = bets.map((b, i) => {
-      let groupStagePoints = 0;
-      let knockoutPoints = 0;
-
-      for (const gm of b.groupMatches || []) {
-        const m = matchMap.get(gm.matchId);
-        if (!m) continue;
-        const pts = gm.points || 0;
-        if (m.phase === 'knockout') {
-          knockoutPoints += pts;
-        } else {
-          // default e/ou 'group'
-          groupStagePoints += pts;
-        }
-      }
-
-      return {
-        position: i + 1,
-        user: b.user, // { _id, name }
-        totalPoints: b.totalPoints || 0,
-        groupStagePoints,
-        knockoutPoints,
-        podiumPoints: b.podiumPoints || 0,
-        bonusPoints: b.bonusPoints || 0,
-        podium: b.podium || null,
-        lastUpdate: b.lastUpdate
-      };
-    });
+    const ranked = bets.map((b, i) => ({
+      position: i + 1,
+      user: b.user, // { _id, name }
+      totalPoints: b.totalPoints || 0,
+      groupPoints: b.groupPoints || 0,
+      podiumPoints: b.podiumPoints || 0,
+      bonusPoints: b.bonusPoints || 0,
+      podium: b.podium || null,
+      lastUpdate: b.lastUpdate
+    }));
 
     res.json({ success: true, data: ranked, count: ranked.length });
   } catch (e) {
     console.error('GET /leaderboard error:', e);
-    res.status(500).json({ 
-      success: false,
-      message: 'Erro ao carregar ranking'
-    });
+    res.status(500).json({ success: false, message: 'Erro ao carregar ranking' });
   }
 });
-
 
 /**
  * 👁️ Todos os palpites (com filtros)
