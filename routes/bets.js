@@ -134,7 +134,7 @@ router.post('/save', protect, async (req, res) => {
         first: String(podium.first).trim(),
         second: String(podium.second).trim(),
         third: String(podium.third).trim(),
-      fourth: podium.fourth ? String(podium.fourth).trim() : ''
+        fourth: podium.fourth ? String(podium.fourth).trim() : ''
       };
     }
 

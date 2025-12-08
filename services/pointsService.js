@@ -13,8 +13,7 @@ const SettingsSchema = new mongoose.Schema(
     podium: {
       first: { type: String },
       second: { type: String },
-      third: { type: String },
-      fourth: { type: String }
+      third: { type: String }
     }
   },
   { timestamps: true }
@@ -105,6 +104,7 @@ async function recalculateAllPoints() {
       if (bet.podium.first && bet.podium.first === podium.first) podiumPoints += 7;
       if (bet.podium.second && bet.podium.second === podium.second) podiumPoints += 4;
       if (bet.podium.third && bet.podium.third === podium.third) podiumPoints += 2;
+      if (bet.podium.fourth && bet.podium.fourth === podium.fourth) podiumPoints += 2;
     }
 
     bet.groupPoints = groupPoints;
