@@ -1,16 +1,11 @@
+// models/Settings.js
 const mongoose = require('mongoose');
 
-const settingsSchema = new mongoose.Schema({
+const SettingsSchema = new mongoose.Schema({
+  _id: { type: String, default: 'global_settings' },
   blockSaveBets: { type: Boolean, default: false },
   blockSaveKnockout: { type: Boolean, default: false },
-  requireAllGroupBets: { type: Boolean, default: false },
-}, { timestamps: true });
+  requireAllBets: { type: Boolean, default: false },
+}, { _id: false, timestamps: true });
 
-// Garante singleton
-settingsSchema.statics.getSingleton = async function () {
-  let doc = await this.findOne({});
-  if (!doc) doc = await this.create({});
-  return doc;
-};
-
-module.exports = mongoose.model('Settings', settingsSchema);
+module.exports = mongoose.model('Settings', SettingsSchema);
