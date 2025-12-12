@@ -267,4 +267,44 @@ router.get('/test', protect, (req, res) => {
   });
 });
 
+
+
+// ======================
+// RECUPERAÇÃO DE SENHA
+// ======================
+
+// 4 dígitos
+function generateCode() { return Math.floor(1000 + Math.random()*9000).toString(); }
+
+// Solicitar código
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ success:false, message:'Email não encontrado' });
+    user.recoveryCode = generateCode();
+    await user.save();
+    res.json({ success:true, message:'Código gerado', code: user.recoveryCode });
+  } catch(e){
+    res.status(500).json({ success:false, message:'Erro interno' });
+  }
+});
+
+// Resetar senha
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { email, recoveryCode, newPassword } = req.body;
+    const user = await User.findOne({ email });
+    if (!user || user.recoveryCode !== recoveryCode)
+      return res.status(400).json({ success:false, message:'Código inválido' });
+    const bcrypt = require('bcryptjs');
+    user.password = await bcrypt.hash(newPassword, 10);
+    user.recoveryCode = null;
+    await user.save();
+    res.json({ success:true, message:'Senha alterada' });
+  } catch(e){
+    res.status(500).json({ success:false, message:'Erro interno' });
+  }
+});
+
 module.exports = router;

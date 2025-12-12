@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 
 const userSchema = new mongoose.Schema({
+  recoveryCode: String,
   name: {
     type: String,
     required: [true, 'Nome é obrigatório'],
