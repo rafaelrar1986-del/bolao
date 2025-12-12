@@ -181,7 +181,10 @@ const pointsRoutes = require('./routes/points'); // 👈 NOVA ROTA
 
 app.use('/api/auth', authRoutes);
 app.use('/api/matches', matchesRoutes);
+
+const settingsRoutes = require('./routes/settings');
 app.use('/api/bets', betsRoutes);
+app.use('/api/settings', settingsRoutes);
 app.use('/api/points', pointsRoutes); // 👈 NOVA ROTA
 
 // ======================
