@@ -290,20 +290,37 @@ router.post('/forgot-password', async (req, res) => {
   }
 });
 
-// Resetar senha
+// ======================
+// RESETAR SENHA (CORRIGIDO)
+// ======================
 router.post('/reset-password', async (req, res) => {
   try {
     const { email, recoveryCode, newPassword } = req.body;
+
     const user = await User.findOne({ email });
-    if (!user || user.recoveryCode !== recoveryCode)
-      return res.status(400).json({ success:false, message:'Código inválido' });
-    const bcrypt = require('bcryptjs');
-    user.password = await bcrypt.hash(newPassword, 10);
+    if (!user || user.recoveryCode !== recoveryCode) {
+      return res.status(400).json({
+        success: false,
+        message: 'Código inválido'
+      });
+    }
+
+    // ❌ NÃO usar bcrypt aqui
+    user.password = newPassword;
     user.recoveryCode = null;
-    await user.save();
-    res.json({ success:true, message:'Senha alterada' });
-  } catch(e){
-    res.status(500).json({ success:false, message:'Erro interno' });
+
+    await user.save(); // pre('save') faz o hash correto
+
+    res.json({
+      success: true,
+      message: 'Senha alterada com sucesso'
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno'
+    });
   }
 });
 
