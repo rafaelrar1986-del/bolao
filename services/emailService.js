@@ -8,7 +8,7 @@ async function sendRecoveryEmail(to, code) {
     {
       sender: {
         name: 'Bolão Copa 2026',
-        email: 'no-reply@bolao.com'
+        email: 'contact@brevo.com'
       },
       to: [
         { email: to }
