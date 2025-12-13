@@ -1,29 +1,35 @@
-const nodemailer = require('nodemailer');
-
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT),
-  secure: false, // Brevo usa 587
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS
-  }
-});
+const axios = require('axios');
 
 async function sendRecoveryEmail(to, code) {
-  await transporter.sendMail({
-    from: '"Bolão Copa 2026" <no-reply@bolao.com>',
-    to,
-    subject: 'Recuperação de senha',
-    html: `
-      <h2>Recuperação de senha</h2>
-      <p>Use o código abaixo:</p>
-      <h1>${code}</h1>
-      <p>Se você não solicitou, ignore este email.</p>
-    `
-  });
+  const url = 'https://api.brevo.com/v3/smtp/email';
 
-  console.log('📧 Email enviado com sucesso para', to);
+  await axios.post(
+    url,
+    {
+      sender: {
+        name: 'Bolão Copa 2026',
+        email: 'no-reply@bolao.com'
+      },
+      to: [
+        { email: to }
+      ],
+      subject: 'Recuperação de senha',
+      htmlContent: `
+        <h2>Recuperação de senha</h2>
+        <p>Use o código abaixo:</p>
+        <h1>${code}</h1>
+        <p>Se você não solicitou, ignore este email.</p>
+      `
+    },
+    {
+      headers: {
+        'api-key': process.env.BREVO_API_KEY,
+        'Content-Type': 'application/json'
+      }
+    }
+  );
+
+  console.log('📧 Email enviado via Brevo API para', to);
 }
 
 module.exports = { sendRecoveryEmail };
