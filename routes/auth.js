@@ -277,7 +277,6 @@ router.get('/test', protect, (req, res) => {
 // 4 dígitos
 function generateCode() { return Math.floor(1000 + Math.random()*9000).toString(); }
 
-// Solicitar código (envia por email)
 router.post('/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
@@ -294,7 +293,6 @@ router.post('/forgot-password', async (req, res) => {
     user.recoveryCode = code;
     await user.save();
 
-    // 🔥 ENVIA EMAIL AQUI
     await sendRecoveryEmail(email, code);
 
     res.json({
