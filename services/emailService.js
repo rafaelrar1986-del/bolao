@@ -3,10 +3,14 @@ const nodemailer = require('nodemailer');
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
   port: Number(process.env.SMTP_PORT),
-  secure: true, // 587 = false
+  secure: false, // 587 = false
+  requireTLS: true, // 🔥 FORÇA TLS
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS
+  },
+  tls: {
+    rejectUnauthorized: false
   }
 });
 
@@ -22,8 +26,6 @@ async function sendRecoveryEmail(to, code) {
       <p>Se você não solicitou, ignore este email.</p>
     `
   });
-
-  console.log('📧 Email enviado com sucesso para', to);
 }
 
 module.exports = { sendRecoveryEmail };
