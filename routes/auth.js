@@ -1,3 +1,4 @@
+const { sendRecoveryEmail } = require('../services/emailService');
 const express = require('express');
 const bcrypt = require('bcryptjs'); // (usado no modelo se passwordVersion=1)
 const jwt = require('jsonwebtoken');
@@ -276,17 +277,37 @@ router.get('/test', protect, (req, res) => {
 // 4 dígitos
 function generateCode() { return Math.floor(1000 + Math.random()*9000).toString(); }
 
-// Solicitar código
+// Solicitar código (envia por email)
 router.post('/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
+
     const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ success:false, message:'Email não encontrado' });
-    user.recoveryCode = generateCode();
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Email não encontrado'
+      });
+    }
+
+    const code = generateCode();
+    user.recoveryCode = code;
     await user.save();
-    res.json({ success:true, message:'Código gerado', code: user.recoveryCode });
-  } catch(e){
-    res.status(500).json({ success:false, message:'Erro interno' });
+
+    // 🔥 ENVIA EMAIL AQUI
+    await sendRecoveryEmail(email, code);
+
+    res.json({
+      success: true,
+      message: 'Código enviado para o email'
+    });
+
+  } catch (error) {
+    console.error('Erro forgot-password:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao enviar email'
+    });
   }
 });
 
