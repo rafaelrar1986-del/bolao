@@ -27,6 +27,24 @@ router.post('/process-podium', protect, admin, async (req, res) => {
 });
 
 
+// ============== OBTER PÓDIO OFICIAL (GET) ==============
+router.get('/podium', protect, async (req, res) => {
+  try {
+    const podium = await PointsService.getPodium();
+
+    return res.json({
+      success: true,
+      data: podium
+    });
+  } catch (err) {
+    console.error('❌ get-podium:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao buscar pódio'
+    });
+  }
+});
+
 // ============== Zerar pódio (admin) ==============
 router.post('/podium/reset', protect, admin, async (req, res) => {
   try {
