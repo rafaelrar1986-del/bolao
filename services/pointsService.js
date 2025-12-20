@@ -1,168 +1,88 @@
-// services/pointsService.js
-const mongoose = require('mongoose');
+// services/betService.js
 const Bet = require('../models/Bet');
-const Match = require('../models/Match');
 
 /**
- * Guardamos o pódio final em um documento "Setting" (key='podium')
+ * 🔒 FUNÇÃO CRÍTICA
+ * Mescla novos palpites SEM apagar pontos já calculados
  */
-const SettingsSchema = new mongoose.Schema(
-  {
-    key: { type: String, required: true, unique: true, index: true },
-    podium: {
-      first: { type: String },
-      second: { type: String },
-      third: { type: String },
-      fourth: { type: String }
-    }
-  },
-  { timestamps: true }
-);
-
-const Setting =
-  mongoose.models.Setting ||
-  mongoose.model('Setting', SettingsSchema);
-
-/* =====================
-   HELPERS
-===================== */
-
-function winnerFromScores(a, b) {
-  if (typeof a !== 'number' || typeof b !== 'number') return null;
-  if (a > b) return 'A';
-  if (b > a) return 'B';
-  return 'draw';
-}
-
-async function getPodium() {
-  const doc = await Setting.findOne({ key: 'podium' }).lean();
-  return doc?.podium || null;
-}
-
-/* =====================
-   PODIUM
-===================== */
-
-async function setPodium({ first, second, third, fourth }) {
-  await Setting.updateOne(
-    { key: 'podium' },
-    { $set: { podium: { first, second, third, fourth } } },
-    { upsert: true }
+function mergeGroupMatches(oldMatches = [], newMatches = []) {
+  const oldMap = new Map(
+    oldMatches.map(m => [String(m.matchId), m])
   );
 
-  // Recalcula pontos SEM ZERAR jogos não finalizados
-  const result = await recalculateAllPoints();
-  return { ok: true, updated: result.updated };
+  return newMatches.map(nm => {
+    const old = oldMap.get(String(nm.matchId));
+
+    return {
+      ...nm,
+
+      // 🔥 preserva pontos existentes
+      points: old?.points ?? 0,
+      qualifierPoints: old?.qualifierPoints ?? 0
+    };
+  });
 }
 
-async function resetPodium() {
-  await Setting.updateOne(
-    { key: 'podium' },
-    { $unset: { podium: '' } },
-    { upsert: true }
-  );
+/**
+ * Salva aposta do usuário (fase de grupos + mata-mata + pódio)
+ * ❗ NÃO recalcula pontos
+ */
+async function saveBet({ userId, payload }) {
+  let bet = await Bet.findOne({ userId });
 
-  const result = await recalculateAllPoints();
-  return { ok: true, updated: result.updated };
-}
-
-/* =====================
-   RECALCULAR PONTOS
-===================== */
-
-async function recalculateAllPoints() {
-  const matches = await Match.find().lean();
-  const matchMap = new Map(matches.map(m => [m.matchId, m]));
-  const podium = await getPodium();
-
-  const bets = await Bet.find({ hasSubmitted: true });
-  let updated = 0;
-
-  for (const bet of bets) {
-    let groupPoints = 0;
-
-    /* ===== GRUPOS + MATA-MATA ===== */
-    for (const gm of bet.groupMatches || []) {
-      const m = matchMap.get(gm.matchId);
-
-      // 🚫 NÃO zera pontos se o jogo ainda não terminou
-      if (!m || m.status !== 'finished') {
-        // mantém pontuação existente
-        if (typeof gm.points !== 'number') gm.points = 0;
-        if (typeof gm.qualifierPoints !== 'number') gm.qualifierPoints = 0;
-        groupPoints += gm.points || 0;
-        continue;
-      }
-
-      // segurança futura
-      if (m.phase && !['group', 'knockout'].includes(m.phase)) {
-        groupPoints += gm.points || 0;
-        continue;
-      }
-
-      const realWinner = winnerFromScores(
-        Number(m.scoreA),
-        Number(m.scoreB)
-      );
-
-      const hitResult =
-        realWinner &&
-        gm.winner &&
-        realWinner === gm.winner;
-
-      // qualificado (penaltis / desempate)
-      const realQualifier =
-        typeof m.qualifiedSide !== 'undefined' && m.qualifiedSide
-          ? m.qualifiedSide
-          : realWinner;
-
-      let hitQualifier = false;
-      if (
-        gm.qualifier &&
-        (gm.qualifier === 'A' || gm.qualifier === 'B') &&
-        realQualifier &&
-        realQualifier !== 'draw' &&
-        gm.qualifier === realQualifier
-      ) {
-        hitQualifier = true;
-      }
-
-      gm.qualifierPoints = hitQualifier ? 1 : 0;
-      gm.points = (hitResult ? 1 : 0) + gm.qualifierPoints;
-
-      groupPoints += gm.points;
-    }
-
-    /* ===== PODIUM ===== */
-    let podiumPoints = 0;
-    if (podium && bet.podium) {
-      if (bet.podium.first === podium.first) podiumPoints += 7;
-      if (bet.podium.second === podium.second) podiumPoints += 4;
-      if (bet.podium.third === podium.third) podiumPoints += 2;
-      if (bet.podium.fourth === podium.fourth) podiumPoints += 2;
-    }
-
-    bet.groupPoints = groupPoints;
-    bet.podiumPoints = podiumPoints;
-    bet.totalPoints =
-      groupPoints + podiumPoints + (bet.bonusPoints || 0);
-
-    bet.lastUpdate = new Date();
-
-    await bet.save();
-    updated++;
+  if (!bet) {
+    bet = new Bet({
+      userId,
+      groupMatches: [],
+      podium: {},
+      bonusPoints: 0,
+      groupPoints: 0,
+      podiumPoints: 0,
+      totalPoints: 0,
+      hasSubmitted: false
+    });
   }
 
-  return { ok: true, updated };
+  /* =====================
+     GROUP + KNOCKOUT
+  ===================== */
+  if (Array.isArray(payload.groupMatches)) {
+    bet.groupMatches = mergeGroupMatches(
+      bet.groupMatches,
+      payload.groupMatches
+    );
+  }
+
+  /* =====================
+     PODIUM
+  ===================== */
+  if (payload.podium) {
+    bet.podium = {
+      first: payload.podium.first || null,
+      second: payload.podium.second || null,
+      third: payload.podium.third || null,
+      fourth: payload.podium.fourth || null
+    };
+  }
+
+  /* =====================
+     FLAGS
+  ===================== */
+  if (typeof payload.hasSubmitted === 'boolean') {
+    bet.hasSubmitted = payload.hasSubmitted;
+  }
+
+  bet.lastUpdate = new Date();
+
+  // 🔒 NÃO MEXE EM:
+  // bet.groupPoints
+  // bet.podiumPoints
+  // bet.totalPoints
+
+  await bet.save();
+  return bet;
 }
 
-/* =====================
-   EXPORTS
-===================== */
-
 module.exports = {
-  getPodium,
-  setPodium,
-  resetPodium,
-  recalculateAllPoints
+  saveBet
 };
