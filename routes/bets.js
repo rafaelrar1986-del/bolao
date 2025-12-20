@@ -234,10 +234,11 @@ router.post('/save', protect, async (req, res) => {
       hasSubmitted: true,
       firstSubmission: existing?.firstSubmission || now,
       lastUpdate: now,
-      totalPoints: 0,
-      groupPoints: 0,
-      podiumPoints: 0,
-      bonusPoints: 0
+       // 🔒 PRESERVA PONTUAÇÃO EXISTENTE (CORREÇÃO DEFINITIVA)
+  totalPoints: existing?.totalPoints ?? 0,
+  groupPoints: existing?.groupPoints ?? 0,
+  podiumPoints: existing?.podiumPoints ?? 0,
+  bonusPoints: existing?.bonusPoints ?? 0
     };
 
     const bet = await Bet.findOneAndUpdate(
