@@ -1,88 +1,142 @@
-// services/betService.js
+// services/pointsService.js
+const mongoose = require('mongoose');
 const Bet = require('../models/Bet');
+const Match = require('../models/Match');
 
 /**
- * 🔒 FUNÇÃO CRÍTICA
- * Mescla novos palpites SEM apagar pontos já calculados
+ * Guardamos o pódio final em um documento "Setting" (key='podium').
+ * Isso evita criar várias coleções diferentes e funciona como um key-value.
  */
-function mergeGroupMatches(oldMatches = [], newMatches = []) {
-  const oldMap = new Map(
-    oldMatches.map(m => [String(m.matchId), m])
+const SettingsSchema = new mongoose.Schema(
+  {
+    key: { type: String, required: true, unique: true, index: true },
+    podium: {
+      first: { type: String },
+      second: { type: String },
+      third: { type: String },
+      fourth: { type: String }
+    }
+  },
+  { timestamps: true }
+);
+
+const Setting = mongoose.models.Setting || mongoose.model('Setting', SettingsSchema);
+
+// --------- helpers ---------
+function winnerFromScores(a, b) {
+  if (typeof a !== 'number' || typeof b !== 'number') return null;
+  if (a > b) return 'A';
+  if (b > a) return 'B';
+  return 'draw';
+}
+
+async function getPodium() {
+  const doc = await Setting.findOne({ key: 'podium' }).lean();
+  return doc?.podium || null;
+}
+
+async function setPodium({ first, second, third, fourth }) {
+  await Setting.updateOne(
+    { key: 'podium' },
+    { $set: { podium: { first, second, third, fourth } } },
+    { upsert: true }
   );
-
-  return newMatches.map(nm => {
-    const old = oldMap.get(String(nm.matchId));
-
-    return {
-      ...nm,
-
-      // 🔥 preserva pontos existentes
-      points: old?.points ?? 0,
-      qualifierPoints: old?.qualifierPoints ?? 0
-    };
-  });
+  // Após definir pódio, já recalculamos todos os pontos:
+  const result = await recalculateAllPoints();
+  return { ok: true, updated: result.updated };
 }
 
 /**
- * Salva aposta do usuário (fase de grupos + mata-mata + pódio)
- * ❗ NÃO recalcula pontos
+ * Recalcula os pontos de TODOS os bets.
+ * Regras:
+ * - Fase de grupos: 1 ponto por acerto de vencedor/empate (A/B/draw) em jogos FINALIZADOS.
+ * - Pódio: 7/4/2 pontos para 1º/2º/3º se acertar exatamente o time.
+ * - totalPoints = groupPoints + podiumPoints + (bonusPoints || 0)
  */
-async function saveBet({ userId, payload }) {
-  let bet = await Bet.findOne({ userId });
+async function recalculateAllPoints() {
+  const matches = await Match.find().lean();
+  const matchMap = new Map(matches.map(m => [m.matchId, m]));
+  const podium = await getPodium();
 
-  if (!bet) {
-    bet = new Bet({
-      userId,
-      groupMatches: [],
-      podium: {},
-      bonusPoints: 0,
-      groupPoints: 0,
-      podiumPoints: 0,
-      totalPoints: 0,
-      hasSubmitted: false
-    });
+  const bets = await Bet.find({ hasSubmitted: true });
+  let updated = 0;
+
+  for (const bet of bets) {
+    // ---- pontos de grupos (inclui mata-mata)
+    let groupPoints = 0;
+
+    for (const gm of bet.groupMatches || []) {
+      const m = matchMap.get(gm.matchId);
+                 // considera jogos de fase de grupos e mata-mata igualmente: se o jogo existe e foi finalizado, conta.
+      if (!m || m.status !== 'finished') {
+        // jogo não finalizado -> não conta
+        gm.points = 0;
+        gm.qualifierPoints = 0;
+        continue;
+      }
+      // Apenas contabilizamos se a partida for de 'group' ou 'knockout' (futuro-proof).
+      if (m.phase && !['group','knockout'].includes(m.phase)) {
+        gm.points = 0;
+        gm.qualifierPoints = 0;
+        continue;
+      }
+
+      const real = winnerFromScores(Number(m.scoreA), Number(m.scoreB));
+      const hitResult = real && gm.winner && real === gm.winner;
+
+      // Prefer match.qualifiedSide if admin provided who advanced (useful for draws resolved by penalties)
+      const realQualifier = (typeof m.qualifiedSide !== 'undefined' && m.qualifiedSide) ? m.qualifiedSide : real;
+
+      let hitQualifier = false;
+      if (gm.qualifier && (gm.qualifier === 'A' || gm.qualifier === 'B')) {
+        if (realQualifier && realQualifier !== 'draw' && gm.qualifier === realQualifier) {
+          hitQualifier = true;
+        }
+      }
+
+      gm.qualifierPoints = hitQualifier ? 1 : 0;
+      gm.points = (hitResult ? 1 : 0) + (hitQualifier ? 1 : 0);
+      groupPoints += gm.points;
+    }
+
+    // ---- pódio
+    let podiumPoints = 0;
+    if (podium && bet.podium) {
+      if (bet.podium.first && bet.podium.first === podium.first) podiumPoints += 7;
+      if (bet.podium.second && bet.podium.second === podium.second) podiumPoints += 4;
+      if (bet.podium.third && bet.podium.third === podium.third) podiumPoints += 2;
+      if (bet.podium.fourth && bet.podium.fourth === podium.fourth) podiumPoints += 2;
+    }
+
+    bet.groupPoints = groupPoints;
+    bet.podiumPoints = podiumPoints;
+    bet.totalPoints = groupPoints + podiumPoints + (bet.bonusPoints || 0);
+    bet.lastUpdate = new Date();
+
+    await bet.save();
+    updated++;
   }
 
-  /* =====================
-     GROUP + KNOCKOUT
-  ===================== */
-  if (Array.isArray(payload.groupMatches)) {
-    bet.groupMatches = mergeGroupMatches(
-      bet.groupMatches,
-      payload.groupMatches
-    );
-  }
+  return { ok: true, updated };
+}
 
-  /* =====================
-     PODIUM
-  ===================== */
-  if (payload.podium) {
-    bet.podium = {
-      first: payload.podium.first || null,
-      second: payload.podium.second || null,
-      third: payload.podium.third || null,
-      fourth: payload.podium.fourth || null
-    };
-  }
 
-  /* =====================
-     FLAGS
-  ===================== */
-  if (typeof payload.hasSubmitted === 'boolean') {
-    bet.hasSubmitted = payload.hasSubmitted;
-  }
 
-  bet.lastUpdate = new Date();
-
-  // 🔒 NÃO MEXE EM:
-  // bet.groupPoints
-  // bet.podiumPoints
-  // bet.totalPoints
-
-  await bet.save();
-  return bet;
+async function resetPodium() {
+  // Remove pódio definido
+  await Setting.updateOne(
+    { key: 'podium' },
+    { $unset: { podium: '' } },
+    { upsert: true }
+  );
+  // Recalcula pontos (sem pódio)
+  const result = await recalculateAllPoints();
+  return { ok: true, updated: result.updated };
 }
 
 module.exports = {
-  saveBet
+  getPodium,
+  setPodium,
+  recalculateAllPoints,
+  resetPodium
 };
