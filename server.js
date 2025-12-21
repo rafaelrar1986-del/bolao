@@ -187,6 +187,12 @@ app.use('/api/bets', betsRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/points', pointsRoutes); // 👈 NOVA ROTA
 
+// === Histórico de pontos ===
+const pointsHistoryRoutes = require('./routes/pointsHistory');
+const roundHistoryRoutes = require('./routes/roundHistory');
+app.use('/api/points-history', pointsHistoryRoutes);
+app.use('/api/admin', roundHistoryRoutes);
+
 // ======================
 // MIDDLEWARES DE ERRO - NOVOS
 // ======================
@@ -316,9 +322,3 @@ server.on('error', (error) => {
 
 module.exports = app;
 
-// === Histórico de pontos ===
-const pointsHistoryRoutes = require('./routes/pointsHistory');
-const roundHistoryRoutes = require('./routes/roundHistory');
-
-app.use('/api/points-history', pointsHistoryRoutes);
-app.use('/api/admin', roundHistoryRoutes);
