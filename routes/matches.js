@@ -204,11 +204,8 @@ router.post('/admin/finish/:matchId', protect, admin, async (req, res) => {
     }
 
     // 🔥 TENTA SALVAR O HISTÓRICO DIÁRIO (AUTOMÁTICO)
-try {
-  await trySaveDailyPoints(new Date(match.date));
-} catch (err) {
-  console.error('Erro ao salvar histórico diário:', err);
-}
+console.log('🧪 Tentando salvar histórico do dia:', match.date);
+await trySaveDailyPoints(match.date);
 
     res.json({
       success: true,
