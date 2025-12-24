@@ -1,36 +1,37 @@
-const mongoose = require('mongoose');
+const express = require('express');
+const router = express.Router();
 
-const pointsHistorySchema = new mongoose.Schema(
-  {
-    user: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
-      index: true
-    },
+const PointsHistory = require('../models/PointsHistory');
+const User = require('../models/User');
+const { protect } = require('../middleware/auth');
 
-    // 📅 Dia da pontuação (normalizado para 00:00:00)
-    date: {
-      type: Date,
-      required: true,
-      index: true
-    },
+// 🔹 LISTA DE USUÁRIOS (ANTES)
+router.get('/users/list', protect, async (req, res) => {
+  const users = await User.find({}, '_id name');
+  res.json(users);
+});
 
-    // 📊 Pontuação total do usuário naquele dia
-    points: {
-      type: Number,
-      required: true
-    }
-  },
-  {
-    timestamps: true
+// 🔹 COMPARAÇÃO (ANTES)
+router.get('/compare/:userId', protect, async (req, res) => {
+  const { otherUserId } = req.query;
+
+  if (!otherUserId) {
+    return res.status(400).json({ message: 'otherUserId é obrigatório' });
   }
-);
 
-// 🔒 REGRA ABSOLUTA: 1 registro por usuário por dia
-pointsHistorySchema.index(
-  { user: 1, date: 1 },
-  { unique: true }
-);
+  const userHistory = await PointsHistory.find({ user: req.params.userId }).sort({ round: 1 });
+  const otherHistory = await PointsHistory.find({ user: otherUserId }).sort({ round: 1 });
 
-module.exports = mongoose.model('PointsHistory', pointsHistorySchema);
+  res.json({ user: userHistory, other: otherHistory });
+});
+
+// 🔹 HISTÓRICO POR USUÁRIO (POR ÚLTIMO)
+router.get('/:userId', protect, async (req, res) => {
+  const history = await PointsHistory
+    .find({ user: req.params.userId })
+    .sort({ round: 1 });
+
+  res.json(history);
+});
+
+module.exports = router;
