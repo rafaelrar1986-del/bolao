@@ -5,6 +5,7 @@ const router = express.Router();
 const Match = require('../models/Match');
 const Bet   = require('../models/Bet');
 const { protect, admin } = require('../middleware/auth');
+const { trySaveDailyPoints } = require('../services/dailyHistoryService');
 
 // ---- helper
 function calcWinner(a, b) {
@@ -201,6 +202,13 @@ router.post('/admin/finish/:matchId', protect, admin, async (req, res) => {
 
       await bet.save();
     }
+
+    // 🔥 TENTA SALVAR O HISTÓRICO DIÁRIO (AUTOMÁTICO)
+try {
+  await trySaveDailyPoints(new Date(match.date));
+} catch (err) {
+  console.error('Erro ao salvar histórico diário:', err);
+}
 
     res.json({
       success: true,
