@@ -4,34 +4,48 @@ const PointsHistory = require('../models/PointsHistory');
 
 async function trySaveDailyPoints(date) {
   try {
-    // 1️⃣ Todos os jogos do dia
+    console.log('📅 [dailyHistory] Date recebida:', date);
+
     const matches = await Match.find({ date });
+    console.log('📅 [dailyHistory] Jogos do dia:', matches.length);
 
-    if (!matches.length) return;
+    if (!matches.length) {
+      console.log('⛔ Nenhum jogo encontrado para o dia');
+      return;
+    }
 
-    // 2️⃣ Verifica se TODOS estão finalizados
     const allFinished = matches.every(m => m.status === 'finished');
-    if (!allFinished) return;
+    console.log('📅 [dailyHistory] Todos finalizados?', allFinished);
 
-    // 3️⃣ Evita duplicar histórico do mesmo dia
+    if (!allFinished) {
+      console.log('⛔ Ainda existem jogos não finalizados');
+      return;
+    }
+
     const alreadySaved = await PointsHistory.findOne({ date });
-    if (alreadySaved) return;
+    console.log('📅 [dailyHistory] Já salvo?', !!alreadySaved);
 
-    // 4️⃣ Busca todas as apostas
+    if (alreadySaved) {
+      console.log('⛔ Histórico já existe, abortando');
+      return;
+    }
+
     const bets = await Bet.find({}).populate('user');
+    console.log('👥 [dailyHistory] Apostas encontradas:', bets.length);
 
-    // 5️⃣ Salva o total de pontos de cada usuário
     for (const bet of bets) {
+      console.log('💾 Salvando histórico do usuário:', bet.user.name, bet.totalPoints);
+
       await PointsHistory.create({
         user: bet.user._id,
         date,
-        points: bet.totalPoints // 🔥 AQUI ESTAVA O PROBLEMA
+        points: bet.totalPoints
       });
     }
 
-    console.log(`📊 Histórico diário salvo com sucesso (${date})`);
+    console.log(`✅ Histórico diário salvo com sucesso (${date})`);
   } catch (err) {
-    console.error('Erro ao salvar histórico diário:', err);
+    console.error('❌ Erro ao salvar histórico diário:', err);
   }
 }
 
