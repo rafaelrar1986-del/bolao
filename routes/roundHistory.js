@@ -1,37 +1,19 @@
 const express = require('express');
 const router = express.Router();
 
-const Match = require('../models/Match');
-const User = require('../models/User');
-const PointsHistory = require('../models/PointsHistory');
 const { protect, admin } = require('../middleware/auth');
 
+// ⚠️ ENDPOINT DESCONTINUADO
+// O histórico diário agora é salvo automaticamente
+// via dailyHistoryService, usando a DATA REAL do jogo.
+// Este endpoint foi mantido apenas para compatibilidade.
+
 router.post('/rounds/:round/save-points', protect, admin, async (req, res) => {
-  const round = Number(req.params.round);
-
-  const alreadySaved = await PointsHistory.findOne({ round });
-  if (alreadySaved) {
-    return res.status(400).json({ message: 'Rodada já salva' });
-  }
-
-  const matches = await Match.find({ round });
-  if (matches.some(m => !m.finished)) {
-    return res.status(400).json({ message: 'Existem jogos não finalizados' });
-  }
-
-  const users = await User.find();
-
-  for (const user of users) {
-    if (typeof user.points !== 'number') continue;
-
-    await PointsHistory.create({
-      user: user._id,
-      points: user.points,
-      round
-    });
-  }
-
-  res.json({ success: true });
+  return res.status(410).json({
+    success: false,
+    message:
+      'Endpoint descontinuado. A pontuação diária é salva automaticamente por data quando os jogos do dia são finalizados.'
+  });
 });
 
 module.exports = router;
