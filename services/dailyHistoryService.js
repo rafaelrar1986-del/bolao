@@ -3,57 +3,121 @@ const Bet = require('../models/Bet');
 const PointsHistory = require('../models/PointsHistory');
 
 /**
- * Converte "DD/MM/YYYY" → Date UTC 00:00
+ * 🔁 Normaliza QUALQUER entrada de data para Date UTC 00:00
+ * Aceita:
+ * - "DD/MM/YYYY"
+ * - Date
+ * - ISO string
  */
-function toUTCDateFromBR(brDate) {
-  const [day, month, year] = brDate.split('/').map(Number);
-  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
+function normalizeToUTCDate(input) {
+  if (!input) return null;
+
+  // Já é Date
+  if (input instanceof Date) {
+    return new Date(Date.UTC(
+      input.getUTCFullYear(),
+      input.getUTCMonth(),
+      input.getUTCDate(),
+      0, 0, 0
+    ));
+  }
+
+  // String DD/MM/YYYY
+  if (typeof input === 'string' && input.includes('/')) {
+    const [day, month, year] = input.split('/').map(Number);
+    if (!day || !month || !year) return null;
+
+    return new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
+  }
+
+  // ISO ou outro formato aceito pelo Date()
+  const parsed = new Date(input);
+  if (isNaN(parsed)) return null;
+
+  return new Date(Date.UTC(
+    parsed.getUTCFullYear(),
+    parsed.getUTCMonth(),
+    parsed.getUTCDate(),
+    0, 0, 0
+  ));
 }
 
-async function trySaveDailyPoints(matchDateStr) {
+async function trySaveDailyPoints(matchDateInput) {
   try {
-    console.log('📅 [dailyHistory] Data recebida:', matchDateStr);
+    console.log('📅 [dailyHistory] Data recebida:', matchDateInput);
 
-    // 🔒 Garantia absoluta de formato
-    if (typeof matchDateStr !== 'string' || !matchDateStr.includes('/')) {
-      console.log('⛔ Data inválida (esperado DD/MM/YYYY)');
+    // 1️⃣ Normaliza a data para UTC 00:00
+    const historyDate = normalizeToUTCDate(matchDateInput);
+
+    if (!historyDate) {
+      console.log('⛔ [dailyHistory] Data inválida:', matchDateInput);
       return;
     }
 
-    // 1️⃣ Buscar partidas do dia (STRING)
+    console.log(
+      '📅 [dailyHistory] Data normalizada:',
+      historyDate.toISOString()
+    );
+
+    // 2️⃣ Converter para STRING DD/MM/YYYY para buscar partidas
+    const day   = String(historyDate.getUTCDate()).padStart(2, '0');
+    const month = String(historyDate.getUTCMonth() + 1).padStart(2, '0');
+    const year  = historyDate.getUTCFullYear();
+    const matchDateStr = `${day}/${month}/${year}`;
+
+    console.log(
+      '📅 [dailyHistory] Buscando partidas do dia:',
+      matchDateStr
+    );
+
+    // 3️⃣ Buscar partidas do dia
     const matches = await Match.find({ date: matchDateStr });
-    console.log('📅 [dailyHistory] Jogos do dia:', matches.length);
+
+    console.log(
+      '📅 [dailyHistory] Jogos encontrados:',
+      matches.length
+    );
 
     if (!matches.length) {
-      console.log('⛔ Nenhum jogo encontrado para o dia');
+      console.log('⛔ [dailyHistory] Nenhum jogo encontrado para o dia');
       return;
     }
 
-    // 2️⃣ Verificar se todos terminaram
+    // 4️⃣ Verificar se todas estão finalizadas
     const allFinished = matches.every(m => m.status === 'finished');
-    console.log('📅 [dailyHistory] Todos finalizados?', allFinished);
+
+    console.log(
+      '📅 [dailyHistory] Todos finalizados?',
+      allFinished
+    );
 
     if (!allFinished) {
-      console.log('⛔ Ainda existem jogos não finalizados');
+      console.log('⛔ [dailyHistory] Ainda existem jogos não finalizados');
       return;
     }
 
-    // 3️⃣ Normalizar data para salvar no histórico
-    const historyDate = toUTCDateFromBR(matchDateStr);
-    console.log('📅 [dailyHistory] Date normalizada:', historyDate.toISOString());
+    // 5️⃣ Evitar duplicação (1 registro por dia)
+    const alreadySaved = await PointsHistory.findOne({
+      date: historyDate
+    });
 
-    // 4️⃣ Evitar duplicação (regra absoluta)
-    const alreadySaved = await PointsHistory.findOne({ date: historyDate });
-    console.log('📅 [dailyHistory] Já salvo?', !!alreadySaved);
+    console.log(
+      '📅 [dailyHistory] Histórico já existe?',
+      !!alreadySaved
+    );
 
     if (alreadySaved) {
-      console.log('⛔ Histórico já existe, abortando');
+      console.log('⛔ [dailyHistory] Histórico já salvo, abortando');
       return;
     }
 
-    // 5️⃣ Salvar histórico por usuário
+    // 6️⃣ Salvar histórico por usuário
     const bets = await Bet.find({}).populate('user');
-    console.log('👥 [dailyHistory] Apostas encontradas:', bets.length);
+
+    console.log(
+      '👥 [dailyHistory] Apostas encontradas:',
+      bets.length
+    );
 
     for (const bet of bets) {
       console.log(
@@ -70,9 +134,15 @@ async function trySaveDailyPoints(matchDateStr) {
       });
     }
 
-    console.log(`✅ Histórico diário salvo com sucesso (${matchDateStr})`);
+    console.log(
+      `✅ [dailyHistory] Histórico diário salvo com sucesso (${matchDateStr})`
+    );
+
   } catch (err) {
-    console.error('❌ Erro ao salvar histórico diário:', err);
+    console.error(
+      '❌ [dailyHistory] Erro ao salvar histórico diário:',
+      err
+    );
   }
 }
 
