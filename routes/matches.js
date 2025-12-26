@@ -16,6 +16,23 @@ function calcWinner(a, b) {
   if (nb > na) return 'B';
   return 'draw';
 }
+/**
+ * Converte "DD/MM/YYYY" → Date UTC (00:00)
+ * Evita erro MM/DD e dia > 12
+ */
+function parseMatchDate(dateStr) {
+  if (!dateStr || typeof dateStr !== 'string') return null;
+
+  const [day, month, year] = dateStr.split('/');
+  if (!day || !month || !year) return null;
+
+  return new Date(Date.UTC(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    0, 0, 0
+  ));
+}
 
 // ======================
 // GET /api/matches  (público)
@@ -204,8 +221,18 @@ router.post('/admin/finish/:matchId', protect, admin, async (req, res) => {
     }
 
     // 🔥 TENTA SALVAR O HISTÓRICO DIÁRIO (AUTOMÁTICO)
-console.log('🧪 Tentando salvar histórico do dia:', match.date);
-await trySaveDailyPoints(match.date);
+const normalizedDate = parseMatchDate(match.date);
+
+console.log(
+  '🧪 Tentando salvar histórico do dia correto:',
+  match.date,
+  '→',
+  normalizedDate
+);
+
+if (normalizedDate) {
+  await trySaveDailyPoints(normalizedDate);
+}
 
     res.json({
       success: true,
