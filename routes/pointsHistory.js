@@ -63,4 +63,55 @@ router.get('/:userId', protect, async (req, res) => {
   }
 });
 
+// =============================
+// 🔹 RANKING HISTÓRICO (LINHA DO TEMPO)
+// =============================
+// Retorna a posição do usuário em cada dia salvo no PointsHistory
+router.get('/ranking/:userId', protect, async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Todas as datas únicas do histórico
+    const dates = await PointsHistory
+      .distinct('date');
+
+    // Ordena cronologicamente
+    dates.sort((a, b) => new Date(a) - new Date(b));
+
+    const timeline = [];
+
+    for (const date of dates) {
+      const dayHistory = await PointsHistory
+        .find({ date })
+        .populate('user', '_id name')
+        .lean();
+
+      // Ordena por pontos (descendente)
+      dayHistory.sort((a, b) => b.points - a.points);
+
+      // Define ranking
+      dayHistory.forEach((h, index) => {
+        h.rank = index + 1;
+      });
+
+      const me = dayHistory.find(
+        h => String(h.user._id) === String(userId)
+      );
+
+      if (me) {
+        timeline.push({
+          date,
+          rank: me.rank,
+          points: me.points
+        });
+      }
+    }
+
+    res.json(timeline);
+  } catch (err) {
+    console.error('Erro ao gerar ranking histórico:', err);
+    res.status(500).json({ message: 'Erro ao gerar ranking histórico' });
+  }
+});
+
 module.exports = router;
