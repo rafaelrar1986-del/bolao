@@ -5,12 +5,15 @@ const PointsHistory = require('../models/PointsHistory');
 const User = require('../models/User');
 const { protect } = require('../middleware/auth');
 
-// =============================
-// 🔹 LISTA DE USUÁRIOS
-// =============================
+/* =============================
+   🔹 LISTA DE USUÁRIOS
+============================= */
 router.get('/users/list', protect, async (req, res) => {
   try {
-    const users = await User.find({}, '_id name').sort({ name: 1 });
+    const users = await User
+      .find({}, '_id name')
+      .sort({ name: 1 });
+
     res.json(users);
   } catch (err) {
     console.error('Erro ao listar usuários:', err);
@@ -18,9 +21,9 @@ router.get('/users/list', protect, async (req, res) => {
   }
 });
 
-// =============================
-// 🔹 COMPARAÇÃO ENTRE USUÁRIOS
-// =============================
+/* =============================
+   🔹 COMPARAÇÃO ENTRE USUÁRIOS
+============================= */
 router.get('/compare/:userId', protect, async (req, res) => {
   try {
     const { otherUserId } = req.query;
@@ -47,9 +50,9 @@ router.get('/compare/:userId', protect, async (req, res) => {
   }
 });
 
-// =============================
-// 🔹 HISTÓRICO POR USUÁRIO
-// =============================
+/* =============================
+   🔹 HISTÓRICO POR USUÁRIO
+============================= */
 router.get('/:userId', protect, async (req, res) => {
   try {
     const history = await PointsHistory
@@ -63,14 +66,16 @@ router.get('/:userId', protect, async (req, res) => {
   }
 });
 
-// =============================
-// 🔹 RANKING HISTÓRICO (COM EMPATE)
-// =============================
+/* =============================
+   🔹 RANKING HISTÓRICO (COM EMPATE)
+   - Mesma pontuação → mesma posição
+   - Ranking esportivo real (1,1,3…)
+============================= */
 router.get('/ranking/:userId', protect, async (req, res) => {
   try {
     const { userId } = req.params;
 
-    // Todas as datas únicas
+    // Todas as datas únicas do histórico
     const dates = await PointsHistory.distinct('date');
     dates.sort((a, b) => new Date(a) - new Date(b));
 
@@ -82,13 +87,14 @@ router.get('/ranking/:userId', protect, async (req, res) => {
         .populate('user', '_id name')
         .lean();
 
-      // Ordena por pontos desc
+      // Ordena por pontos (desc)
       dayHistory.sort((a, b) => b.points - a.points);
 
       let currentRank = 0;
       let lastPoints = null;
 
-      dayHistory.forEach((h, index) => {
+      // Ranking com empate correto
+      dayHistory.forEach((h) => {
         if (lastPoints === null || h.points < lastPoints) {
           currentRank += 1;
         }
@@ -96,6 +102,7 @@ router.get('/ranking/:userId', protect, async (req, res) => {
         lastPoints = h.points;
       });
 
+      // Posição do usuário solicitado
       const me = dayHistory.find(
         h => String(h.user._id) === String(userId)
       );
@@ -103,7 +110,7 @@ router.get('/ranking/:userId', protect, async (req, res) => {
       if (me) {
         timeline.push({
           date,
-          rank: me.rank,
+          position: me.rank, // 👈 nome consistente com o frontend
           points: me.points
         });
       }
