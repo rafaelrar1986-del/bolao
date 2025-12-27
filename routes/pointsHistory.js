@@ -64,18 +64,14 @@ router.get('/:userId', protect, async (req, res) => {
 });
 
 // =============================
-// 🔹 RANKING HISTÓRICO (LINHA DO TEMPO)
+// 🔹 RANKING HISTÓRICO (COM EMPATE)
 // =============================
-// Retorna a posição do usuário em cada dia salvo no PointsHistory
 router.get('/ranking/:userId', protect, async (req, res) => {
   try {
     const { userId } = req.params;
 
-    // Todas as datas únicas do histórico
-    const dates = await PointsHistory
-      .distinct('date');
-
-    // Ordena cronologicamente
+    // Todas as datas únicas
+    const dates = await PointsHistory.distinct('date');
     dates.sort((a, b) => new Date(a) - new Date(b));
 
     const timeline = [];
@@ -86,12 +82,18 @@ router.get('/ranking/:userId', protect, async (req, res) => {
         .populate('user', '_id name')
         .lean();
 
-      // Ordena por pontos (descendente)
+      // Ordena por pontos desc
       dayHistory.sort((a, b) => b.points - a.points);
 
-      // Define ranking
+      let currentRank = 0;
+      let lastPoints = null;
+
       dayHistory.forEach((h, index) => {
-        h.rank = index + 1;
+        if (lastPoints === null || h.points < lastPoints) {
+          currentRank += 1;
+        }
+        h.rank = currentRank;
+        lastPoints = h.points;
       });
 
       const me = dayHistory.find(
