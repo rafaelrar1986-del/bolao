@@ -323,5 +323,43 @@ router.delete('/admin/delete/:matchId', protect, admin, async (req, res) => {
     res.status(500).json({ success: false, message: 'Erro ao excluir partida' });
   }
 });
+// ======================
+// GET /api/matches/stats  (público ou protegido — você escolhe)
+// Retorna total de partidas finalizadas por fase
+// ======================
+router.get('/stats', async (req, res) => {
+  try {
+    const groupFinished = await Match.countDocuments({
+      status: 'finished',
+      phase: 'group'
+    });
+
+    const knockoutFinished = await Match.countDocuments({
+      status: 'finished',
+      phase: 'knockout'
+    });
+
+    res.json({
+      success: true,
+      data: {
+        group: {
+          finished: groupFinished,
+          pointsPerMatch: 1
+        },
+        knockout: {
+          finished: knockoutFinished,
+          pointsPerMatch: 2
+        }
+      }
+    });
+  } catch (err) {
+    console.error('Erro ao buscar stats de partidas:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao buscar estatísticas de partidas'
+    });
+  }
+});
+
 
 module.exports = router;
