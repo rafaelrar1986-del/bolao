@@ -283,10 +283,21 @@ router.get('/leaderboard', protect, async (req, res) => {
     const bets = await Bet.find({ hasSubmitted: true })
       .populate('user', 'name')
       .select('user totalPoints groupPoints podiumPoints bonusPoints lastUpdate podium groupMatches')
-      .sort({ totalPoints: -1, lastUpdate: 1 })
+      .sort({ totalPoints: -1 }) // 🔥 só pontos
       .lean();
 
-    const ranked = bets.map((b, i) => {
+    let lastPoints = null;
+    let position = 0;
+    let realIndex = 0;
+
+    const ranked = bets.map((b) => {
+      realIndex++;
+
+      if (lastPoints === null || b.totalPoints !== lastPoints) {
+        position = realIndex;
+        lastPoints = b.totalPoints;
+      }
+
       const groupPhasePoints = (b.groupMatches || []).reduce((sum, gm) => {
         if (gm.matchId >= 1 && gm.matchId <= 72) {
           return sum + (gm.points || 0);
@@ -302,8 +313,8 @@ router.get('/leaderboard', protect, async (req, res) => {
       }, 0);
 
       return {
-        position: i + 1,
-        user: b.user, // { _id, name }
+        position,
+        user: b.user,
         totalPoints: b.totalPoints || 0,
         groupPoints: b.groupPoints || 0,
         groupPhasePoints,
@@ -321,7 +332,6 @@ router.get('/leaderboard', protect, async (req, res) => {
     res.status(500).json({ success: false, message: 'Erro ao carregar ranking' });
   }
 });
-
 /**
  * 👁️ Todos os palpites (com filtros)
  * Query:
