@@ -480,5 +480,37 @@ router.post('/admin/reset-all', protect, admin, async (req, res) => {
     return res.status(500).json({ success: false, message: 'Erro ao resetar apostas' });
   }
 });
+// =========================
+// 🔐 PERMISSÃO PARA MENU "MORE"
+// =========================
+router.get('/more-access', protect, async (req, res) => {
+  try {
+    // 🟢 ADMIN sempre tem acesso
+    if (req.user?.isAdmin) {
+      return res.json({
+        success: true,
+        canAccessMore: true
+      });
+    }
+
+    // 👤 usuário comum → precisa ter palpites salvos
+    const hasBets = await Bet.exists({
+      user: req.user._id
+    });
+
+    res.json({
+      success: true,
+      canAccessMore: !!hasBets
+    });
+
+  } catch (err) {
+    console.error('Erro ao verificar acesso ao MORE', err);
+    res.status(500).json({
+      success: false,
+      canAccessMore: false
+    });
+  }
+});
+
 
 module.exports = router;
