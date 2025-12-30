@@ -495,7 +495,8 @@ router.get('/more-access', protect, async (req, res) => {
 
     // 👤 usuário comum → precisa ter palpites salvos
     const hasBets = await Bet.exists({
-      user: req.user._id
+      user: req.user._id,
+      hasSubmitted: true
     });
 
     res.json({
