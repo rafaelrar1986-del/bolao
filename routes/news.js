@@ -26,7 +26,7 @@ router.post('/', protect, async (req, res) => {
       });
     }
 
-    // 🔒 cooldown de 1 hora
+    // ⏱️ cooldown 1h
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
 
     const lastMessage = await NewsMessage.findOne({
@@ -50,7 +50,8 @@ router.post('/', protect, async (req, res) => {
       success: true,
       data: {
         id: msg._id,
-        text: msg.text
+        text: msg.text,
+        createdAt: msg.createdAt
       }
     });
   } catch (err) {
@@ -71,18 +72,97 @@ router.get('/', async (req, res) => {
     const messages = await NewsMessage.find()
       .sort({ createdAt: -1 })
       .limit(20)
-      .populate('user', 'name');
+      .populate('user', 'name')
+      .lean();
 
     res.json(
       messages.map(m => ({
-        user: m.user?.name || 'Usuário',
+        id: m._id,
+        user: {
+          id: m.user?._id,
+          name: m.user?.name || 'Usuário'
+        },
         text: m.text,
-        createdAt: m.createdAt
+        createdAt: m.createdAt,
+        reactions: (m.reactions || []).map(r => ({
+          emoji: r.emoji,
+          count: r.users.length
+        }))
       }))
     );
   } catch (err) {
     console.error('Erro ao listar frases:', err);
     res.status(500).json([]);
+  }
+});
+
+/* =========================
+   POST /api/news/:id/react
+   Toggle reação (emoji)
+========================= */
+router.post('/:id/react', protect, async (req, res) => {
+  try {
+    const { emoji } = req.body;
+    const userId = req.user._id;
+    const messageId = req.params.id;
+
+    if (!emoji || typeof emoji !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'Emoji inválido'
+      });
+    }
+
+    const message = await NewsMessage.findById(messageId);
+    if (!message) {
+      return res.status(404).json({
+        success: false,
+        message: 'Frase não encontrada'
+      });
+    }
+
+    let reaction = message.reactions.find(r => r.emoji === emoji);
+
+    if (reaction) {
+      const index = reaction.users.findIndex(
+        u => u.toString() === userId.toString()
+      );
+
+      if (index >= 0) {
+        // remove reação
+        reaction.users.splice(index, 1);
+
+        // remove emoji vazio
+        if (reaction.users.length === 0) {
+          message.reactions = message.reactions.filter(
+            r => r.emoji !== emoji
+          );
+        }
+      } else {
+        reaction.users.push(userId);
+      }
+    } else {
+      message.reactions.push({
+        emoji,
+        users: [userId]
+      });
+    }
+
+    await message.save();
+
+    res.json({
+      success: true,
+      reactions: message.reactions.map(r => ({
+        emoji: r.emoji,
+        count: r.users.length
+      }))
+    });
+  } catch (err) {
+    console.error('Erro ao reagir:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno'
+    });
   }
 });
 
