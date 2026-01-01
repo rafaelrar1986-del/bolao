@@ -1,5 +1,8 @@
 const mongoose = require('mongoose');
 
+/* =========================
+   Subdocumento de Reação
+========================= */
 const NewsReactionSchema = new mongoose.Schema(
   {
     emoji: {
@@ -16,6 +19,9 @@ const NewsReactionSchema = new mongoose.Schema(
   { _id: false }
 );
 
+/* =========================
+   Mensagem do News
+========================= */
 const NewsMessageSchema = new mongoose.Schema(
   {
     user: {
@@ -31,14 +37,6 @@ const NewsMessageSchema = new mongoose.Schema(
       trim: true
     },
 
-    /* =========================
-       😀 REAÇÕES
-       Ex:
-       reactions: [
-         { emoji: "😂", users: [userId1, userId2] },
-         { emoji: "🔥", users: [userId3] }
-       ]
-    ========================= */
     reactions: {
       type: [NewsReactionSchema],
       default: []
