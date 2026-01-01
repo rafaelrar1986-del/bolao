@@ -179,7 +179,9 @@ const matchesRoutes = require('./routes/matches');
 const betsRoutes = require('./routes/bets');
 const pointsRoutes = require('./routes/points'); // 👈 NOVA ROTA
 const usersRoutes = require('./routes/users');
+const newsRoutes = require('./routes/news');
 
+app.use('/api/news', newsRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/matches', matchesRoutes);
