@@ -98,12 +98,12 @@ router.get('/', async (req, res) => {
 
 /* =========================
    POST /api/news/:id/react
-   Toggle reação (emoji)
+   1 reação por usuário
 ========================= */
 router.post('/:id/react', protect, async (req, res) => {
   try {
     const { emoji } = req.body;
-    const userId = req.user._id;
+    const userId = req.user._id.toString();
     const messageId = req.params.id;
 
     if (!emoji || typeof emoji !== 'string') {
@@ -121,27 +121,30 @@ router.post('/:id/react', protect, async (req, res) => {
       });
     }
 
+    /* ======================================
+       1️⃣ REMOVE usuário de TODAS as reações
+    ====================================== */
+    message.reactions.forEach(r => {
+      r.users = r.users.filter(
+        u => u.toString() !== userId
+      );
+    });
+
+    // remove emojis vazios
+    message.reactions = message.reactions.filter(
+      r => r.users.length > 0
+    );
+
+    /* ======================================
+       2️⃣ TOGGLE do emoji clicado
+    ====================================== */
     let reaction = message.reactions.find(r => r.emoji === emoji);
 
     if (reaction) {
-      const index = reaction.users.findIndex(
-        u => u.toString() === userId.toString()
-      );
-
-      if (index >= 0) {
-        // remove reação
-        reaction.users.splice(index, 1);
-
-        // remove emoji vazio
-        if (reaction.users.length === 0) {
-          message.reactions = message.reactions.filter(
-            r => r.emoji !== emoji
-          );
-        }
-      } else {
-        reaction.users.push(userId);
-      }
+      // se já existia, adiciona o usuário
+      reaction.users.push(userId);
     } else {
+      // cria nova reação
       message.reactions.push({
         emoji,
         users: [userId]
@@ -157,6 +160,7 @@ router.post('/:id/react', protect, async (req, res) => {
         count: r.users.length
       }))
     });
+
   } catch (err) {
     console.error('Erro ao reagir:', err);
     res.status(500).json({
@@ -165,5 +169,6 @@ router.post('/:id/react', protect, async (req, res) => {
     });
   }
 });
+
 
 module.exports = router;
