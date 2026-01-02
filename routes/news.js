@@ -65,10 +65,12 @@ router.post('/', protect, async (req, res) => {
 
 /* =========================
    GET /api/news
-   Últimas 20 frases
+   Últimas 20 frases (com reações do usuário)
 ========================= */
-router.get('/', async (req, res) => {
+router.get('/', protect, async (req, res) => {
   try {
+    const userId = req.user._id.toString();
+
     const messages = await NewsMessage.find()
       .sort({ createdAt: -1 })
       .limit(20)
@@ -86,7 +88,10 @@ router.get('/', async (req, res) => {
         createdAt: m.createdAt,
         reactions: (m.reactions || []).map(r => ({
           emoji: r.emoji,
-          count: r.users.length
+          count: r.users.length,
+          reactedByMe: r.users
+            .map(u => u.toString())
+            .includes(userId)
         }))
       }))
     );
