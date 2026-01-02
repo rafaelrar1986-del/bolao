@@ -47,4 +47,13 @@ const NewsMessageSchema = new mongoose.Schema(
   }
 );
 
+/* =========================
+   ⏱️ TTL — APAGA APÓS 6 HORAS
+========================= */
+// 6 horas = 6 * 60 * 60 = 21600 segundos
+NewsMessageSchema.index(
+  { createdAt: 1 },
+  { expireAfterSeconds: 21600 }
+);
+
 module.exports = mongoose.model('NewsMessage', NewsMessageSchema);
