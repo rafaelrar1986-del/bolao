@@ -491,6 +491,41 @@ router.post('/admin/reset-all', protect, admin, async (req, res) => {
     return res.status(500).json({ success: false, message: 'Erro ao resetar apostas' });
   }
 });
+/**
+ * 🏆 Admin: resetar SOMENTE o pódio oficial
+ * - Não apaga apostas
+ * - Não mexe em grupo ou mata-mata
+ * - Zera apenas podiumPoints
+ */
+router.post('/admin/reset-podium', protect, admin, async (req, res) => {
+  try {
+    const result = await Bet.updateMany(
+      {},
+      {
+        $set: {
+          'podium.first': '',
+          'podium.second': '',
+          'podium.third': '',
+          'podium.fourth': '',
+          podiumPoints: 0
+        }
+      }
+    );
+
+    res.json({
+      success: true,
+      message: 'Pódio oficial resetado com sucesso',
+      modifiedCount: result.modifiedCount
+    });
+  } catch (err) {
+    console.error('Erro ao resetar pódio:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao resetar pódio'
+    });
+  }
+});
+
 // =========================
 // 🔐 PERMISSÃO PARA MENU "MORE"
 // =========================
