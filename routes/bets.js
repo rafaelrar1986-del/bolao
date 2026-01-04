@@ -306,20 +306,22 @@ const matchPhaseMap = new Map(
         lastPoints = b.totalPoints;
       }
 
-      // 🔥 calcular pontos por fase usando MATCH.phase (não matchId)
-const groupPhasePoints = (b.groupMatches || []).reduce((sum, gm) => {
-  if (gm.phase === 'group') {
+     const groupPhasePoints = (b.groupMatches || []).reduce((sum, gm) => {
+  const phase = matchPhaseMap.get(gm.matchId);
+  if (phase === 'group') {
     return sum + (gm.points || 0);
   }
   return sum;
 }, 0);
 
 const knockoutPoints = (b.groupMatches || []).reduce((sum, gm) => {
-  if (gm.phase === 'knockout') {
+  const phase = matchPhaseMap.get(gm.matchId);
+  if (phase === 'knockout') {
     return sum + (gm.points || 0);
   }
   return sum;
 }, 0);
+
 
       return {
         position,
