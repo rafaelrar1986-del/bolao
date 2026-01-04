@@ -285,6 +285,14 @@ router.get('/leaderboard', protect, async (req, res) => {
       .select('user totalPoints groupPoints podiumPoints bonusPoints lastUpdate podium groupMatches')
       .sort({ totalPoints: -1 }) // 🔥 só pontos
       .lean();
+// 🔥 BUSCA A FASE REAL DE CADA PARTIDA
+const matches = await Match.find()
+  .select('matchId phase')
+  .lean();
+
+const matchPhaseMap = new Map(
+  matches.map(m => [m.matchId, m.phase])
+);
 
     let lastPoints = null;
     let position = 0;
@@ -298,25 +306,26 @@ router.get('/leaderboard', protect, async (req, res) => {
         lastPoints = b.totalPoints;
       }
 
-      const groupPhasePoints = (b.groupMatches || []).reduce((sum, gm) => {
-        if (gm.matchId >= 1 && gm.matchId <= 72) {
-          return sum + (gm.points || 0);
-        }
-        return sum;
-      }, 0);
+      // 🔥 calcular pontos por fase usando MATCH.phase (não matchId)
+const groupPhasePoints = (b.groupMatches || []).reduce((sum, gm) => {
+  if (gm.phase === 'group') {
+    return sum + (gm.points || 0);
+  }
+  return sum;
+}, 0);
 
-      const knockoutPoints = (b.groupMatches || []).reduce((sum, gm) => {
-        if (gm.matchId >= 73) {
-          return sum + (gm.points || 0);
-        }
-        return sum;
-      }, 0);
+const knockoutPoints = (b.groupMatches || []).reduce((sum, gm) => {
+  if (gm.phase === 'knockout') {
+    return sum + (gm.points || 0);
+  }
+  return sum;
+}, 0);
 
       return {
         position,
         user: b.user,
         totalPoints: b.totalPoints || 0,
-        groupPoints: b.groupPoints || 0,
+groupPoints: groupPhasePoints,
         groupPhasePoints,
         knockoutPoints,
         podiumPoints: b.podiumPoints || 0,
