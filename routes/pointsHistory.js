@@ -90,17 +90,25 @@ router.get('/ranking/:userId', protect, async (req, res) => {
       // Ordena por pontos (desc)
       dayHistory.sort((a, b) => b.points - a.points);
 
-      let currentRank = 0;
       let lastPoints = null;
+let position = 0;
+let index = 0;
 
-      // Ranking com empate correto
-      dayHistory.forEach((h) => {
-        if (lastPoints === null || h.points < lastPoints) {
-          currentRank += 1;
-        }
-        h.rank = currentRank;
-        lastPoints = h.points;
-      });
+// Ranking esportivo real (1,1,3…)
+dayHistory.forEach((h) => {
+  index++;
+
+  if (lastPoints === null) {
+    position = 1;
+    lastPoints = h.points;
+  } else if (h.points < lastPoints) {
+    position = index; // 🔥 pula posições corretamente
+    lastPoints = h.points;
+  }
+
+  h.rank = position;
+});
+
 
       // Posição do usuário solicitado
       const me = dayHistory.find(
