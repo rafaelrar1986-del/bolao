@@ -549,14 +549,17 @@ router.post('/admin/reset-podium', protect, admin, async (req, res) => {
 // =========================
 router.get('/more-access', protect, async (req, res) => {
   try {
-    // 🟢 ADMIN sempre tem acesso
- if (req.user?.role === 'admin') {
+    // 🟢 ADMIN sempre tem acesso (compatível com isAdmin e role)
+    const isAdminUser =
+      req.user?.isAdmin === true ||
+      req.user?.role === 'admin';
+
+    if (isAdminUser) {
       return res.json({
         success: true,
         canAccessMore: true
       });
     }
-
     // 👤 usuário comum → precisa ter palpites salvos
     const hasBets = await Bet.exists({
       user: req.user._id,
