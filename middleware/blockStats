@@ -1,21 +1,25 @@
-// middleware/blockStats.js
 import Settings from '../models/Settings.js';
 
 export async function blockStatsIfLocked(req, res, next) {
   try {
-    // 🔹 1. Admin ignora qualquer bloqueio
-    if (req.user?.role === 'admin') {
+    // 🛡️ 1. ADMIN SEMPRE IGNORA BLOQUEIO
+    const isAdminUser =
+      req.user?.isAdmin === true ||
+      req.user?.role === 'admin';
+
+    if (isAdminUser) {
       return next();
     }
 
-    // 🔹 2. Busca config global
+    // 🔎 2. Busca config global
     const settings = await Settings.findById('global_settings');
 
+    // Sem settings → não bloqueia
     if (!settings) {
-      return next(); // sem config → não bloqueia
+      return next();
     }
 
-    // 🔹 3. Desbloqueio automático por data
+    // ⏱️ 3. Desbloqueio automático por data
     if (
       settings.statsLocked === true &&
       settings.unlockAt &&
@@ -28,18 +32,22 @@ export async function blockStatsIfLocked(req, res, next) {
       return next();
     }
 
-    // 🔹 4. Se estatísticas estiverem bloqueadas
+    // 🔒 4. Bloqueio ativo
     if (settings.statsLocked === true) {
       return res.status(423).json({
         success: false,
         code: 'STATS_LOCKED',
+        message: 'Estatísticas bloqueadas pelo administrador',
         reason: settings.lockedReason || 'PRE_TOURNAMENT'
       });
     }
 
+    // ✅ 5. Livre
     next();
+
   } catch (err) {
-    console.error('Erro blockStatsIfLocked:', err);
-    next(); // nunca derruba o sistema
+    console.error('❌ Erro blockStatsIfLocked:', err);
+    // Nunca derruba o sistema
+    next();
   }
 }
