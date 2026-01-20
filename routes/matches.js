@@ -4,6 +4,7 @@ const router = express.Router();
 
 const Match = require('../models/Match');
 const Bet   = require('../models/Bet');
+const Settings = require('../models/Settings');
 const { protect, admin } = require('../middleware/auth');
 const { trySaveDailyPoints } = require('../services/dailyHistoryService');
 
@@ -71,6 +72,8 @@ router.get('/admin/all', protect, admin, async (req, res) => {
     res.status(500).json({ success: false, message: 'Erro ao listar partidas' });
   }
 });
+
+
 
 // ======================
 // POST /api/matches/admin/add  (admin)
@@ -323,6 +326,81 @@ router.delete('/admin/delete/:matchId', protect, admin, async (req, res) => {
     res.status(500).json({ success: false, message: 'Erro ao excluir partida' });
   }
 });
+
+
+// ======================
+// GET /api/matches/admin/settings  (admin)
+// ======================
+router.get('/admin/settings', protect, admin, async (req, res) => {
+  try {
+    const settings = await Settings.findById('global_settings').lean();
+
+    res.json({
+      success: true,
+      data: settings || {
+        statsLocked: false,
+        lockedReason: null,
+        unlockAt: null
+      }
+    });
+  } catch (err) {
+    console.error('Erro ao buscar settings:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao buscar configurações globais'
+    });
+  }
+});
+
+
+
+
+// ======================
+// PUT /api/matches/admin/settings  (admin)
+// ======================
+router.put('/admin/settings', protect, admin, async (req, res) => {
+  try {
+    const { statsLocked, lockedReason, unlockAt } = req.body;
+
+    const update = {};
+
+    if (typeof statsLocked === 'boolean') {
+      update.statsLocked = statsLocked;
+    }
+
+    if (typeof lockedReason === 'string' || lockedReason === null) {
+      update.lockedReason = lockedReason;
+    }
+
+    if (unlockAt) {
+      update.unlockAt = new Date(unlockAt);
+    } else if (unlockAt === null) {
+      update.unlockAt = null;
+    }
+
+    const settings = await Settings.findByIdAndUpdate(
+      'global_settings',
+      { $set: update },
+      { new: true, upsert: true }
+    );
+
+    res.json({
+      success: true,
+      message: 'Configurações atualizadas',
+      data: settings
+    });
+  } catch (err) {
+    console.error('Erro ao atualizar settings:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao atualizar configurações'
+    });
+  }
+});
+
+
+
+
 // ======================
 // GET /api/matches/stats  (público ou protegido — você escolhe)
 // Retorna total de partidas finalizadas por fase
