@@ -1,0 +1,31 @@
+// middleware/blockStats.js
+import Settings from '../models/Settings.js';
+
+export async function blockStatsIfLocked(req, res, next) {
+  try {
+    // 🔹 1. Admin ignora qualquer bloqueio
+    if (req.user?.role === 'admin') {
+      return next();
+    }
+
+    // 🔹 2. Busca config global
+    const settings = await Settings.findById('global_settings');
+
+    if (!settings) {
+      return next(); // sem config → não bloqueia
+    }
+
+    // 🔹 3. Se estatísticas estiverem bloqueadas
+    if (settings.statsLocked === true) {
+      return res.status(403).json({
+        code: 'STATS_LOCKED',
+        reason: settings.lockedReason || 'PRE_TOURNAMENT'
+      });
+    }
+
+    next();
+  } catch (err) {
+    console.error('Erro blockStatsIfLocked:', err);
+    next(); // nunca derruba o sistema
+  }
+}
