@@ -1,4 +1,6 @@
 // routes/bets.js
+
+const { blockStatsIfLocked } = require('../middleware/blockStats');
 const express = require('express');
 const Bet = require('../models/Bet');
 const Match = require('../models/Match');
@@ -278,7 +280,11 @@ router.get('/status', protect, async (req, res) => {
  * 🏆 Leaderboard
  * (Somente ordena por totalPoints desc; cálculo dos pontos é feito em outros fluxos)
  */
-router.get('/leaderboard', protect, async (req, res) => {
+router.get(
+  '/leaderboard',
+  protect,
+  blockStatsIfLocked,
+  async (req, res) => {
   try {
     const bets = await Bet.find({ hasSubmitted: true })
       .populate('user', 'name')
@@ -351,7 +357,11 @@ groupPoints: groupPhasePoints,
  *  - group: nome do grupo (ex: "Grupo A") -> filtra usuários que tenham palpites em partidas desse grupo
  *  - sortBy: 'user' | 'points' | 'date'
  */
-router.get('/all-bets', protect, async (req, res) => {
+router.get(
+  '/all-bets',
+  protect,
+  blockStatsIfLocked,
+  async (req, res) => {
   try {
     const { search, matchId, group, sortBy = 'user' } = req.query;
 
