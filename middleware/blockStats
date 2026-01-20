@@ -15,9 +15,23 @@ export async function blockStatsIfLocked(req, res, next) {
       return next(); // sem config → não bloqueia
     }
 
-    // 🔹 3. Se estatísticas estiverem bloqueadas
+    // 🔹 3. Desbloqueio automático por data
+    if (
+      settings.statsLocked === true &&
+      settings.unlockAt &&
+      new Date() >= settings.unlockAt
+    ) {
+      settings.statsLocked = false;
+      settings.lockedReason = null;
+      settings.unlockAt = null;
+      await settings.save();
+      return next();
+    }
+
+    // 🔹 4. Se estatísticas estiverem bloqueadas
     if (settings.statsLocked === true) {
-      return res.status(403).json({
+      return res.status(423).json({
+        success: false,
         code: 'STATS_LOCKED',
         reason: settings.lockedReason || 'PRE_TOURNAMENT'
       });
