@@ -1,11 +1,11 @@
 // routes/bets.js
 
-const { blockStatsIfLocked } = require('../middleware/blockStats');
 const express = require('express');
 const Bet = require('../models/Bet');
 const Match = require('../models/Match');
 const User = require('../models/User');
 const { protect, admin } = require('../middleware/auth');
+const { blockStatsIfLocked } = require('../middleware/blockStats');
 
 const router = express.Router();
 
@@ -461,7 +461,11 @@ router.get(
 /**
  * 🔍 Partidas para filtro
  */
-router.get('/matches-for-filter', protect, async (req, res) => {
+router.get(
+  '/matches-for-filter',
+  protect,
+  blockStatsIfLocked,
+  async (req, res) => {
   try {
     const matches = await Match.find().select('matchId teamA teamB group date').sort('matchId').lean();
     res.json({ success: true, data: matches });
@@ -474,7 +478,11 @@ router.get('/matches-for-filter', protect, async (req, res) => {
 /**
  * 👥 Usuários para filtro
  */
-router.get('/users-for-filter', protect, async (req, res) => {
+router.get(
+  '/users-for-filter',
+  protect,
+  blockStatsIfLocked,
+  async (req, res) => {
   try {
     const users = await User.find().select('_id name').sort('name').lean();
     res.json({ success: true, data: users });
@@ -542,7 +550,7 @@ router.post('/admin/reset-podium', protect, admin, async (req, res) => {
 router.get('/more-access', protect, async (req, res) => {
   try {
     // 🟢 ADMIN sempre tem acesso
-    if (req.user?.isAdmin) {
+ if (req.user?.role === 'admin') {
       return res.json({
         success: true,
         canAccessMore: true
