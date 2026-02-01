@@ -521,23 +521,23 @@ router.post('/admin/reset-podium', protect, admin, async (req, res) => {
       {},
       {
         $set: {
-          'podium.first': '',
-          'podium.second': '',
-          'podium.third': '',
-          'podium.fourth': '',
+          'podium.first': null,
+          'podium.second': null,
+          'podium.third': null,
+          'podium.fourth': null,
           podiumPoints: 0
         }
       }
     );
 
-    res.json({
+    return res.json({
       success: true,
-      message: 'Pódio oficial resetado com sucesso',
+      message: 'Pódio oficial resetado (Mongo = null)',
       modifiedCount: result.modifiedCount
     });
   } catch (err) {
     console.error('Erro ao resetar pódio:', err);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Erro ao resetar pódio'
     });
