@@ -140,13 +140,19 @@ async function recalculateAllPoints() {
 
 
 async function resetPodium() {
-  // Remove pódio definido
   await Setting.updateOne(
     { key: 'podium' },
-    { $unset: { podium: '' } },
+    {
+      $set: {
+        'podium.first': null,
+        'podium.second': null,
+        'podium.third': null,
+        'podium.fourth': null
+      }
+    },
     { upsert: true }
   );
-  // Recalcula pontos (sem pódio)
+
   const result = await recalculateAllPoints();
   return { ok: true, updated: result.updated };
 }
