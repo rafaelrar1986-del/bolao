@@ -23,10 +23,10 @@ const GroupMatchSchema = new mongoose.Schema({
 }, { _id: false });
 
 const PodiumSchema = new mongoose.Schema({
-  first: { type: String, required: true },   // Campeão
-  second: { type: String, required: true },  // Vice
-  third: { type: String, required: true },   // Terceiro
-  fourth: { type: String, default: '' }      // Quarto lugar (opcional)
+  first:  { type: String, default: null },
+  second: { type: String, default: null },
+  third:  { type: String, default: null },
+  fourth: { type: String, default: null }
 }, { _id: false });
 
 const BetSchema = new mongoose.Schema({
@@ -36,7 +36,7 @@ const BetSchema = new mongoose.Schema({
   lastUpdate: { type: Date, default: null },
 
   groupMatches: { type: [GroupMatchSchema], default: [] },
-  podium: { type: PodiumSchema, required: true },
+podium: { type: PodiumSchema, default: {} },
 
   // totais (mantemos para ranking)
   totalPoints: { type: Number, default: 0 },
