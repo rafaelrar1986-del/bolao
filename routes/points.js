@@ -6,18 +6,34 @@ const PointsService = require('../services/pointsService');
 const Bet = require('../models/Bet');
 const Match = require('../models/Match');
 
-// ============== Definir pódio (admin) ==============
+// ============== Definir / atualizar pódio (admin) ==============
 router.post('/process-podium', protect, admin, async (req, res) => {
   try {
     const { first, second, third, fourth } = req.body || {};
-    if (!first || !second || !third || !fourth) {
-      return res.status(400).json({ success: false, message: 'first, second, third e fourth são obrigatórios' });
+
+    // bloqueia apenas request totalmente vazia
+    if (
+      first === undefined &&
+      second === undefined &&
+      third === undefined &&
+      fourth === undefined
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Nenhuma posição do pódio informada'
+      });
     }
 
-    const result = await PointsService.setPodium({ first, second, third, fourth });
+    const result = await PointsService.setPodium({
+      first,
+      second,
+      third,
+      fourth
+    });
+
     return res.json({
       success: true,
-      message: 'Pódio definido e pontos recalculados',
+      message: 'Pódio atualizado com sucesso',
       updated: result.updated
     });
   } catch (err) {
