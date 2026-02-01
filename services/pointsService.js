@@ -36,14 +36,31 @@ async function getPodium() {
 }
 
 async function setPodium({ first, second, third, fourth }) {
+  const update = {};
+
+  if (first !== undefined) update['podium.first'] = first || null;
+  if (second !== undefined) update['podium.second'] = second || null;
+  if (third !== undefined) update['podium.third'] = third || null;
+  if (fourth !== undefined) update['podium.fourth'] = fourth || null;
+
+  if (Object.keys(update).length === 0) {
+    return { ok: true, updated: 0 };
+  }
+
   await Setting.updateOne(
     { key: 'podium' },
-    { $set: { podium: { first, second, third, fourth } } },
+    { $set: update },
     { upsert: true }
   );
-  // Após definir pódio, já recalculamos todos os pontos:
-  const result = await recalculateAllPoints();
-  return { ok: true, updated: result.updated };
+
+  // ⚠️ só recalcula pontos se 1º e 2º existirem
+  const podium = await getPodium();
+  if (podium?.first && podium?.second) {
+    const result = await recalculateAllPoints();
+    return { ok: true, updated: result.updated };
+  }
+
+  return { ok: true, updated: 0 };
 }
 
 /**
