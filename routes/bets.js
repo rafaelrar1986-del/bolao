@@ -2,6 +2,7 @@
 
 const express = require('express');
 const Bet = require('../models/Bet');
+const PointsHistory = require('../models/PointsHistory');
 const Match = require('../models/Match');
 const User = require('../models/User');
 const { protect, admin } = require('../middleware/auth');
@@ -493,23 +494,36 @@ router.get(
 });
 
 /**
- * ⚠️ Admin: resetar TODAS as apostas
+ * ⚠️ Admin: resetar TODAS as apostas e TODO o histórico de pontos
  */
+
+
 router.post('/admin/reset-all', protect, admin, async (req, res) => {
   try {
-    const result = await Bet.deleteMany({});
+    // 🧹 Apaga apostas (fase de grupos / mata-mata)
+    const betsResult = await Bet.deleteMany({});
+
+    // 🧹 Apaga TODO o histórico de pontos
+    const historyResult = await PointsHistory.deleteMany({});
+
     return res.json({
       success: true,
-      message: 'Apostas resetadas com sucesso.',
-      deletedCount: result.deletedCount,
+      message: 'Apostas e histórico de pontos resetados com sucesso.',
+      deleted: {
+        bets: betsResult.deletedCount,
+        pointHistory: historyResult.deletedCount
+      },
       timestamp: new Date().toISOString()
     });
+
   } catch (error) {
     console.error('POST /admin/reset-all error:', error);
-    return res.status(500).json({ success: false, message: 'Erro ao resetar apostas' });
+    return res.status(500).json({
+      success: false,
+      message: 'Erro ao resetar apostas e histórico de pontos'
+    });
   }
-});
-/**
+});/**
  * 🏆 Admin: resetar SOMENTE o pódio oficial
  * - Não apaga apostas
  * - Não mexe em grupo ou mata-mata
