@@ -1,9 +1,10 @@
 const { sendRecoveryEmail } = require('../services/emailService');
 const express = require('express');
-const bcrypt = require('bcryptjs'); // (usado no modelo se passwordVersion=1)
+const bcrypt = require('bcryptjs'); 
 const jwt = require('jsonwebtoken');
-const crypto = require('crypto'); // (fallback usado no modelo)
+const crypto = require('crypto'); 
 const User = require('../models/User');
+const AllowedEmail = require('../models/AllowedEmail'); // 👈 IMPORTADO
 const { protect } = require('../middleware/auth');
 
 const router = express.Router();
@@ -26,7 +27,7 @@ const generateToken = (userId) => {
 };
 
 // ======================
-// SISTEMA DE AUTENTICAÇÃO ROBUSTO
+// SISTEMA DE AUTENTICAÇÃO
 // ======================
 const authenticateUser = async (email, password) => {
   try {
@@ -35,7 +36,6 @@ const authenticateUser = async (email, password) => {
       return { success: false, error: 'USER_NOT_FOUND' };
     }
 
-    // método comparePassword do modelo já lida com bcrypt/crypto e lock
     const isPasswordValid = await user.comparePassword(password);
 
     if (isPasswordValid) {
@@ -50,51 +50,45 @@ const authenticateUser = async (email, password) => {
 };
 
 // ======================
-// 📝 REGISTRO DE USUÁRIO
+// 📝 REGISTRO COM WHITELIST (ATUALIZADO)
 // ======================
 router.post('/register', async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
-    // Validar campos obrigatórios
     if (!name || !email || !password) {
-      return res.status(400).json({
+      return res.status(400).json({ success: false, message: 'Nome, email e senha são obrigatórios' });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    if (!isValidEmail(normalizedEmail)) {
+      return res.status(400).json({ success: false, message: 'Formato de email inválido' });
+    }
+
+    // 🛡️ TRAVA DE SEGURANÇA: CONSULTA WHITELIST NO BANCO
+    const isAllowed = await AllowedEmail.findOne({ email: normalizedEmail });
+    if (!isAllowed) {
+      console.warn(`🛑 Tentativa de registro negada (fora da lista): ${normalizedEmail}`);
+      return res.status(403).json({
         success: false,
-        message: 'Nome, email e senha são obrigatórios'
+        message: 'Acesso restrito: este e-mail não foi convidado para o bolão.'
       });
     }
 
-    // Validar formato do email
-    if (!isValidEmail(email)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Formato de email inválido'
-      });
-    }
-
-    // Validar senha
     if (password.length < 6) {
-      return res.status(400).json({
-        success: false,
-        message: 'Senha deve ter pelo menos 6 caracteres'
-      });
+      return res.status(400).json({ success: false, message: 'Senha deve ter pelo menos 6 caracteres' });
     }
 
-    // Verificar se email já existe
-    const userExists = await User.findOne({ email: email.toLowerCase().trim() });
+    const userExists = await User.findOne({ email: normalizedEmail });
     if (userExists) {
-      return res.status(409).json({
-        success: false,
-        message: 'Email já cadastrado'
-      });
+      return res.status(409).json({ success: false, message: 'Email já cadastrado' });
     }
 
-    // Criar usuário (o pre-save do modelo faz o hash)
     const user = await User.create({
       name: name.trim(),
-      email: email.toLowerCase().trim(),
+      email: normalizedEmail,
       password
-      // isAdmin permanece false por padrão; ajuste no banco se necessário
     });
 
     const token = generateToken(user._id);
@@ -106,25 +100,14 @@ router.post('/register', async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
-        isAdmin: user.isAdmin,  // 👈 IMPORTANTE
+        isAdmin: user.isAdmin,
         createdAt: user.createdAt
       },
       token
     });
   } catch (error) {
     console.error('❌ ERRO NO REGISTRO:', error);
-
-    if (error.code === 11000) {
-      return res.status(409).json({
-        success: false,
-        message: 'Email já cadastrado'
-      });
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Erro interno do servidor'
-    });
+    res.status(500).json({ success: false, message: 'Erro interno do servidor' });
   }
 });
 
@@ -135,21 +118,14 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Validar campos obrigatórios
     if (!email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email e senha são obrigatórios'
-      });
+      return res.status(400).json({ success: false, message: 'Email e senha são obrigatórios' });
     }
 
     const authResult = await authenticateUser(email, password);
 
     if (!authResult.success) {
-      return res.status(401).json({
-        success: false,
-        message: 'Credenciais inválidas'
-      });
+      return res.status(401).json({ success: false, message: 'Credenciais inválidas' });
     }
 
     const user = authResult.user;
@@ -162,72 +138,65 @@ router.post('/login', async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
-        isAdmin: user.isAdmin,  // 👈 IMPORTANTE
+        isAdmin: user.isAdmin,
         createdAt: user.createdAt
       },
       token
     });
   } catch (error) {
     console.error('❌ ERRO NO LOGIN:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erro interno do servidor'
-    });
+    res.status(500).json({ success: false, message: 'Erro interno do servidor' });
   }
 });
 
 // ======================
-// 👑 ROTA TEMPORÁRIA: Tornar usuário admin (opcional)
+// 🛡️ GERENCIAR WHITELIST (NOVO)
 // ======================
-router.post('/make-admin', async (req, res) => {
+
+// Adicionar e-mail à lista (Apenas Admin)
+router.post('/whitelist', protect, async (req, res) => {
   try {
-    const { email } = req.body;
-
-    const user = await User.findOneAndUpdate(
-      { email: email.toLowerCase().trim() },
-      { $set: { isAdmin: true } },
-      { new: true }
-    );
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'Usuário não encontrado'
-      });
+    if (!req.user.isAdmin) {
+      return res.status(403).json({ success: false, message: 'Acesso negado: apenas administradores' });
     }
 
-    res.json({
-      success: true,
-      message: `Usuário ${user.name} agora é administrador!`,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        isAdmin: user.isAdmin
-      }
+    const { email, label } = req.body;
+    if (!email) return res.status(400).json({ success: false, message: 'E-mail é obrigatório' });
+
+    const exists = await AllowedEmail.findOne({ email: email.toLowerCase() });
+    if (exists) return res.status(409).json({ success: false, message: 'E-mail já está na lista' });
+
+    await AllowedEmail.create({ 
+      email: email.toLowerCase().trim(), 
+      label: label || 'Convidado',
+      addedBy: req.user._id 
     });
+
+    res.json({ success: true, message: `E-mail ${email} autorizado com sucesso!` });
   } catch (error) {
-    console.error('Erro ao tornar admin:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erro interno do servidor'
-    });
+    res.status(500).json({ success: false, message: 'Erro ao adicionar e-mail' });
+  }
+});
+
+// Listar e-mails da whitelist (Apenas Admin)
+router.get('/whitelist', protect, async (req, res) => {
+  try {
+    if (!req.user.isAdmin) return res.status(403).json({ success: false });
+    const list = await AllowedEmail.find().sort({ createdAt: -1 });
+    res.json({ success: true, emails: list });
+  } catch (error) {
+    res.status(500).json({ success: false });
   }
 });
 
 // ======================
-// 👤 OBTER DADOS DO USUÁRIO LOGADO (/me)
+// 👤 OUTRAS ROTAS (Padrão)
 // ======================
+
 router.get('/me', protect, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id); // req.user vem do middleware protect
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'Usuário não encontrado'
-      });
-    }
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ success: false, message: 'Usuário não encontrado' });
 
     res.json({
       success: true,
@@ -235,111 +204,65 @@ router.get('/me', protect, async (req, res) => {
         _id: user._id,
         name: user.name,
         email: user.email,
-        isAdmin: user.isAdmin,   // 👈 IMPORTANTE
+        isAdmin: user.isAdmin,
         createdAt: user.createdAt
       }
     });
   } catch (error) {
-    console.error('❌ ERRO NO /ME:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erro ao buscar dados do usuário'
-    });
+    res.status(500).json({ success: false, message: 'Erro ao buscar dados' });
+  }
+});
+
+router.post('/make-admin', async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOneAndUpdate(
+      { email: email.toLowerCase().trim() },
+      { $set: { isAdmin: true } },
+      { new: true }
+    );
+    if (!user) return res.status(404).json({ success: false, message: 'Não encontrado' });
+    res.json({ success: true, message: 'Admin atualizado!' });
+  } catch (error) {
+    res.status(500).json({ success: false });
   }
 });
 
 // ======================
-// 🌐 ROTAS ADICIONAIS (opcional / mantidas para compatibilidade)
-// ======================
-router.get('/status', (req, res) => {
-  res.json({
-    success: true,
-    message: '✅ Rotas de autenticação ativas',
-    timestamp: new Date().toISOString()
-  });
-});
-
-router.get('/test', protect, (req, res) => {
-  res.json({
-    success: true,
-    message: '🔒 Acesso com token OK',
-    userId: req.user?._id || null,
-    timestamp: new Date().toISOString()
-  });
-});
-
-
-
-// ======================
 // RECUPERAÇÃO DE SENHA
 // ======================
-
-// 4 dígitos
 function generateCode() { return Math.floor(1000 + Math.random()*9000).toString(); }
 
 router.post('/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
-
     const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'Email não encontrado'
-      });
-    }
+    if (!user) return res.status(404).json({ success: false, message: 'Email não encontrado' });
 
     const code = generateCode();
     user.recoveryCode = code;
     await user.save();
-
     await sendRecoveryEmail(email, code);
 
-    res.json({
-      success: true,
-      message: 'Código enviado para o email'
-    });
-
+    res.json({ success: true, message: 'Código enviado para o email' });
   } catch (error) {
-    console.error('Erro forgot-password:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erro ao enviar email'
-    });
+    res.status(500).json({ success: false, message: 'Erro ao enviar email' });
   }
 });
 
-// ======================
-// RESETAR SENHA (CORRIGIDO)
-// ======================
 router.post('/reset-password', async (req, res) => {
   try {
     const { email, recoveryCode, newPassword } = req.body;
-
     const user = await User.findOne({ email });
     if (!user || user.recoveryCode !== recoveryCode) {
-      return res.status(400).json({
-        success: false,
-        message: 'Código inválido'
-      });
+      return res.status(400).json({ success: false, message: 'Código inválido' });
     }
-
-    // ❌ NÃO usar bcrypt aqui
     user.password = newPassword;
     user.recoveryCode = null;
-
-    await user.save(); // pre('save') faz o hash correto
-
-    res.json({
-      success: true,
-      message: 'Senha alterada com sucesso'
-    });
+    await user.save();
+    res.json({ success: true, message: 'Senha alterada com sucesso' });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({
-      success: false,
-      message: 'Erro interno'
-    });
+    res.status(500).json({ success: false, message: 'Erro interno' });
   }
 });
 
