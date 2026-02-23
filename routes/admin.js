@@ -18,14 +18,20 @@ const upload = multer({ dest: 'uploads/' });
  * @access  Private (Admin Only)
  */
 router.post('/broadcast-email', protect, admin, upload.single('attachment'), async (req, res) => {
+  // 🔍 LOGS DE DIAGNÓSTICO (Acompanhe no painel do Render)
+  console.log('--- NOVA REQUISIÇÃO DE BROADCAST ---');
+  console.log('Headers Content-Type:', req.headers['content-type']); // Deve conter "boundary"
+  console.log('Dados (req.body):', req.body); // Aqui devem aparecer assunto e mensagem
+  console.log('Arquivo (req.file):', req.file ? req.file.originalname : 'Nenhum');
+
   try {
     const { subject, message } = req.body;
 
-    // Validação básica
+    // Se subject ou message vierem vazios, o erro 400 é disparado aqui
     if (!subject || !message) {
       return res.status(400).json({ 
         success: false, 
-        message: 'Assunto e mensagem são obrigatórios.' 
+        message: `Dados ausentes. Recebi assunto: "${subject || 'vazio'}" e mensagem: "${message || 'vazio'}"` 
       });
     }
 
@@ -36,16 +42,15 @@ router.post('/broadcast-email', protect, admin, upload.single('attachment'), asy
     if (emailList.length === 0) {
       return res.status(404).json({ 
         success: false, 
-        message: 'Nenhum e-mail encontrado na lista de autorizados.' 
+        message: 'Nenhum e-mail encontrado na lista de autorizados (Whitelist vazia).' 
       });
     }
 
-    // 2. Dispara o envio via Brevo API através do serviço
-    // req.file conterá o anexo se ele foi enviado no formulário
+    // 2. Dispara o envio via serviço Brevo
     await sendBroadcastEmail(emailList, subject, message, req.file);
 
-    // 3. LIMPEZA: Deleta o arquivo da pasta 'uploads' para não ocupar espaço
-    if (req.file) {
+    // 3. LIMPEZA: Remove o arquivo temporário após o envio
+    if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
 
@@ -55,16 +60,16 @@ router.post('/broadcast-email', protect, admin, upload.single('attachment'), asy
     });
 
   } catch (error) {
-    console.error('Erro no broadcast de e-mail:', error);
+    console.error('❌ Erro no processamento do broadcast:', error);
 
-    // Tenta limpar o arquivo mesmo em caso de erro para evitar lixo no servidor
+    // Garante a limpeza do arquivo mesmo em caso de falha no envio
     if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
+      try { fs.unlinkSync(req.file.path); } catch (e) {}
     }
 
     res.status(500).json({ 
       success: false, 
-      message: 'Falha ao processar o envio de e-mails.' 
+      message: error.message || 'Falha ao processar o envio de e-mails.' 
     });
   }
 });
