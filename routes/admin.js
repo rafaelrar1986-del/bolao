@@ -10,28 +10,31 @@ const { sendBroadcastEmail } = require('../services/emailService');
 const { protect, admin } = require('../middleware/auth');
 
 // Configuração do Multer (armazenamento temporário de anexos)
-const upload = multer({ dest: 'uploads/' });
+// Certifique-se de que a pasta 'uploads' existe ou o Multer a criará
+const upload = multer({ 
+  dest: 'uploads/',
+  limits: { fileSize: 10 * 1024 * 1024 } // Limite de 10MB por segurança
+});
 
 /**
- * @route   POST /api/admin/broadcast-email
+ * @route   POST /api/email-broadcast/send
  * @desc    Envia e-mail para todos os participantes da Whitelist
  * @access  Private (Admin Only)
  */
-router.post('/broadcast-email', protect, admin, upload.single('attachment'), async (req, res) => {
+router.post('/send', protect, admin, upload.single('attachment'), async (req, res) => {
   // 🔍 LOGS DE DIAGNÓSTICO (Acompanhe no painel do Render)
   console.log('--- NOVA REQUISIÇÃO DE BROADCAST ---');
-  console.log('Headers Content-Type:', req.headers['content-type']); // Deve conter "boundary"
-  console.log('Dados (req.body):', req.body); // Aqui devem aparecer assunto e mensagem
+  console.log('Dados Texto (req.body):', req.body); 
   console.log('Arquivo (req.file):', req.file ? req.file.originalname : 'Nenhum');
 
   try {
     const { subject, message } = req.body;
 
-    // Se subject ou message vierem vazios, o erro 400 é disparado aqui
+    // Validação de presença de dados após o processamento do Multer
     if (!subject || !message) {
       return res.status(400).json({ 
         success: false, 
-        message: `Dados ausentes. Recebi assunto: "${subject || 'vazio'}" e mensagem: "${message || 'vazio'}"` 
+        message: `Dados ausentes. Verifique se o formulário foi preenchido corretamente.` 
       });
     }
 
@@ -47,11 +50,13 @@ router.post('/broadcast-email', protect, admin, upload.single('attachment'), asy
     }
 
     // 2. Dispara o envio via serviço Brevo
+    // Passamos a lista de e-mails, assunto, mensagem e o objeto do arquivo
     await sendBroadcastEmail(emailList, subject, message, req.file);
 
-    // 3. LIMPEZA: Remove o arquivo temporário após o envio
+    // 3. LIMPEZA: Remove o arquivo temporário após o envio para economizar espaço no disco
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
+      console.log(`✅ Arquivo temporário removido: ${req.file.path}`);
     }
 
     res.json({ 
@@ -62,9 +67,14 @@ router.post('/broadcast-email', protect, admin, upload.single('attachment'), asy
   } catch (error) {
     console.error('❌ Erro no processamento do broadcast:', error);
 
-    // Garante a limpeza do arquivo mesmo em caso de falha no envio
+    // Garante a limpeza do arquivo mesmo em caso de falha no envio para evitar "lixo"
     if (req.file && fs.existsSync(req.file.path)) {
-      try { fs.unlinkSync(req.file.path); } catch (e) {}
+      try { 
+        fs.unlinkSync(req.file.path); 
+        console.log('🧹 Limpeza de segurança executada após erro.');
+      } catch (e) {
+        console.error('Erro ao tentar deletar arquivo após falha:', e);
+      }
     }
 
     res.status(500).json({ 
