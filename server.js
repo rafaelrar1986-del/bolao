@@ -181,14 +181,14 @@ const duelRoutes = require('./routes/duels');
 const pointsRoutes = require('./routes/points'); // 👈 NOVA ROTA
 const usersRoutes = require('./routes/users');
 const newsRoutes = require('./routes/news');
-const adminRoutes = require('./routes/admin');
+const emailBroadcastRoutes = require('./routes/admin');
 
 app.use('/api/news', newsRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/matches', matchesRoutes);
 app.use('/api/duels', duelRoutes);
-app.use('/api/admin', adminRoutes);
+app.use('/api/email-broadcast', emailBroadcastRoutes);
 
 const settingsRoutes = require('./routes/settings');
 app.use('/api/bets', betsRoutes);
