@@ -173,33 +173,44 @@ app.get('/api/bets', (req, res) => {
   });
 });
 
-// Importar e usar rotas da aplicação
+// ======================
+// ROTAS - IMPORTAÇÕES
+// ======================
 const authRoutes = require('./routes/auth');
 const matchesRoutes = require('./routes/matches');
 const betsRoutes = require('./routes/bets');
 const duelRoutes = require('./routes/duels');
-const pointsRoutes = require('./routes/points'); // 👈 NOVA ROTA
+const pointsRoutes = require('./routes/points');
 const usersRoutes = require('./routes/users');
 const newsRoutes = require('./routes/news');
-const emailBroadcastRoutes = require('./routes/admin');
+const settingsRoutes = require('./routes/settings');
+const pointsHistoryRoutes = require('./routes/pointsHistory');
+const roundHistoryRoutes = require('./routes/roundHistory');
+// Esta é a rota do e-mail broadcast (arquivo routes/admin.js)
+const emailBroadcastRoutes = require('./routes/admin'); 
 
+// ======================
+// ROTAS - USO (DEFINIÇÃO DE ENDPOINTS)
+// ======================
+
+// Rotas de funcionalidades
 app.use('/api/news', newsRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/matches', matchesRoutes);
 app.use('/api/duels', duelRoutes);
-app.use('/api/email-broadcast', emailBroadcastRoutes);
-
-const settingsRoutes = require('./routes/settings');
 app.use('/api/bets', betsRoutes);
 app.use('/api/settings', settingsRoutes);
-app.use('/api/points', pointsRoutes); // 👈 NOVA ROTA
-
-// === Histórico de pontos ===
-const pointsHistoryRoutes = require('./routes/pointsHistory');
-const roundHistoryRoutes = require('./routes/roundHistory');
+app.use('/api/points', pointsRoutes);
 app.use('/api/points-history', pointsHistoryRoutes);
-app.use('/api/admin', roundHistoryRoutes);
+
+// ✅ GERENCIAMENTO ADMIN (MANTIDO)
+app.use('/api/admin', roundHistoryRoutes); 
+
+// ✅ COMUNICAÇÃO (BROADCAST)
+// Se no seu routes/admin.js a rota for router.post('/send', ...)
+// O endereço será: POST https://seu-backend.com/api/email-broadcast/send
+app.use('/api/email-broadcast', emailBroadcastRoutes);
 
 // ======================
 // MIDDLEWARES DE ERRO - NOVOS
