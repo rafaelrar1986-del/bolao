@@ -365,44 +365,42 @@ router.get(
   async (req, res) => {
   try {
     const { search, matchId, group, sortBy = 'user' } = req.query;
+    const isAdmin = req.user?.isAdmin === true;
+
+    // 1. Busca as configurações de fases liberadas
+    const Settings = require('../models/Settings'); // Certifique-se do caminho correto
+    const settings = await Settings.findById('global_settings').lean();
+    const unlockedPhases = settings?.unlockedPhases || [];
 
     // Base query
     let query = { hasSubmitted: true };
 
-    // Filtro por usuário (nome)
     if (search) {
       const users = await User.find({ name: { $regex: search, $options: 'i' } }).select('_id').lean();
       query.user = { $in: users.map(u => u._id) };
     }
 
-    // Se grupo informado, limita matchIds ao grupo
     let groupMatchIds = null;
     if (group) {
-      const matchesInGroup = await Match.find({ group: { $regex: group, $options: 'i' } })
-        .select('matchId')
-        .lean();
+      const matchesInGroup = await Match.find({ group: { $regex: group, $options: 'i' } }).select('matchId').lean();
       groupMatchIds = matchesInGroup.map(m => m.matchId);
       if (groupMatchIds.length > 0) {
         query['groupMatches.matchId'] = { $in: groupMatchIds };
       } else {
-        // nenhum jogo naquele grupo -> resultado vazio
         return res.json({ success: true, data: [], stats: { totalBets: 0, totalUsers: 0, totalMatches: 0 } });
       }
     }
 
-    // Se matchId informado, filtra por ele na query
     const matchIdNum = matchId ? Number(matchId) : null;
     if (matchIdNum) {
       query['groupMatches.matchId'] = matchIdNum;
     }
 
-    // Busca apostas
     let betsQuery = Bet.find(query)
       .populate('user', 'name')
       .select('user groupMatches podium totalPoints groupPoints podiumPoints firstSubmission lastUpdate')
       .lean();
 
-    // Ordenação
     if (sortBy === 'user') betsQuery = betsQuery.sort('user.name');
     else if (sortBy === 'points') betsQuery = betsQuery.sort('-totalPoints');
     else if (sortBy === 'date') betsQuery = betsQuery.sort('-firstSubmission');
@@ -410,42 +408,48 @@ router.get(
     const bets = await betsQuery;
     const matches = await Match.find().lean();
 
-    // Enriquecer + aplicar regra: se matchId foi passado, retorna apenas os palpites daquela partida em cada usuário
+    // Criar um mapa de matchId -> fase para checar bloqueio
+    const matchPhaseMap = {};
+    matches.forEach(m => { matchPhaseMap[m.matchId] = m.phase; });
+
+    // 2. ENRIQUECER + APLICAR TRAVA DE SEGURANÇA
     const enriched = bets.map(b => {
-      // filtra matches por grupo (se aplicável) e por matchId (se aplicável)
       let gm = b.groupMatches || [];
-      if (groupMatchIds) {
-        gm = gm.filter(x => groupMatchIds.includes(x.matchId));
-      }
-      if (matchIdNum) {
-        gm = gm.filter(x => x.matchId === matchIdNum);
-      }
+      if (groupMatchIds) gm = gm.filter(x => groupMatchIds.includes(x.matchId));
+      if (matchIdNum) gm = gm.filter(x => x.matchId === matchIdNum);
 
       const viewBets = gm.map(g => {
         const m = matches.find(x => x.matchId === g.matchId);
         const teamA = m?.teamA || 'Time A';
         const teamB = m?.teamB || 'Time B';
-        return {
-  matchId: g.matchId,
-  choice: g.winner,
-  qualifier: g.qualifier,   // ✅ AQUI
-  choiceLabel: toWinnerLabel(g.winner, teamA, teamB),
-  matchName: m ? `${m.teamA} vs ${m.teamB}` : `Jogo ${g.matchId}`,
-  teamA,
-  teamB,
-  status: m?.status || 'scheduled'
-};
+        const phase = m?.phase || 'group';
 
+        // Lógica de bloqueio: se não for admin e a fase não estiver liberada
+        const isLocked = !isAdmin && !unlockedPhases.includes(phase);
+
+        return {
+          matchId: g.matchId,
+          // Se estiver trancado, enviamos o cadeado no lugar do dado real
+          choice: isLocked ? '🔒' : g.winner,
+          qualifier: isLocked ? (g.qualifier ? '🔒' : null) : g.qualifier,
+          choiceLabel: isLocked ? 'Bloqueado' : toWinnerLabel(g.winner, teamA, teamB),
+          matchName: m ? `${m.teamA} vs ${m.teamB}` : `Jogo ${g.matchId}`,
+          teamA,
+          teamB,
+          status: m?.status || 'scheduled'
+        };
       });
 
       return {
         userName: b.user?.name || 'Usuário',
-        podium: b.podium || null,
+        // Bloqueia pódio se a fase 'Final' não estiver na lista (ajuste se o nome da fase for diferente)
+        podium: (isAdmin || unlockedPhases.includes('Final')) ? b.podium : { first: '🔒', second: '🔒', third: '🔒', fourth: '🔒' },
         totalPoints: b.totalPoints || 0,
         bets: viewBets
       };
     });
 
+    // ... restante dos stats e res.json (mantém igual)
     const stats = {
       totalBets: enriched.length,
       totalUsers: new Set(enriched.map(e => e.userName)).size,
@@ -458,7 +462,6 @@ router.get(
     res.status(500).json({ success: false, message: 'Erro ao carregar apostas' });
   }
 });
-
 /**
  * 🔍 Partidas para filtro
  */
