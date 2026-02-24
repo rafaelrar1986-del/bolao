@@ -5,6 +5,7 @@ const Bet = require('../models/Bet');
 const PointsHistory = require('../models/PointsHistory');
 const Match = require('../models/Match');
 const User = require('../models/User');
+const Settings = require('../models/Settings'); // Importado para uso no all-bets
 const { protect, admin } = require('../middleware/auth');
 const { blockStatsIfLocked } = require('../middleware/blockStats');
 
@@ -66,7 +67,6 @@ router.get('/my-bets', protect, async (req, res) => {
         teamA,
         teamB,
         status: m?.status || 'scheduled',
-        // rótulo amigável do palpite
         choiceLabel: toWinnerLabel(b.winner, teamA, teamB)
       };
     });
@@ -87,31 +87,17 @@ router.get('/my-bets', protect, async (req, res) => {
 
 /**
  * 💾 Salvar palpites
- * Espera:
- * {
- *   groupMatches: { [matchId]: 'A'|'B'|'draw', ... },
- *   podium: { first, second, third },
- *   knockoutQualifiers: { [matchId]: 'A'|'B' } // apenas mata-mata
- * }
  */
 router.post('/save', protect, async (req, res) => {
   try {
     const { groupMatches, podium, knockoutQualifiers } = req.body;
-    console.log('[bets.save] payload groupMatches=', JSON.stringify(groupMatches));
-    console.log('[bets.save] payload knockoutQualifiers=', JSON.stringify(knockoutQualifiers));
-
+    
     if (!groupMatches || typeof groupMatches !== 'object') {
       return res.status(400).json({ success: false, message: 'groupMatches inválido' });
     }
 
-    // Busca aposta existente (se houver)
     const existing = await Bet.findOne({ user: req.user._id });
 
-    /**
-     * PÓDIO
-     * - Primeiro envio: exige pódio completo.
-     * - Envios posteriores: mantém o pódio já salvo e ignora mudanças.
-     */
     let podiumPayload;
     const hasExistingPodium =
       existing &&
@@ -121,7 +107,6 @@ router.post('/save', protect, async (req, res) => {
       existing.podium.third;
 
     if (hasExistingPodium) {
-      // Mantém pódio anterior (frontend já trava edição)
       podiumPayload = {
         first: existing.podium.first,
         second: existing.podium.second,
@@ -129,7 +114,6 @@ router.post('/save', protect, async (req, res) => {
         fourth: existing.podium.fourth || ''
       };
     } else {
-      // Primeiro envio: exige pódio completo
       if (!podium || !podium.first || !podium.second || !podium.third) {
         return res.status(400).json({ success: false, message: 'Pódio incompleto' });
       }
@@ -141,14 +125,7 @@ router.post('/save', protect, async (req, res) => {
       };
     }
 
-    /**
-     * GROUP MATCHES (fase de grupos + mata-mata)
-     * - Começa com o que já existe no banco.
-     * - Adiciona apenas novos palpites.
-     * - Nunca sobrescreve um palpite antigo com valor diferente.
-     */
     const gmMap = new Map();
-
     if (existing && Array.isArray(existing.groupMatches)) {
       existing.groupMatches.forEach((b) => {
         if (!b || typeof b.matchId !== 'number') return;
@@ -162,40 +139,26 @@ router.post('/save', protect, async (req, res) => {
       });
     }
 
-    // Mescla novos palpites (resultado + qualifier)
     Object.entries(groupMatches).forEach(([matchId, choice]) => {
-      if (!['A', 'B', 'draw'].includes(choice)) {
-        throw new Error(`Escolha inválida para matchId ${matchId}: ${choice}`);
-      }
+      if (!['A', 'B', 'draw'].includes(choice)) return;
       const idNum = Number(matchId);
       if (!idNum) return;
 
       const existingBet = gmMap.get(idNum);
       if (existingBet) {
-        // Se já existe e é igual, mantém; se é diferente, ignoramos (não deixamos editar palpite antigo)
-        if (existingBet.winner !== choice) {
-          return;
-        }
-
-        // Podemos atualizar o classificado se vier no payload
+        if (existingBet.winner !== choice) return;
         if (knockoutQualifiers && Object.prototype.hasOwnProperty.call(knockoutQualifiers, String(idNum))) {
           const qExisting = knockoutQualifiers[String(idNum)];
-          if (qExisting === 'A' || qExisting === 'B') {
-            existingBet.qualifier = qExisting;
-          }
+          if (qExisting === 'A' || qExisting === 'B') existingBet.qualifier = qExisting;
         }
-
         gmMap.set(idNum, existingBet);
         return;
       }
 
-      // Novo palpite: já pode vir com classificado (apenas mata-mata)
       let qualifier = null;
       if (knockoutQualifiers && Object.prototype.hasOwnProperty.call(knockoutQualifiers, String(idNum))) {
         const qNew = knockoutQualifiers[String(idNum)];
-        if (qNew === 'A' || qNew === 'B') {
-          qualifier = qNew;
-        }
+        if (qNew === 'A' || qNew === 'B') qualifier = qNew;
       }
 
       gmMap.set(idNum, {
@@ -207,28 +170,7 @@ router.post('/save', protect, async (req, res) => {
       });
     });
 
-    // 🔐 Garantir que knockoutQualifiers sejam aplicados (reforço)
-    if (knockoutQualifiers && typeof knockoutQualifiers === 'object') {
-      Object.entries(knockoutQualifiers).forEach(([k, v]) => {
-        const idn = Number(k);
-        if (!idn) return;
-        const eb = gmMap.get(idn);
-        if (eb) {
-          if (v === 'A' || v === 'B') {
-            eb.qualifier = v;
-          } else {
-            eb.qualifier = null;
-          }
-          if (typeof eb.qualifierPoints === 'undefined') eb.qualifierPoints = 0;
-          gmMap.set(idn, eb);
-        }
-      });
-    }
-
-    console.log('[bets.save] after merge gmMap =', Array.from(gmMap.values()).slice(0, 5));
-
     const gmArray = Array.from(gmMap.values());
-
     const now = new Date();
     const payload = {
       user: req.user._id,
@@ -237,11 +179,10 @@ router.post('/save', protect, async (req, res) => {
       hasSubmitted: true,
       firstSubmission: existing?.firstSubmission || now,
       lastUpdate: now,
-       // 🔒 PRESERVA PONTUAÇÃO EXISTENTE (CORREÇÃO DEFINITIVA)
-  totalPoints: existing?.totalPoints ?? 0,
-  groupPoints: existing?.groupPoints ?? 0,
-  podiumPoints: existing?.podiumPoints ?? 0,
-  bonusPoints: existing?.bonusPoints ?? 0
+      totalPoints: existing?.totalPoints ?? 0,
+      groupPoints: existing?.groupPoints ?? 0,
+      podiumPoints: existing?.podiumPoints ?? 0,
+      bonusPoints: existing?.bonusPoints ?? 0
     };
 
     const bet = await Bet.findOneAndUpdate(
@@ -253,10 +194,7 @@ router.post('/save', protect, async (req, res) => {
     return res.json({ success: true, message: 'Palpites enviados!', data: { id: bet._id } });
   } catch (e) {
     console.error('POST /save error:', e);
-    if (e.name === 'ValidationError') {
-      return res.status(400).json({ success: false, message: 'Dados inválidos', errors: e.errors });
-    }
-    return res.status(500).json({ success: false, message: e.message || 'Erro ao salvar palpites' });
+    return res.status(500).json({ success: false, message: 'Erro ao salvar palpites' });
   }
 });
 
@@ -272,34 +210,23 @@ router.get('/status', protect, async (req, res) => {
     };
     res.json({ success: true, data: status });
   } catch (e) {
-    console.error('GET /status error:', e);
     res.status(500).json({ success: false, message: 'Erro ao verificar status' });
   }
 });
 
 /**
  * 🏆 Leaderboard
- * (Somente ordena por totalPoints desc; cálculo dos pontos é feito em outros fluxos)
  */
-router.get(
-  '/leaderboard',
-  protect,
-  blockStatsIfLocked,
-  async (req, res) => {
+router.get('/leaderboard', protect, blockStatsIfLocked, async (req, res) => {
   try {
     const bets = await Bet.find({ hasSubmitted: true })
       .populate('user', 'name')
       .select('user totalPoints groupPoints podiumPoints bonusPoints lastUpdate podium groupMatches')
-      .sort({ totalPoints: -1 }) // 🔥 só pontos
+      .sort({ totalPoints: -1 })
       .lean();
-// 🔥 BUSCA A FASE REAL DE CADA PARTIDA
-const matches = await Match.find()
-  .select('matchId phase')
-  .lean();
 
-const matchPhaseMap = new Map(
-  matches.map(m => [m.matchId, m.phase])
-);
+    const matches = await Match.find().select('matchId phase').lean();
+    const matchPhaseMap = new Map(matches.map(m => [m.matchId, m.phase]));
 
     let lastPoints = null;
     let position = 0;
@@ -307,34 +234,25 @@ const matchPhaseMap = new Map(
 
     const ranked = bets.map((b) => {
       realIndex++;
-
       if (lastPoints === null || b.totalPoints !== lastPoints) {
         position = realIndex;
         lastPoints = b.totalPoints;
       }
 
-     const groupPhasePoints = (b.groupMatches || []).reduce((sum, gm) => {
-  const phase = matchPhaseMap.get(gm.matchId);
-  if (phase === 'group') {
-    return sum + (gm.points || 0);
-  }
-  return sum;
-}, 0);
+      const groupPhasePoints = (b.groupMatches || []).reduce((sum, gm) => {
+        const phase = matchPhaseMap.get(gm.matchId);
+        return phase === 'group' ? sum + (gm.points || 0) : sum;
+      }, 0);
 
-const knockoutPoints = (b.groupMatches || []).reduce((sum, gm) => {
-  const phase = matchPhaseMap.get(gm.matchId);
-  if (phase === 'knockout') {
-    return sum + (gm.points || 0);
-  }
-  return sum;
-}, 0);
-
+      const knockoutPoints = (b.groupMatches || []).reduce((sum, gm) => {
+        const phase = matchPhaseMap.get(gm.matchId);
+        return phase === 'knockout' ? sum + (gm.points || 0) : sum;
+      }, 0);
 
       return {
         position,
         user: b.user,
         totalPoints: b.totalPoints || 0,
-groupPoints: groupPhasePoints,
         groupPhasePoints,
         knockoutPoints,
         podiumPoints: b.podiumPoints || 0,
@@ -346,33 +264,23 @@ groupPoints: groupPhasePoints,
 
     res.json({ success: true, data: ranked, count: ranked.length });
   } catch (e) {
-    console.error('GET /leaderboard error:', e);
     res.status(500).json({ success: false, message: 'Erro ao carregar ranking' });
   }
 });
+
 /**
- * 👁️ Todos os palpites (com filtros)
- * Query:
- *  - search: nome do usuário (regex)
- *  - matchId: filtra por partida; ao usar, SOMENTE os palpites dessa partida são retornados por usuário
- *  - group: nome do grupo (ex: "Grupo A") -> filtra usuários que tenham palpites em partidas desse grupo
- *  - sortBy: 'user' | 'points' | 'date'
+ * 👁️ Todos os palpites (com filtros) - CORRIGIDO PARA TRAVAS POR FASE
  */
-router.get(
-  '/all-bets',
-  protect,
-  blockStatsIfLocked,
-  async (req, res) => {
+router.get('/all-bets', protect, blockStatsIfLocked, async (req, res) => {
   try {
     const { search, matchId, group, sortBy = 'user' } = req.query;
     const isAdmin = req.user?.isAdmin === true;
 
-    // 1. Busca as configurações de fases liberadas
-    const Settings = require('../models/Settings'); // Certifique-se do caminho correto
+    // 1. Busca configurações e partidas (select include 'group')
     const settings = await Settings.findById('global_settings').lean();
     const unlockedPhases = settings?.unlockedPhases || [];
+    const matches = await Match.find().lean();
 
-    // Base query
     let query = { hasSubmitted: true };
 
     if (search) {
@@ -392,9 +300,7 @@ router.get(
     }
 
     const matchIdNum = matchId ? Number(matchId) : null;
-    if (matchIdNum) {
-      query['groupMatches.matchId'] = matchIdNum;
-    }
+    if (matchIdNum) query['groupMatches.matchId'] = matchIdNum;
 
     let betsQuery = Bet.find(query)
       .populate('user', 'name')
@@ -406,13 +312,8 @@ router.get(
     else if (sortBy === 'date') betsQuery = betsQuery.sort('-firstSubmission');
 
     const bets = await betsQuery;
-    const matches = await Match.find().lean();
 
-    // Criar um mapa de matchId -> fase para checar bloqueio
-    const matchPhaseMap = {};
-    matches.forEach(m => { matchPhaseMap[m.matchId] = m.phase; });
-
-    // 2. ENRIQUECER + APLICAR TRAVA DE SEGURANÇA
+    // 2. ENRIQUECER + APLICAR TRAVA DINÂMICA
     const enriched = bets.map(b => {
       let gm = b.groupMatches || [];
       if (groupMatchIds) gm = gm.filter(x => groupMatchIds.includes(x.matchId));
@@ -422,14 +323,22 @@ router.get(
         const m = matches.find(x => x.matchId === g.matchId);
         const teamA = m?.teamA || 'Time A';
         const teamB = m?.teamB || 'Time B';
-        const phase = m?.phase || 'group';
-
-        // Lógica de bloqueio: se não for admin e a fase não estiver liberada
-        const isLocked = !isAdmin && !unlockedPhases.includes(phase);
+        
+        // --- LÓGICA DE BLOQUEIO CORRIGIDA ---
+        let isLocked = !isAdmin;
+        if (!isLocked) {
+            // Admin nunca está bloqueado
+        } else if (m?.phase === 'group') {
+            // Se for fase de grupo, checa se 'group' está na lista
+            isLocked = !unlockedPhases.includes('group');
+        } else if (m?.phase === 'knockout') {
+            // Se for mata-mata, checa se o valor do campo group (ex: '16-avos final') está na lista
+            isLocked = !unlockedPhases.includes(m.group);
+        }
+        // ------------------------------------
 
         return {
           matchId: g.matchId,
-          // Se estiver trancado, enviamos o cadeado no lugar do dado real
           choice: isLocked ? '🔒' : g.winner,
           qualifier: isLocked ? (g.qualifier ? '🔒' : null) : g.qualifier,
           choiceLabel: isLocked ? 'Bloqueado' : toWinnerLabel(g.winner, teamA, teamB),
@@ -442,14 +351,13 @@ router.get(
 
       return {
         userName: b.user?.name || 'Usuário',
-        // Bloqueia pódio se a fase 'Final' não estiver na lista (ajuste se o nome da fase for diferente)
-        podium: (isAdmin || unlockedPhases.includes('Final')) ? b.podium : { first: '🔒', second: '🔒', third: '🔒', fourth: '🔒' },
+        // Bloqueia pódio se 'final' não estiver liberado
+        podium: (isAdmin || unlockedPhases.includes('final')) ? b.podium : { first: '🔒', second: '🔒', third: '🔒', fourth: '🔒' },
         totalPoints: b.totalPoints || 0,
         bets: viewBets
       };
     });
 
-    // ... restante dos stats e res.json (mantém igual)
     const stats = {
       totalBets: enriched.length,
       totalUsers: new Set(enriched.map(e => e.userName)).size,
@@ -462,19 +370,15 @@ router.get(
     res.status(500).json({ success: false, message: 'Erro ao carregar apostas' });
   }
 });
+
 /**
  * 🔍 Partidas para filtro
  */
-router.get(
-  '/matches-for-filter',
-  protect,
-  blockStatsIfLocked,
-  async (req, res) => {
+router.get('/matches-for-filter', protect, blockStatsIfLocked, async (req, res) => {
   try {
     const matches = await Match.find().select('matchId teamA teamB group date').sort('matchId').lean();
     res.json({ success: true, data: matches });
   } catch (e) {
-    console.error('GET /matches-for-filter error:', e);
     res.status(500).json({ success: false, message: 'Erro ao buscar partidas' });
   }
 });
@@ -482,120 +386,59 @@ router.get(
 /**
  * 👥 Usuários para filtro
  */
-router.get(
-  '/users-for-filter',
-  protect,
-  blockStatsIfLocked,
-  async (req, res) => {
+router.get('/users-for-filter', protect, blockStatsIfLocked, async (req, res) => {
   try {
     const users = await User.find().select('_id name').sort('name').lean();
     res.json({ success: true, data: users });
   } catch (e) {
-    console.error('GET /users-for-filter error:', e);
     res.status(500).json({ success: false, message: 'Erro ao buscar usuários' });
   }
 });
 
 /**
- * ⚠️ Admin: resetar TODAS as apostas e TODO o histórico de pontos
+ * ⚠️ Admin: resetar TODAS as apostas
  */
-
-
 router.post('/admin/reset-all', protect, admin, async (req, res) => {
   try {
-    // 🧹 Apaga apostas (fase de grupos / mata-mata)
     const betsResult = await Bet.deleteMany({});
-
-    // 🧹 Apaga TODO o histórico de pontos
     const historyResult = await PointsHistory.deleteMany({});
-
     return res.json({
       success: true,
-      message: 'Apostas e histórico de pontos resetados com sucesso.',
-      deleted: {
-        bets: betsResult.deletedCount,
-        pointHistory: historyResult.deletedCount
-      },
-      timestamp: new Date().toISOString()
+      message: 'Apostas e histórico de pontos resetados.',
+      deleted: { bets: betsResult.deletedCount, pointHistory: historyResult.deletedCount }
     });
-
   } catch (error) {
-    console.error('POST /admin/reset-all error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Erro ao resetar apostas e histórico de pontos'
-    });
+    res.status(500).json({ success: false, message: 'Erro ao resetar dados' });
   }
-});/**
+});
+
+/**
  * 🏆 Admin: resetar SOMENTE o pódio oficial
- * - Não apaga apostas
- * - Não mexe em grupo ou mata-mata
- * - Zera apenas podiumPoints
  */
 router.post('/admin/reset-podium', protect, admin, async (req, res) => {
   try {
-    const result = await Bet.updateMany(
-      {},
-      {
-        $set: {
-          'podium.first': null,
-          'podium.second': null,
-          'podium.third': null,
-          'podium.fourth': null,
-          podiumPoints: 0
-        }
+    const result = await Bet.updateMany({}, {
+      $set: {
+        'podium.first': null, 'podium.second': null, 'podium.third': null, 'podium.fourth': null,
+        podiumPoints: 0
       }
-    );
-
-    return res.json({
-      success: true,
-      message: 'Pódio oficial resetado (Mongo = null)',
-      modifiedCount: result.modifiedCount
     });
+    return res.json({ success: true, message: 'Pódio oficial resetado', modifiedCount: result.modifiedCount });
   } catch (err) {
-    console.error('Erro ao resetar pódio:', err);
-    return res.status(500).json({
-      success: false,
-      message: 'Erro ao resetar pódio'
-    });
+    res.status(500).json({ success: false, message: 'Erro ao resetar pódio' });
   }
 });
 
-// =========================
 // 🔐 PERMISSÃO PARA MENU "MORE"
-// =========================
 router.get('/more-access', protect, async (req, res) => {
   try {
-    // 🟢 ADMIN sempre tem acesso (compatível com isAdmin e role)
-    const isAdminUser =
-      req.user?.isAdmin === true ||
-      req.user?.role === 'admin';
-
-    if (isAdminUser) {
-      return res.json({
-        success: true,
-        canAccessMore: true
-      });
-    }
-    // 👤 usuário comum → precisa ter palpites salvos
-    const hasBets = await Bet.exists({
-      user: req.user._id,
-      hasSubmitted: true
-    });
-
-    res.json({
-      success: true,
-      canAccessMore: !!hasBets
-    });
-
+    const isAdminUser = req.user?.isAdmin === true || req.user?.role === 'admin';
+    if (isAdminUser) return res.json({ success: true, canAccessMore: true });
+    const hasBets = await Bet.exists({ user: req.user._id, hasSubmitted: true });
+    res.json({ success: true, canAccessMore: !!hasBets });
   } catch (err) {
-    console.error('Erro ao verificar acesso ao MORE', err);
-    res.status(500).json({
-      success: false,
-      canAccessMore: false
-    });
+    res.status(500).json({ success: false, canAccessMore: false });
   }
 });
-
 
 module.exports = router;
