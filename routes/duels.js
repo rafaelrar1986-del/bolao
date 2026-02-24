@@ -19,9 +19,10 @@ router.get('/:userId', protect, async (req, res) => {
     const isAdmin = req.user.isAdmin === true;
 
     // 1. Busca configurações globais e dados das partidas em paralelo
+    // CORREÇÃO: Adicionado 'group' no select do Match para identificar a sub-fase do mata-mata
     const [settings, matches, bet] = await Promise.all([
       Settings.findById('global_settings').lean(),
-      Match.find({}, 'matchId phase').lean(),
+      Match.find({}, 'matchId phase group').lean(), 
       Bet.findOne({ user: userId }).select('groupMatches podium hasSubmitted').lean()
     ]);
 
@@ -47,16 +48,34 @@ router.get('/:userId', protect, async (req, res) => {
     // 2. Lógica de Bloqueio (Filtro para outros usuários)
     const unlockedPhases = settings?.unlockedPhases || [];
     
-    // Mapeia as fases de cada partida para consulta rápida
-    const matchPhaseMap = {};
+    // Mapeia os dados de cada partida para consulta rápida
+    const matchDataMap = {};
     matches.forEach(m => {
-      matchPhaseMap[m.matchId] = m.phase;
+      matchDataMap[m.matchId] = {
+        phase: m.phase,
+        group: m.group
+      };
     });
 
-    // Filtra os palpites: se a fase da partida não estiver liberada, oculta o vencedor/classificado
+    // Filtra os palpites: lógica inteligente para distinguir Fase de Grupos de Mata-Mata
     const maskedGroupMatches = (bet.groupMatches || []).map(m => {
-      const phase = matchPhaseMap[m.matchId];
-      const isUnlocked = unlockedPhases.includes(phase);
+      const matchInfo = matchDataMap[m.matchId];
+      
+      // Se não encontrar dados da partida, bloqueia por segurança
+      if (!matchInfo) {
+        return { matchId: m.matchId, winner: '🔒', qualifier: m.qualifier ? '🔒' : null, isLocked: true };
+      }
+
+      let isUnlocked = false;
+
+      // Verificação de visibilidade baseada na estrutura do seu MongoDB
+      if (matchInfo.phase === 'group') {
+        // Para fase de grupos, a chave no array unlockedPhases é 'group'
+        isUnlocked = unlockedPhases.includes('group');
+      } else if (matchInfo.phase === 'knockout') {
+        // Para mata-mata, a chave no array unlockedPhases é o valor do campo 'group' (ex: '16-avos final')
+        isUnlocked = unlockedPhases.includes(matchInfo.group);
+      }
 
       if (isUnlocked) return m;
 
@@ -69,7 +88,7 @@ router.get('/:userId', protect, async (req, res) => {
       };
     });
 
-    // Lógica para o Pódio (Geralmente só libera quando o torneio acaba ou se estiver em 'final')
+    // Lógica para o Pódio (Geralmente só libera quando o torneio acaba ou se a 'final' estiver liberada)
     const podiumLocked = !unlockedPhases.includes('final');
     const maskedPodium = podiumLocked ? null : bet.podium;
 
