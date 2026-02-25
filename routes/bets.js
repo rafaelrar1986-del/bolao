@@ -5,7 +5,7 @@ const Bet = require('../models/Bet');
 const PointsHistory = require('../models/PointsHistory');
 const Match = require('../models/Match');
 const User = require('../models/User');
-const Settings = require('../models/Settings'); // Importado para uso no all-bets
+const Settings = require('../models/Settings'); 
 const { protect, admin } = require('../middleware/auth');
 const { blockStatsIfLocked } = require('../middleware/blockStats');
 
@@ -17,7 +17,8 @@ const router = express.Router();
 function toWinnerLabel(choice, teamA, teamB) {
   if (choice === 'A') return teamA || 'Time A';
   if (choice === 'B') return teamB || 'Time B';
-  return 'Empate';
+  if (choice === 'draw') return 'Empate';
+  return '-';
 }
 
 /**
@@ -42,7 +43,7 @@ router.get('/', (req, res) => {
 });
 
 /**
- * 🎯 Meus palpites (enriquecidos com nomes dos times)
+ * 🎯 Meus palpites
  */
 router.get('/my-bets', protect, async (req, res) => {
   try {
@@ -50,11 +51,7 @@ router.get('/my-bets', protect, async (req, res) => {
     const matches = await Match.find().lean();
 
     if (!bet) {
-      return res.json({
-        success: true,
-        data: null,
-        hasSubmitted: false
-      });
+      return res.json({ success: true, data: null, hasSubmitted: false });
     }
 
     const gm = (bet.groupMatches || []).map((b) => {
@@ -73,10 +70,7 @@ router.get('/my-bets', protect, async (req, res) => {
 
     return res.json({
       success: true,
-      data: {
-        ...bet,
-        groupMatches: gm
-      },
+      data: { ...bet, groupMatches: gm },
       hasSubmitted: !!bet.hasSubmitted
     });
   } catch (e) {
@@ -269,14 +263,13 @@ router.get('/leaderboard', protect, blockStatsIfLocked, async (req, res) => {
 });
 
 /**
- * 👁️ Todos os palpites (com filtros) - CORRIGIDO PARA TRAVAS POR FASE
+ * 👁️ Todos os palpites (Busca/All-Bets) - CORRIGIDO
  */
 router.get('/all-bets', protect, blockStatsIfLocked, async (req, res) => {
   try {
     const { search, matchId, group, sortBy = 'user' } = req.query;
     const isAdmin = req.user?.isAdmin === true;
 
-    // 1. Busca configurações e partidas (select include 'group')
     const settings = await Settings.findById('global_settings').lean();
     const unlockedPhases = settings?.unlockedPhases || [];
     const matches = await Match.find().lean();
@@ -313,7 +306,6 @@ router.get('/all-bets', protect, blockStatsIfLocked, async (req, res) => {
 
     const bets = await betsQuery;
 
-    // 2. ENRIQUECER + APLICAR TRAVA DINÂMICA
     const enriched = bets.map(b => {
       let gm = b.groupMatches || [];
       if (groupMatchIds) gm = gm.filter(x => groupMatchIds.includes(x.matchId));
@@ -324,23 +316,23 @@ router.get('/all-bets', protect, blockStatsIfLocked, async (req, res) => {
         const teamA = m?.teamA || 'Time A';
         const teamB = m?.teamB || 'Time B';
         
-        // --- LÓGICA DE BLOQUEIO CORRIGIDA ---
+        // --- LÓGICA DE TRAVA ---
         let isLocked = !isAdmin;
         if (!isLocked) {
-            // Admin nunca está bloqueado
+            // Admin livre
         } else if (m?.phase === 'group') {
-            // Se for fase de grupo, checa se 'group' está na lista
             isLocked = !unlockedPhases.includes('group');
         } else if (m?.phase === 'knockout') {
-            // Se for mata-mata, checa se o valor do campo group (ex: '16-avos final') está na lista
+            // Checa se o nome da fase (ex: '16-avos final', '3º Lugar') está na lista
             isLocked = !unlockedPhases.includes(m.group);
         }
-        // ------------------------------------
 
         return {
           matchId: g.matchId,
+          // CORREÇÃO: Ambos respeitam isLocked
           choice: isLocked ? '🔒' : g.winner,
-          qualifier: isLocked ? (g.qualifier ? '🔒' : null) : g.qualifier,
+          qualifier: isLocked ? (g.qualifier ? '🔒' : null) : (g.qualifier || null),
+          
           choiceLabel: isLocked ? 'Bloqueado' : toWinnerLabel(g.winner, teamA, teamB),
           matchName: m ? `${m.teamA} vs ${m.teamB}` : `Jogo ${g.matchId}`,
           teamA,
@@ -349,10 +341,12 @@ router.get('/all-bets', protect, blockStatsIfLocked, async (req, res) => {
         };
       });
 
+      // CORREÇÃO: Pódio case-insensitive
+      const isFinalUnlocked = unlockedPhases.some(p => p && p.toLowerCase() === 'final');
+
       return {
         userName: b.user?.name || 'Usuário',
-        // Bloqueia pódio se 'final' não estiver liberado
-        podium: (isAdmin || unlockedPhases.includes('final')) ? b.podium : { first: '🔒', second: '🔒', third: '🔒', fourth: '🔒' },
+        podium: (isAdmin || isFinalUnlocked) ? b.podium : { first: '🔒', second: '🔒', third: '🔒', fourth: '🔒' },
         totalPoints: b.totalPoints || 0,
         bets: viewBets
       };
