@@ -22,6 +22,63 @@ router.get('/users/list', protect, async (req, res) => {
 });
 
 /* =============================
+    🔹 RANKING HISTÓRICO GLOBAL (Calculado na hora)
+   ============================= */
+router.get('/ranking', protect, async (req, res) => {
+  try {
+    // 1. Pega todas as datas e usuários
+    const dates = await PointsHistory.distinct('date');
+    dates.sort((a, b) => new Date(a) - new Date(b));
+    
+    const users = await User.find({}, '_id name').lean();
+    
+    // Objeto para guardar o histórico de cada um
+    const results = users.map(u => ({
+      user: { _id: u._id, name: u.name },
+      history: []
+    }));
+
+    // 2. Para cada data, calculamos as posições de TODO MUNDO
+    for (const date of dates) {
+      const dayHistory = await PointsHistory.find({ date }).lean();
+      
+      // Ordena por pontos
+      dayHistory.sort((a, b) => b.points - a.points);
+
+      let lastPoints = null;
+      let position = 0;
+      let index = 0;
+
+      // Cálculo de ranking esportivo (1, 1, 3...)
+      const rankedDay = dayHistory.map((h) => {
+        index++;
+        if (lastPoints === null || h.points < lastPoints) {
+          position = index;
+          lastPoints = h.points;
+        }
+        return { userId: String(h.user), rank: position, points: h.points };
+      });
+
+      // 3. Distribui a posição do dia para o histórico de cada usuário no resultado
+      results.forEach(userObj => {
+        const found = rankedDay.find(d => d.userId === String(userObj.user._id));
+        if (found) {
+          userObj.history.push({
+            date,
+            position: found.rank,
+            points: found.points
+          });
+        }
+      });
+    }
+
+    res.json(results);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Erro ao processar ranking global');
+  }
+});
+/* =============================
    🔹 COMPARAÇÃO ENTRE USUÁRIOS
 ============================= */
 router.get('/compare/:userId', protect, async (req, res) => {
@@ -49,7 +106,6 @@ router.get('/compare/:userId', protect, async (req, res) => {
     res.status(500).json({ message: 'Erro ao comparar histórico' });
   }
 });
-
 /* =============================
    🔹 HISTÓRICO POR USUÁRIO
 ============================= */
@@ -130,45 +186,6 @@ dayHistory.forEach((h) => {
     res.status(500).json({ message: 'Erro ao gerar ranking histórico' });
   }
 });
-/* =============================
-   🔹 RANKING HISTÓRICO DE TODOS
-============================= */
-router.get('/ranking', protect, async (req, res) => {
-  try {
 
-    const users = await User.find({}, '_id name').lean();
-
-    const result = [];
-
-    for (const user of users) {
-
-      const history = await PointsHistory
-        .find({ user: user._id })
-        .sort({ date: 1 })
-        .lean();
-
-      const formatted = history.map(h => ({
-        date: h.date,
-        position: h.rank ?? h.position,
-        points: h.points
-      }));
-
-      result.push({
-        user: {
-          _id: user._id,
-          name: user.name
-        },
-        history: formatted
-      });
-
-    }
-
-    res.json(result);
-
-  } catch (err) {
-    console.error('Erro ao gerar ranking histórico global:', err);
-    res.status(500).json({ message: 'Erro ao gerar ranking histórico global' });
-  }
-});
 
 module.exports = router;
