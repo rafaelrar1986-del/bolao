@@ -130,5 +130,45 @@ dayHistory.forEach((h) => {
     res.status(500).json({ message: 'Erro ao gerar ranking histórico' });
   }
 });
+/* =============================
+   🔹 RANKING HISTÓRICO DE TODOS
+============================= */
+router.get('/ranking', protect, async (req, res) => {
+  try {
+
+    const users = await User.find({}, '_id name').lean();
+
+    const result = [];
+
+    for (const user of users) {
+
+      const history = await PointsHistory
+        .find({ user: user._id })
+        .sort({ date: 1 })
+        .lean();
+
+      const formatted = history.map(h => ({
+        date: h.date,
+        position: h.rank ?? h.position,
+        points: h.points
+      }));
+
+      result.push({
+        user: {
+          _id: user._id,
+          name: user.name
+        },
+        history: formatted
+      });
+
+    }
+
+    res.json(result);
+
+  } catch (err) {
+    console.error('Erro ao gerar ranking histórico global:', err);
+    res.status(500).json({ message: 'Erro ao gerar ranking histórico global' });
+  }
+});
 
 module.exports = router;
