@@ -187,5 +187,33 @@ dayHistory.forEach((h) => {
   }
 });
 
+/* =============================
+    🔹 DESTAQUES DA ÚLTIMA RODADA (Para o News Ticker)
+============================= */
+router.get('/ticker/highlights', protect, async (req, res) => {
+  try {
+    // 1. Descobre qual é a última data gravada no histórico
+    const lastEntry = await PointsHistory.findOne().sort({ date: -1 }).lean();
+    if (!lastEntry) return res.json([]);
 
+    const lastDate = lastEntry.date;
+
+    // 2. Pega todos os pontos dessa data específica
+    const highlights = await PointsHistory.find({ date: lastDate })
+      .populate('user', 'name')
+      .sort({ points: -1 })
+      .lean();
+
+    // 3. Formata para o frontend
+    const results = highlights.map(h => ({
+      userName: h.user?.name || 'Anônimo',
+      pointsLastRound: h.points,
+      date: lastDate
+    }));
+
+    res.json(results);
+  } catch (err) {
+    res.status(500).json({ message: 'Erro ao buscar destaques' });
+  }
+});
 module.exports = router;
