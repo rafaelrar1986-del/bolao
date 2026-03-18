@@ -187,33 +187,53 @@ dayHistory.forEach((h) => {
   }
 });
 
-/* =============================
-    🔹 DESTAQUES DA ÚLTIMA RODADA (Para o News Ticker)
-============================= */
+/* =====================================================
+    🔹 DESTAQUES DA ÚLTIMA RODADA (Cálculo de ganho real)
+   ===================================================== */
 router.get('/ticker/highlights', protect, async (req, res) => {
   try {
-    // 1. Descobre qual é a última data gravada no histórico
-    const lastEntry = await PointsHistory.findOne().sort({ date: -1 }).lean();
-    if (!lastEntry) return res.json([]);
+    // 1. Pega as duas últimas datas que possuem registros
+    const dates = await PointsHistory.distinct('date');
+    dates.sort((a, b) => new Date(b) - new Date(a)); // Ordem decrescente
 
-    const lastDate = lastEntry.date;
+    if (dates.length === 0) return res.json([]);
 
-    // 2. Pega todos os pontos dessa data específica
-    const highlights = await PointsHistory.find({ date: lastDate })
+    const lastDate = dates[0];
+    const prevDate = dates[1]; // Pode ser undefined se for a primeira rodada
+
+    // 2. Busca os registros da última data
+    const lastEntries = await PointsHistory.find({ date: lastDate })
       .populate('user', 'name')
-      .sort({ points: -1 })
       .lean();
 
-    // 3. Formata para o frontend
-    const results = highlights.map(h => ({
-      userName: h.user?.name || 'Anônimo',
-      pointsLastRound: h.points,
-      date: lastDate
-    }));
+    // 3. Busca os registros da data anterior (para subtrair)
+    const prevEntries = prevDate 
+      ? await PointsHistory.find({ date: prevDate }).lean() 
+      : [];
+
+    // 4. Calcula a diferença para cada usuário
+    const results = lastEntries.map(current => {
+      const previous = prevEntries.find(p => String(p.user) === String(current.user._id));
+      
+      // Se não houver registro anterior, o ganho do dia é o próprio valor
+      const totalAtual = current.points || 0;
+      const totalAnterior = previous ? previous.points : 0;
+      const ganhoDoDia = totalAtual - totalAnterior;
+
+      return {
+        userName: current.user?.name || 'Anônimo',
+        pointsLastRound: ganhoDoDia, // Agora aqui vai apenas o que ele ganhou ontem
+        date: lastDate
+      };
+    });
+
+    // Ordena por quem mais ganhou pontos no dia
+    results.sort((a, b) => b.pointsLastRound - a.pointsLastRound);
 
     res.json(results);
   } catch (err) {
-    res.status(500).json({ message: 'Erro ao buscar destaques' });
+    console.error(err);
+    res.status(500).json({ message: 'Erro ao calcular destaques' });
   }
 });
 module.exports = router;
