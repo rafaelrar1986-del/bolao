@@ -4,7 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto'); 
 const User = require('../models/User');
-const AllowedEmail = require('../models/AllowedEmail'); // 👈 IMPORTADO
+const AllowedEmail = require('../models/AllowedEmail');
 const { protect } = require('../middleware/auth');
 
 const router = express.Router();
@@ -50,7 +50,7 @@ const authenticateUser = async (email, password) => {
 };
 
 // ======================
-// 📝 REGISTRO COM WHITELIST (ATUALIZADO)
+// 📝 REGISTRO COM WHITELIST (CORRIGIDO)
 // ======================
 router.post('/register', async (req, res) => {
   try {
@@ -66,7 +66,6 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Formato de email inválido' });
     }
 
-    // 🛡️ TRAVA DE SEGURANÇA: CONSULTA WHITELIST NO BANCO
     const isAllowed = await AllowedEmail.findOne({ email: normalizedEmail });
     if (!isAllowed) {
       console.warn(`🛑 Tentativa de registro negada (fora da lista): ${normalizedEmail}`);
@@ -101,6 +100,7 @@ router.post('/register', async (req, res) => {
         name: user.name,
         email: user.email,
         isAdmin: user.isAdmin,
+        hasPaid: user.hasPaid, // 👈 ADICIONADO
         createdAt: user.createdAt
       },
       token
@@ -112,7 +112,7 @@ router.post('/register', async (req, res) => {
 });
 
 // ======================
-// 🔐 LOGIN DE USUÁRIO
+// 🔐 LOGIN DE USUÁRIO (CORRIGIDO)
 // ======================
 router.post('/login', async (req, res) => {
   try {
@@ -139,6 +139,7 @@ router.post('/login', async (req, res) => {
         name: user.name,
         email: user.email,
         isAdmin: user.isAdmin,
+        hasPaid: user.hasPaid, // 👈 ADICIONADO
         createdAt: user.createdAt
       },
       token
@@ -150,10 +151,9 @@ router.post('/login', async (req, res) => {
 });
 
 // ======================
-// 🛡️ GERENCIAR WHITELIST (NOVO)
+// 🛡️ GERENCIAR WHITELIST
 // ======================
 
-// Adicionar e-mail à lista (Apenas Admin)
 router.post('/whitelist', protect, async (req, res) => {
   try {
     if (!req.user.isAdmin) {
@@ -178,7 +178,6 @@ router.post('/whitelist', protect, async (req, res) => {
   }
 });
 
-// Listar e-mails da whitelist (Apenas Admin)
 router.get('/whitelist', protect, async (req, res) => {
   try {
     if (!req.user.isAdmin) return res.status(403).json({ success: false });
@@ -190,9 +189,8 @@ router.get('/whitelist', protect, async (req, res) => {
 });
 
 // ======================
-// 👤 OUTRAS ROTAS (Padrão)
+// 👤 PERFIL /ME (CRUCIAL PARA O PAYWALL)
 // ======================
-
 router.get('/me', protect, async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
@@ -205,6 +203,7 @@ router.get('/me', protect, async (req, res) => {
         name: user.name,
         email: user.email,
         isAdmin: user.isAdmin,
+        hasPaid: user.hasPaid, // 👈 ADICIONADO: Garante que o status atualizado do banco chegue ao Front
         createdAt: user.createdAt
       }
     });
