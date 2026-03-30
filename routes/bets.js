@@ -6,7 +6,7 @@ const PointsHistory = require('../models/PointsHistory');
 const Match = require('../models/Match');
 const User = require('../models/User');
 const Settings = require('../models/Settings'); 
-const { protect, admin } = require('../middleware/auth');
+const { protect, admin, checkPaid } = require('../middleware/auth'); // 💰 checkPaid adicionado
 const { blockStatsIfLocked } = require('../middleware/blockStats');
 
 const router = express.Router();
@@ -28,16 +28,13 @@ router.get('/', (req, res) => {
   res.json({
     success: true,
     message: '🏆 API de Palpites do Bolão 2026',
-    version: '1.0.0',
+    version: '1.1.0',
     endpoints: {
-      'GET  /api/bets/my-bets': 'Meus palpites (protegido)',
-      'POST /api/bets/save': 'Enviar palpites (protegido, 1x)',
-      'GET  /api/bets/status': 'Status dos palpites (protegido)',
-      'GET  /api/bets/leaderboard': 'Ranking (protegido)',
-      'GET  /api/bets/all-bets': 'Todos os palpites, com filtros (protegido)',
-      'GET  /api/bets/matches-for-filter': 'Lista de partidas p/ filtros (protegido)',
-      'GET  /api/bets/users-for-filter': 'Lista de usuários p/ filtros (protegido)',
-      'POST /api/bets/admin/reset-all': '⚠️ Resetar TODAS as apostas (admin)'
+      'GET  /api/bets/my-bets': 'Meus palpites (protegido + pago)',
+      'POST /api/bets/save': 'Enviar palpites (protegido + pago)',
+      'GET  /api/bets/status': 'Status dos palpites (apenas login)',
+      'GET  /api/bets/leaderboard': 'Ranking (protegido + pago)',
+      'GET  /api/bets/all-bets': 'Todos os palpites (protegido + pago)',
     }
   });
 });
@@ -45,7 +42,7 @@ router.get('/', (req, res) => {
 /**
  * 🎯 Meus palpites
  */
-router.get('/my-bets', protect, async (req, res) => {
+router.get('/my-bets', protect, checkPaid, async (req, res) => {
   try {
     const bet = await Bet.findOne({ user: req.user._id }).lean();
     const matches = await Match.find().lean();
@@ -82,7 +79,7 @@ router.get('/my-bets', protect, async (req, res) => {
 /**
  * 💾 Salvar palpites
  */
-router.post('/save', protect, async (req, res) => {
+router.post('/save', protect, checkPaid, async (req, res) => {
   try {
     const { groupMatches, podium, knockoutQualifiers } = req.body;
     
@@ -192,6 +189,9 @@ router.post('/save', protect, async (req, res) => {
   }
 });
 
+/**
+ * ℹ️ Status (Sem checkPaid para permitir verificação básica)
+ */
 router.get('/status', protect, async (req, res) => {
   try {
     const bet = await Bet.findOne({ user: req.user._id }).lean();
@@ -211,7 +211,7 @@ router.get('/status', protect, async (req, res) => {
 /**
  * 🏆 Leaderboard
  */
-router.get('/leaderboard', protect, blockStatsIfLocked, async (req, res) => {
+router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
   try {
     const bets = await Bet.find({ hasSubmitted: true })
       .populate('user', 'name')
@@ -263,9 +263,9 @@ router.get('/leaderboard', protect, blockStatsIfLocked, async (req, res) => {
 });
 
 /**
- * 👁️ Todos os palpites (Busca/All-Bets) - CORRIGIDO
+ * 👁️ Todos os palpites
  */
-router.get('/all-bets', protect, blockStatsIfLocked, async (req, res) => {
+router.get('/all-bets', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
   try {
     const { search, matchId, group, sortBy = 'user' } = req.query;
     const isAdmin = req.user?.isAdmin === true;
@@ -316,23 +316,18 @@ router.get('/all-bets', protect, blockStatsIfLocked, async (req, res) => {
         const teamA = m?.teamA || 'Time A';
         const teamB = m?.teamB || 'Time B';
         
-        // --- LÓGICA DE TRAVA ---
         let isLocked = !isAdmin;
-        if (!isLocked) {
-            // Admin livre
-        } else if (m?.phase === 'group') {
+        if (!isLocked) { /* Admin sempre vê */ } 
+        else if (m?.phase === 'group') {
             isLocked = !unlockedPhases.includes('group');
         } else if (m?.phase === 'knockout') {
-            // Checa se o nome da fase (ex: '16-avos final', '3º Lugar') está na lista
             isLocked = !unlockedPhases.includes(m.group);
         }
 
         return {
           matchId: g.matchId,
-          // CORREÇÃO: Ambos respeitam isLocked
           choice: isLocked ? '🔒' : g.winner,
           qualifier: isLocked ? (g.qualifier ? '🔒' : null) : (g.qualifier || null),
-          
           choiceLabel: isLocked ? 'Bloqueado' : toWinnerLabel(g.winner, teamA, teamB),
           matchName: m ? `${m.teamA} vs ${m.teamB}` : `Jogo ${g.matchId}`,
           teamA,
@@ -341,7 +336,6 @@ router.get('/all-bets', protect, blockStatsIfLocked, async (req, res) => {
         };
       });
 
-      // CORREÇÃO: Pódio case-insensitive
       const isFinalUnlocked = unlockedPhases.some(p => p && p.toLowerCase() === 'final');
 
       return {
@@ -368,7 +362,7 @@ router.get('/all-bets', protect, blockStatsIfLocked, async (req, res) => {
 /**
  * 🔍 Partidas para filtro
  */
-router.get('/matches-for-filter', protect, blockStatsIfLocked, async (req, res) => {
+router.get('/matches-for-filter', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
   try {
     const matches = await Match.find().select('matchId teamA teamB group date').sort('matchId').lean();
     res.json({ success: true, data: matches });
@@ -380,7 +374,7 @@ router.get('/matches-for-filter', protect, blockStatsIfLocked, async (req, res) 
 /**
  * 👥 Usuários para filtro
  */
-router.get('/users-for-filter', protect, blockStatsIfLocked, async (req, res) => {
+router.get('/users-for-filter', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
   try {
     const users = await User.find().select('_id name').sort('name').lean();
     res.json({ success: true, data: users });
