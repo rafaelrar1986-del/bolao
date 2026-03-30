@@ -6,80 +6,103 @@ const path = require('path');
 
 // Importações de Modelos e Serviços
 const AllowedEmail = require('../models/AllowedEmail'); 
+const User = require('../models/User'); // ✅ IMPORTANTE: Importar o model de Usuário
 const { sendBroadcastEmail } = require('../services/emailService');
 const { protect, admin } = require('../middleware/auth');
 
 // Configuração do Multer (armazenamento temporário de anexos)
-// Certifique-se de que a pasta 'uploads' existe ou o Multer a criará
 const upload = multer({ 
   dest: 'uploads/',
-  limits: { fileSize: 10 * 1024 * 1024 } // Limite de 10MB por segurança
+  limits: { fileSize: 10 * 1024 * 1024 } // Limite de 10MB
 });
 
 /**
- * @route   POST /api/email-broadcast/send
+ * @route   GET /api/admin/users
+ * @desc    Lista todos os usuários registrados para gestão de pagamentos
+ * @access  Private (Admin Only)
+ */
+router.get('/users', protect, admin, async (req, res) => {
+  try {
+    const users = await User.find({}, '-password').sort({ createdAt: -1 });
+    res.json(users);
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erro ao buscar usuários.' });
+  }
+});
+
+/**
+ * @route   PUT /api/admin/approve-user/:id
+ * @desc    Aprova manualmente o pagamento de um usuário (hasPaid: true)
+ * @access  Private (Admin Only)
+ */
+router.put('/approve-user/:id', protect, admin, async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Usuário não encontrado.' });
+    }
+
+    user.hasPaid = true; // ✅ Ativa o acesso do usuário
+    await user.save();
+
+    console.log(`💰 Usuário aprovado: ${user.email}`);
+    res.json({ success: true, message: `Pagamento de ${user.name} aprovado!` });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * @route   POST /api/admin/send-broadcast
  * @desc    Envia e-mail para todos os participantes da Whitelist
  * @access  Private (Admin Only)
  */
 router.post('/send', protect, admin, upload.single('attachment'), async (req, res) => {
-  // 🔍 LOGS DE DIAGNÓSTICO (Acompanhe no painel do Render)
   console.log('--- NOVA REQUISIÇÃO DE BROADCAST ---');
-  console.log('Dados Texto (req.body):', req.body); 
-  console.log('Arquivo (req.file):', req.file ? req.file.originalname : 'Nenhum');
-
+  
   try {
     const { subject, message } = req.body;
 
-    // Validação de presença de dados após o processamento do Multer
     if (!subject || !message) {
       return res.status(400).json({ 
         success: false, 
-        message: `Dados ausentes. Verifique se o formulário foi preenchido corretamente.` 
+        message: `Dados ausentes. Verifique o preenchimento.` 
       });
     }
 
-    // 1. Busca todos os e-mails autorizados
     const docs = await AllowedEmail.find({}, 'email');
     const emailList = docs.map(d => d.email);
 
     if (emailList.length === 0) {
       return res.status(404).json({ 
         success: false, 
-        message: 'Nenhum e-mail encontrado na lista de autorizados (Whitelist vazia).' 
+        message: 'Whitelist vazia.' 
       });
     }
 
-    // 2. Dispara o envio via serviço Brevo
-    // Passamos a lista de e-mails, assunto, mensagem e o objeto do arquivo
     await sendBroadcastEmail(emailList, subject, message, req.file);
 
-    // 3. LIMPEZA: Remove o arquivo temporário após o envio para economizar espaço no disco
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
-      console.log(`✅ Arquivo temporário removido: ${req.file.path}`);
+      console.log(`✅ Arquivo removido: ${req.file.path}`);
     }
 
     res.json({ 
       success: true, 
-      message: `E-mails enviados com sucesso para ${emailList.length} participantes!` 
+      message: `E-mails enviados para ${emailList.length} participantes!` 
     });
 
   } catch (error) {
-    console.error('❌ Erro no processamento do broadcast:', error);
+    console.error('❌ Erro no broadcast:', error);
 
-    // Garante a limpeza do arquivo mesmo em caso de falha no envio para evitar "lixo"
     if (req.file && fs.existsSync(req.file.path)) {
-      try { 
-        fs.unlinkSync(req.file.path); 
-        console.log('🧹 Limpeza de segurança executada após erro.');
-      } catch (e) {
-        console.error('Erro ao tentar deletar arquivo após falha:', e);
-      }
+      try { fs.unlinkSync(req.file.path); } catch (e) {}
     }
 
     res.status(500).json({ 
       success: false, 
-      message: error.message || 'Falha ao processar o envio de e-mails.' 
+      message: error.message || 'Falha ao processar o envio.' 
     });
   }
 });
