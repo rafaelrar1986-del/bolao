@@ -6,34 +6,39 @@ const path = require('path');
 
 // Importações de Modelos e Serviços
 const AllowedEmail = require('../models/AllowedEmail'); 
-const User = require('../models/User'); // ✅ IMPORTANTE: Importar o model de Usuário
+const User = require('../models/User'); 
 const { sendBroadcastEmail } = require('../services/emailService');
 const { protect, admin } = require('../middleware/auth');
 
-// Configuração do Multer (armazenamento temporário de anexos)
+// Configuração do Multer
 const upload = multer({ 
   dest: 'uploads/',
-  limits: { fileSize: 10 * 1024 * 1024 } // Limite de 10MB
+  limits: { fileSize: 10 * 1024 * 1024 } 
 });
 
 /**
  * @route   GET /api/admin/users
- * @desc    Lista todos os usuários registrados para gestão de pagamentos
- * @access  Private (Admin Only)
+ * @desc    Lista todos os usuários (CORRIGIDO PARA O FRONTEND)
  */
 router.get('/users', protect, admin, async (req, res) => {
   try {
-    const users = await User.find({}, '-password').sort({ createdAt: -1 });
-    res.json(users);
+    // Buscamos os campos necessários, incluindo o hasPaid que estava faltando antes
+    const users = await User.find({}, 'name email isAdmin hasPaid createdAt').sort({ createdAt: -1 });
+    
+    // IMPORTANTE: O frontend espera um objeto com a propriedade "users"
+    res.json({
+      success: true,
+      users: users 
+    });
   } catch (error) {
+    console.error('❌ Erro ao buscar usuários:', error);
     res.status(500).json({ success: false, message: 'Erro ao buscar usuários.' });
   }
 });
 
 /**
  * @route   PUT /api/admin/approve-user/:id
- * @desc    Aprova manualmente o pagamento de um usuário (hasPaid: true)
- * @access  Private (Admin Only)
+ * @desc    Aprova manualmente o pagamento de um usuário
  */
 router.put('/approve-user/:id', protect, admin, async (req, res) => {
   try {
@@ -43,7 +48,7 @@ router.put('/approve-user/:id', protect, admin, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Usuário não encontrado.' });
     }
 
-    user.hasPaid = true; // ✅ Ativa o acesso do usuário
+    user.hasPaid = true; 
     await user.save();
 
     console.log(`💰 Usuário aprovado: ${user.email}`);
@@ -54,13 +59,10 @@ router.put('/approve-user/:id', protect, admin, async (req, res) => {
 });
 
 /**
- * @route   POST /api/admin/send-broadcast
+ * @route   POST /api/admin/send
  * @desc    Envia e-mail para todos os participantes da Whitelist
- * @access  Private (Admin Only)
  */
 router.post('/send', protect, admin, upload.single('attachment'), async (req, res) => {
-  console.log('--- NOVA REQUISIÇÃO DE BROADCAST ---');
-  
   try {
     const { subject, message } = req.body;
 
@@ -85,7 +87,6 @@ router.post('/send', protect, admin, upload.single('attachment'), async (req, re
 
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
-      console.log(`✅ Arquivo removido: ${req.file.path}`);
     }
 
     res.json({ 
@@ -95,11 +96,9 @@ router.post('/send', protect, admin, upload.single('attachment'), async (req, re
 
   } catch (error) {
     console.error('❌ Erro no broadcast:', error);
-
     if (req.file && fs.existsSync(req.file.path)) {
       try { fs.unlinkSync(req.file.path); } catch (e) {}
     }
-
     res.status(500).json({ 
       success: false, 
       message: error.message || 'Falha ao processar o envio.' 
