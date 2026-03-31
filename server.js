@@ -118,7 +118,23 @@ mongoose.connection.on('reconnected', () => {
 });
 
 // ======================
-// ROTAS
+// ROTAS - IMPORTAÇÕES
+// ======================
+const authRoutes = require('./routes/auth');
+const matchesRoutes = require('./routes/matches');
+const betsRoutes = require('./routes/bets');
+const duelRoutes = require('./routes/duels');
+const pointsRoutes = require('./routes/points');
+const usersRoutes = require('./routes/users');
+const newsRoutes = require('./routes/news');
+const settingsRoutes = require('./routes/settings');
+const pointsHistoryRoutes = require('./routes/pointsHistory');
+const roundHistoryRoutes = require('./routes/roundHistory');
+// Rota que contém a gestão de usuários, aprovação de pagamentos e broadcast
+const adminRoutes = require('./routes/admin'); 
+
+// ======================
+// ROTAS - USO (DEFINIÇÃO DE ENDPOINTS)
 // ======================
 
 app.get('/', (req, res) => {
@@ -173,26 +189,6 @@ app.get('/api/bets', (req, res) => {
   });
 });
 
-// ======================
-// ROTAS - IMPORTAÇÕES
-// ======================
-const authRoutes = require('./routes/auth');
-const matchesRoutes = require('./routes/matches');
-const betsRoutes = require('./routes/bets');
-const duelRoutes = require('./routes/duels');
-const pointsRoutes = require('./routes/points');
-const usersRoutes = require('./routes/users');
-const newsRoutes = require('./routes/news');
-const settingsRoutes = require('./routes/settings');
-const pointsHistoryRoutes = require('./routes/pointsHistory');
-const roundHistoryRoutes = require('./routes/roundHistory');
-// Rota que contém a gestão de usuários, aprovação de pagamentos e broadcast
-const adminRoutes = require('./routes/admin'); 
-
-// ======================
-// ROTAS - USO (DEFINIÇÃO DE ENDPOINTS)
-// ======================
-
 // Rotas de funcionalidades de usuário
 app.use('/api/news', newsRoutes);
 app.use('/api/auth', authRoutes);
@@ -215,11 +211,12 @@ app.use('/api/round-history', roundHistoryRoutes);
 // Como o adminRoutes já está em /api/admin, o broadcast pode ser acessado em /api/admin/send
 // Se preferir manter um endpoint separado para e-mails, mantenha a linha abaixo:
 app.use('/api/email-broadcast', adminRoutes);
+
 // ======================
 // MIDDLEWARES DE ERRO - NOVOS
 // ======================
 
-// Rota 404 - Para rotas não encontradas
+// Rota 404 - Para rotas não encontradas (MOVIDO PARA DEPOIS DAS ROTAS REAIS)
 app.use('*', (req, res) => {
   res.status(404).json({
     success: false,
@@ -252,7 +249,7 @@ app.use((error, req, res, next) => {
         '*.vercel.app',
         '*.netlify.app',
         'https://bolao5.pages.dev',   // ✅ ADICIONA AQUI TAMBÉM
-        '*.pages.dev'                // ✅ OPCIONAL: PERMITIR QUALQUER SUBDOMÍNIO pages.dev
+        '*.pages.dev'                 // ✅ OPCIONAL: PERMITIR QUALQUER SUBDOMÍNIO pages.dev
       ]
     });
   }
@@ -326,7 +323,7 @@ const server = app.listen(PORT, () => {
   console.log('   ✅ https://bolao5.pages.dev');         // ✅ NOVO
   console.log('   ✅ *.vercel.app');
   console.log('   ✅ *.netlify.app');
-  console.log('   ✅ *.pages.dev');                     // ✅ OPCIONAL
+  console.log('   ✅ *.pages.dev');                      // ✅ OPCIONAL
   console.log('   ✅ localhost:3000, 5173, 8000, 8080');
 
   console.log('='.repeat(50));
@@ -343,4 +340,3 @@ server.on('error', (error) => {
 });
 
 module.exports = app;
-
