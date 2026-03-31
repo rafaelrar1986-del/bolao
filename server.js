@@ -186,14 +186,14 @@ const newsRoutes = require('./routes/news');
 const settingsRoutes = require('./routes/settings');
 const pointsHistoryRoutes = require('./routes/pointsHistory');
 const roundHistoryRoutes = require('./routes/roundHistory');
-// Esta é a rota do e-mail broadcast (arquivo routes/admin.js)
-const emailBroadcastRoutes = require('./routes/admin'); 
+// Rota que contém a gestão de usuários, aprovação de pagamentos e broadcast
+const adminRoutes = require('./routes/admin'); 
 
 // ======================
 // ROTAS - USO (DEFINIÇÃO DE ENDPOINTS)
 // ======================
 
-// Rotas de funcionalidades
+// Rotas de funcionalidades de usuário
 app.use('/api/news', newsRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
@@ -204,14 +204,17 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/points', pointsRoutes);
 app.use('/api/points-history', pointsHistoryRoutes);
 
-// ✅ GERENCIAMENTO ADMIN (MANTIDO)
-app.use('/api/admin', roundHistoryRoutes); 
+// ✅ GESTÃO ADMINISTRATIVA (CORRIGIDO)
+// Agora o endpoint /api/admin/users e /api/admin/approve-user funcionarão
+app.use('/api/admin', adminRoutes); 
 
-// ✅ COMUNICAÇÃO (BROADCAST)
-// Se no seu routes/admin.js a rota for router.post('/send', ...)
-// O endereço será: POST https://seu-backend.com/api/email-broadcast/send
-app.use('/api/email-broadcast', emailBroadcastRoutes);
+// ✅ HISTÓRICO DE RODADAS (MOVIDO PARA ENDPOINT PRÓPRIO)
+app.use('/api/round-history', roundHistoryRoutes);
 
+// ✅ COMUNICAÇÃO (OPCIONAL - BROADCAST TAMBÉM DISPONÍVEL VIA /api/admin)
+// Como o adminRoutes já está em /api/admin, o broadcast pode ser acessado em /api/admin/send
+// Se preferir manter um endpoint separado para e-mails, mantenha a linha abaixo:
+app.use('/api/email-broadcast', adminRoutes);
 // ======================
 // MIDDLEWARES DE ERRO - NOVOS
 // ======================
