@@ -54,15 +54,15 @@ const protect = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Token sem identificador.' });
     }
 
-    // 🔥 Aqui o req.user já terá o campo hasPaid vindo do banco
+    // Buscamos o usuário garantindo que isAdmin e hasPaid venham do banco
     const user = await User.findById(userId).select('-password');
+    
     if (!user) {
       return res.status(401).json({ success: false, message: 'Usuário não encontrado.' });
     }
 
-    if (user.active === false) {
-      return res.status(401).json({ success: false, message: 'Conta desativada.' });
-    }
+    // Removi a checagem de user.active pois o campo não existe no seu Model User.js
+    // Se quiser usar, adicione "active: { type: Boolean, default: true }" no Model.
 
     req.user = user; 
     return next();
@@ -72,21 +72,15 @@ const protect = async (req, res, next) => {
   }
 };
 
-/**
- * 🔥 NOVO: Middleware de Verificação de Pagamento
- * Bloqueia o acesso se hasPaid for false, exceto para Admins.
- */
 const checkPaid = (req, res, next) => {
   if (!req.user) {
     return res.status(401).json({ success: false, message: 'Autenticação necessária.' });
   }
 
-  // Admins sempre têm acesso livre para gerenciar o bolão
   if (req.user.isAdmin || req.user.hasPaid) {
     return next();
   }
 
-  // Retornamos 402 (Payment Required) para o frontend saber que deve mostrar o PIX
   return res.status(402).json({
     success: false,
     message: 'Acesso bloqueado: Pagamento da cota pendente.',
@@ -95,9 +89,19 @@ const checkPaid = (req, res, next) => {
 };
 
 const admin = (req, res, next) => {
-  if (!req.user || !req.user.isAdmin) {
+  // LOG DE DEBUG: Se o Toast de erro aparecer, cheque o terminal do Render/VSCode
+  // Ele vai te dizer exatamente o que está acontecendo com o seu usuário.
+  if (!req.user) {
+    console.log('⚠️ Tentativa de acesso Admin sem req.user');
+    return res.status(401).json({ success: false, message: 'Usuário não identificado.' });
+  }
+
+  if (!req.user.isAdmin) {
+    console.log(`🚫 Acesso NEGADO para: ${req.user.email} (Não é Admin)`);
     return res.status(403).json({ success: false, message: 'Acesso negado. Requer Admin.' });
   }
+
+  console.log(`✅ Acesso Admin AUTORIZADO: ${req.user.email}`);
   return next();
 };
 
@@ -108,6 +112,6 @@ const requirePermission = (permission) => {
 module.exports = {
   protect,
   admin,
-  checkPaid, // 🚀 Exportado para uso nas rotas
+  checkPaid, 
   requirePermission,
 };
