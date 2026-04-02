@@ -7,7 +7,7 @@ async function updateMatches() {
     console.log('🔍 TESTANDO API BSD...');
 
     const response = await axios.get(
-      'https://sports.bzzoiro.com/api/events/?date_from=2026-06-01&date_to=2026-07-31',
+      'https://sports.bzzoiro.com/api/events/?date_from=2026-06-10&date_to=2026-07-31',
       {
         headers: {
           Authorization: `Token ${API_KEY}`
