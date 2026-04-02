@@ -2,6 +2,8 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 require('dotenv').config();
+const cron = require('node-cron');
+const updateMatches = require('./services/matchUpdater');
 
 const app = express();
 
@@ -310,7 +312,13 @@ process.on('SIGTERM', async () => {
 // INICIAR SERVIDOR
 // ======================
 const PORT = process.env.PORT || 5000;
-
+// ======================
+// CRON AUTOMÁTICO
+// ======================
+cron.schedule('*/2 * * * *', () => {
+  console.log('🔄 Atualizando jogos automaticamente...');
+  updateMatches();
+});
 const server = app.listen(PORT, () => {
   console.log('='.repeat(50));
   console.log(`🎯 Servidor rodando: http://localhost:${PORT}`);
