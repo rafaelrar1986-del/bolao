@@ -3,52 +3,87 @@ const Match = require('../models/Match');
 
 const API_KEY = process.env.API_FOOTBALL_KEY;
 
-const statusMap = {
-  NS: 'Agendado',
-  '1H': 'Em andamento',
-  '2H': 'Em andamento',
-  HT: 'Em andamento',
-  ET: 'Em andamento',
-  LIVE: 'Em andamento',
-  FT: 'Finalizado',
-  AET: 'Finalizado',
-  PEN: 'Finalizado'
-};
+// 🔧 normalização (remove acento, etc)
+function normalize(str) {
+  return str
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ç/g, 'c')
+    .trim();
+}
+
+// 🔁 status da API → seu padrão
+function mapStatus(status) {
+  if (!status) return 'Agendado';
+
+  status = status.toLowerCase();
+
+  if (status.includes('finished')) return 'Finalizado';
+  if (status.includes('inprogress') || status.includes('live') || status.includes('half')) return 'Em andamento';
+
+  return 'Agendado';
+}
 
 async function updateMatches() {
   try {
-    console.log('🔄 Atualizando jogos...');
+    console.log('🔄 Atualizando jogos (BSD API)...');
 
     const response = await axios.get(
-      'https://v3.football.api-sports.io/fixtures?date=2026-06-13',
+      'https://sports.bzzoiro.com/api/events/?date_from=2026-06-01&date_to=2026-07-31',
       {
         headers: {
-          'x-apisports-key': API_KEY
+          Authorization: `Token ${API_KEY}`
         }
       }
     );
 
-    const fixtures = response.data.response;
+    const games = response.data.results || [];
 
-    for (const game of fixtures) {
-      const match = await Match.findOne({ apiId: game.fixture.id });
+    console.log(`📊 Jogos recebidos: ${games.length}`);
+
+    const matches = await Match.find({});
+
+    let updated = 0;
+
+    for (const game of games) {
+      const home = normalize(game.home_team);
+      const away = normalize(game.away_team);
+
+      const match = matches.find(m => {
+        const teamA = normalize(m.teamA);
+        const teamB = normalize(m.teamB);
+
+        return (
+          (teamA === home && teamB === away) ||
+          (teamA === away && teamB === home)
+        );
+      });
 
       if (!match) continue;
+
+      // evita sobrescrever jogo já finalizado
       if (match.status === 'Finalizado') continue;
 
       await Match.updateOne(
         { _id: match._id },
         {
           $set: {
-            scoreA: game.goals.home,
-            scoreB: game.goals.away,
-            status: statusMap[game.fixture.status.short] || 'Agendado'
+            scoreA: game.home_score ?? null,
+            scoreB: game.away_score ?? null,
+            status: mapStatus(game.status)
           }
         }
       );
+
+      console.log(`✅ ${match.teamA} x ${match.teamB}`);
+      updated++;
     }
 
-    console.log('✅ Atualização concluída');
+    console.log('='.repeat(50));
+    console.log(`🎯 Jogos atualizados: ${updated}`);
+    console.log('='.repeat(50));
+
   } catch (err) {
     console.error('❌ Erro:', err.message);
   }
