@@ -315,7 +315,7 @@ const PORT = process.env.PORT || 5000;
 // ======================
 // CRON AUTOMÁTICO
 // ======================
-cron.schedule('*/2 * * * *', () => {
+cron.schedule('*/5 * * * *', () => {
   console.log('🔄 Atualizando jogos automaticamente...');
   updateMatches();
 });
@@ -335,6 +335,9 @@ const server = app.listen(PORT, () => {
   console.log('   ✅ localhost:3000, 5173, 8000, 8080');
 
   console.log('='.repeat(50));
+  const mapApiIds = require('./services/mapApiIds');
+
+mapApiIds();
 });
 
 // Manipulador de erro do servidor
