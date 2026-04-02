@@ -315,7 +315,7 @@ const PORT = process.env.PORT || 5000;
 // ======================
 // CRON AUTOMÁTICO
 // ======================
-cron.schedule('*/20 * * * *', () => {
+cron.schedule('*/2 * * * *', () => {
   console.log('🔄 Atualizando jogos automaticamente...');
   updateMatches();
 });
