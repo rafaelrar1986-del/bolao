@@ -4,7 +4,7 @@ const API_KEY = process.env.API_FOOTBALL_KEY;
 
 async function updateMatches() {
   try {
-    console.log('🔍 TESTANDO API...');
+    console.log('🔍 TESTANDO API BSD...');
 
     const response = await axios.get(
       'https://sports.bzzoiro.com/api/events/?date_from=2026-06-01&date_to=2026-07-31',
@@ -21,8 +21,7 @@ async function updateMatches() {
     console.log('TOTAL DE JOGOS:', games.length);
     console.log('==============================');
 
-    // 🔥 MOSTRAR 3 JOGOS
-    games.slice(0, 3).forEach((g, i) => {
+    games.slice(0, 5).forEach((g, i) => {
       console.log(`\nJOGO ${i + 1}`);
       console.log(JSON.stringify(g, null, 2));
     });
