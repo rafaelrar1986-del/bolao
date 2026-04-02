@@ -3,77 +3,76 @@ const Match = require('../models/Match');
 
 const API_KEY = process.env.API_FOOTBALL_KEY;
 
-// 🔥 MAPA COMPLETO (PT → EN)
+// 🔥 MAPA COMPLETO (PT → EN) — CORRIGIDO
 const nameMap = {
   // América
-  brasil: 'brazil',
-  argentina: 'argentina',
-  uruguai: 'uruguay',
-  paraguai: 'paraguay',
-  equador: 'ecuador',
-  colombia: 'colombia',
-  estados unidos: 'usa',
-  canada: 'canada',
-  mexico: 'mexico',
-  costa rica: 'costa rica',
-  panama: 'panama',
-  haiti: 'haiti',
-  curaçao: 'curacao',
+  "brasil": "brazil",
+  "argentina": "argentina",
+  "uruguai": "uruguay",
+  "paraguai": "paraguay",
+  "equador": "ecuador",
+  "colombia": "colombia",
+  "estados unidos": "usa",
+  "canada": "canada",
+  "mexico": "mexico",
+  "panama": "panama",
+  "haiti": "haiti",
+  "curacao": "curacao",
 
   // Europa
-  alemanha: 'germany',
-  espanha: 'spain',
-  portugal: 'portugal',
-  franca: 'france',
-  inglaterra: 'england',
-  croacia: 'croatia',
-  belgica: 'belgium',
-  suica: 'switzerland',
-  suecia: 'sweden',
-  noruega: 'norway',
-  austria: 'austria',
-  escocia: 'scotland',
-  italia: 'italy',
-  holanda: 'netherlands',
-  republica tcheca: 'czech republic',
+  "alemanha": "germany",
+  "espanha": "spain",
+  "portugal": "portugal",
+  "franca": "france",
+  "inglaterra": "england",
+  "croacia": "croatia",
+  "belgica": "belgium",
+  "suica": "switzerland",
+  "suecia": "sweden",
+  "noruega": "norway",
+  "austria": "austria",
+  "escocia": "scotland",
+  "italia": "italy",
+  "holanda": "netherlands",
+  "republica tcheca": "czech republic",
 
   // África
-  marrocos: 'morocco',
-  senegal: 'senegal',
-  egito: 'egypt',
-  gana: 'ghana',
-  tunisia: 'tunisia',
-  costa do marfim: 'ivory coast',
-  rd congo: 'dr congo',
-  congo: 'congo',
+  "marrocos": "morocco",
+  "senegal": "senegal",
+  "egito": "egypt",
+  "gana": "ghana",
+  "tunisia": "tunisia",
+  "costa do marfim": "ivory coast",
+  "rd congo": "dr congo",
+  "congo": "congo",
 
   // Ásia
-  japao: 'japan',
-  coreia do sul: 'south korea',
-  ira: 'iran',
-  iraque: 'iraq',
-  arabia saudita: 'saudi arabia',
-  uzbequistao: 'uzbekistan',
-  jordania: 'jordan',
-  catar: 'qatar',
+  "japao": "japan",
+  "coreia do sul": "south korea",
+  "ira": "iran",
+  "iraque": "iraq",
+  "arabia saudita": "saudi arabia",
+  "uzbequistao": "uzbekistan",
+  "jordania": "jordan",
+  "catar": "qatar",
 
   // Oceania
-  australia: 'australia',
-  nova zelandia: 'new zealand',
+  "australia": "australia",
+  "nova zelandia": "new zealand",
 
   // Outros
-  turquia: 'turkey',
-  argelia: 'algeria',
-  cabo verde: 'cape verde'
+  "turquia": "turkey",
+  "argelia": "algeria",
+  "cabo verde": "cape verde"
 };
 
-// 🔧 NORMALIZAÇÃO
+// 🔧 NORMALIZAÇÃO FORTE
 function normalize(str) {
   let s = str
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/ç/g, 'c')
+    .replace(/[\u0300-\u036f]/g, "") // remove acento
+    .replace(/ç/g, "c")
     .trim();
 
   return nameMap[s] || s;
