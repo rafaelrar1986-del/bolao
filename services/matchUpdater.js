@@ -1,9 +1,13 @@
 const axios = require('axios');
-const Match = require('../models/Match');
+// Assumindo que a pasta 'models' está no mesmo nível da pasta 'services'
+const Match = require('../models/Match'); 
+
+// Como estes arquivos estão na MESMA pasta que este (services/), usamos ./
+const { recalculateAllPoints } = require('./pointsService');
+const { trySaveDailyPoints } = require('./dailyHistoryService');
 
 const API_KEY = process.env.API_FOOTBALL_KEY;
 
-// 🎯 MAPA DE STATUS (API BSD → SEU SISTEMA)
 const statusMap = {
   notstarted: 'scheduled',
   inprogress: '1_tempo',
@@ -21,108 +25,80 @@ const statusMap = {
 
 async function updateMatches() {
   try {
-    console.log('🔄 Iniciando busca global e atualização de todas as páginas...');
+    console.log('🚀 [Cron] Iniciando busca global e atualização automática...');
 
-    // URL inicial
-    let nextUrl = 'https://sports.bzzoiro.com/api/events/?date_from=2026-06-11&date_to=2026-07-28';
-    let updated = 0;
-    let notFound = 0;
+    let nextUrl = 'https://sports.bzzoiro.com/api/events/?date_from=2026-04-03&date_to=2026-04-03';
+    let updatedCount = 0;
     let page = 1;
 
-    // 🔄 LOOP DE PAGINAÇÃO
     while (nextUrl) {
       console.log(`\n📄 PROCESSANDO PÁGINA ${page}...`);
       
       const response = await axios.get(nextUrl, {
-        headers: {
-          Authorization: `Token ${API_KEY}`
-        }
+        headers: { Authorization: `Token ${API_KEY}` }
       });
 
       const games = response.data.results || [];
 
       for (const game of games) {
-        // 🏆 Filtra só Copa (Liga 27)
-        if (game.league?.id !== 27) continue;
+        if (game.league?.id !== 6) continue;
 
-        // Busca no seu banco pelo ID da API (8287, etc)
         const match = await Match.findOne({ apiId: game.id });
-
-        // 🔍 LOG se não encontrar no banco
-        if (!match) {
-          console.log(`❌ NÃO ENCONTROU NO BANCO: ${game.home_team} x ${game.away_team} | ID: ${game.id}`);
-          notFound++;
-          continue;
-        }
+        if (!match) continue;
 
         const newStatus = statusMap[game.status] || 'scheduled';
 
-        const before = {
-          status: match.status,
-          scoreA: match.scoreA,
-          scoreB: match.scoreB
-        };
-
-        const after = {
-          status: newStatus,
-          scoreA: game.home_score,
-          scoreB: game.away_score
-        };
-
-        // 🔥 Verifica mudança
         const changed =
-          before.status !== after.status ||
-          before.scoreA !== after.scoreA ||
-          before.scoreB !== after.scoreB;
+          match.status !== newStatus ||
+          match.scoreA !== game.home_score ||
+          match.scoreB !== game.away_score;
 
         if (!changed) continue;
 
-        // 📋 LOG DETALHADO (Mantendo seu padrão)
         console.log('='.repeat(50));
-        console.log(`⚽ ${match.teamA} x ${match.teamB}`);
-        console.log(`API: ${game.home_team} x ${game.away_team}`);
-        console.log(`ANTES: ${before.status} | ${before.scoreA} x ${before.scoreB}`);
-        console.log(`DEPOIS: ${after.status} | ${after.scoreA} x ${after.scoreB}`);
+        console.log(`⚽ ATUALIZAÇÃO: ${match.teamA} x ${match.teamB}`);
+        console.log(`STATUS: ${match.status} ➔ ${newStatus}`);
+        console.log(`PLACAR: ${match.scoreA}x${match.scoreB} ➔ ${game.home_score}x${game.away_score}`);
 
-        // 🏁 FINALIZADO
-        if (after.status === 'finished') {
-          console.log(`🏁 FINALIZADO: ${match.teamA} x ${match.teamB}`);
-        }
-
-        // 🔄 UPDATE NO MONGODB
         await Match.updateOne(
           { _id: match._id },
           {
             $set: {
-              scoreA: after.scoreA,
-              scoreB: after.scoreB,
-              status: after.status,
+              scoreA: game.home_score,
+              scoreB: game.away_score,
+              status: newStatus,
               apiStatus: game.status,
-              minute: game.current_minute
-                ? `${game.current_minute}'`
-                : '',
+              minute: game.current_minute ? `${game.current_minute}'` : '',
               penaltiesA: game.home_penalty_score ?? null,
               penaltiesB: game.away_penalty_score ?? null
             }
           }
         );
 
-        updated++;
+        // Dispara o processamento apenas se o jogo finalizou agora
+        if (match.status !== 'finished' && newStatus === 'finished') {
+          console.log(`🏆 [Sistema] Partida Finalizada! Processando pontos e histórico...`);
+          try {
+            // 1. Recalcula pontos globais
+            const result = await recalculateAllPoints();
+            console.log(`✅ [Pontos] Sincronização concluída para ${result.updated} usuários.`);
+            
+            // 2. Tenta fechar o dia e salvar no histórico
+            await trySaveDailyPoints(game.event_date);
+          } catch (procError) {
+            console.error(`❌ [Erro Processamento] Falha ao liquidar pontos/histórico:`, procError.message);
+          }
+        }
+        updatedCount++;
       }
-
-      // ⏭️ ATUALIZA URL PARA A PRÓXIMA PÁGINA
       nextUrl = response.data.next; 
       page++;
     }
-
     console.log('\n' + '='.repeat(50));
-    console.log(`🎯 FIM DO PROCESSO`);
-    console.log(`✅ Total de Partidas Atualizadas: ${updated}`);
-    console.log(`❌ Total de Partidas não encontradas: ${notFound}`);
+    console.log(`✨ [Fim da Rodada] Partidas atualizadas: ${updatedCount}`);
     console.log('='.repeat(50));
-
   } catch (err) {
-    console.error('❌ Erro ao atualizar partidas:', err.message);
+    console.error('❌ [Erro Crítico]:', err.message);
   }
 }
 
