@@ -44,20 +44,18 @@ const teamMap = {
   "new zealand": "nova zelandia",
   "cape verde": "cabo verde",
   "ivory coast": "costa do marfim",
+  "cote divoire": "costa do marfim",
+  "cote d ivoire": "costa do marfim",
   "dr congo": "rd congo",
   "congo": "congo",
-
-  // extras importantes
   "qatar": "catar",
   "scotland": "escocia",
-  "jordan": "jordania",
-  "cote divoire": "costa do marfim",
-  "cote d ivoire": "costa do marfim"
+  "jordan": "jordania"
 };
 
-// 🔧 NORMALIZAÇÃO (REMOVE ACENTO + PADRONIZA)
+// 🔧 NORMALIZAÇÃO
 function normalize(str) {
-  return str
+  return (str || '')
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -66,10 +64,10 @@ function normalize(str) {
     .trim();
 }
 
-// 🔁 TRADUÇÃO
+// 🔁 TRADUÇÃO + NORMALIZAÇÃO
 function translate(name) {
   const n = normalize(name);
-  return teamMap[n] || n;
+  return normalize(teamMap[n] || n);
 }
 
 async function mapApiIds() {
@@ -77,7 +75,7 @@ async function mapApiIds() {
     console.log('🔍 Mapeando apiIds...');
 
     const response = await axios.get(
-      'https://sports.bzzoiro.com/api/events/?date_from=2026-06-01&date_to=2026-07-10',
+      'https://sports.bzzoiro.com/api/events/?date_from=2026-06-01&date_to=2026-07-20',
       {
         headers: {
           Authorization: `Token ${API_KEY}`
@@ -86,18 +84,19 @@ async function mapApiIds() {
     );
 
     const games = response.data.results || [];
-
-    // 🔥 pega todos os jogos do seu banco
     const matches = await Match.find({});
+
+    console.log('👉 Jogos no banco:', matches.length);
+    console.log('👉 Jogos da API:', games.length);
 
     let mapped = 0;
 
     for (const game of games) {
 
-      // ✅ FILTRO CORRETO (COPA DO MUNDO)
-      if (game.league.api_id !== 16) continue;
+      // ✅ FILTRA COPA DO MUNDO (CORRIGIDO)
+      if (!game.league?.name?.includes('World Cup')) continue;
 
-      // ❌ IGNORA PLAY-OFF (não existem no seu banco)
+      // ❌ ignora play-off
       if (
         game.home_team.includes('Play-Off') ||
         game.away_team.includes('Play-Off')
@@ -106,7 +105,6 @@ async function mapApiIds() {
       const home = translate(game.home_team);
       const away = translate(game.away_team);
 
-      // 🔥 MATCH EM MEMÓRIA (FUNCIONA COM ACENTO)
       const match = matches.find(m => {
         const teamA = normalize(m.teamA);
         const teamB = normalize(m.teamB);
@@ -122,10 +120,7 @@ async function mapApiIds() {
         continue;
       }
 
-      // 🔒 evita sobrescrever
-      if (match.apiId) continue;
-
-      // 🔥 UPDATE DIRETO NO MONGO
+      // 🔥 ATUALIZA NO MONGO
       const result = await Match.updateOne(
         { _id: match._id },
         { $set: { apiId: game.api_id } }
@@ -133,8 +128,8 @@ async function mapApiIds() {
 
       console.log(
         `✅ ${match.teamA} x ${match.teamB} → ${game.api_id}`,
-        '| update:',
-        result
+        '| modified:',
+        result.modifiedCount
       );
 
       mapped++;
