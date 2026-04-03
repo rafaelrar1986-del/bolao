@@ -7,7 +7,7 @@ async function updateAllMatches() {
     console.log(`🚀 Iniciando busca global para atualização...`);
 
     // URL inicial com o seu filtro de data
-    let nextUrl = 'https://sports.bzzoiro.com/api/events/?date_from=2026-06-01&date_to=2026-07-30';
+    let nextUrl = 'https://sports.bzzoiro.com/api/events/?date_from=2026-06-11&date_to=2026-07-30';
     let page = 1;
     let totalProcessado = 0;
 
