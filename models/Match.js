@@ -2,10 +2,16 @@ const mongoose = require('mongoose');
 const { Schema } = mongoose;
 
 /**
- * status:
- * - 'scheduled'  (agendado)
- * - 'in_progress' (em andamento)
- * - 'finished'   (finalizado)
+ * Status Detalhados (Baseados na API BSD):
+ * - 'scheduled'   (Agendado - NS)
+ * - '1_tempo'     (Em andamento - 1H)
+ * - 'intervalo'   (Pausa - HT)
+ * - '2_tempo'     (Em andamento - 2H)
+ * - 'prorrogacao' (Tempo Extra - ET)
+ * - 'penaltis'    (Disputa de Penais - P)
+ * - 'finished'    (Finalizado - FT, AET, PEN)
+ * - 'cancelled'   (Cancelado)
+ * - 'postponed'   (Adiado)
  */
 
 const MatchSchema = new Schema(
@@ -16,21 +22,27 @@ const MatchSchema = new Schema(
     teamB: { type: String, required: true, trim: true },
 
     group: { type: String, required: true, trim: true },
-    // phase indica se é 'group' (fase de grupos) ou 'knockout' (mata-mata)
-    phase: { type: String, enum: ['group','knockout'], default: 'group', index: true },
+    phase: { type: String, enum: ['group', 'knockout'], default: 'group', index: true },
 
-    // Em partidas eliminatórias (mata-mata), campo que indica quem foi classificado: 'A' | 'B' | null
-    qualifiedSide: { type: String, enum: ['A','B', null], default: null },
+    qualifiedSide: { type: String, enum: ['A', 'B', null], default: null },
     stadium: { type: String, default: '', trim: true },
 
-    // Datas no formato texto (DD/MM/AAAA, HH:MM) como você usa no front;
-    // se preferir, mude para Date.
     date: { type: String, required: true, trim: true }, // "DD/MM/AAAA"
     time: { type: String, required: true, trim: true }, // "HH:MM"
 
     status: {
       type: String,
-      enum: ['scheduled', 'in_progress', 'finished'],
+      enum: [
+        'scheduled', 
+        '1_tempo', 
+        'intervalo', 
+        '2_tempo', 
+        'prorrogacao', 
+        'penaltis', 
+        'finished', 
+        'cancelled', 
+        'postponed'
+      ],
       default: 'scheduled',
       index: true,
     },
@@ -38,15 +50,24 @@ const MatchSchema = new Schema(
     scoreA: { type: Number, default: null, min: 0 },
     scoreB: { type: Number, default: null, min: 0 },
 
-    // Campo opcional para contadores agregados (ex.: betsCount na listagem admin).
-    // Você pode mantê-lo como cache se algum pipeline populá-lo.
+    // Placar específico para disputa de pênaltis (Mata-mata)
+    penaltiesA: { type: Number, default: null },
+    penaltiesB: { type: Number, default: null },
+
+    // Dados de tempo real da API
+    apiStatus: { type: String, default: 'NS' }, 
+    minute: { type: String, default: '' },      
+    
+    // Controle para não processar pontos repetidos no bolão
+    processed: { type: Boolean, default: false }, 
+
     betsCount: { type: Number, default: 0 },
     apiId: {
-  type: Number,
-  required: false,
-  index: true,
-  sparse: true    
-},
+      type: Number,
+      required: false,
+      index: true,
+      sparse: true
+    },
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
@@ -56,58 +77,59 @@ MatchSchema.virtual('isFinished').get(function () {
   return this.status === 'finished';
 });
 
+// Verifica se o jogo está rolando (em qualquer uma das etapas)
+MatchSchema.virtual('isLive').get(function () {
+  return ['1_tempo', 'intervalo', '2_tempo', 'prorrogacao', 'penaltis'].includes(this.status);
+});
+
 MatchSchema.virtual('winner').get(function () {
   if (this.status !== 'finished') return null;
+  
   const a = typeof this.scoreA === 'number' ? this.scoreA : null;
   const b = typeof this.scoreB === 'number' ? this.scoreB : null;
+  
   if (a === null || b === null) return null;
+  
+  // Se terminou nos pênaltis, o vencedor vem do placar de penais
+  if (this.penaltiesA !== null && this.penaltiesB !== null) {
+      return this.penaltiesA > this.penaltiesB ? 'A' : 'B';
+  }
+
   if (a > b) return 'A';
   if (b > a) return 'B';
   return 'D'; // draw
 });
 
-// ---------- Métodos Estáticos Úteis ----------
-/**
- * Finaliza a partida com placar informado.
- */
-MatchSchema.statics.finishMatch = async function (matchId, scoreA, scoreB) {
+// ---------- Métodos Estáticos ----------
+MatchSchema.statics.finishMatch = async function (matchId, scoreA, scoreB, penA = null, penB = null) {
   const match = await this.findOne({ matchId: Number(matchId) });
   if (!match) throw new Error(`Partida ${matchId} não encontrada`);
 
   match.scoreA = Number(scoreA);
   match.scoreB = Number(scoreB);
+  match.penaltiesA = penA !== null ? Number(penA) : null;
+  match.penaltiesB = penB !== null ? Number(penB) : null;
   match.status = 'finished';
 
   await match.save();
   return match;
 };
 
-/**
- * Reabre (desfinaliza) a partida, limpando placar e voltando status.
- * Útil para testes/simulações.
- */
 MatchSchema.statics.unfinishMatch = async function (matchId, statusBack = 'scheduled') {
   const match = await this.findOne({ matchId: Number(matchId) });
   if (!match) throw new Error(`Partida ${matchId} não encontrada`);
 
-  match.status = statusBack; // 'scheduled' (padrão) ou 'in_progress'
+  match.status = statusBack; 
   match.scoreA = null;
   match.scoreB = null;
+  match.penaltiesA = null;
+  match.penaltiesB = null;
+  match.processed = false;
 
   await match.save();
   return match;
 };
 
-/**
- * Exclui a partida definitivamente.
- */
-MatchSchema.statics.deleteByMatchId = async function (matchId) {
-  const res = await this.deleteOne({ matchId: Number(matchId) });
-  if (res.deletedCount === 0) throw new Error(`Partida ${matchId} não encontrada`);
-  return true;
-};
-
-// ---------- Índices adicionais (se quiser ordenar por grupo+id com frequência) ----------
 MatchSchema.index({ group: 1, matchId: 1 });
 
 module.exports = mongoose.models.Match || mongoose.model('Match', MatchSchema);
