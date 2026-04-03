@@ -3,7 +3,7 @@ const Match = require('../models/Match');
 
 const API_KEY = process.env.API_FOOTBALL_KEY;
 
-// 🔥 TRADUÇÃO EN → PT (COMPLETA)
+// 🔥 TRADUÇÃO EN → PT
 const teamMap = {
   "brazil": "brasil",
   "morocco": "marrocos",
@@ -47,7 +47,7 @@ const teamMap = {
   "dr congo": "rd congo",
   "congo": "congo",
 
-  // 🔥 CORREÇÕES IMPORTANTES
+  // ajustes finais
   "qatar": "catar",
   "scotland": "escocia",
   "jordan": "jordania",
@@ -55,18 +55,18 @@ const teamMap = {
   "cote d ivoire": "costa do marfim"
 };
 
-// 🔧 NORMALIZAÇÃO FORTE
+// 🔧 NORMALIZAÇÃO
 function normalize(str) {
   return str
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/ç/g, 'c')
-    .replace(/'/g, '') // remove apóstrofo
+    .replace(/'/g, '')
     .trim();
 }
 
-// 🔁 TRADUZ API → PADRÃO DO BANCO
+// 🔁 TRADUÇÃO
 function translate(name) {
   const n = normalize(name);
   return teamMap[n] || n;
@@ -77,7 +77,7 @@ async function mapApiIds() {
     console.log('🔍 Mapeando apiIds...');
 
     const response = await axios.get(
-      'https://sports.bzzoiro.com/api/events/?date_from=2026-06-10&date_to=2026-06-27',
+      'https://sports.bzzoiro.com/api/events/?date_from=2026-06-01&date_to=2026-07-10',
       {
         headers: {
           Authorization: `Token ${API_KEY}`
@@ -119,11 +119,18 @@ async function mapApiIds() {
         continue;
       }
 
-      // 🔥 SALVAMENTO GARANTIDO (ESSENCIAL)
-      match.apiId = game.api_id;
-      await match.save();
+      // 🔥 UPDATE DIRETO NO MONGO (SEM ERRO)
+      const result = await Match.updateOne(
+        { _id: match._id },
+        { $set: { apiId: game.api_id } }
+      );
 
-      console.log(`✅ ${match.teamA} x ${match.teamB} → ${game.api_id}`);
+      console.log(
+        `✅ ${match.teamA} x ${match.teamB} → ${game.api_id}`,
+        '| update:',
+        result
+      );
+
       mapped++;
     }
 
