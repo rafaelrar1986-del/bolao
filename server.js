@@ -91,6 +91,16 @@ mongoose
   })
   .then(() => {
     console.log('✅ MongoDB conectado com sucesso!');
+    mongoose
+  .connect(MONGODB_URI, {...})
+  .then(async () => {
+    console.log('✅ MongoDB conectado com sucesso!');
+
+    // 🔥 RODA AQUI (CORRETO)
+    const mapApiIds = require('./services/mapApiIdsBSD');
+    await mapApiIds();
+
+  })
     console.log('📊 Database:', mongoose.connection.name);
     console.log('🔗 Host:', mongoose.connection.host);
   })
@@ -335,8 +345,7 @@ const server = app.listen(PORT, () => {
   console.log('   ✅ localhost:3000, 5173, 8000, 8080');
 
   console.log('='.repeat(50));
- const mapApiIds = require('./services/mapApiIdsBSD');
-mapApiIds();
+ 
 });
 
 // Manipulador de erro do servidor
