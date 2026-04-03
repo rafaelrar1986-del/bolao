@@ -320,10 +320,10 @@ const PORT = process.env.PORT || 5000;
 // ======================
 // CRON AUTOMÁTICO
 // ======================
-cron.schedule('*/2 * * * *', () => {
-console.log('🔄 Atualizando jogos automaticamente...');
-updateMatches();
-});
+//cron.schedule('*/2 * * * *', () => {
+//console.log('🔄 Atualizando jogos automaticamente...');
+//updateMatches();
+//});
 const server = app.listen(PORT, () => {
   console.log('='.repeat(50));
   console.log(`🎯 Servidor rodando: http://localhost:${PORT}`);
