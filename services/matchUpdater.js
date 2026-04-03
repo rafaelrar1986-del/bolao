@@ -1,34 +1,44 @@
 const axios = require('axios');
 
-const API_KEY = process.env.API_FOOTBALL_KEY;
+// Usa a mesma chave que funcionou no seu dump
+const API_KEY = process.env.API_FOOTBALL_KEY; 
 
-async function updateMatches() {
+async function debugSingleMatch(matchId) {
   try {
-    console.log('🔍 TESTANDO API BSD...');
+    console.log(`--- INICIANDO BUSCA DA PARTIDA ID: ${matchId} ---`);
+    
+    // Rota direta para o evento específico
+    const url = `https://sports.bzzoiro.com/api/events/${matchId}/?tz=America/Sao_Paulo`;
 
-    const response = await axios.get(
-      'https://sports.bzzoiro.com/api/events/?date_from=2026-06-10&date_to=2026-07-31',
-      {
-        headers: {
-          Authorization: `Token ${API_KEY}`
-        }
-      }
-    );
-
-    const games = response.data.results || [];
-
-    console.log('==============================');
-    console.log('TOTAL DE JOGOS:', games.length);
-    console.log('==============================');
-
-    games.slice(0, 5).forEach((g, i) => {
-      console.log(`\nJOGO ${i + 1}`);
-      console.log(JSON.stringify(g, null, 2));
+    const response = await axios.get(url, {
+      headers: { Authorization: `Token ${API_KEY}` }
     });
 
+    const g = response.data;
+
+    // Log formatado para você ver exatamente o que interessa para o banco
+    console.log("--------------------------------------------------");
+    console.log(`JOGO: ${g.home_team} x ${g.away_team}`);
+    console.log(`STATUS ATUAL: ${g.status}`);
+    console.log(`PLACAR: ${g.home_score} x ${g.away_score}`);
+    console.log(`ID DA API: ${g.id}`);
+    console.log(`DATA (BR): ${g.event_date}`);
+    console.log("--------------------------------------------------");
+    
+    // Log do JSON bruto caso você queira ver campos de estatísticas/incidentes
+    console.log("JSON COMPLETO PARA INSPEÇÃO:");
+    console.log(JSON.stringify(g, null, 2));
+    
+    console.log('--- FIM DA CONSULTA ---');
+
   } catch (err) {
-    console.error('❌ ERRO:', err.message);
+    if (err.response) {
+        console.error(`Erro na API (${err.response.status}):`, err.response.data);
+    } else {
+        console.error('Erro ao buscar dados:', err.message);
+    }
   }
 }
 
-module.exports = updateMatches;
+// Chama a função para o ID desejado
+debugSingleMatch(8287);
