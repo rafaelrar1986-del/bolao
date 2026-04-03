@@ -42,15 +42,21 @@ async function updateMatches() {
     const games = response.data.results || [];
 
     let updated = 0;
+    let notFound = 0;
 
     for (const game of games) {
 
-      // 🏆 Filtra só Copa do Mundo
+      // 🏆 Continua filtrando só Copa (isso pode manter)
       if (game.league?.id !== 27) continue;
 
       const match = await Match.findOne({ apiId: game.id });
 
-      if (!match) continue;
+      // 🔍 LOG se não encontrar no banco
+      if (!match) {
+        console.log(`❌ NÃO ENCONTROU NO BANCO: ${game.home_team} x ${game.away_team} | ID: ${game.id}`);
+        notFound++;
+        continue;
+      }
 
       const newStatus = statusMap[game.status] || 'scheduled';
 
@@ -66,7 +72,7 @@ async function updateMatches() {
         scoreB: game.away_score
       };
 
-      // 🔥 Verifica se houve mudança
+      // 🔥 Verifica mudança
       const changed =
         before.status !== after.status ||
         before.scoreA !== after.scoreA ||
@@ -77,15 +83,16 @@ async function updateMatches() {
       // 📋 LOG DETALHADO
       console.log('='.repeat(50));
       console.log(`⚽ ${match.teamA} x ${match.teamB}`);
+      console.log(`API: ${game.home_team} x ${game.away_team}`);
       console.log(`ANTES: ${before.status} | ${before.scoreA} x ${before.scoreB}`);
       console.log(`DEPOIS: ${after.status} | ${after.scoreA} x ${after.scoreB}`);
 
-      // 🏁 Log especial para finalizados
+      // 🏁 FINALIZADO
       if (after.status === 'finished') {
         console.log(`🏁 FINALIZADO: ${match.teamA} x ${match.teamB}`);
       }
 
-      // 🔄 ATUALIZA NO MONGO
+      // 🔄 UPDATE
       await Match.updateOne(
         { _id: match._id },
         {
@@ -110,7 +117,8 @@ async function updateMatches() {
     }
 
     console.log('='.repeat(50));
-    console.log(`🎯 Partidas atualizadas: ${updated}`);
+    console.log(`🎯 Atualizadas: ${updated}`);
+    console.log(`❌ Não encontradas no banco: ${notFound}`);
     console.log('='.repeat(50));
 
   } catch (err) {
