@@ -335,7 +335,8 @@ const server = app.listen(PORT, () => {
   console.log('   ✅ localhost:3000, 5173, 8000, 8080');
 
   console.log('='.repeat(50));
- 
+ const mapApiIds = require('./services/mapApiIdsBSD');
+mapApiIds();
 });
 
 // Manipulador de erro do servidor
