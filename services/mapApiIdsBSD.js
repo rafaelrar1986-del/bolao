@@ -47,7 +47,7 @@ const teamMap = {
   "dr congo": "rd congo",
   "congo": "congo",
 
-  // ajustes finais
+  // extras importantes
   "qatar": "catar",
   "scotland": "escocia",
   "jordan": "jordania",
@@ -86,32 +86,28 @@ async function mapApiIds() {
     );
 
     const games = response.data.results || [];
-    const matches = await Match.find({});
-
     let mapped = 0;
 
     for (const game of games) {
 
-      // ✅ só Copa
-      if (game.league.name !== 'World Cup 2026') continue;
-
-      // ❌ ignora Play-Off
-      if (
-        game.home_team.includes('Play-Off') ||
-        game.away_team.includes('Play-Off')
-      ) continue;
+      // ✅ FILTRO CORRETO (ID DA COPA)
+      if (game.league.api_id !== 16) continue;
 
       const home = translate(game.home_team);
       const away = translate(game.away_team);
 
-      const match = matches.find(m => {
-        const teamA = normalize(m.teamA);
-        const teamB = normalize(m.teamB);
-
-        return (
-          (teamA === home && teamB === away) ||
-          (teamA === away && teamB === home)
-        );
+      // 🔥 BUSCA DIRETO NO BANCO
+      const match = await Match.findOne({
+        $or: [
+          {
+            teamA: new RegExp(`^${home}$`, 'i'),
+            teamB: new RegExp(`^${away}$`, 'i')
+          },
+          {
+            teamA: new RegExp(`^${away}$`, 'i'),
+            teamB: new RegExp(`^${home}$`, 'i')
+          }
+        ]
       });
 
       if (!match) {
@@ -119,7 +115,9 @@ async function mapApiIds() {
         continue;
       }
 
-      // 🔥 UPDATE DIRETO NO MONGO (SEM ERRO)
+      // 🔒 evita reprocessar
+      if (match.apiId) continue;
+
       const result = await Match.updateOne(
         { _id: match._id },
         { $set: { apiId: game.api_id } }
