@@ -31,7 +31,7 @@ async function updateMatches() {
     console.log('🔄 Atualizando partidas...');
 
     const response = await axios.get(
-      'https://sports.bzzoiro.com/api/events/?date_from=2026-06-01&date_to=2026-07-30',
+      'https://sports.bzzoiro.com/api/events/?date_from=2026-06-11&date_to=2026-07-30',
       {
         headers: {
           Authorization: `Token ${API_KEY}`
