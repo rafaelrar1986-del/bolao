@@ -89,20 +89,15 @@ mongoose
     retryWrites: true,
     w: 'majority'
   })
-  .then(() => {
-    console.log('✅ MongoDB conectado com sucesso!');
-    mongoose
-  .connect(MONGODB_URI, {...})
   .then(async () => {
     console.log('✅ MongoDB conectado com sucesso!');
+    console.log('📊 Database:', mongoose.connection.name);
+    console.log('🔗 Host:', mongoose.connection.host);
 
-    // 🔥 RODA AQUI (CORRETO)
+    // 🔥 RODA O MAPEAMENTO AQUI (UMA VEZ)
     const mapApiIds = require('./services/mapApiIdsBSD');
     await mapApiIds();
 
-  })
-    console.log('📊 Database:', mongoose.connection.name);
-    console.log('🔗 Host:', mongoose.connection.host);
   })
   .catch(err => {
     console.error('❌ ERRO na conexão com MongoDB:');
