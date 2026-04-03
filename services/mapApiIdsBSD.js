@@ -3,25 +3,86 @@ const Match = require('../models/Match');
 
 const API_KEY = process.env.API_FOOTBALL_KEY;
 
-// 🔧 NORMALIZAÇÃO FORTE
+// 🔥 DICIONÁRIO EN → PT (mantém!)
+const teamMap = {
+  "brazil": "brasil",
+  "morocco": "marrocos",
+  "mexico": "mexico",
+  "south africa": "africa do sul",
+  "south korea": "coreia do sul",
+  "usa": "estados unidos",
+  "paraguay": "paraguai",
+  "canada": "canada",
+  "uzbekistan": "uzbequistao",
+  "austria": "austria",
+  "tunisia": "tunisia",
+  "croatia": "croacia",
+  "belgium": "belgica",
+  "norway": "noruega",
+  "sweden": "suecia",
+  "germany": "alemanha",
+  "spain": "espanha",
+  "france": "franca",
+  "england": "inglaterra",
+  "argentina": "argentina",
+  "uruguay": "uruguai",
+  "colombia": "colombia",
+  "ecuador": "equador",
+  "ghana": "gana",
+  "egypt": "egito",
+  "senegal": "senegal",
+  "algeria": "argelia",
+  "turkey": "turquia",
+  "italy": "italia",
+  "netherlands": "holanda",
+  "switzerland": "suica",
+  "japan": "japao",
+  "iran": "ira",
+  "iraq": "iraque",
+  "saudi arabia": "arabia saudita",
+  "czech republic": "republica tcheca",
+  "new zealand": "nova zelandia",
+  "cape verde": "cabo verde",
+  "ivory coast": "costa do marfim",
+  "cote divoire": "costa do marfim",
+  "cote d ivoire": "costa do marfim",
+  "dr congo": "rd congo",
+  "congo": "congo",
+  "qatar": "catar",
+  "scotland": "escocia",
+  "jordan": "jordania"
+};
+
+// 🔧 NORMALIZAÇÃO
 function normalize(str) {
   return (str || '')
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/ç/g, 'c')
-    .replace(/[^a-z\s]/g, '') // remove tudo estranho
+    .replace(/[^a-z\s]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-// 🔥 MATCH FLEXÍVEL (ESSENCIAL)
+// 🔁 TRADUÇÃO (usa dicionário)
+function translate(name) {
+  const n = normalize(name);
+  return normalize(teamMap[n] || n);
+}
+
+// 🔥 MATCH INTELIGENTE
 function isMatch(teamA, teamB, home, away) {
   const a = normalize(teamA);
   const b = normalize(teamB);
-  const h = normalize(home);
-  const aw = normalize(away);
 
+  const h = translate(home);
+  const aw = translate(away);
+
+  // match exato (prioridade)
+  if ((a === h && b === aw) || (a === aw && b === h)) return true;
+
+  // fallback flexível
   return (
     (a.includes(h) && b.includes(aw)) ||
     (a.includes(aw) && b.includes(h))
