@@ -3,7 +3,7 @@ const Match = require('../models/Match');
 
 const API_KEY = process.env.API_FOOTBALL_KEY;
 
-// 🔥 TRADUÇÃO EN → PT
+// 🔥 TRADUÇÃO EN → PT (COMPLETA)
 const teamMap = {
   "brazil": "brasil",
   "morocco": "marrocos",
@@ -45,18 +45,28 @@ const teamMap = {
   "cape verde": "cabo verde",
   "ivory coast": "costa do marfim",
   "dr congo": "rd congo",
-  "congo": "congo"
+  "congo": "congo",
+
+  // 🔥 CORREÇÕES IMPORTANTES
+  "qatar": "catar",
+  "scotland": "escocia",
+  "jordan": "jordania",
+  "cote divoire": "costa do marfim",
+  "cote d ivoire": "costa do marfim"
 };
 
+// 🔧 NORMALIZAÇÃO FORTE
 function normalize(str) {
   return str
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/ç/g, 'c')
+    .replace(/'/g, '') // remove apóstrofo
     .trim();
 }
 
+// 🔁 TRADUZ API → PADRÃO DO BANCO
 function translate(name) {
   const n = normalize(name);
   return teamMap[n] || n;
@@ -67,7 +77,7 @@ async function mapApiIds() {
     console.log('🔍 Mapeando apiIds...');
 
     const response = await axios.get(
-      'https://sports.bzzoiro.com/api/events/?date_from=2026-06-11&date_to=2026-06-27',
+      'https://sports.bzzoiro.com/api/events/?date_from=2026-06-10&date_to=2026-06-27',
       {
         headers: {
           Authorization: `Token ${API_KEY}`
@@ -82,10 +92,10 @@ async function mapApiIds() {
 
     for (const game of games) {
 
-      // ✅ só copa
+      // ✅ só Copa
       if (game.league.name !== 'World Cup 2026') continue;
 
-      // ❌ ignora playoff
+      // ❌ ignora Play-Off
       if (
         game.home_team.includes('Play-Off') ||
         game.away_team.includes('Play-Off')
@@ -109,12 +119,9 @@ async function mapApiIds() {
         continue;
       }
 
-      await Match.updateOne(
-        { _id: match._id },
-        {
-          $set: { apiId: game.api_id }
-        }
-      );
+      // 🔥 SALVAMENTO GARANTIDO (ESSENCIAL)
+      match.apiId = game.api_id;
+      await match.save();
 
       console.log(`✅ ${match.teamA} x ${match.teamB} → ${game.api_id}`);
       mapped++;
