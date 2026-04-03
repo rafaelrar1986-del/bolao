@@ -95,8 +95,8 @@ mongoose
     console.log('🔗 Host:', mongoose.connection.host);
 
     // 🔥 RODA O MAPEAMENTO AQUI (UMA VEZ)
-    const mapApiIds = require('./services/mapApiIdsBSD');
-    await mapApiIds();
+    //const mapApiIds = require('./services/mapApiIdsBSD');
+    //await mapApiIds();
 
   })
   .catch(err => {
