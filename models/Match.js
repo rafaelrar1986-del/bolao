@@ -42,6 +42,13 @@ const MatchSchema = new Schema(
     // Você pode mantê-lo como cache se algum pipeline populá-lo.
     betsCount: { type: Number, default: 0 },
   },
+
+  apiId: {
+  type: Number,
+  required: false,
+  index: true
+},
+
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
 
