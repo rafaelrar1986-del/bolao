@@ -24,7 +24,7 @@ async function updateMatches() {
     console.log('🔄 Iniciando busca global e atualização de todas as páginas...');
 
     // URL inicial
-    let nextUrl = 'https://sports.bzzoiro.com/api/events/?date_from=2026-06-11&date_to=2026-07-30';
+    let nextUrl = 'https://sports.bzzoiro.com/api/events/?date_from=2026-06-11&date_to=2026-07-28';
     let updated = 0;
     let notFound = 0;
     let page = 1;
