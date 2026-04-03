@@ -3,10 +3,44 @@ const Match = require('../models/Match');
 
 const API_KEY = process.env.API_FOOTBALL_KEY;
 
-// 🌎 DICIONÁRIO COMPLETO - COPA DO MÉXICO, EUA E CANADÁ 2026
+// 🌎 DICIONÁRIO DE TRADUÇÃO E MAPEAMENTO DE PLAY-OFFS
+// Chave: Nome como vem na API (Inglês/Genérico) -> Valor: Nome no seu Banco (Português)
 const teamMap = {
-  // Américas
+  // 🏆 SEUS CLASSIFICADOS VIA PLAY-OFF (DE ACORDO COM SUA TABELA)
+  "fifa play-off 1": "rd congo",
+  "fifa play-off 2": "iraque",
+  "uefa play-off a": "bosnia e herzegovina",
+  "uefa play-off b": "suecia",
+  "uefa play-off c": "turquia",
+
+  // 🌍 ÁFRICA & ÁSIA
+  "cote d'ivoire": "costa do marfim",
+  "cote divoire": "costa do marfim",
+  "ivory coast": "costa do marfim",
+  "dr congo": "rd congo",
+  "south africa": "africa do sul",
+  "morocco": "marrocos",
+  "egypt": "egito",
+  "tunisia": "tunisia",
+  "algeria": "argelia",
+  "ghana": "gana",
+  "senegal": "senegal",
+  "south korea": "coreia do sul",
+  "korea republic": "coreia do sul",
+  "japan": "japao",
+  "saudi arabia": "arabia saudita",
+  "iran": "ira",
+  "iraq": "iraque",
+  "jordan": "jordania",
+  "qatar": "catar",
+  "uzbekistan": "uzbequistao",
+
+  // 🌎 AMÉRICAS
   "brazil": "brasil",
+  "mexico": "mexico",
+  "usa": "estados unidos",
+  "united states": "estados unidos",
+  "canada": "canada",
   "argentina": "argentina",
   "uruguay": "uruguai",
   "colombia": "colombia",
@@ -14,16 +48,8 @@ const teamMap = {
   "paraguay": "paraguai",
   "chile": "chile",
   "peru": "peru",
-  "venezuela": "venezuela",
-  "mexico": "mexico",
-  "usa": "estados unidos",
-  "united states": "estados unidos",
-  "canada": "canada",
-  "panama": "panama",
-  "costa rica": "costa rica",
-  "jamaica": "jamaica",
 
-  // Europa
+  // 🇪🇺 EUROPA
   "germany": "alemanha",
   "france": "franca",
   "spain": "espanha",
@@ -34,142 +60,94 @@ const teamMap = {
   "portugal": "portugal",
   "croatia": "croacia",
   "switzerland": "suica",
-  "denmark": "dinamarca",
-  "austria": "austria",
-  "norway": "noruega",
-  "sweden": "suecia",
   "turkey": "turquia",
-  "scotland": "escocia",
-  "poland": "polonia",
-  "serbia": "servia",
-  "ukraine": "ucrania",
-
-  // África
-  "morocco": "marrocos",
-  "senegal": "senegal",
-  "egypt": "egito",
-  "tunisia": "tunisia",
-  "algeria": "argelia",
-  "nigeria": "nigeria",
-  "cameroon": "camaroes",
-  "ghana": "gana",
-  "ivory coast": "costa do marfim",
-  "cote d'ivoire": "costa do marfim",
-  "south africa": "africa do sul",
-  "dr congo": "rd congo",
-
-  // Ásia e Oceania
-  "japan": "japao",
-  "south korea": "coreia do sul",
-  "korea republic": "coreia do sul",
-  "australia": "australia",
-  "iran": "ira",
-  "iraq": "iraque",
-  "saudi arabia": "arabia saudita",
-  "qatar": "catar",
-  "uzbekistan": "uzbequistao",
-  "china": "china",
-  "jordan": "jordania",
-  "new zealand": "nova zelandia"
+  "sweden": "suecia",
+  "norway": "noruega",
+  "bosnia and herzegovina": "bosnia e herzegovina",
+  "czech republic": "republica tcheca",
+  "austria": "austria",
+  "poland": "polonia"
 };
 
-// 🔧 NORMALIZAÇÃO ROBUSTA
+// 🔧 FUNÇÃO DE NORMALIZAÇÃO
 function normalize(str) {
   return (str || '')
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[\u0300-\u036f]/g, "") // Remove acentos
     .replace(/ç/g, 'c')
-    .replace(/[^a-z\s]/g, '')
+    .replace(/[^a-z0-9\s]/g, '')    // Mantém números para os Play-offs
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-// 🔁 TRADUÇÃO COM FALLBACK
+// 🔁 TRADUÇÃO
 function translate(name) {
   const n = normalize(name);
   return normalize(teamMap[n] || n);
 }
 
-// 🔥 MATCH INTELIGENTE
-function isMatch(teamA, teamB, home, away) {
-  const h = translate(home);
-  const aw = translate(away);
+// 🔥 MATCH INTELIGENTE (Cruza nomes traduzidos)
+function isMatch(teamA, teamB, homeApi, awayApi) {
+  const h = translate(homeApi);
+  const aw = translate(awayApi);
   const a = normalize(teamA);
   const b = normalize(teamB);
 
-  // Verificação cruzada (previne erro de ordem Home/Away)
-  const matchNormal = (a === h && b === aw);
-  const matchInvertido = (a === aw && b === h);
-  const matchParcial = (a.includes(h) && b.includes(aw)) || (a.includes(aw) && b.includes(h));
-
-  return matchNormal || matchInvertido || matchParcial;
+  // Match exato ou invertido (ordem de mandante/visitante)
+  return (a === h && b === aw) || (a === aw && b === h) ||
+         (a.includes(h) && b.includes(aw)) || (a.includes(aw) && b.includes(h));
 }
 
 async function mapApiIds() {
   try {
-    console.log('🚀 Iniciando Mapeamento Global da Copa 2026...');
+    console.log('🔍 Iniciando mapeamento com Play-offs definidos...');
 
-    // Pega todos os jogos do seu banco de dados
     const matchesInDb = await Match.find({});
-    console.log(`📊 Jogos no seu banco: ${matchesInDb.length}`);
+    console.log(`👉 Jogos no Banco: ${matchesInDb.length}`);
 
-    // URL Inicial da API (League 27 = World Cup)
-    let nextUrl = 'https://sports.bzzoiro.com/api/events/?league=27&date_from=2026-06-01&date_to=2026-07-30&tz=America/Fortaleza';
-    let mappedCount = 0;
-    let pageCount = 1;
+    // URL com league=27 (World Cup) e range total da Copa
+    let url = 'https://sports.bzzoiro.com/api/events/?league=27&date_from=2026-06-01&date_to=2026-07-30&tz=America/Fortaleza';
+    let mapped = 0;
 
-    // 🔄 LOOP DE PAGINAÇÃO
-    while (nextUrl) {
-      console.log(`📄 Lendo página ${pageCount} da API...`);
-      
-      const response = await axios.get(nextUrl, {
+    while (url) {
+      const response = await axios.get(url, {
         headers: { Authorization: `Token ${API_KEY}` }
       });
 
       const apiGames = response.data.results || [];
       
       for (const game of apiGames) {
-        // Tenta encontrar o jogo correspondente no seu banco
+        // Busca o jogo no seu banco usando a lógica do dicionário
         const match = matchesInDb.find(m => 
           isMatch(m.teamA, m.teamB, game.home_team, game.away_team)
         );
 
         if (match) {
-          // ATUALIZAÇÃO: Salvamos o 'id' da API que é usado nos endpoints de live/details
-          const result = await Match.updateOne(
+          const res = await Match.updateOne(
             { _id: match._id },
-            { 
-              $set: { 
-                apiId: game.id,
-                apiIdProvider: game.api_id, // ID secundário caso precise
-                lastSync: new Date()
-              } 
-            }
+            { $set: { apiId: game.id, lastSync: new Date() } }
           );
 
-          if (result.modifiedCount > 0) {
-            console.log(`✅ MAPEADO: ${match.teamA} x ${match.teamB} (ID: ${game.id})`);
-            mappedCount++;
+          if (res.modifiedCount > 0) {
+            console.log(`✅ MAPEADO: ${match.teamA} x ${match.teamB} → ID: ${game.id}`);
+            mapped++;
           }
         } else {
-          console.log(`⚠️ NÃO ENCONTRADO: ${game.home_team} x ${game.away_team}`);
+          console.log(`❌ S/ MATCH: ${game.home_team} x ${game.away_team}`);
         }
       }
 
-      // Atualiza para a próxima página (se houver)
-      nextUrl = response.data.next;
-      pageCount++;
+      // Avança para a próxima página da API
+      url = response.data.next;
     }
 
-    console.log('\n' + '—'.repeat(40));
-    console.log(`🎯 FIM DO PROCESSO`);
-    console.log(`✅ Sucessos: ${mappedCount}`);
-    console.log(`❌ Falhas: ${matchesInDb.length - mappedCount}`);
-    console.log('—'.repeat(40));
+    console.log('\n' + '='.repeat(40));
+    console.log(`🎯 TOTAL MAPEADO: ${mapped}/${matchesInDb.length}`);
+    console.log('='.repeat(40));
 
   } catch (err) {
-    console.error('❌ ERRO NO PROCESSO:', err.response?.data || err.message);
+    console.error('❌ ERRO CRÍTICO:', err.message);
   }
 }
 
