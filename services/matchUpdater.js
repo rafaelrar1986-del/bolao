@@ -27,7 +27,7 @@ async function updateMatches() {
   try {
     console.log('🚀 [Cron] Iniciando busca global e atualização automática...');
 
-    let nextUrl = 'https://sports.bzzoiro.com/api/events/?date_from=2026-04-03&date_to=2026-04-03';
+    let nextUrl = 'https://sports.bzzoiro.com/api/events/?date_from=2026-04-05&date_to=2026-04-05';
     let updatedCount = 0;
     let page = 1;
 
@@ -41,7 +41,7 @@ async function updateMatches() {
       const games = response.data.results || [];
 
       for (const game of games) {
-        if (game.league?.id !== 6) continue;
+        if (game.league?.id !== 34) continue;
 
         const match = await Match.findOne({ apiId: game.id });
         if (!match) continue;
