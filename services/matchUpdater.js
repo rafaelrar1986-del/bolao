@@ -1,8 +1,6 @@
 const axios = require('axios');
-// Assumindo que a pasta 'models' está no mesmo nível da pasta 'services'
 const Match = require('../models/Match'); 
 
-// Como estes arquivos estão na MESMA pasta que este (services/), usamos ./
 const { recalculateAllPoints } = require('./pointsService');
 const { trySaveDailyPoints } = require('./dailyHistoryService');
 
@@ -47,46 +45,55 @@ async function updateMatches() {
         if (!match) continue;
 
         const newStatus = statusMap[game.status] || 'scheduled';
+        const newMinute = game.current_minute ? `${game.current_minute}'` : '';
 
+        // --- LÓGICA DE DETECÇÃO DE MUDANÇA ---
+        // Agora o 'changed' verifica se o minuto da API é diferente do minuto atual no banco
         const changed =
           match.status !== newStatus ||
           match.scoreA !== game.home_score ||
-          match.scoreB !== game.away_score;
+          match.scoreB !== game.away_score ||
+          match.minute !== newMinute; 
 
         if (!changed) continue;
 
-        console.log('='.repeat(50));
-        console.log(`⚽ ATUALIZAÇÃO: ${match.teamA} x ${match.teamB}`);
-        console.log(`STATUS: ${match.status} ➔ ${newStatus}`);
-        console.log(`PLACAR: ${match.scoreA}x${match.scoreB} ➔ ${game.home_score}x${game.away_score}`);
+        // --- LOGS DE ATUALIZAÇÃO ---
+        const isOnlyMinuteUpdate = match.status === newStatus && 
+                                   match.scoreA === game.home_score && 
+                                   match.scoreB === game.away_score;
 
-        await Match.updateOne(
-          { _id: match._id },
-          {
-            $set: {
-              scoreA: game.home_score,
-              scoreB: game.away_score,
-              status: newStatus,
-              apiStatus: game.status,
-              minute: game.current_minute ? `${game.current_minute}'` : '',
-              penaltiesA: game.home_penalty_score ?? null,
-              penaltiesB: game.away_penalty_score ?? null
-            }
-          }
-        );
+        if (isOnlyMinuteUpdate) {
+          console.log(`⏳ [Minuto] ${match.teamA} x ${match.teamB}: ${match.minute || '0'} ➔ ${newMinute}`);
+        } else {
+          console.log('='.repeat(50));
+          console.log(`⚽ PLACAR/STATUS: ${match.teamA} x ${match.teamB}`);
+          console.log(`STATUS: ${match.status} ➔ ${newStatus}`);
+          console.log(`PLACAR: ${match.scoreA}x${match.scoreB} ➔ ${game.home_score}x${game.away_score}`);
+          console.log(`TEMPO: ${newMinute}`);
+        }
 
-        // Dispara o processamento apenas se o jogo finalizou agora
+        // --- SALVAMENTO ---
+        // Atualizamos os campos no objeto encontrado
+        match.scoreA = game.home_score;
+        match.scoreB = game.away_score;
+        match.status = newStatus;
+        match.apiStatus = game.status;
+        match.minute = newMinute;
+        match.penaltiesA = game.home_penalty_score ?? null;
+        match.penaltiesB = game.away_penalty_score ?? null;
+
+        // O .save() persiste todas as alterações, incluindo o minuto
+        await match.save();
+
+        // Lógica de finalização de pontos (inalterada)
         if (match.status !== 'finished' && newStatus === 'finished') {
-          console.log(`🏆 [Sistema] Partida Finalizada! Processando pontos e histórico...`);
+          console.log(`🏆 [Sistema] Partida Finalizada! Processando pontos...`);
           try {
-            // 1. Recalcula pontos globais
             const result = await recalculateAllPoints();
-            console.log(`✅ [Pontos] Sincronização concluída para ${result.updated} usuários.`);
-            
-            // 2. Tenta fechar o dia e salvar no histórico
+            console.log(`✅ [Pontos] Sincronizados para ${result.updated} usuários.`);
             await trySaveDailyPoints(game.event_date);
           } catch (procError) {
-            console.error(`❌ [Erro Processamento] Falha ao liquidar pontos/histórico:`, procError.message);
+            console.error(`❌ [Erro Processamento]:`, procError.message);
           }
         }
         updatedCount++;
@@ -95,7 +102,7 @@ async function updateMatches() {
       page++;
     }
     console.log('\n' + '='.repeat(50));
-    console.log(`✨ [Fim da Rodada] Partidas atualizadas: ${updatedCount}`);
+    console.log(`✨ [Fim da Rodada] Atualizações realizadas: ${updatedCount}`);
     console.log('='.repeat(50));
   } catch (err) {
     console.error('❌ [Erro Crítico]:', err.message);
