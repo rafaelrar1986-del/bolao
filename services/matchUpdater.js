@@ -39,7 +39,7 @@ async function updateMatches() {
       const games = response.data.results || [];
 
       for (const game of games) {
-        if (game.league?.id !== 6) continue;
+        if (game.league?.id !== 3) continue;
 
         const match = await Match.findOne({ apiId: game.id });
         if (!match) continue;
