@@ -2,16 +2,16 @@ const mongoose = require('mongoose');
 const { Schema } = mongoose;
 
 /**
- * Status Detalhados (Baseados na API BSD):
- * - 'scheduled'   (Agendado - NS)
- * - '1_tempo'     (Em andamento - 1H)
- * - 'intervalo'   (Pausa - HT)
- * - '2_tempo'     (Em andamento - 2H)
- * - 'prorrogacao' (Tempo Extra - ET)
- * - 'penaltis'    (Disputa de Penais - P)
- * - 'finished'    (Finalizado - FT, AET, PEN)
- * - 'cancelled'   (Cancelado)
- * - 'postponed'   (Adiado)
+ * Status Detalhados (Baseados na API):
+ * - 'scheduled'    (Agendado - NS)
+ * - '1_tempo'      (Em andamento - 1H)
+ * - 'intervalo'    (Pausa - HT)
+ * - '2_tempo'      (Em andamento - 2H)
+ * - 'prorrogacao'  (Tempo Extra - ET)
+ * - 'penaltis'     (Disputa de Penais - P)
+ * - 'finished'     (Finalizado - FT, AET, PEN)
+ * - 'cancelled'    (Cancelado)
+ * - 'postponed'    (Adiado)
  */
 
 const MatchSchema = new Schema(
@@ -69,19 +69,27 @@ const MatchSchema = new Schema(
       sparse: true
     },
   },
-  { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
+  { 
+    timestamps: true, 
+    toJSON: { virtuals: true }, 
+    toObject: { virtuals: true } 
+  }
 );
 
 // ---------- Virtuals ----------
+
+// Retorna se a partida encerrou
 MatchSchema.virtual('isFinished').get(function () {
   return this.status === 'finished';
 });
 
 // Verifica se o jogo está rolando (em qualquer uma das etapas)
 MatchSchema.virtual('isLive').get(function () {
-  return ['1_tempo', 'intervalo', '2_tempo', 'prorrogacao', 'penaltis'].includes(this.status);
+  const liveStatus = ['1_tempo', 'intervalo', '2_tempo', 'prorrogacao', 'penaltis'];
+  return liveStatus.includes(this.status);
 });
 
+// Determina o vencedor para o cálculo do ranking
 MatchSchema.virtual('winner').get(function () {
   if (this.status !== 'finished') return null;
   
@@ -90,17 +98,22 @@ MatchSchema.virtual('winner').get(function () {
   
   if (a === null || b === null) return null;
   
-  // Se terminou nos pênaltis, o vencedor vem do placar de penais
+  // 1. Se houve disputa de pênaltis, o vencedor real é decidido por eles
   if (this.penaltiesA !== null && this.penaltiesB !== null) {
       return this.penaltiesA > this.penaltiesB ? 'A' : 'B';
   }
 
+  // 2. Resultado do tempo normal/prorrogação
   if (a > b) return 'A';
   if (b > a) return 'B';
-  return 'D'; // draw
+  return 'D'; // Draw (Empate)
 });
 
 // ---------- Métodos Estáticos ----------
+
+/**
+ * Finaliza a partida e salva os resultados
+ */
 MatchSchema.statics.finishMatch = async function (matchId, scoreA, scoreB, penA = null, penB = null) {
   const match = await this.findOne({ matchId: Number(matchId) });
   if (!match) throw new Error(`Partida ${matchId} não encontrada`);
@@ -110,11 +123,15 @@ MatchSchema.statics.finishMatch = async function (matchId, scoreA, scoreB, penA 
   match.penaltiesA = penA !== null ? Number(penA) : null;
   match.penaltiesB = penB !== null ? Number(penB) : null;
   match.status = 'finished';
+  match.minute = "Fim"; // Limpa o minuto para exibir fim
 
   await match.save();
   return match;
 };
 
+/**
+ * Reverte uma partida para o estado agendado (limpa placares)
+ */
 MatchSchema.statics.unfinishMatch = async function (matchId, statusBack = 'scheduled') {
   const match = await this.findOne({ matchId: Number(matchId) });
   if (!match) throw new Error(`Partida ${matchId} não encontrada`);
@@ -124,12 +141,14 @@ MatchSchema.statics.unfinishMatch = async function (matchId, statusBack = 'sched
   match.scoreB = null;
   match.penaltiesA = null;
   match.penaltiesB = null;
+  match.minute = "";
   match.processed = false;
 
   await match.save();
   return match;
 };
 
+// Índices para performance
 MatchSchema.index({ group: 1, matchId: 1 });
 
 module.exports = mongoose.models.Match || mongoose.model('Match', MatchSchema);
