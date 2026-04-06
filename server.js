@@ -4,7 +4,12 @@ const cors = require('cors');
 require('dotenv').config();
 const cron = require('node-cron');
 const updateMatches = require('./services/matchUpdater');
-const groupRoutes = require('./routes/groupRoutes'); // ✅ Importada a nova rota
+
+// ======================
+// IMPORTAÇÃO DE ROTAS
+// ======================
+const groupRoutes = require('./routes/groupRoutes'); 
+const rankingRoutes = require('./routes/rankingRoutes'); // ✅ Nova rota para Ranking Oficial/Parcial
 
 const app = express();
 
@@ -37,7 +42,6 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin(origin, callback) {
-    // Permitir requests sem Origin (ex.: healthchecks, curl, Postman)
     if (!origin) return callback(null, true);
     const isAllowed = allowedOrigins.some(allowed =>
       typeof allowed === 'string' ? origin === allowed : allowed.test(origin)
@@ -47,10 +51,9 @@ const corsOptions = {
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   optionsSuccessStatus: 204,
-  maxAge: 86400 // cache do preflight por 24h
+  maxAge: 86400 
 };
 
-// Aplique CORS globalmente e trate preflights automaticamente
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
@@ -63,9 +66,12 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // ======================
 // ROTAS
 // ======================
-app.use('/api/groups', groupRoutes); // ✅ Adicionada a rota de classificação
+app.use('/api/groups', groupRoutes); // ✅ Rota de classificação
+app.use('/api/bets', rankingRoutes);  // ✅ Rota de ranking (Leaderboard)
 
-// Debug middleware
+// ======================
+// MIDDLEWARE DE DEBUG
+// ======================
 app.use((req, res, next) => {
   console.log('='.repeat(50));
   console.log(`📨 ${req.method} ${req.url}`);
@@ -79,7 +85,8 @@ app.use((req, res, next) => {
   console.log('='.repeat(50));
   next();
 });
-// ======================
+
+//// ======================
 // BANCO DE DADOS - CONEXÃO
 // ======================
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/bolao-copa-2026';
