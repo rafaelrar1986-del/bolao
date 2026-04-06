@@ -4,6 +4,7 @@ const cors = require('cors');
 require('dotenv').config();
 const cron = require('node-cron');
 const updateMatches = require('./services/matchUpdater');
+const groupRoutes = require('./routes/groupRoutes'); // ✅ Importada a nova rota
 
 const app = express();
 
@@ -26,7 +27,7 @@ const allowedOrigins = [
   'https://bolao-gamma.vercel.app',
   /\.vercel\.app$/, // todos os subdomínios vercel
   /\.netlify\.app$/, // todos os subdomínios netlify
-  'https://bolao5.pages.dev',   // ✅ ADICIONE ESTA LINHA
+  'https://bolao5.pages.dev',
   /\.pages\.dev$/,   
   'http://localhost:3000',
   'http://localhost:5173',
@@ -45,7 +46,6 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  // Deixe o CORS refletir automaticamente os headers do preflight
   optionsSuccessStatus: 204,
   maxAge: 86400 // cache do preflight por 24h
 };
@@ -60,7 +60,12 @@ app.options('*', cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Debug middleware (opcional - pode remover em produção)
+// ======================
+// ROTAS
+// ======================
+app.use('/api/groups', groupRoutes); // ✅ Adicionada a rota de classificação
+
+// Debug middleware
 app.use((req, res, next) => {
   console.log('='.repeat(50));
   console.log(`📨 ${req.method} ${req.url}`);
@@ -74,7 +79,6 @@ app.use((req, res, next) => {
   console.log('='.repeat(50));
   next();
 });
-
 // ======================
 // BANCO DE DADOS - CONEXÃO
 // ======================
