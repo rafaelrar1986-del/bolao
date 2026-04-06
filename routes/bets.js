@@ -209,59 +209,113 @@ router.get('/status', protect, async (req, res) => {
 });
 
 /**
- * 🏆 Leaderboard
+ * 🏆 Leaderboard (Oficial + Parcial LIVE)
  */
 router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
   try {
-    const bets = await Bet.find({ hasSubmitted: true })
-      .populate('user', 'name')
-      .select('user totalPoints groupPoints podiumPoints bonusPoints lastUpdate podium groupMatches')
-      .sort({ totalPoints: -1 })
-      .lean();
+    const isPartial = req.query.type === 'partial';
 
-    const matches = await Match.find().select('matchId phase').lean();
-    const matchPhaseMap = new Map(matches.map(m => [m.matchId, m.phase]));
+    // 1. Buscamos as Apostas e as Partidas (lean para performance)
+    const [bets, matches] = await Promise.all([
+      Bet.find({ hasSubmitted: true })
+        .populate('user', 'name avatar')
+        .lean(),
+      Match.find().select('matchId status scoreA scoreB phase qualifiedSide').lean()
+    ]);
 
-    let lastPoints = null;
-    let position = 0;
-    let realIndex = 0;
+    const matchMap = new Map(matches.map(m => [m.matchId, m]));
+
+    // Função auxiliar para calcular vencedor na hora
+    const getWinner = (a, b) => {
+      if (a === null || b === null || isNaN(a) || isNaN(b)) return null;
+      if (a > b) return 'A';
+      if (b > a) return 'B';
+      return 'draw';
+    };
 
     const ranked = bets.map((b) => {
-      realIndex++;
-      if (lastPoints === null || b.totalPoints !== lastPoints) {
-        position = realIndex;
-        lastPoints = b.totalPoints;
+      let totalPoints = 0;
+      let groupPhasePoints = 0;
+      let knockoutPoints = 0;
+
+      // --- SE FOR RANKING OFICIAL (ESTÁTICO) ---
+      if (!isPartial) {
+        (b.groupMatches || []).forEach(gm => {
+          const m = matchMap.get(gm.matchId);
+          if (m && m.status === 'finished') {
+            if (m.phase === 'group') groupPhasePoints += (gm.points || 0);
+            else knockoutPoints += (gm.points || 0) + (gm.qualifierPoints || 0);
+          }
+        });
+        return {
+          user: b.user,
+          totalPoints: b.totalPoints || 0,
+          groupPhasePoints,
+          knockoutPoints,
+          podiumPoints: b.podiumPoints || 0,
+          bonusPoints: b.bonusPoints || 0,
+          lastUpdate: b.lastUpdate
+        };
       }
 
-      const groupPhasePoints = (b.groupMatches || []).reduce((sum, gm) => {
-        const phase = matchPhaseMap.get(gm.matchId);
-        return phase === 'group' ? sum + (gm.points || 0) : sum;
-      }, 0);
+      // --- SE FOR RANKING PARCIAL (LIVE) ---
+      const allMatches = [...(b.groupMatches || []), ...(b.knockoutMatches || [])];
+      
+      allMatches.forEach(gm => {
+        const m = matchMap.get(gm.matchId);
+        // No parcial, contamos tudo que não seja "scheduled" (agendado)
+        if (!m || m.status === 'scheduled') return;
 
-      const knockoutPoints = (b.groupMatches || []).reduce((sum, gm) => {
-        const phase = matchPhaseMap.get(gm.matchId);
-        return phase === 'knockout' ? sum + (gm.points || 0) : sum;
-      }, 0);
+        const realWinner = getWinner(m.scoreA, m.scoreB);
+        
+        // 1. Acerto de Vencedor/Empate (1 ponto)
+        if (realWinner && gm.winner === realWinner) {
+          totalPoints += 1;
+          if (m.phase === 'group') groupPhasePoints += 1;
+          else knockoutPoints += 1;
+        }
+
+        // 2. Acerto de Classificado (1 ponto extra no mata-mata)
+        const realQual = m.qualifiedSide || (realWinner !== 'draw' ? realWinner : null);
+        if (gm.qualifier && realQual && gm.qualifier === realQual) {
+          totalPoints += 1;
+          knockoutPoints += 1;
+        }
+      });
+
+      const finalPoints = totalPoints + (b.podiumPoints || 0) + (b.bonusPoints || 0);
 
       return {
-        position,
         user: b.user,
-        totalPoints: b.totalPoints || 0,
+        totalPoints: finalPoints,
         groupPhasePoints,
         knockoutPoints,
         podiumPoints: b.podiumPoints || 0,
         bonusPoints: b.bonusPoints || 0,
-        podium: b.podium || null,
         lastUpdate: b.lastUpdate
       };
     });
 
-    res.json({ success: true, data: ranked, count: ranked.length });
+    // 2. Ordenação (Pontos desc, depois Nome asc)
+    ranked.sort((a, b) => b.totalPoints - a.totalPoints || (a.user?.name || "").localeCompare(b.user?.name || ""));
+
+    // 3. Atribuição de Posição (Lidando com empates)
+    let lastPoints = null;
+    let position = 0;
+    const finalData = ranked.map((item, index) => {
+      if (lastPoints === null || item.totalPoints !== lastPoints) {
+        position = index + 1;
+        lastPoints = item.totalPoints;
+      }
+      return { ...item, position };
+    });
+
+    res.json({ success: true, data: finalData, count: finalData.length, isPartial });
   } catch (e) {
-    res.status(500).json({ success: false, message: 'Erro ao carregar ranking' });
+    console.error('Leaderboard Error:', e);
+    res.status(500).json({ success: false, message: 'Erro ao processar ranking' });
   }
 });
-
 /**
  * 👁️ Todos os palpites
  */
