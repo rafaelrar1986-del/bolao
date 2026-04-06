@@ -7,7 +7,7 @@ const getGroupStandings = async (req, res) => {
 
     const standings = {};
 
-    // 2. Primeiro passo: Inicializar TODOS os times que existem na tabela de jogos
+    // 2. Inicializar TODOS os times que existem na tabela de jogos (para aparecerem com 0 pontos)
     allGroupMatches.forEach((match) => {
       const { teamA, teamB, group } = match;
 
@@ -23,13 +23,14 @@ const getGroupStandings = async (req, res) => {
       });
     });
 
-    // 3. Segundo passo: Processar apenas os jogos que JÁ TIVERAM gols (parciais ou finais)
+    // 3. Processar apenas os jogos que não estão 'scheduled' (in_play ou finished)
     const activeMatches = allGroupMatches.filter(m => m.status !== 'scheduled');
 
     activeMatches.forEach((match) => {
       const { teamA, teamB, scoreA, scoreB } = match;
 
-      if (scoreA !== null && scoreB !== null) {
+      // Só calcula se houver valores numéricos nos placares
+      if (typeof scoreA === 'number' && typeof scoreB === 'number') {
         const statsA = standings[teamA];
         const statsB = standings[teamB];
 
@@ -60,22 +61,29 @@ const getGroupStandings = async (req, res) => {
       }
     });
 
-    // 4. Agrupar por letra e ordenar
+    // 4. Agrupar por letra do grupo
     const groupedResults = {};
     Object.values(standings).forEach((team) => {
       if (!groupedResults[team.group]) groupedResults[team.group] = [];
       groupedResults[team.group].push(team);
     });
 
+    // 5. Ordenar cada grupo (Pontos > Saldo > Gols Pró > Ordem Alfabética)
     for (const groupName in groupedResults) {
       groupedResults[groupName].sort((a, b) => {
-        return b.pts - a.pts || b.sg - a.sg || b.gp - a.gp || a.name.localeCompare(b.name);
+        return b.pts - a.pts || 
+               b.sg - a.sg || 
+               b.gp - a.gp || 
+               a.name.localeCompare(b.name);
       });
     }
 
     res.json(groupedResults);
   } catch (error) {
     console.error('Erro ao calcular classificação:', error);
-    res.status(500).json({ error: 'Erro interno.' });
+    res.status(500).json({ error: 'Erro interno ao calcular tabela.' });
   }
 };
+
+// ESSA LINHA É A MAIS IMPORTANTE PARA EVITAR O ERRO DE UNDEFINED
+module.exports = { getGroupStandings };
