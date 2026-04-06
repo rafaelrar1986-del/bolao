@@ -2,9 +2,6 @@ const Match = require('../models/Match');
 const User = require('../models/User');
 const Bet = require('../models/Bet');
 
-/**
- * Helper idêntico ao seu pointsService para garantir 100% de paridade.
- */
 function winnerFromScores(a, b) {
   if (typeof a !== 'number' || typeof b !== 'number') return null;
   if (a > b) return 'A';
@@ -16,8 +13,6 @@ const getRanking = async (req, res) => {
   const isPartial = req.query.type === 'partial';
 
   try {
-    // 1. BUSCA DE DADOS
-    // Usamos matchId como chave no Map, conforme o seu pointsService
     const matches = await Match.find().lean();
     const matchMap = new Map(matches.map(m => [m.matchId, m]));
     
@@ -26,81 +21,82 @@ const getRanking = async (req, res) => {
 
     const bets = await Bet.find({ hasSubmitted: true }).lean();
 
-    // 2. CÁLCULO DOS PONTOS (Lógica espelhada do recalculateAllPoints)
-    let unsortedRanking = bets.map(bet => {
-      let groupPoints = 0;
+    const unsortedRanking = bets.map(bet => {
+      let totalPoints = 0;
+      let groupPhasePoints = 0;
+      let knockoutPoints = 0;
 
-      for (const gm of bet.groupMatches || []) {
+      // Unificando as partidas para processar tudo (Grupos e Mata-mata)
+      const allUserMatches = [
+        ...(bet.groupMatches || []),
+        ...(bet.knockoutMatches || [])
+      ];
+
+      for (const gm of allUserMatches) {
         const m = matchMap.get(gm.matchId);
         if (!m) continue;
 
-        // FILTRO DINÂMICO
-        // Oficial: apenas 'finished' | Parcial: tudo que não é 'scheduled'
+        // A MUDANÇA ESTÁ AQUI: 
+        // Se for parcial, aceita qualquer coisa que já começou (in_progress, live, finished, etc)
         const canCount = isPartial 
           ? m.status !== 'scheduled' 
           : m.status === 'finished';
 
         if (!canCount) continue;
 
-        // Apenas fases de grupo ou knockout (mata-mata)
-        if (m.phase && !['group', 'knockout'].includes(m.phase)) continue;
-
-        // Resultado do Jogo (A, B ou draw) - Como você usa o placar da prorrogação,
-        // o winnerFromScores pega o placar atual do Mongo.
+        // Lógica idêntica ao seu pointsService
         const real = winnerFromScores(Number(m.scoreA), Number(m.scoreB));
-        const hitResult = real && gm.winner && real === gm.winner;
-
-        // Lógica de Classificação (Para Mata-Mata)
-        // Se houver qualifiedSide (pênaltis/fim), usa ele. Senão, usa o vencedor atual (real).
-        const realQualifier = (typeof m.qualifiedSide !== 'undefined' && m.qualifiedSide) 
-          ? m.qualifiedSide 
-          : real;
-
-        let hitQualifier = false;
-        if (gm.qualifier && (gm.qualifier === 'A' || gm.qualifier === 'B')) {
-          if (realQualifier && realQualifier !== 'draw' && gm.qualifier === realQualifier) {
-            hitQualifier = true;
-          }
+        
+        // 1. Ponto por acertar Resultado (Vencedor/Empate)
+        if (real && gm.winner && real === gm.winner) {
+          totalPoints += 1;
+          if (m.phase === 'group') groupPhasePoints += 1;
+          else knockoutPoints += 1;
         }
 
-        // Soma: 1 pt por vencedor + 1 pt por classificado
-        groupPoints += (hitResult ? 1 : 0) + (hitQualifier ? 1 : 0);
+        // 2. Ponto por acertar Classificado (Mata-Mata)
+        const realQualifier = m.qualifiedSide || real;
+        if (gm.qualifier && (gm.qualifier === 'A' || gm.qualifier === 'B')) {
+          if (realQualifier && realQualifier !== 'draw' && gm.qualifier === realQualifier) {
+            totalPoints += 1;
+            knockoutPoints += 1;
+          }
+        }
       }
 
-      // Adiciona pontos de Pódio e Bônus que já estão no documento da aposta
+      // Soma Pódio e Bônus (que já costumam estar calculados no doc da Bet)
       const podiumPoints = bet.podiumPoints || 0;
       const bonusPoints = bet.bonusPoints || 0;
+      const finalPoints = totalPoints + podiumPoints + bonusPoints;
 
       const user = userMap.get(bet.userId.toString());
 
       return {
         name: user ? user.name : "Usuário Excluído",
         avatar: user ? user.avatar : "default.png",
-        points: groupPoints + podiumPoints + bonusPoints
+        points: finalPoints,
+        // Mantemos os detalhes para o ranking-mobile-card mostrar certinho
+        groupPhasePoints: groupPhasePoints,
+        knockoutPoints: knockoutPoints,
+        podiumPoints: podiumPoints
       };
     });
 
-    // 3. ORDENAÇÃO (Pontos DESC, depois Nome ASC)
+    // Ordenação e Posição (Igual ao anterior)
     unsortedRanking.sort((a, b) => b.points - a.points || a.name.localeCompare(b.name));
 
-    // 4. LÓGICA DE POSIÇÃO (Ranking de Competição: 1º, 1º, 3º...)
     let finalRanking = [];
     let currentPos = 0;
     let lastPts = -1;
 
     unsortedRanking.forEach((user, index) => {
-      // Se a pontuação mudar, a posição pula para o índice atual + 1
       if (user.points !== lastPts) {
         currentPos = index + 1;
       }
-      
       finalRanking.push({
         position: currentPos,
-        name: user.name,
-        points: user.points,
-        avatar: user.avatar
+        ...user
       });
-
       lastPts = user.points;
     });
 
@@ -108,7 +104,7 @@ const getRanking = async (req, res) => {
 
   } catch (error) {
     console.error("Erro ao gerar ranking:", error);
-    res.status(500).json({ error: "Erro interno no servidor." });
+    res.status(500).json({ error: "Erro interno." });
   }
 };
 
