@@ -2,38 +2,33 @@ const Match = require('../models/Match');
 
 const getGroupStandings = async (req, res) => {
   try {
-    // 1. Buscamos apenas jogos da fase de grupos que já terminaram (ou estão rolando se quiser tabela em tempo real)
-    // Se quiser apenas jogos encerrados, use: { phase: 'group', status: 'finished' }
-    // Para tabela "Live", use: { phase: 'group', status: { $ne: 'scheduled' } }
-    const matches = await Match.find({ 
-      phase: 'group', 
-      status: { $ne: 'scheduled' } 
-    }).lean();
+    // 1. Buscamos TODOS os jogos da fase de grupos (incluindo 'scheduled')
+    const allGroupMatches = await Match.find({ phase: 'group' }).lean();
 
     const standings = {};
 
-    matches.forEach((match) => {
-      const { teamA, teamB, scoreA, scoreB, group } = match;
+    // 2. Primeiro passo: Inicializar TODOS os times que existem na tabela de jogos
+    allGroupMatches.forEach((match) => {
+      const { teamA, teamB, group } = match;
 
-      // Inicializa os times no objeto se não existirem
       [teamA, teamB].forEach((team) => {
         if (!standings[team]) {
           standings[team] = {
             name: team,
             group: group,
-            pj: 0, // Partidas Jogadas
-            v: 0,  // Vitórias
-            e: 0,  // Empates
-            d: 0,  // Derrotas
-            gp: 0, // Gols Pró
-            gc: 0, // Gols Contra
-            sg: 0, // Saldo de Gols
-            pts: 0 // Pontos
+            pj: 0, v: 0, e: 0, d: 0,
+            gp: 0, gc: 0, sg: 0, pts: 0
           };
         }
       });
+    });
 
-      // Só calcula se houver placar (evita erros com null)
+    // 3. Segundo passo: Processar apenas os jogos que JÁ TIVERAM gols (parciais ou finais)
+    const activeMatches = allGroupMatches.filter(m => m.status !== 'scheduled');
+
+    activeMatches.forEach((match) => {
+      const { teamA, teamB, scoreA, scoreB } = match;
+
       if (scoreA !== null && scoreB !== null) {
         const statsA = standings[teamA];
         const statsB = standings[teamB];
@@ -65,28 +60,22 @@ const getGroupStandings = async (req, res) => {
       }
     });
 
-    // 2. Agrupar por letra do grupo e ordenar
+    // 4. Agrupar por letra e ordenar
     const groupedResults = {};
-
     Object.values(standings).forEach((team) => {
-      if (!groupedResults[team.group]) {
-        groupedResults[team.group] = [];
-      }
+      if (!groupedResults[team.group]) groupedResults[team.group] = [];
       groupedResults[team.group].push(team);
     });
 
-    // Ordenar cada grupo por Pontos -> Saldo de Gols -> Gols Pró
     for (const groupName in groupedResults) {
       groupedResults[groupName].sort((a, b) => {
-        return b.pts - a.pts || b.sg - a.sg || b.gp - a.gp;
+        return b.pts - a.pts || b.sg - a.sg || b.gp - a.gp || a.name.localeCompare(b.name);
       });
     }
 
     res.json(groupedResults);
   } catch (error) {
     console.error('Erro ao calcular classificação:', error);
-    res.status(500).json({ error: 'Erro interno ao processar tabela.' });
+    res.status(500).json({ error: 'Erro interno.' });
   }
 };
-
-module.exports = { getGroupStandings };
