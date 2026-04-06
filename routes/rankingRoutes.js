@@ -1,10 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { getRanking } = require('../controllers/rankingController');
-// Se você usa autenticação, importe o seu middleware aqui (ex: protect)
-// const { protect } = require('../middleware/authMiddleware'); 
+const rankingController = require('../controllers/rankingController');
 
-// Define a rota. O controller que te passei vai ler o ?type=partial daqui
-router.get('/leaderboard', getRanking); 
+// Agora o endpoint é /api/bets/partialrank
+router.get('/partialrank', rankingController.getRanking);
 
 module.exports = router;
