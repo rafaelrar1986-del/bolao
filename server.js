@@ -172,7 +172,7 @@ mongoose
           const doc = change.fullDocument;
           
           if (doc) {
-            console.log(`⚽ [ChangeStream] Enviando atualização via SSE: ${doc._id}`);
+            console.log(`⚽⚽⚽ [ChangeStream] Enviando atualização via SSE: ${doc._id}`);
             
             // Enviamos o pacote COMPLETO para o frontend realizar a atualização cirúrgica
             broadcastUpdate({ 
