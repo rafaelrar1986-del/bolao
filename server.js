@@ -162,17 +162,31 @@ mongoose
     // [REAL-TIME] Monitorando mudanças na coleção de partidas via ChangeStream
     try {
       const matchCollection = mongoose.connection.collection('matches');
+      // { fullDocument: 'updateLookup' } garante que o documento completo venha no evento de 'update'
       const changeStream = matchCollection.watch([], { fullDocument: 'updateLookup' });
 
       changeStream.on('change', (change) => {
         const relevantTypes = ['update', 'replace', 'insert'];
+        
         if (relevantTypes.includes(change.operationType)) {
-          console.log(`⚽ [ChangeStream] Partida modificada: ${change.documentKey._id}`);
-          broadcastUpdate({ 
-            type: 'MATCH_UPDATE', 
-            matchId: change.documentKey._id,
-            timestamp: new Date().toISOString()
-          });
+          const doc = change.fullDocument;
+          
+          if (doc) {
+            console.log(`⚽ [ChangeStream] Enviando atualização via SSE: ${doc._id}`);
+            
+            // Enviamos o pacote COMPLETO para o frontend realizar a atualização cirúrgica
+            broadcastUpdate({ 
+              type: 'MATCH_UPDATE', 
+              matchId: doc.matchId || doc._id, // Envia ambos para garantir o "match" no front
+              scoreA: doc.scoreA,
+              scoreB: doc.scoreB,
+              status: doc.status,
+              minute: doc.minute,
+              penaltiesA: doc.penaltiesA,
+              penaltiesB: doc.penaltiesB,
+              timestamp: new Date().toISOString()
+            });
+          }
         }
       });
       console.log('👀 Monitor de partidas ativo (Real-time pronto)');
@@ -185,7 +199,7 @@ mongoose
     console.error('❌ ERRO na conexão com MongoDB:');
     console.error('- String de conexão:', MONGODB_URI.substring(0, 20) + '...');
     console.error('- Erro detalhado:', err.message);
-
+    
     if (process.env.NODE_ENV === 'development') {
       process.exit(1);
     }
