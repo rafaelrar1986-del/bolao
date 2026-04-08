@@ -6,7 +6,7 @@ const PointsHistory = require('../models/PointsHistory');
 const Match = require('../models/Match');
 const User = require('../models/User');
 const Settings = require('../models/Settings'); 
-const { protect, admin, checkPaid } = require('../middleware/auth');
+const { protect, admin, checkPaid } = require('../middleware/auth'); // 💰 checkPaid adicionado
 const { blockStatsIfLocked } = require('../middleware/blockStats');
 
 const router = express.Router();
@@ -190,7 +190,7 @@ router.post('/save', protect, checkPaid, async (req, res) => {
 });
 
 /**
- * ℹ️ Status
+ * ℹ️ Status (Sem checkPaid para permitir verificação básica)
  */
 router.get('/status', protect, async (req, res) => {
   try {
@@ -215,13 +215,17 @@ router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, r
   try {
     const isPartial = req.query.type === 'partial';
 
+    // 1. Buscamos as Apostas e as Partidas (lean para performance)
     const [bets, matches] = await Promise.all([
-      Bet.find({ hasSubmitted: true }).populate('user', 'name avatar').lean(),
+      Bet.find({ hasSubmitted: true })
+        .populate('user', 'name avatar')
+        .lean(),
       Match.find().select('matchId status scoreA scoreB phase qualifiedSide').lean()
     ]);
 
     const matchMap = new Map(matches.map(m => [m.matchId, m]));
 
+    // Função auxiliar para calcular vencedor na hora
     const getWinner = (a, b) => {
       if (a === null || b === null || isNaN(a) || isNaN(b)) return null;
       if (a > b) return 'A';
@@ -234,20 +238,15 @@ router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, r
       let groupPhasePoints = 0;
       let knockoutPoints = 0;
 
-      // --- RANKING OFICIAL ---
+      // --- SE FOR RANKING OFICIAL (ESTÁTICO) ---
       if (!isPartial) {
         (b.groupMatches || []).forEach(gm => {
           const m = matchMap.get(gm.matchId);
           if (m && m.status === 'finished') {
-            if (m.phase === 'group') {
-              groupPhasePoints += (gm.points || 0);
-            } else {
-              // CORREÇÃO: Usamos apenas gm.points (máximo 2)
-              knockoutPoints += (gm.points || 0);
-            }
+            if (m.phase === 'group') groupPhasePoints += (gm.points || 0);
+            else knockoutPoints += (gm.points || 0) + (gm.qualifierPoints || 0);
           }
         });
-
         return {
           user: b.user,
           totalPoints: b.totalPoints || 0,
@@ -259,28 +258,29 @@ router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, r
         };
       }
 
-      // --- RANKING PARCIAL (LIVE) ---
-      (b.groupMatches || []).forEach(gm => {
+      // --- SE FOR RANKING PARCIAL (LIVE) ---
+      const allMatches = [...(b.groupMatches || []), ...(b.knockoutMatches || [])];
+      
+      allMatches.forEach(gm => {
         const m = matchMap.get(gm.matchId);
+        // No parcial, contamos tudo que não seja "scheduled" (agendado)
         if (!m || m.status === 'scheduled') return;
 
         const realWinner = getWinner(m.scoreA, m.scoreB);
-        let matchPoints = 0;
         
+        // 1. Acerto de Vencedor/Empate (1 ponto)
         if (realWinner && gm.winner === realWinner) {
-          matchPoints += 1;
+          totalPoints += 1;
+          if (m.phase === 'group') groupPhasePoints += 1;
+          else knockoutPoints += 1;
         }
 
-        if (m.phase !== 'group') {
-          const realQual = m.qualifiedSide || (realWinner !== 'draw' ? realWinner : null);
-          if (gm.qualifier && realQual && gm.qualifier === realQual) {
-            matchPoints += 1;
-          }
+        // 2. Acerto de Classificado (1 ponto extra no mata-mata)
+        const realQual = m.qualifiedSide || (realWinner !== 'draw' ? realWinner : null);
+        if (gm.qualifier && realQual && gm.qualifier === realQual) {
+          totalPoints += 1;
+          knockoutPoints += 1;
         }
-
-        totalPoints += matchPoints;
-        if (m.phase === 'group') groupPhasePoints += matchPoints;
-        else knockoutPoints += matchPoints;
       });
 
       const finalPoints = totalPoints + (b.podiumPoints || 0) + (b.bonusPoints || 0);
@@ -296,8 +296,10 @@ router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, r
       };
     });
 
+    // 2. Ordenação (Pontos desc, depois Nome asc)
     ranked.sort((a, b) => b.totalPoints - a.totalPoints || (a.user?.name || "").localeCompare(b.user?.name || ""));
 
+    // 3. Atribuição de Posição (Lidando com empates)
     let lastPoints = null;
     let position = 0;
     const finalData = ranked.map((item, index) => {
@@ -309,13 +311,11 @@ router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, r
     });
 
     res.json({ success: true, data: finalData, count: finalData.length, isPartial });
-
   } catch (e) {
     console.error('Leaderboard Error:', e);
     res.status(500).json({ success: false, message: 'Erro ao processar ranking' });
   }
 });
-
 /**
  * 👁️ Todos os palpites
  */
@@ -414,7 +414,7 @@ router.get('/all-bets', protect, checkPaid, blockStatsIfLocked, async (req, res)
 });
 
 /**
- * 🔍 Filtros
+ * 🔍 Partidas para filtro
  */
 router.get('/matches-for-filter', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
   try {
@@ -425,6 +425,9 @@ router.get('/matches-for-filter', protect, checkPaid, blockStatsIfLocked, async 
   }
 });
 
+/**
+ * 👥 Usuários para filtro
+ */
 router.get('/users-for-filter', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
   try {
     const users = await User.find().select('_id name').sort('name').lean();
@@ -435,7 +438,7 @@ router.get('/users-for-filter', protect, checkPaid, blockStatsIfLocked, async (r
 });
 
 /**
- * Admin: Resets
+ * ⚠️ Admin: resetar TODAS as apostas
  */
 router.post('/admin/reset-all', protect, admin, async (req, res) => {
   try {
@@ -451,6 +454,9 @@ router.post('/admin/reset-all', protect, admin, async (req, res) => {
   }
 });
 
+/**
+ * 🏆 Admin: resetar SOMENTE o pódio oficial
+ */
 router.post('/admin/reset-podium', protect, admin, async (req, res) => {
   try {
     const result = await Bet.updateMany({}, {
@@ -465,6 +471,7 @@ router.post('/admin/reset-podium', protect, admin, async (req, res) => {
   }
 });
 
+// 🔐 PERMISSÃO PARA MENU "MORE"
 router.get('/more-access', protect, async (req, res) => {
   try {
     const isAdminUser = req.user?.isAdmin === true || req.user?.role === 'admin';
