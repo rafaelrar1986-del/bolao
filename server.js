@@ -9,7 +9,6 @@ const updateMatches = require('./services/matchUpdater');
 // IMPORTAÇÃO DE ROTAS
 // ======================
 const groupRoutes = require('./routes/groupRoutes'); 
-const rankingRoutes = require('./routes/rankingRoutes'); // ✅ Mantido
 const authRoutes = require('./routes/auth');
 const matchesRoutes = require('./routes/matches');
 const betsRoutes = require('./routes/bets');
@@ -239,7 +238,6 @@ app.get('/api/bets-info', (req, res) => {
 
 // Definição das Rotas Funcionais
 app.use('/api/groups', groupRoutes); 
-app.use('/api/ranking', rankingRoutes); // ✅ Restaurado
 app.use('/api/news', newsRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
