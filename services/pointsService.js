@@ -1,11 +1,9 @@
-// services/pointsService.js
 const mongoose = require('mongoose');
 const Bet = require('../models/Bet');
 const Match = require('../models/Match');
 
 /**
  * Guardamos o pódio final em um documento "Setting" (key='podium').
- * Isso evita criar várias coleções diferentes e funciona como um key-value.
  */
 const SettingsSchema = new mongoose.Schema(
   {
@@ -53,7 +51,6 @@ async function setPodium({ first, second, third, fourth }) {
     { upsert: true }
   );
 
-  // ⚠️ só recalcula pontos se 1º e 2º existirem
   const podium = await getPodium();
   if (podium?.first && podium?.second) {
     const result = await recalculateAllPoints();
@@ -65,10 +62,6 @@ async function setPodium({ first, second, third, fourth }) {
 
 /**
  * Recalcula os pontos de TODOS os bets.
- * Regras:
- * - Fase de grupos: 1 ponto por acerto de vencedor/empate (A/B/draw) em jogos FINALIZADOS.
- * - Pódio: 7/4/2 pontos para 1º/2º/3º se acertar exatamente o time.
- * - totalPoints = groupPoints + podiumPoints + (bonusPoints || 0)
  */
 async function recalculateAllPoints() {
   const matches = await Match.find().lean();
@@ -79,20 +72,18 @@ async function recalculateAllPoints() {
   let updated = 0;
 
   for (const bet of bets) {
-    // ---- pontos de grupos (inclui mata-mata)
     let groupPoints = 0;
 
     for (const gm of bet.groupMatches || []) {
       const m = matchMap.get(gm.matchId);
-                 // considera jogos de fase de grupos e mata-mata igualmente: se o jogo existe e foi finalizado, conta.
+      
       if (!m || m.status !== 'finished') {
-        // jogo não finalizado -> não conta
         gm.points = 0;
         gm.qualifierPoints = 0;
         continue;
       }
-      // Apenas contabilizamos se a partida for de 'group' ou 'knockout' (futuro-proof).
-      if (m.phase && !['group','knockout'].includes(m.phase)) {
+      
+      if (m.phase && !['group', 'knockout'].includes(m.phase)) {
         gm.points = 0;
         gm.qualifierPoints = 0;
         continue;
@@ -101,7 +92,6 @@ async function recalculateAllPoints() {
       const real = winnerFromScores(Number(m.scoreA), Number(m.scoreB));
       const hitResult = real && gm.winner && real === gm.winner;
 
-      // Prefer match.qualifiedSide if admin provided who advanced (useful for draws resolved by penalties)
       const realQualifier = (typeof m.qualifiedSide !== 'undefined' && m.qualifiedSide) ? m.qualifiedSide : real;
 
       let hitQualifier = false;
@@ -111,12 +101,14 @@ async function recalculateAllPoints() {
         }
       }
 
-     gm.points = hitResult ? 1 : 0;           // Agora vale 1
-gm.qualifierPoints = hitQualifier ? 1 : 0; // Agora vale 1
-groupPoints += (gm.points + gm.qualifierPoints); // Total continua sendo 2
+      // Regra de pontos independentes (1+1)
+      gm.points = hitResult ? 1 : 0;
+      gm.qualifierPoints = hitQualifier ? 1 : 0;
+      
+      // Acumula o total da partida para o ranking
+      groupPoints += (gm.points + gm.qualifierPoints);
     }
 
-    // ---- pódio
     let podiumPoints = 0;
     if (podium && bet.podium) {
       if (bet.podium.first && bet.podium.first === podium.first) podiumPoints += 7;
@@ -136,8 +128,6 @@ groupPoints += (gm.points + gm.qualifierPoints); // Total continua sendo 2
 
   return { ok: true, updated };
 }
-
-
 
 async function resetPodium() {
   await Setting.updateOne(
