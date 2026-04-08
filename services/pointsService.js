@@ -111,9 +111,9 @@ async function recalculateAllPoints() {
         }
       }
 
-      gm.qualifierPoints = hitQualifier ? 1 : 0;
-      gm.points = (hitResult ? 1 : 0) + (hitQualifier ? 1 : 0);
-      groupPoints += gm.points;
+     gm.points = hitResult ? 1 : 0;           // Agora vale 1
+gm.qualifierPoints = hitQualifier ? 1 : 0; // Agora vale 1
+groupPoints += (gm.points + gm.qualifierPoints); // Total continua sendo 2
     }
 
     // ---- pódio
