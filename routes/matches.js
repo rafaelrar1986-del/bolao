@@ -266,6 +266,9 @@ router.post('/admin/finish/:matchId', protect, admin, async (req, res) => {
 // - volta para 'scheduled', zera placar
 // - zera pontos desse jogo nas apostas e recalcula totais
 // ======================
+// ======================
+// POST /api/matches/admin/unfinish/:matchId
+// ======================
 router.post('/admin/unfinish/:matchId', protect, admin, async (req, res) => {
   try {
     const matchId = Number(req.params.matchId);
@@ -273,35 +276,59 @@ router.post('/admin/unfinish/:matchId', protect, admin, async (req, res) => {
       return res.status(400).json({ success: false, message: 'matchId inválido' });
     }
 
+    // 1. Volta o status e REMOVE tudo: placares, pênaltis e quem qualificou
     const match = await Match.findOneAndUpdate(
       { matchId },
-      { $set: { status: 'scheduled' }, $unset: { scoreA: 1, scoreB: 1 } },
+      { 
+        $set: { status: 'scheduled' }, 
+        $unset: { 
+          scoreA: 1, 
+          scoreB: 1, 
+          penaltiesA: 1,      // Limpa pênaltis do Time A
+          penaltiesB: 1,      // Limpa pênaltis do Time B
+          qualifiedSide: 1    // Limpa quem passou de fase
+        } 
+      },
       { new: true }
     );
+
     if (!match) {
       return res.status(404).json({ success: false, message: 'Partida não encontrada' });
     }
 
+    // 2. Limpa os pontos das apostas para este jogo específico
     const cursor = Bet.find({ 'groupMatches.matchId': matchId }).cursor();
     for await (const bet of cursor) {
       bet.groupMatches = (bet.groupMatches || []).map(gm => {
-        if (gm.matchId === matchId) gm.points = 0;
+        if (gm.matchId === matchId) {
+          gm.points = 0;           // Zera pontos de acerto de vencedor
+          gm.qualifierPoints = 0;  // Zera pontos de quem passa de fase
+          // Se o seu modelo de aposta (Bet) salvar os chutes de pênaltis do usuário, 
+          // eles geralmente ficam guardados, mas os PONTOS deles devem zerar aqui.
+        }
         return gm;
       });
 
-      bet.groupPoints = (bet.groupMatches || []).reduce((s, gm) => s + (gm.points || 0), 0);
+      // 3. Recalcula o total da aposta somando os campos zerados
+      bet.groupPoints = (bet.groupMatches || []).reduce((s, gm) => {
+        return s + (gm.points || 0) + (gm.qualifierPoints || 0);
+      }, 0);
+
       bet.totalPoints = (bet.groupPoints || 0) + (bet.podiumPoints || 0) + (bet.bonusPoints || 0);
       bet.lastUpdate = new Date();
+      
       await bet.save();
     }
 
-    res.json({ success: true, message: 'Partida reaberta e pontos zerados desse jogo' });
+    res.json({ 
+      success: true, 
+      message: 'Partida reaberta: Placares, Pênaltis e Pontuações foram resetados.' 
+    });
   } catch (err) {
     console.error('Erro ao reabrir partida:', err);
     res.status(500).json({ success: false, message: 'Erro ao reabrir partida' });
   }
 });
-
 // ======================
 // DELETE /api/matches/admin/delete/:matchId  (admin)
 // - remove a partida
