@@ -172,6 +172,9 @@ router.put('/admin/edit/:matchId', protect, admin, async (req, res) => {
 // - marca 1 ponto para quem acertou winner
 // - recalcula groupPoints e totalPoints
 // ======================
+// ======================
+// POST /api/matches/admin/finish/:matchId
+// ======================
 router.post('/admin/finish/:matchId', protect, admin, async (req, res) => {
   try {
     const matchId = Number(req.params.matchId);
@@ -184,7 +187,14 @@ router.post('/admin/finish/:matchId', protect, admin, async (req, res) => {
 
     const match = await Match.findOneAndUpdate(
       { matchId },
-      { $set: { scoreA, scoreB, status: 'finished', qualifiedSide: (typeof req.body.qualifiedSide !== 'undefined' ? req.body.qualifiedSide : undefined) } },
+      { 
+        $set: { 
+          scoreA, 
+          scoreB, 
+          status: 'finished', 
+          qualifiedSide: (typeof req.body.qualifiedSide !== 'undefined' ? req.body.qualifiedSide : undefined) 
+        } 
+      },
       { new: true }
     );
 
@@ -192,54 +202,53 @@ router.post('/admin/finish/:matchId', protect, admin, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Partida não encontrada' });
     }
 
-    const resultWinner = calcWinner(scoreA, scoreB); // 'A' | 'B' | 'draw'
+    const resultWinner = calcWinner(scoreA, scoreB); 
 
     // Atualiza apostas desse jogo
     const cursor = Bet.find({ 'groupMatches.matchId': matchId }).cursor();
+    
     for await (const bet of cursor) {
       bet.groupMatches = (bet.groupMatches || []).map(gm => {
         if (gm.matchId === matchId) {
+          // 1. Acertou o vencedor/empate? (1 ponto)
           const hitResult = gm.winner && gm.winner === resultWinner;
+          gm.points = hitResult ? 1 : 0;
 
+          // 2. Acertou o classificado? (1 ponto) - Geralmente para Mata-Mata
           let hitQualifier = false;
-          // Prefer explicit qualifiedSide set on match (admin) when available, otherwise use resultWinner
-          const realQualifier = (typeof match.qualifiedSide !== 'undefined' && match.qualifiedSide) ? match.qualifiedSide : resultWinner;
+          const realQualifier = (match.qualifiedSide) ? match.qualifiedSide : resultWinner;
+          
           if (gm.qualifier && (gm.qualifier === 'A' || gm.qualifier === 'B')) {
             if (realQualifier && realQualifier !== 'draw' && gm.qualifier === realQualifier) {
               hitQualifier = true;
             }
           }
-
           gm.qualifierPoints = hitQualifier ? 1 : 0;
-          gm.points = (hitResult ? 1 : 0) + (hitQualifier ? 1 : 0);
         }
         return gm;
       });
 
-      bet.groupPoints = (bet.groupMatches || []).reduce((sum, gm) => sum + (gm.points || 0), 0);
+      // 3. Recálculo dos totais da aposta
+      // Somamos points (vencedor) + qualifierPoints (classificado)
+      bet.groupPoints = (bet.groupMatches || []).reduce((sum, gm) => {
+        return sum + (gm.points || 0) + (gm.qualifierPoints || 0);
+      }, 0);
+
       bet.totalPoints = (bet.groupPoints || 0) + (bet.podiumPoints || 0) + (bet.bonusPoints || 0);
       bet.lastUpdate = new Date();
 
       await bet.save();
     }
 
-    // 🔥 TENTA SALVAR O HISTÓRICO DIÁRIO (AUTOMÁTICO)
-const normalizedDate = parseMatchDate(match.date);
-
-console.log(
-  '🧪 Tentando salvar histórico do dia correto:',
-  match.date,
-  '→',
-  normalizedDate
-);
-
-if (normalizedDate) {
-  await trySaveDailyPoints(normalizedDate);
-}
+    // TENTA SALVAR O HISTÓRICO DIÁRIO
+    const normalizedDate = parseMatchDate(match.date);
+    if (normalizedDate) {
+      await trySaveDailyPoints(normalizedDate);
+    }
 
     res.json({
       success: true,
-      message: 'Partida finalizada e pontos atualizados',
+      message: 'Partida finalizada e pontos atualizados corretamente',
       data: {
         matchId: match.matchId,
         scoreA: match.scoreA,
@@ -252,7 +261,6 @@ if (normalizedDate) {
     res.status(500).json({ success: false, message: 'Erro ao finalizar partida' });
   }
 });
-
 // ======================
 // POST /api/matches/admin/unfinish/:matchId  (admin)
 // - volta para 'scheduled', zera placar
