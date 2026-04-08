@@ -28,7 +28,11 @@ if (missingVars.length > 0) {
 // CONFIGURAÇÃO CORS CORRIGIDA - FUNCIONANDO PARA VERCEL
 // ======================
 const allowedOrigins = [
-  'https://bolaokb2026aovivo.pages.dev/',
+  'https://bolao-d2zh.vercel.app',
+  'https://bolao-gamma.vercel.app',
+  /\.vercel\.app$/, // todos os subdomínios vercel
+  /\.netlify\.app$/, // todos os subdomínios netlify
+  'https://bolao5.pages.dev',
   /\.pages\.dev$/,   
   'http://localhost:3000',
   'http://localhost:5173',
