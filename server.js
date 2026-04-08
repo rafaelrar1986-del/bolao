@@ -9,7 +9,7 @@ const updateMatches = require('./services/matchUpdater');
 // IMPORTAÇÃO DE ROTAS
 // ======================
 const groupRoutes = require('./routes/groupRoutes'); 
-const rankingRoutes = require('./routes/rankingRoutes'); // ✅ Nova rota para Ranking Oficial/Parcial
+const rankingRoutes = require('./routes/rankingRoutes'); // ✅ Mantido
 const authRoutes = require('./routes/auth');
 const matchesRoutes = require('./routes/matches');
 const betsRoutes = require('./routes/bets');
@@ -36,14 +36,15 @@ if (missingVars.length > 0) {
 }
 
 // ======================
-// CONFIGURAÇÃO CORS CORRIGIDA - FUNCIONANDO PARA VERCEL
+// CONFIGURAÇÃO CORS CORRIGIDA
 // ======================
 const allowedOrigins = [
   'https://bolao-d2zh.vercel.app',
   'https://bolao-gamma.vercel.app',
-  /\.vercel\.app$/, // todos os subdomínios vercel
-  /\.netlify\.app$/, // todos os subdomínios netlify
+  /\.vercel\.app$/, 
+  /\.netlify\.app$/, 
   'https://bolao5.pages.dev',
+  'https://bolaokb2026toast.pages.dev',
   /\.pages\.dev$/,   
   'http://localhost:3000',
   'http://localhost:5173',
@@ -57,10 +58,19 @@ const corsOptions = {
     const isAllowed = allowedOrigins.some(allowed =>
       typeof allowed === 'string' ? origin === allowed : allowed.test(origin)
     );
-    return isAllowed ? callback(null, true) : callback(new Error('Not allowed by CORS'));
+    
+    if (isAllowed) {
+      // Log para confirmar que o CORS aceitou a requisição no Render
+      console.log(`✅ CORS Permitido: ${origin}`);
+      return callback(null, true);
+    } else {
+      console.error(`🚫 CORS Bloqueado: ${origin}`);
+      return callback(new Error('Not allowed by CORS'));
+    }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
   optionsSuccessStatus: 204,
   maxAge: 86400 
 };
@@ -79,7 +89,6 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // ======================
 let sseClients = [];
 
-// Heartbeat para manter conexão viva no Render/Vercel/Cloudflare
 setInterval(() => {
   if (sseClients.length > 0) {
     sseClients.forEach(client => {
@@ -96,7 +105,7 @@ app.get('/api/events', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no'); // Crítico para Render/Nginx
+  res.setHeader('X-Accel-Buffering', 'no'); 
   res.flushHeaders();
 
   const clientId = Date.now();
@@ -128,7 +137,7 @@ const broadcastUpdate = (data) => {
 // MIDDLEWARE DE DEBUG
 // ======================
 app.use((req, res, next) => {
-  if (req.path === '/api/events') return next(); // Não logar SSE constante
+  if (req.path === '/api/events') return next(); 
   console.log('='.repeat(50));
   console.log(`📨 ${req.method} ${req.url}`);
   console.log('📋 Origin:', req.headers.origin);
@@ -157,27 +166,20 @@ mongoose
   .then(async () => {
     console.log('✅ MongoDB conectado com sucesso!');
     console.log('📊 Database:', mongoose.connection.name);
-    console.log('🔗 Host:', mongoose.connection.host);
 
-    // [REAL-TIME] Monitorando mudanças na coleção de partidas via ChangeStream
     try {
       const matchCollection = mongoose.connection.collection('matches');
-      // { fullDocument: 'updateLookup' } garante que o documento completo venha no evento de 'update'
       const changeStream = matchCollection.watch([], { fullDocument: 'updateLookup' });
 
       changeStream.on('change', (change) => {
         const relevantTypes = ['update', 'replace', 'insert'];
-        
         if (relevantTypes.includes(change.operationType)) {
           const doc = change.fullDocument;
-          
           if (doc) {
             console.log(`⚽⚽⚽ [ChangeStream] Enviando atualização via SSE: ${doc._id}`);
-            
-            // Enviamos o pacote COMPLETO para o frontend realizar a atualização cirúrgica
             broadcastUpdate({ 
               type: 'MATCH_UPDATE', 
-              matchId: doc.matchId || doc._id, // Envia ambos para garantir o "match" no front
+              matchId: doc.matchId || doc._id,
               scoreA: doc.scoreA,
               scoreB: doc.scoreB,
               status: doc.status,
@@ -189,36 +191,18 @@ mongoose
           }
         }
       });
-      console.log('👀 Monitor de partidas ativo (Real-time pronto)');
+      console.log('👀 Monitor de partidas ativo');
     } catch (streamError) {
-      console.error('⚠️ ChangeStream não suportado (Requer Replica Set):', streamError.message);
+      console.error('⚠️ ChangeStream não suportado:', streamError.message);
     }
-
   })
   .catch(err => {
-    console.error('❌ ERRO na conexão com MongoDB:');
-    console.error('- String de conexão:', MONGODB_URI.substring(0, 20) + '...');
-    console.error('- Erro detalhado:', err.message);
-    
-    if (process.env.NODE_ENV === 'development') {
-      process.exit(1);
-    }
+    console.error('❌ ERRO na conexão com MongoDB:', err.message);
+    if (process.env.NODE_ENV === 'development') process.exit(1);
   });
 
-mongoose.connection.on('error', err => {
-  console.error('❌ Erro na conexão MongoDB:', err.message);
-});
-
-mongoose.connection.on('disconnected', () => {
-  console.log('⚠️  MongoDB desconectado');
-});
-
-mongoose.connection.on('reconnected', () => {
-  console.log('✅ MongoDB reconectado');
-});
-
 // ======================
-// ROTAS - USO (DEFINIÇÃO DE ENDPOINTS)
+// ROTAS - USO
 // ======================
 
 app.get('/', (req, res) => {
@@ -233,26 +217,21 @@ app.get('/', (req, res) => {
 
 app.get('/api/health', (req, res) => {
   const dbStatus = mongoose.connection.readyState === 1 ? 'healthy' : 'unhealthy';
-  const statusCode = dbStatus === 'healthy' ? 200 : 503;
-
-  res.status(statusCode).json({
+  res.status(dbStatus === 'healthy' ? 200 : 503).json({
     status: dbStatus === 'healthy' ? 'OK' : 'ERROR',
     database: dbStatus,
-    mongodb_state: mongoose.connection.readyState,
     uptime: process.uptime(),
     timestamp: new Date().toISOString()
   });
 });
 
-// ✅ ROTA INICIAL PARA INFORMAÇÕES DE PALPITES
 app.get('/api/bets-info', (req, res) => {
   res.json({
     success: true,
     message: '🏆 API de Palpites - Use as rotas específicas',
     endpoints: {
       'GET /api/bets/my-bets': 'Buscar meus palpites',
-      'POST /api/bets/save': 'Salvar palpites',
-      'GET /api/bets/status': 'Verificar status'
+      'POST /api/bets/save': 'Salvar palpites'
     },
     timestamp: new Date().toISOString()
   });
@@ -260,6 +239,7 @@ app.get('/api/bets-info', (req, res) => {
 
 // Definição das Rotas Funcionais
 app.use('/api/groups', groupRoutes); 
+app.use('/api/ranking', rankingRoutes); // ✅ Restaurado
 app.use('/api/news', newsRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
@@ -297,22 +277,6 @@ app.use((error, req, res, next) => {
     });
   }
 
-  if (error.name === 'ValidationError') {
-    return res.status(400).json({
-      success: false,
-      message: 'Erro de validação',
-      errors: Object.values(error.errors).map(err => err.message)
-    });
-  }
-
-  if (error.code === 11000) {
-    return res.status(400).json({
-      success: false,
-      message: 'Dados duplicados',
-      field: Object.keys(error.keyPattern)[0]
-    });
-  }
-
   res.status(error.status || 500).json({
     success: false,
     message: 'Erro interno do servidor',
@@ -326,7 +290,6 @@ app.use((error, req, res, next) => {
 const shutdown = async () => {
   console.log('🛑 Desligando servidor graciosamente...');
   await mongoose.connection.close();
-  console.log('✅ MongoDB desconectado');
   process.exit(0);
 };
 
@@ -338,7 +301,6 @@ process.on('SIGTERM', shutdown);
 // ======================
 const PORT = process.env.PORT || 5000;
 
-// CRON AUTOMÁTICO - A cada 2 minutos
 cron.schedule('*/2 * * * *', async () => {
   console.log('🔄 Atualizando jogos automaticamente...');
   try {
@@ -352,17 +314,7 @@ const server = app.listen(PORT, () => {
   console.log('='.repeat(50));
   console.log(`🎯 Servidor rodando: http://localhost:${PORT}`);
   console.log(`📊 MongoDB State: ${mongoose.connection.readyState === 1 ? '✅ Conectado' : '❌ Desconectado'}`);
-  console.log(`🕒 Iniciado em: ${new Date().toLocaleString('pt-BR')}`);
   console.log('='.repeat(50));
-});
-
-server.on('error', (error) => {
-  if (error.code === 'EADDRINUSE') {
-    console.error(`❌ Porta ${PORT} já está em uso!`);
-  } else {
-    console.error('❌ Erro no servidor:', error);
-  }
-  process.exit(1);
 });
 
 module.exports = app;
