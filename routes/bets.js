@@ -208,7 +208,32 @@ router.get('/status', protect, async (req, res) => {
   }
 });
 
-const ranked = bets.map((b) => {
+/**
+ * 🏆 Leaderboard (Oficial + Parcial LIVE)
+ */
+router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
+  try {
+    const isPartial = req.query.type === 'partial';
+
+    // 1. Buscamos as Apostas e as Partidas (lean para performance)
+    const [bets, matches] = await Promise.all([
+      Bet.find({ hasSubmitted: true })
+        .populate('user', 'name avatar')
+        .lean(),
+      Match.find().select('matchId status scoreA scoreB phase qualifiedSide').lean()
+    ]);
+
+    const matchMap = new Map(matches.map(m => [m.matchId, m]));
+
+    // Função auxiliar para calcular vencedor na hora
+    const getWinner = (a, b) => {
+      if (a === null || b === null || isNaN(a) || isNaN(b)) return null;
+      if (a > b) return 'A';
+      if (b > a) return 'B';
+      return 'draw';
+    };
+
+    const ranked = bets.map((b) => {
       let totalPoints = 0;
       let groupPhasePoints = 0;
       let knockoutPoints = 0;
@@ -221,7 +246,7 @@ const ranked = bets.map((b) => {
             if (m.phase === 'group') {
               groupPhasePoints += (gm.points || 0);
             } else {
-              // CORREÇÃO: Usamos apenas gm.points (que o Service já salvou como 1 ou 2)
+              // CORREÇÃO: Usamos apenas gm.points (o Service já salvou o total consolidado 1 ou 2)
               knockoutPoints += (gm.points || 0);
             }
           }
@@ -259,7 +284,7 @@ const ranked = bets.map((b) => {
           }
         }
 
-        // Acumula para o total e para as categorias
+        // Acumula para os contadores parciais
         totalPoints += matchPoints;
         if (m.phase === 'group') {
           groupPhasePoints += matchPoints;
@@ -279,8 +304,7 @@ const ranked = bets.map((b) => {
         bonusPoints: b.bonusPoints || 0,
         lastUpdate: b.lastUpdate
       };
-    });
-
+    }); // Fim do ranked.map
 
     // 2. Ordenação (Pontos desc, depois Nome asc)
     ranked.sort((a, b) => b.totalPoints - a.totalPoints || (a.user?.name || "").localeCompare(b.user?.name || ""));
@@ -297,6 +321,7 @@ const ranked = bets.map((b) => {
     });
 
     res.json({ success: true, data: finalData, count: finalData.length, isPartial });
+
   } catch (e) {
     console.error('Leaderboard Error:', e);
     res.status(500).json({ success: false, message: 'Erro ao processar ranking' });
