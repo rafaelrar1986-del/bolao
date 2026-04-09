@@ -276,17 +276,19 @@ router.post('/admin/unfinish/:matchId', protect, admin, async (req, res) => {
       return res.status(400).json({ success: false, message: 'matchId inválido' });
     }
 
-    // 1. Volta o status e REMOVE tudo: placares, pênaltis e quem qualificou
+    // 1. Volta status, remove placares/qualificado e define pênaltis como null
     const match = await Match.findOneAndUpdate(
       { matchId },
       { 
-        $set: { status: 'scheduled' }, 
+        $set: { 
+          status: 'scheduled',
+          penaltiesA: null,    // Define como null conforme solicitado
+          penaltiesB: null     // Define como null conforme solicitado
+        }, 
         $unset: { 
           scoreA: 1, 
           scoreB: 1, 
-          penaltiesA: 1,      // Limpa pênaltis do Time A
-          penaltiesB: 1,      // Limpa pênaltis do Time B
-          qualifiedSide: 1    // Limpa quem passou de fase
+          qualifiedSide: 1 
         } 
       },
       { new: true }
@@ -302,14 +304,12 @@ router.post('/admin/unfinish/:matchId', protect, admin, async (req, res) => {
       bet.groupMatches = (bet.groupMatches || []).map(gm => {
         if (gm.matchId === matchId) {
           gm.points = 0;           // Zera pontos de acerto de vencedor
-          gm.qualifierPoints = 0;  // Zera pontos de quem passa de fase
-          // Se o seu modelo de aposta (Bet) salvar os chutes de pênaltis do usuário, 
-          // eles geralmente ficam guardados, mas os PONTOS deles devem zerar aqui.
+          gm.qualifierPoints = 0;  // Zera pontos de quem passa de fase (mata-mata)
         }
         return gm;
       });
 
-      // 3. Recalcula o total da aposta somando os campos zerados
+      // 3. Recalcula o total da aposta
       bet.groupPoints = (bet.groupMatches || []).reduce((s, gm) => {
         return s + (gm.points || 0) + (gm.qualifierPoints || 0);
       }, 0);
@@ -322,7 +322,7 @@ router.post('/admin/unfinish/:matchId', protect, admin, async (req, res) => {
 
     res.json({ 
       success: true, 
-      message: 'Partida reaberta: Placares, Pênaltis e Pontuações foram resetados.' 
+      message: 'Partida reaberta: Placares removidos e Pênaltis definidos como null.' 
     });
   } catch (err) {
     console.error('Erro ao reabrir partida:', err);
