@@ -1,4 +1,4 @@
-const axios = require('axios');
+]const axios = require('axios');
 const Match = require('../models/Match'); 
 const { recalculateAllPoints } = require('./pointsService');
 const { trySaveDailyPoints } = require('./dailyHistoryService');
@@ -43,6 +43,8 @@ async function updateMatches() {
     let updatedCount = 0;
     let page = 1;
 
+    const allowedLeagues = [4, 32, 33]; // IDs das ligas permitidas
+
     while (nextUrl) {
       console.log(`\n📄 PROCESSANDO PÁGINA ${page}...`);
       
@@ -51,32 +53,32 @@ async function updateMatches() {
       });
 
       const games = response.data.results || [];
-// Lista das ligas que você quer processar
-const allowedLeagues = [4, 32, 33];
 
-for (const game of games) {
-  // Agora verifica se o ID da liga está dentro da nossa lista
-  if (!allowedLeagues.includes(game.league?.id)) continue;
+      for (const game of games) {
+        // 1. FILTRO DE LIGA
+        if (!allowedLeagues.includes(game.league?.id)) continue;
 
-  const match = await Match.findOne({ apiId: game.id });
-  if (!match) continue;
+        // 2. BUSCA NO BANCO
+        const match = await Match.findOne({ apiId: game.id });
+        if (!match) continue;
 
-  const newStatus = statusMap[game.status] || 'scheduled';
-  const newMinute = game.current_minute ? `${game.current_minute}'` : '';
-  
-  // ... resto do seu código de atualização
-}        
-        // --- LÓGICA AUTOMÁTICA DE CLASSIFICAÇÃO (QUALIFIED SIDE) ---
+        // 3. MAPEAMENTO DE DADOS DA API
+        const newStatus = statusMap[game.status] || 'scheduled';
+        const newMinute = game.current_minute ? `${game.current_minute}'` : '';
+        
+        // 4. LÓGICA AUTOMÁTICA DE CLASSIFICAÇÃO (QUALIFIED SIDE)
         let autoQualifiedSide = match.qualifiedSide;
         
         // Se for mata-mata e o jogo finalizou, calculamos o vencedor agora
-        if (match.phase === 'knockout' && newStatus === 'finished' && !match.qualifiedSide) {
+        const isKnockout = match.phase === 'knockout' || match.phase === 'mata-mata';
+        if (isKnockout && newStatus === 'finished' && !match.qualifiedSide) {
            autoQualifiedSide = determineQualifier(game);
            if (autoQualifiedSide) {
              console.log(`🏆 [Auto-Qualifier] ${match.teamA} x ${match.teamB}: Vencedor definido como [${autoQualifiedSide}]`);
            }
         }
 
+        // 5. VERIFICA SE HOUVE MUDANÇA REAL
         const changed =
           match.status !== newStatus ||
           match.scoreA !== game.home_score ||
@@ -86,6 +88,7 @@ for (const game of games) {
 
         if (!changed) continue;
 
+        // 6. LOGS DE ATUALIZAÇÃO
         const isOnlyMinuteUpdate = match.status === newStatus && 
                                    match.scoreA === game.home_score && 
                                    match.scoreB === game.away_score;
@@ -99,7 +102,9 @@ for (const game of games) {
           if (autoQualifiedSide) console.log(`🏁 CLASSIFICADO: ${autoQualifiedSide}`);
         }
 
-        // --- GRAVAÇÃO NO BANCO ---
+        // 7. GRAVAÇÃO NO BANCO
+        const oldStatus = match.status; // Guardamos para checar se terminou agora
+        
         match.scoreA = game.home_score;
         match.scoreB = game.away_score;
         match.status = newStatus;
@@ -107,13 +112,12 @@ for (const game of games) {
         match.minute = newMinute;
         match.penaltiesA = game.home_penalty_score ?? null;
         match.penaltiesB = game.away_penalty_score ?? null;
-        match.qualifiedSide = autoQualifiedSide; // AGORA GRAVA NO BANCO
+        match.qualifiedSide = autoQualifiedSide;
 
         await match.save();
 
-        // --- PROCESSAMENTO DE PONTOS ---
-        // Como o qualifiedSide foi salvo acima, o recálculo dará os 2 pontos corretamente
-        if (match.status !== 'finished' && newStatus === 'finished') {
+        // 8. PROCESSAMENTO DE PONTOS (Somente se o status mudou para finalizado nesta rodada)
+        if (oldStatus !== 'finished' && newStatus === 'finished') {
           console.log(`🥇 [Sistema] Processando pontos globais...`);
           try {
             const result = await recalculateAllPoints();
@@ -124,13 +128,16 @@ for (const game of games) {
           }
         }
         updatedCount++;
-      }
+      } // Fim do for games
+
       nextUrl = response.data.next; 
       page++;
     }
+
     console.log('\n' + '='.repeat(50));
     console.log(`✨ [Fim da Rodada] Partidas sincronizadas: ${updatedCount}`);
     console.log('='.repeat(50));
+
   } catch (err) {
     console.error('❌ [Erro Crítico]:', err.message);
   }
