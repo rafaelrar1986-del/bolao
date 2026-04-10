@@ -1,4 +1,4 @@
-]const axios = require('axios');
+const axios = require('axios');
 const Match = require('../models/Match'); 
 const { recalculateAllPoints } = require('./pointsService');
 const { trySaveDailyPoints } = require('./dailyHistoryService');
