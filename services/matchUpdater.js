@@ -43,7 +43,7 @@ async function updateMatches() {
     let updatedCount = 0;
     let page = 1;
 
-    const allowedLeagues = [4, 32, 33]; // IDs das ligas permitidas
+    const allowedLeagues = [4, 6, 32, 33]; // IDs das ligas permitidas
 
     while (nextUrl) {
       console.log(`\n📄 PROCESSANDO PÁGINA ${page}...`);
