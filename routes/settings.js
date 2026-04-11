@@ -2,9 +2,12 @@ const express = require('express');
 const router = express.Router();
 const Settings = require('../models/Settings');
 const { protect, admin } = require('../middleware/auth');
-// @route   GET /api/settings
-// @desc    Busca as configurações globais (pode ser pública ou protegida)
-router.get('/', async (req, res) => {
+
+/**
+ * @route   GET /api/settings/global
+ * @desc    Busca as configurações globais (necessário sufixo /global para compatibilidade com o front antigo)
+ */
+router.get('/global', async (req, res) => {
   try {
     let settings = await Settings.findById('global_settings');
     
@@ -19,14 +22,16 @@ router.get('/', async (req, res) => {
   }
 });
 
-// @route   POST /api/settings/admin/update
-// @desc    Atualiza qualquer campo das configurações (Protegido para Admin)
+/**
+ * @route   POST /api/settings/admin/update
+ * @desc    Atualiza campos das configurações (Protegido para Admin)
+ */
 router.post('/admin/update', protect, admin, async (req, res) => {
   try {
     const updates = req.body;
 
     // Usamos o $set para atualizar apenas os campos enviados no body
-    // Isso evita que campos do robô apaguem os campos de trava e vice-versa
+    // Isso garante que você possa atualizar o robô sem mexer nas travas de visibilidade e vice-versa
     const settings = await Settings.findByIdAndUpdate(
       'global_settings',
       { $set: updates },
