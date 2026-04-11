@@ -1,4 +1,3 @@
-// models/Settings.js
 const mongoose = require('mongoose');
 
 const SettingsSchema = new mongoose.Schema(
@@ -7,6 +6,25 @@ const SettingsSchema = new mongoose.Schema(
     _id: {
       type: String,
       default: 'global_settings'
+    },
+
+    // 🤖 CONFIGURAÇÕES DO ATUALIZADOR AUTOMÁTICO (ROBÔ)
+    cron_interval: {
+      type: Number,
+      default: 5, // Intervalo em minutos
+      min: 1
+    },
+    api_leagues: {
+      type: [Number],
+      default: [4, 6, 32, 33] // IDs das ligas padrão
+    },
+    api_season: {
+      type: Number,
+      default: 2026
+    },
+    last_api_run: {
+      type: Number, // Armazena o timestamp (Date.now())
+      default: 0
     },
 
     // 🔒 BLOQUEIOS DE EDIÇÃO (Impedem o usuário de salvar/mudar palpites)
@@ -24,7 +42,6 @@ const SettingsSchema = new mongoose.Schema(
     },
 
     // 🔐 CONTROLE DE VISIBILIDADE (O que os usuários podem ver uns dos outros)
-    // Este é o campo chave para o seu novo sistema de travas por fase
     unlockedPhases: {
       type: [String], 
       default: ['group'] // Por padrão, libera a visualização da fase de grupos
