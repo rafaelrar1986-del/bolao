@@ -60,13 +60,14 @@ async function updateMatches() {
 
     console.log(`🚀 [Cron] Iniciando atualização automática... (Intervalo: ${config.interval}min)`);
 
-    // 3. PREPARA DATAS DE BUSCA (Exemplo: Ontem e Hoje)
-    const today = new Date().toISOString().split('T')[0];
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+   // Data de Ontem
+const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
 
-    let nextUrl = `https://sports.bzzoiro.com/api/events/?date_from=${yesterday}&date_to=${today}`;
-    let updatedCount = 0;
-    let page = 1;
+// Data de Amanhã (Adiciona 24h ao momento atual)
+const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+
+// URL com a janela de segurança expandida
+let nextUrl = `https://sports.bzzoiro.com/api/events/?date_from=${yesterday}&date_to=${tomorrow}`;
 
     // 4. LOOP DE PAGINAÇÃO DA API
     while (nextUrl) {
