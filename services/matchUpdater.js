@@ -1,5 +1,6 @@
 const axios = require('axios');
-const Match = require('../models/Match'); 
+const Match = require('../models/Match');
+const Setting = require('../models/Setting'); // Model de configurações
 const { recalculateAllPoints } = require('./pointsService');
 const { trySaveDailyPoints } = require('./dailyHistoryService');
 
@@ -24,27 +25,50 @@ const statusMap = {
  * FUNÇÃO AUXILIAR: Define quem avançou (Mata-mata)
  */
 function determineQualifier(game) {
-  // 1. Gols no Tempo Normal/Prorrogação
   if (game.home_score > game.away_score) return 'A';
   if (game.away_score > game.home_score) return 'B';
-
-  // 2. Disputa de Pênaltis (se houver empate nos gols)
   if (game.home_penalty_score > game.away_penalty_score) return 'A';
   if (game.away_penalty_score > game.home_penalty_score) return 'B';
-
   return null;
 }
 
+/**
+ * FUNÇÃO PRINCIPAL: Chamada pelo Cron a cada 1 minuto
+ */
 async function updateMatches() {
   try {
-    console.log('🚀 [Cron] Iniciando busca global e atualização automática...');
+    // 1. BUSCA CONFIGURAÇÕES DINÂMICAS DO ADMIN
+    const settingsArr = await Setting.find({ 
+      key: { $in: ['cron_interval', 'api_leagues', 'api_season', 'last_api_run'] } 
+    });
 
-    let nextUrl = 'https://sports.bzzoiro.com/api/events/?date_from=2026-04-10&date_to=2026-04-11';
+    const config = {
+      interval: Number(settingsArr.find(s => s.key === 'cron_interval')?.value || 5),
+      leagues: settingsArr.find(s => s.key === 'api_leagues')?.value || [4, 6, 32, 33],
+      season: settingsArr.find(s => s.key === 'api_season')?.value || 2026,
+      lastRun: Number(settingsArr.find(s => s.key === 'last_api_run')?.value || 0)
+    };
+
+    // 2. VERIFICA SE ESTÁ NA HORA DE RODAR (Baseado no intervalo do Admin)
+    const now = Date.now();
+    const diffMinutes = (now - config.lastRun) / (1000 * 60);
+
+    if (diffMinutes < config.interval) {
+      // Ainda não deu o tempo, sai silenciosamente
+      return; 
+    }
+
+    console.log(`🚀 [Cron] Iniciando atualização automática... (Intervalo: ${config.interval}min)`);
+
+    // 3. PREPARA DATAS DE BUSCA (Exemplo: Ontem e Hoje)
+    const today = new Date().toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+
+    let nextUrl = `https://sports.bzzoiro.com/api/events/?date_from=${yesterday}&date_to=${today}`;
     let updatedCount = 0;
     let page = 1;
 
-    const allowedLeagues = [4, 6, 32, 33]; // IDs das ligas permitidas
-
+    // 4. LOOP DE PAGINAÇÃO DA API
     while (nextUrl) {
       console.log(`\n📄 PROCESSANDO PÁGINA ${page}...`);
       
@@ -55,30 +79,22 @@ async function updateMatches() {
       const games = response.data.results || [];
 
       for (const game of games) {
-        // 1. FILTRO DE LIGA
-        if (!allowedLeagues.includes(game.league?.id)) continue;
+        // Filtro de ligas baseado no que foi definido no Admin
+        if (!config.leagues.includes(game.league?.id)) continue;
 
-        // 2. BUSCA NO BANCO
         const match = await Match.findOne({ apiId: game.id });
         if (!match) continue;
 
-        // 3. MAPEAMENTO DE DADOS DA API
         const newStatus = statusMap[game.status] || 'scheduled';
         const newMinute = game.current_minute ? `${game.current_minute}'` : '';
         
-        // 4. LÓGICA AUTOMÁTICA DE CLASSIFICAÇÃO (QUALIFIED SIDE)
         let autoQualifiedSide = match.qualifiedSide;
-        
-        // Se for mata-mata e o jogo finalizou, calculamos o vencedor agora
         const isKnockout = match.phase === 'knockout' || match.phase === 'mata-mata';
+        
         if (isKnockout && newStatus === 'finished' && !match.qualifiedSide) {
            autoQualifiedSide = determineQualifier(game);
-           if (autoQualifiedSide) {
-             console.log(`🏆 [Auto-Qualifier] ${match.teamA} x ${match.teamB}: Vencedor definido como [${autoQualifiedSide}]`);
-           }
         }
 
-        // 5. VERIFICA SE HOUVE MUDANÇA REAL
         const changed =
           match.status !== newStatus ||
           match.scoreA !== game.home_score ||
@@ -88,23 +104,9 @@ async function updateMatches() {
 
         if (!changed) continue;
 
-        // 6. LOGS DE ATUALIZAÇÃO
-        const isOnlyMinuteUpdate = match.status === newStatus && 
-                                   match.scoreA === game.home_score && 
-                                   match.scoreB === game.away_score;
-
-        if (isOnlyMinuteUpdate) {
-          console.log(`⏳ [Minuto] ${match.teamA} x ${match.teamB}: ${match.minute || '0'} ➔ ${newMinute}`);
-        } else {
-          console.log('='.repeat(50));
-          console.log(`⚽ ATUALIZAÇÃO: ${match.teamA} x ${match.teamB}`);
-          console.log(`STATUS: ${match.status} ➔ ${newStatus} | PLACAR: ${game.home_score}x${game.away_score}`);
-          if (autoQualifiedSide) console.log(`🏁 CLASSIFICADO: ${autoQualifiedSide}`);
-        }
-
-        // 7. GRAVAÇÃO NO BANCO
-        const oldStatus = match.status; // Guardamos para checar se terminou agora
+        const oldStatus = match.status; 
         
+        // Atualização do Objeto
         match.scoreA = game.home_score;
         match.scoreB = game.away_score;
         match.status = newStatus;
@@ -116,9 +118,14 @@ async function updateMatches() {
 
         await match.save();
 
-        // 8. PROCESSAMENTO DE PONTOS (Somente se o status mudou para finalizado nesta rodada)
+        // LOG DE ATUALIZAÇÃO RELEVANTE
+        if (oldStatus !== newStatus || match.scoreA !== game.home_score || match.scoreB !== game.away_score) {
+          console.log(`⚽ ATUALIZADO: ${match.teamA} ${game.home_score}x${game.away_score} ${match.teamB} (${newStatus})`);
+        }
+
+        // 5. PROCESSAMENTO DE PONTOS
         if (oldStatus !== 'finished' && newStatus === 'finished') {
-          console.log(`🥇 [Sistema] Processando pontos globais...`);
+          console.log(`🥇 [Sistema] Partida encerrada. Recalculando pontos...`);
           try {
             const result = await recalculateAllPoints();
             console.log(`✅ [Sucesso] ${result.updated} usuários atualizados.`);
@@ -128,18 +135,23 @@ async function updateMatches() {
           }
         }
         updatedCount++;
-      } // Fim do for games
+      }
 
       nextUrl = response.data.next; 
       page++;
     }
 
-    console.log('\n' + '='.repeat(50));
-    console.log(`✨ [Fim da Rodada] Partidas sincronizadas: ${updatedCount}`);
-    console.log('='.repeat(50));
+    // 6. ATUALIZA A ÚLTIMA EXECUÇÃO NO BANCO
+    await Setting.findOneAndUpdate(
+      { key: 'last_api_run' },
+      { value: now },
+      { upsert: true }
+    );
+
+    console.log(`✨ [Fim da Rodada] Sincronizados: ${updatedCount} | Próxima em: ${config.interval}min`);
 
   } catch (err) {
-    console.error('❌ [Erro Crítico]:', err.message);
+    console.error('❌ [Erro Crítico no Updater]:', err.message);
   }
 }
 
