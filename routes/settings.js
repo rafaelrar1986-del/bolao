@@ -1,8 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Settings = require('../models/Settings');
-const { protect, admin } = require('../middleware/authMiddleware');
-
+const { protect, admin } = require('../middleware/auth');
 // @route   GET /api/settings
 // @desc    Busca as configurações globais (pode ser pública ou protegida)
 router.get('/', async (req, res) => {
