@@ -80,7 +80,7 @@ router.get('/admin/all', protect, admin, async (req, res) => {
 // ======================
 router.post('/admin/add', protect, admin, async (req, res) => {
   try {
-    const { matchId, teamA, teamB, date, time, group, stadium, phase } = req.body;
+    const { matchId, teamA, teamB, date, time, group, stadium, phase, apiId } = req.body;
 
     if (!matchId || !teamA || !teamB || !date || !time || (phase !== 'knockout' && !group)) {
       return res.status(400).json({ success: false, message: 'Campos obrigatórios ausentes' });
@@ -98,6 +98,7 @@ router.post('/admin/add', protect, admin, async (req, res) => {
 
     const m = await Match.create({
       matchId: idNum,
+      apiId: apiId ? Number(apiId) : undefined, // Suporte ao ID da API externa
       teamA: String(teamA).trim(),
       teamB: String(teamB).trim(),
       date: String(date).trim(),
@@ -106,8 +107,10 @@ router.post('/admin/add', protect, admin, async (req, res) => {
       stadium: stadium ? String(stadium).trim() : undefined,
       phase: phase || 'group',
       status: 'scheduled',
-      scoreA: undefined,
-      scoreB: undefined,
+      scoreA: null,
+      scoreB: null,
+      penaltiesA: null,
+      penaltiesB: null
     });
 
     res.json({ success: true, data: m });
@@ -119,7 +122,6 @@ router.post('/admin/add', protect, admin, async (req, res) => {
 
 // ======================
 // PUT /api/matches/admin/edit/:matchId  (admin)
-// (não recalcula pontos aqui; /finish é quem define placar e pontos)
 // ======================
 router.put('/admin/edit/:matchId', protect, admin, async (req, res) => {
   try {
@@ -129,10 +131,16 @@ router.put('/admin/edit/:matchId', protect, admin, async (req, res) => {
     }
 
     const updates = {};
-    ['teamA','teamB','date','time','group','stadium','phase','status','scoreA','scoreB'].forEach(k => {
+    const fields = [
+      'teamA','teamB','date','time','group','stadium',
+      'phase','status','scoreA','scoreB','apiId','penaltiesA','penaltiesB'
+    ];
+
+    fields.forEach(k => {
       if (req.body[k] !== undefined) updates[k] = req.body[k];
     });
 
+    // Sanitização de Strings
     if (updates.teamA) updates.teamA = String(updates.teamA).trim();
     if (updates.teamB) updates.teamB = String(updates.teamB).trim();
     if (updates.date)  updates.date  = String(updates.date).trim();
@@ -140,18 +148,20 @@ router.put('/admin/edit/:matchId', protect, admin, async (req, res) => {
     if (updates.group) updates.group = String(updates.group).trim();
     if (updates.stadium) updates.stadium = String(updates.stadium).trim();
 
-    // Se tentarem setar finished por aqui sem placar, bloqueia:
-    if (updates.status === 'finished' &&
-        (updates.scoreA === undefined || updates.scoreB === undefined)) {
+    // Coerção de Números
+    if (updates.apiId !== undefined) updates.apiId = updates.apiId === '' ? null : Number(updates.apiId);
+    if (updates.scoreA !== undefined) updates.scoreA = updates.scoreA === '' ? null : Number(updates.scoreA);
+    if (updates.scoreB !== undefined) updates.scoreB = updates.scoreB === '' ? null : Number(updates.scoreB);
+    if (updates.penaltiesA !== undefined) updates.penaltiesA = updates.penaltiesA === '' ? null : Number(updates.penaltiesA);
+    if (updates.penaltiesB !== undefined) updates.penaltiesB = updates.penaltiesB === '' ? null : Number(updates.penaltiesB);
+
+    // Validação de Status Finished
+    if (updates.status === 'finished' && (updates.scoreA === null || updates.scoreB === null)) {
       return res.status(400).json({
         success: false,
-        message: 'Para finalizar, informe scoreA e scoreB — use a tela "Finalizar Partida".'
+        message: 'Para finalizar, informe scoreA e scoreB.'
       });
     }
-
-    // Coerção de placar se vier
-    if (updates.scoreA !== undefined) updates.scoreA = Number(updates.scoreA);
-    if (updates.scoreB !== undefined) updates.scoreB = Number(updates.scoreB);
 
     const match = await Match.findOneAndUpdate({ matchId }, { $set: updates }, { new: true });
     if (!match) {
@@ -166,43 +176,33 @@ router.put('/admin/edit/:matchId', protect, admin, async (req, res) => {
 });
 
 // ======================
-// POST /api/matches/admin/finish/:matchId  (admin)
-// - seta placar + status finished
-// - calcula vencedor 'A'|'B'|'draw'
-// - marca 1 ponto para quem acertou winner
-// - recalcula groupPoints e totalPoints
-// ======================
-// ======================
 // POST /api/matches/admin/finish/:matchId
 // ======================
 router.post('/admin/finish/:matchId', protect, admin, async (req, res) => {
   try {
     const matchId = Number(req.params.matchId);
-    const scoreA = Number(req.body.scoreA);
-    const scoreB = Number(req.body.scoreB);
+    const { scoreA, scoreB, penaltiesA, penaltiesB, qualifiedSide } = req.body;
 
-    if (!Number.isFinite(matchId) || !Number.isFinite(scoreA) || !Number.isFinite(scoreB)) {
-      return res.status(400).json({ success: false, message: 'matchId, scoreA e scoreB válidos são obrigatórios' });
+    if (!Number.isFinite(matchId) || scoreA === undefined || scoreB === undefined) {
+      return res.status(400).json({ success: false, message: 'matchId, scoreA e scoreB são obrigatórios' });
     }
 
-    const match = await Match.findOneAndUpdate(
-      { matchId },
-      { 
-        $set: { 
-          scoreA, 
-          scoreB, 
-          status: 'finished', 
-          qualifiedSide: (typeof req.body.qualifiedSide !== 'undefined' ? req.body.qualifiedSide : undefined) 
-        } 
-      },
-      { new: true }
+    // Usamos o método estático finishMatch definido no Model para garantir consistência
+    const match = await Match.finishMatch(
+      matchId, 
+      scoreA, 
+      scoreB, 
+      penaltiesA !== undefined ? penaltiesA : null, 
+      penaltiesB !== undefined ? penaltiesB : null
     );
 
-    if (!match) {
-      return res.status(404).json({ success: false, message: 'Partida não encontrada' });
+    if (qualifiedSide) {
+      match.qualifiedSide = qualifiedSide;
+      await match.save();
     }
 
-    const resultWinner = calcWinner(scoreA, scoreB); 
+    // O Virtual 'winner' agora resolve se foi A, B ou Draw (D) considerando pênaltis
+    const resultWinner = match.winner; 
 
     // Atualiza apostas desse jogo
     const cursor = Bet.find({ 'groupMatches.matchId': matchId }).cursor();
@@ -210,16 +210,17 @@ router.post('/admin/finish/:matchId', protect, admin, async (req, res) => {
     for await (const bet of cursor) {
       bet.groupMatches = (bet.groupMatches || []).map(gm => {
         if (gm.matchId === matchId) {
-          // 1. Acertou o vencedor/empate? (1 ponto)
+          // 1. Acertou o vencedor/empate no tempo regulamentar? (1 ponto)
+          // Nota: Ajuste se seu bolão pontua o vencedor APÓS pênaltis ou só tempo normal
           const hitResult = gm.winner && gm.winner === resultWinner;
           gm.points = hitResult ? 1 : 0;
 
-          // 2. Acertou o classificado? (1 ponto) - Geralmente para Mata-Mata
+          // 2. Acertou o classificado? (1 ponto)
           let hitQualifier = false;
-          const realQualifier = (match.qualifiedSide) ? match.qualifiedSide : resultWinner;
+          const realQualifier = match.qualifiedSide || (resultWinner !== 'D' ? resultWinner : null);
           
           if (gm.qualifier && (gm.qualifier === 'A' || gm.qualifier === 'B')) {
-            if (realQualifier && realQualifier !== 'draw' && gm.qualifier === realQualifier) {
+            if (realQualifier && gm.qualifier === realQualifier) {
               hitQualifier = true;
             }
           }
@@ -229,7 +230,6 @@ router.post('/admin/finish/:matchId', protect, admin, async (req, res) => {
       });
 
       // 3. Recálculo dos totais da aposta
-      // Somamos points (vencedor) + qualifierPoints (classificado)
       bet.groupPoints = (bet.groupMatches || []).reduce((sum, gm) => {
         return sum + (gm.points || 0) + (gm.qualifierPoints || 0);
       }, 0);
@@ -248,12 +248,14 @@ router.post('/admin/finish/:matchId', protect, admin, async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Partida finalizada e pontos atualizados corretamente',
+      message: 'Partida finalizada e pontos atualizados',
       data: {
         matchId: match.matchId,
         scoreA: match.scoreA,
         scoreB: match.scoreB,
-        result: resultWinner,
+        penaltiesA: match.penaltiesA,
+        penaltiesB: match.penaltiesB,
+        winner: resultWinner,
       },
     });
   } catch (err) {
@@ -261,6 +263,7 @@ router.post('/admin/finish/:matchId', protect, admin, async (req, res) => {
     res.status(500).json({ success: false, message: 'Erro ao finalizar partida' });
   }
 });
+
 // ======================
 // POST /api/matches/admin/unfinish/:matchId  (admin)
 // - volta para 'scheduled', zera placar
