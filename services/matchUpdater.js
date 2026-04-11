@@ -1,6 +1,6 @@
 const axios = require('axios');
 const Match = require('../models/Match');
-const Setting = require('../models/Setting'); // Model de configurações
+const Settings = require('../models/Settings'); // Note o "s" no final para bater com o seu Model
 const { recalculateAllPoints } = require('./pointsService');
 const { trySaveDailyPoints } = require('./dailyHistoryService');
 
@@ -21,9 +21,6 @@ const statusMap = {
   cancelled: 'cancelled'
 };
 
-/**
- * FUNÇÃO AUXILIAR: Define quem avançou (Mata-mata)
- */
 function determineQualifier(game) {
   if (game.home_score > game.away_score) return 'A';
   if (game.away_score > game.home_score) return 'B';
@@ -32,44 +29,34 @@ function determineQualifier(game) {
   return null;
 }
 
-/**
- * FUNÇÃO PRINCIPAL: Chamada pelo Cron a cada 1 minuto
- */
 async function updateMatches() {
   try {
-    // 1. BUSCA CONFIGURAÇÕES DINÂMICAS DO ADMIN
-    const settingsArr = await Setting.find({ 
-      key: { $in: ['cron_interval', 'api_leagues', 'api_season', 'last_api_run'] } 
-    });
+    // 1. AJUSTE: Busca o documento único 'global_settings'
+    const settings = await Settings.findById('global_settings');
 
     const config = {
-      interval: Number(settingsArr.find(s => s.key === 'cron_interval')?.value || 5),
-      leagues: settingsArr.find(s => s.key === 'api_leagues')?.value || [4, 6, 32, 33],
-      season: settingsArr.find(s => s.key === 'api_season')?.value || 2026,
-      lastRun: Number(settingsArr.find(s => s.key === 'last_api_run')?.value || 0)
+      interval: settings?.cron_interval || 5,
+      leagues: settings?.api_leagues || [4, 6, 32, 33],
+      season: settings?.api_season || 2026,
+      lastRun: settings?.last_api_run || 0
     };
 
-    // 2. VERIFICA SE ESTÁ NA HORA DE RODAR (Baseado no intervalo do Admin)
     const now = Date.now();
     const diffMinutes = (now - config.lastRun) / (1000 * 60);
 
     if (diffMinutes < config.interval) {
-      // Ainda não deu o tempo, sai silenciosamente
       return; 
     }
 
     console.log(`🚀 [Cron] Iniciando atualização automática... (Intervalo: ${config.interval}min)`);
 
-   // Data de Ontem
-const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
 
-// Data de Amanhã (Adiciona 24h ao momento atual)
-const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+    let nextUrl = `https://sports.bzzoiro.com/api/events/?date_from=${yesterday}&date_to=${tomorrow}`;
+    let updatedCount = 0;
+    let page = 1; // CORREÇÃO: Variável 'page' definida antes do loop
 
-// URL com a janela de segurança expandida
-let nextUrl = `https://sports.bzzoiro.com/api/events/?date_from=${yesterday}&date_to=${tomorrow}`;
-
-    // 4. LOOP DE PAGINAÇÃO DA API
     while (nextUrl) {
       console.log(`\n📄 PROCESSANDO PÁGINA ${page}...`);
       
@@ -80,7 +67,6 @@ let nextUrl = `https://sports.bzzoiro.com/api/events/?date_from=${yesterday}&dat
       const games = response.data.results || [];
 
       for (const game of games) {
-        // Filtro de ligas baseado no que foi definido no Admin
         if (!config.leagues.includes(game.league?.id)) continue;
 
         const match = await Match.findOne({ apiId: game.id });
@@ -107,7 +93,6 @@ let nextUrl = `https://sports.bzzoiro.com/api/events/?date_from=${yesterday}&dat
 
         const oldStatus = match.status; 
         
-        // Atualização do Objeto
         match.scoreA = game.home_score;
         match.scoreB = game.away_score;
         match.status = newStatus;
@@ -119,12 +104,10 @@ let nextUrl = `https://sports.bzzoiro.com/api/events/?date_from=${yesterday}&dat
 
         await match.save();
 
-        // LOG DE ATUALIZAÇÃO RELEVANTE
         if (oldStatus !== newStatus || match.scoreA !== game.home_score || match.scoreB !== game.away_score) {
           console.log(`⚽ ATUALIZADO: ${match.teamA} ${game.home_score}x${game.away_score} ${match.teamB} (${newStatus})`);
         }
 
-        // 5. PROCESSAMENTO DE PONTOS
         if (oldStatus !== 'finished' && newStatus === 'finished') {
           console.log(`🥇 [Sistema] Partida encerrada. Recalculando pontos...`);
           try {
@@ -142,12 +125,10 @@ let nextUrl = `https://sports.bzzoiro.com/api/events/?date_from=${yesterday}&dat
       page++;
     }
 
-    // 6. ATUALIZA A ÚLTIMA EXECUÇÃO NO BANCO
-    await Setting.findOneAndUpdate(
-      { key: 'last_api_run' },
-      { value: now },
-      { upsert: true }
-    );
+    // 2. AJUSTE: Atualiza a última execução no documento correto
+    await Settings.findByIdAndUpdate('global_settings', { 
+      $set: { last_api_run: now } 
+    });
 
     console.log(`✨ [Fim da Rodada] Sincronizados: ${updatedCount} | Próxima em: ${config.interval}min`);
 
