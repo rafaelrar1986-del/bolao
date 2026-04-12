@@ -31,7 +31,6 @@ function determineQualifier(game) {
 
 async function updateMatches() {
   try {
-    // 1. Busca as configurações para saber QUAIS ligas filtrar
     const settings = await Settings.findById('global_settings');
 
     const config = {
@@ -40,14 +39,11 @@ async function updateMatches() {
     };
 
     const now = Date.now();
-
-    // Removida a trava de 'diffMinutes' para garantir execução em cada chamada do Cron
-    console.log(`🚀 [Cron] Iniciando execução forçada...`);
+    console.log(`🚀 [Cron] Iniciando execução forçada (Monitorando Gols e Minutos)...`);
 
     const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
     const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
 
-    // Endpoint da BSD Sports
     let nextUrl = `https://sports.bzzoiro.com/api/events/?date_from=${yesterday}&date_to=${tomorrow}`;
     let updatedCount = 0;
     let page = 1;
@@ -62,16 +58,16 @@ async function updateMatches() {
       const games = response.data.results || [];
 
       for (const game of games) {
-        // Filtra pelas ligas selecionadas no seu Admin
         if (!config.leagues.includes(game.league?.id)) continue;
 
         const match = await Match.findOne({ apiId: game.id });
         if (!match) continue;
 
         const newStatus = statusMap[game.status] || 'scheduled';
+        
+        // Formata o minuto exatamente como será exibido (ex: "25'")
         const newMinute = game.current_minute ? `${game.current_minute}'` : '';
         
-        // Mapeamento de Imagens (CDN BSD)
         const apiHomeId = game.home_team_obj?.api_id;
         const apiAwayId = game.away_team_obj?.api_id;
         const newLogoA = apiHomeId ? `https://sports.bzzoiro.com/img/team/${apiHomeId}/?token=${API_KEY}` : '';
@@ -84,40 +80,44 @@ async function updateMatches() {
            autoQualifiedSide = determineQualifier(game);
         }
 
-        // Verifica se houve mudança para evitar saves desnecessários no DB
+        // A MÁGICA ACONTECE AQUI: 
+        // Se o minuto mudou de "25'" para "26'", o 'changed' será TRUE.
         const changed =
           match.status !== newStatus ||
           match.scoreA !== game.home_score ||
           match.scoreB !== game.away_score ||
-          match.minute !== newMinute ||
+          match.minute !== newMinute || 
           match.logoA !== newLogoA ||
           match.logoB !== newLogoB ||
           match.qualifiedSide !== autoQualifiedSide; 
 
         if (!changed) continue;
 
-        const oldStatus = match.status; 
+        const oldStatus = match.status;
+        const oldMinute = match.minute;
         
-        // Persistência dos dados
+        // Atualiza os campos
         match.scoreA = game.home_score;
         match.scoreB = game.away_score;
         match.status = newStatus;
         match.apiStatus = game.status;
-        match.minute = newMinute;
+        match.minute = newMinute; // Salva o novo minuto (ex: "26'")
         match.logoA = newLogoA; 
         match.logoB = newLogoB; 
         match.penaltiesA = game.home_penalty_score ?? null;
         match.penaltiesB = game.away_penalty_score ?? null;
         match.qualifiedSide = autoQualifiedSide;
 
+        // O save() dispara o ChangeStream no MongoDB, que por sua vez dispara o SSE
         await match.save();
 
-        // Logs de acompanhamento
-        if (oldStatus !== newStatus || match.scoreA !== game.home_score || match.scoreB !== game.away_score) {
-          console.log(`⚽ ATUALIZADO: ${match.teamA} ${game.home_score}x${game.away_score} ${match.teamB} (${newStatus})`);
+        // Log detalhado para acompanhamento
+        if (match.scoreA !== game.home_score || match.scoreB !== game.away_score) {
+            console.log(`⚽ GOL: ${match.teamA} ${game.home_score}x${game.away_score} ${match.teamB}`);
+        } else if (oldMinute !== newMinute) {
+            console.log(`⏱️ MINUTO: ${match.teamA} vs ${match.teamB} evoluiu para ${newMinute}`);
         }
 
-        // Se o jogo acabou agora, calcula os pontos dos usuários
         if (oldStatus !== 'finished' && newStatus === 'finished') {
           console.log(`🥇 [Sistema] Partida encerrada. Recalculando pontos...`);
           try {
@@ -135,12 +135,11 @@ async function updateMatches() {
       page++;
     }
 
-    // Salva o timestamp da execução para controle no Admin
     await Settings.findByIdAndUpdate('global_settings', { 
       $set: { last_api_run: now } 
     });
 
-    console.log(`✨ [Fim da Rodada] Sincronizados: ${updatedCount} jogos.`);
+    console.log(`✨ [Fim da Rodada] Sincronizados: ${updatedCount} jogos com alterações.`);
 
   } catch (err) {
     console.error('❌ [Erro Crítico no Updater]:', err.message);
