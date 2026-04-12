@@ -1,6 +1,6 @@
 const axios = require('axios');
 const Match = require('../models/Match');
-const Settings = require('../models/Settings'); // Note o "s" no final para bater com o seu Model
+const Settings = require('../models/Settings');
 const { recalculateAllPoints } = require('./pointsService');
 const { trySaveDailyPoints } = require('./dailyHistoryService');
 
@@ -31,7 +31,7 @@ function determineQualifier(game) {
 
 async function updateMatches() {
   try {
-    // 1. AJUSTE: Busca o documento único 'global_settings'
+    // 1. Busca as configurações definidas no seu Painel Administrativo
     const settings = await Settings.findById('global_settings');
 
     const config = {
@@ -44,7 +44,8 @@ async function updateMatches() {
     const now = Date.now();
     const diffMinutes = (now - config.lastRun) / (1000 * 60);
 
-    if (diffMinutes < config.interval) {
+    // AJUSTE DE PRECISÃO: Folga de 0.25 (15 segundos) para garantir o ciclo de 1 min
+    if (diffMinutes < (config.interval - 0.25)) {
       return; 
     }
 
@@ -55,7 +56,7 @@ async function updateMatches() {
 
     let nextUrl = `https://sports.bzzoiro.com/api/events/?date_from=${yesterday}&date_to=${tomorrow}`;
     let updatedCount = 0;
-    let page = 1; // CORREÇÃO: Variável 'page' definida antes do loop
+    let page = 1;
 
     while (nextUrl) {
       console.log(`\n📄 PROCESSANDO PÁGINA ${page}...`);
@@ -67,6 +68,7 @@ async function updateMatches() {
       const games = response.data.results || [];
 
       for (const game of games) {
+        // Pula jogos de ligas que não estão configuradas no admin
         if (!config.leagues.includes(game.league?.id)) continue;
 
         const match = await Match.findOne({ apiId: game.id });
@@ -75,6 +77,12 @@ async function updateMatches() {
         const newStatus = statusMap[game.status] || 'scheduled';
         const newMinute = game.current_minute ? `${game.current_minute}'` : '';
         
+        // Lógica de Imagens (BSD CDN)
+        const apiHomeId = game.home_team_obj?.api_id;
+        const apiAwayId = game.away_team_obj?.api_id;
+        const newLogoA = apiHomeId ? `https://sports.bzzoiro.com/img/team/${apiHomeId}/?token=${API_KEY}` : '';
+        const newLogoB = apiAwayId ? `https://sports.bzzoiro.com/img/team/${apiAwayId}/?token=${API_KEY}` : '';
+
         let autoQualifiedSide = match.qualifiedSide;
         const isKnockout = match.phase === 'knockout' || match.phase === 'mata-mata';
         
@@ -82,22 +90,28 @@ async function updateMatches() {
            autoQualifiedSide = determineQualifier(game);
         }
 
+        // Verifica se houve qualquer alteração relevante
         const changed =
           match.status !== newStatus ||
           match.scoreA !== game.home_score ||
           match.scoreB !== game.away_score ||
           match.minute !== newMinute ||
+          match.logoA !== newLogoA ||
+          match.logoB !== newLogoB ||
           match.qualifiedSide !== autoQualifiedSide; 
 
         if (!changed) continue;
 
         const oldStatus = match.status; 
         
+        // Atualiza os dados no objeto da partida
         match.scoreA = game.home_score;
         match.scoreB = game.away_score;
         match.status = newStatus;
         match.apiStatus = game.status;
         match.minute = newMinute;
+        match.logoA = newLogoA; // Agora salvando a logo oficial
+        match.logoB = newLogoB; // Agora salvando a logo oficial
         match.penaltiesA = game.home_penalty_score ?? null;
         match.penaltiesB = game.away_penalty_score ?? null;
         match.qualifiedSide = autoQualifiedSide;
@@ -108,6 +122,7 @@ async function updateMatches() {
           console.log(`⚽ ATUALIZADO: ${match.teamA} ${game.home_score}x${game.away_score} ${match.teamB} (${newStatus})`);
         }
 
+        // Lógica de encerramento e pontos
         if (oldStatus !== 'finished' && newStatus === 'finished') {
           console.log(`🥇 [Sistema] Partida encerrada. Recalculando pontos...`);
           try {
@@ -125,7 +140,7 @@ async function updateMatches() {
       page++;
     }
 
-    // 2. AJUSTE: Atualiza a última execução no documento correto
+    // Atualiza a timestamp da última execução para o controle de intervalo
     await Settings.findByIdAndUpdate('global_settings', { 
       $set: { last_api_run: now } 
     });
