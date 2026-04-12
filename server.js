@@ -339,8 +339,8 @@ process.on('SIGTERM', shutdown);
 // ======================
 const PORT = process.env.PORT || 5000;
 
-// CRON AUTOMÁTICO - A cada 2 minutos
-cron.schedule('*/2 * * * *', async () => {
+// CRON AUTOMÁTICO - A cada 1 minutos
+cron.schedule('*/1 * * * *', async () => {
   console.log('🔄 Atualizando jogos automaticamente...');
   try {
     await updateMatches();
