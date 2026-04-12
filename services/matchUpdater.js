@@ -45,7 +45,7 @@ async function updateMatches() {
     const diffMinutes = (now - config.lastRun) / (1000 * 60);
 
     // AJUSTE DE PRECISÃO: Folga de 0.25 (15 segundos) para garantir o ciclo de 1 min
-    if (diffMinutes < (config.interval - 0.25)) {
+    if (diffMinutes < (config.interval - 0.75)) {
       return; 
     }
 
