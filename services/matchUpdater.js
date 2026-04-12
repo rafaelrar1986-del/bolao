@@ -31,29 +31,23 @@ function determineQualifier(game) {
 
 async function updateMatches() {
   try {
-    // 1. Busca as configurações definidas no seu Painel Administrativo
+    // 1. Busca as configurações para saber QUAIS ligas filtrar
     const settings = await Settings.findById('global_settings');
 
     const config = {
-      interval: settings?.cron_interval || 5,
       leagues: settings?.api_leagues || [4, 6, 32, 33],
-      season: settings?.api_season || 2026,
-      lastRun: settings?.last_api_run || 0
+      season: settings?.api_season || 2026
     };
 
     const now = Date.now();
-    const diffMinutes = (now - config.lastRun) / (1000 * 60);
 
-    // AJUSTE DE PRECISÃO: Folga de 0.25 (15 segundos) para garantir o ciclo de 1 min
-    if (diffMinutes < (config.interval - 0.95)) {
-      return; 
-    }
-
-    console.log(`🚀 [Cron] Iniciando atualização automática... (Intervalo: ${config.interval}min)`);
+    // Removida a trava de 'diffMinutes' para garantir execução em cada chamada do Cron
+    console.log(`🚀 [Cron] Iniciando execução forçada...`);
 
     const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
     const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
 
+    // Endpoint da BSD Sports
     let nextUrl = `https://sports.bzzoiro.com/api/events/?date_from=${yesterday}&date_to=${tomorrow}`;
     let updatedCount = 0;
     let page = 1;
@@ -68,7 +62,7 @@ async function updateMatches() {
       const games = response.data.results || [];
 
       for (const game of games) {
-        // Pula jogos de ligas que não estão configuradas no admin
+        // Filtra pelas ligas selecionadas no seu Admin
         if (!config.leagues.includes(game.league?.id)) continue;
 
         const match = await Match.findOne({ apiId: game.id });
@@ -77,7 +71,7 @@ async function updateMatches() {
         const newStatus = statusMap[game.status] || 'scheduled';
         const newMinute = game.current_minute ? `${game.current_minute}'` : '';
         
-        // Lógica de Imagens (BSD CDN)
+        // Mapeamento de Imagens (CDN BSD)
         const apiHomeId = game.home_team_obj?.api_id;
         const apiAwayId = game.away_team_obj?.api_id;
         const newLogoA = apiHomeId ? `https://sports.bzzoiro.com/img/team/${apiHomeId}/?token=${API_KEY}` : '';
@@ -90,7 +84,7 @@ async function updateMatches() {
            autoQualifiedSide = determineQualifier(game);
         }
 
-        // Verifica se houve qualquer alteração relevante
+        // Verifica se houve mudança para evitar saves desnecessários no DB
         const changed =
           match.status !== newStatus ||
           match.scoreA !== game.home_score ||
@@ -104,25 +98,26 @@ async function updateMatches() {
 
         const oldStatus = match.status; 
         
-        // Atualiza os dados no objeto da partida
+        // Persistência dos dados
         match.scoreA = game.home_score;
         match.scoreB = game.away_score;
         match.status = newStatus;
         match.apiStatus = game.status;
         match.minute = newMinute;
-        match.logoA = newLogoA; // Agora salvando a logo oficial
-        match.logoB = newLogoB; // Agora salvando a logo oficial
+        match.logoA = newLogoA; 
+        match.logoB = newLogoB; 
         match.penaltiesA = game.home_penalty_score ?? null;
         match.penaltiesB = game.away_penalty_score ?? null;
         match.qualifiedSide = autoQualifiedSide;
 
         await match.save();
 
+        // Logs de acompanhamento
         if (oldStatus !== newStatus || match.scoreA !== game.home_score || match.scoreB !== game.away_score) {
           console.log(`⚽ ATUALIZADO: ${match.teamA} ${game.home_score}x${game.away_score} ${match.teamB} (${newStatus})`);
         }
 
-        // Lógica de encerramento e pontos
+        // Se o jogo acabou agora, calcula os pontos dos usuários
         if (oldStatus !== 'finished' && newStatus === 'finished') {
           console.log(`🥇 [Sistema] Partida encerrada. Recalculando pontos...`);
           try {
@@ -140,12 +135,12 @@ async function updateMatches() {
       page++;
     }
 
-    // Atualiza a timestamp da última execução para o controle de intervalo
+    // Salva o timestamp da execução para controle no Admin
     await Settings.findByIdAndUpdate('global_settings', { 
       $set: { last_api_run: now } 
     });
 
-    console.log(`✨ [Fim da Rodada] Sincronizados: ${updatedCount} | Próxima em: ${config.interval}min`);
+    console.log(`✨ [Fim da Rodada] Sincronizados: ${updatedCount} jogos.`);
 
   } catch (err) {
     console.error('❌ [Erro Crítico no Updater]:', err.message);
