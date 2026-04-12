@@ -50,8 +50,8 @@ async function updateMatches() {
 
     console.log(`🚀 [Cron] Iniciando atualização automática... (Intervalo: ${config.interval}min)`);
 
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-    const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 186400000).toISOString().split('T')[0];
+    const tomorrow = new Date(Date.now() + 186400000).toISOString().split('T')[0];
 
     let nextUrl = `https://sports.bzzoiro.com/api/events/?date_from=${yesterday}&date_to=${tomorrow}`;
     let updatedCount = 0;
