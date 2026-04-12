@@ -21,6 +21,10 @@ const MatchSchema = new Schema(
     teamA: { type: String, required: true, trim: true },
     teamB: { type: String, required: true, trim: true },
 
+    // NOVOS CAMPOS: Logos dos times (URLs da API/CDN)
+    logoA: { type: String, default: '' },
+    logoB: { type: String, default: '' },
+
     group: { type: String, required: true, trim: true },
     phase: { type: String, enum: ['group', 'knockout'], default: 'group', index: true },
 
