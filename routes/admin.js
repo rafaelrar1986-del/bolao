@@ -10,6 +10,9 @@ const User = require('../models/User');
 const { sendBroadcastEmail } = require('../services/emailService');
 const { protect, admin } = require('../middleware/auth');
 
+// Importação do Controller do Robô
+const robotController = require('../controllers/robotController');
+
 // Configuração do Multer
 const upload = multer({ 
   dest: 'uploads/',
@@ -17,8 +20,14 @@ const upload = multer({
 });
 
 /**
- * @route   GET /api/admin/users
- * @desc    Lista todos os usuários (CORRIGIDO PARA O FRONTEND)
+ * @route    POST /api/admin/robot/sync
+ * @desc     Sincroniza partidas da API externa (Bzzoiro) com paginação
+ */
+router.post('/robot/sync', protect, admin, robotController.fetchAndSyncMatches);
+
+/**
+ * @route    GET /api/admin/users
+ * @desc     Lista todos os usuários (CORRIGIDO PARA O FRONTEND)
  */
 router.get('/users', protect, admin, async (req, res) => {
   try {
@@ -37,8 +46,8 @@ router.get('/users', protect, admin, async (req, res) => {
 });
 
 /**
- * @route   PUT /api/admin/approve-user/:id
- * @desc    Aprova manualmente o pagamento de um usuário
+ * @route    PUT /api/admin/approve-user/:id
+ * @desc     Aprova manualmente o pagamento de um usuário
  */
 router.put('/approve-user/:id', protect, admin, async (req, res) => {
   try {
@@ -59,8 +68,8 @@ router.put('/approve-user/:id', protect, admin, async (req, res) => {
 });
 
 /**
- * @route   POST /api/admin/send
- * @desc    Envia e-mail para todos os participantes da Whitelist
+ * @route    POST /api/admin/send
+ * @desc     Envia e-mail para todos os participantes da Whitelist
  */
 router.post('/send', protect, admin, upload.single('attachment'), async (req, res) => {
   try {
