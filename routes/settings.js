@@ -5,47 +5,97 @@ const { protect, admin } = require('../middleware/auth');
 
 /**
  * @route   GET /api/settings/global
- * @desc    Busca as configurações globais (necessário sufixo /global para compatibilidade com o front antigo)
+ * @desc    Busca as configurações globais do sistema
+ * @access  Público
  */
 router.get('/global', async (req, res) => {
   try {
-    let settings = await Settings.findById('global_settings');
-    
-    // Se não existir, cria o documento inicial com os padrões do model
-    if (!settings) {
-      settings = await Settings.create({ _id: 'global_settings' });
+    let s = await Settings.findById('global_settings').lean();
+    if (!s) {
+      s = await Settings.create({ _id: 'global_settings' });
     }
-    
-    res.json({ success: true, data: settings });
+    res.json({ success: true, data: s });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error('Erro ao ler configurações:', err);
+    res.status(500).json({ success: false, message: 'Erro ao ler configurações' });
   }
 });
 
 /**
- * @route   POST /api/settings/admin/update
- * @desc    Atualiza campos das configurações (Protegido para Admin)
+ * @route   POST /api/settings/global
+ * @desc    Atualiza as configurações (Trava de edição, Visibilidade de Fases e Stats)
+ * @access  Privado (Admin)
  */
-router.post('/admin/update', protect, admin, async (req, res) => {
+router.post('/global', protect, admin, async (req, res) => {
   try {
-    const updates = req.body;
+    const updates = {};
 
-    // Usamos o $set para atualizar apenas os campos enviados no body
-    // Isso garante que você possa atualizar o robô sem mexer nas travas de visibilidade e vice-versa
-    const settings = await Settings.findByIdAndUpdate(
-      'global_settings',
-      { $set: updates },
-      { new: true, upsert: true, runValidators: true }
-    );
+    const booleanFields = [
+      'blockSaveBets', 
+      'blockSaveKnockout', 
+      'requireAllBets', 
+      'statsLocked'
+    ];
+    
+    booleanFields.forEach(k => {
+      if (req.body[k] !== undefined) {
+        updates[k] = !!req.body[k];
+      }
+    });
+
+    if (req.body.unlockedPhases && Array.isArray(req.body.unlockedPhases)) {
+      updates.unlockedPhases = req.body.unlockedPhases;
+    }
+
+    if (req.body.lockedReason !== undefined) {
+      updates.lockedReason = req.body.lockedReason;
+    }
+
+    if (req.body.unlockAt !== undefined) {
+      updates.unlockAt = req.body.unlockAt ? new Date(req.body.unlockAt) : null;
+    }
+
+    const s = await Settings.findByIdAndUpdate(
+      'global_settings', 
+      { $set: updates }, 
+      { new: true, upsert: true }
+    ).lean();
 
     res.json({ 
       success: true, 
-      message: 'Configurações atualizadas com sucesso', 
-      data: settings 
+      message: 'Configurações atualizadas com sucesso',
+      data: s 
     });
+
   } catch (err) {
-    console.error('Erro ao atualizar settings:', err);
-    res.status(500).json({ success: false, message: 'Erro ao salvar configurações' });
+    console.error('Erro ao atualizar configurações:', err);
+    res.status(500).json({ success: false, message: 'Erro ao atualizar configurações' });
+  }
+});
+
+/**
+ * ✅ ROTA ADICIONAL: POST /api/settings/robot
+ * Mantém a compatibilidade e adiciona a função do robô sem mexer no /global
+ */
+router.post('/robot', protect, admin, async (req, res) => {
+  try {
+    const { robotApiKey, robotEnabled, robotSyncInterval } = req.body;
+    
+    const s = await Settings.findByIdAndUpdate(
+      'global_settings',
+      { 
+        $set: { 
+          robotApiKey, 
+          robotEnabled: !!robotEnabled, 
+          robotSyncInterval: parseInt(robotSyncInterval) || 30 
+        } 
+      },
+      { new: true, upsert: true }
+    ).lean();
+
+    res.json({ success: true, message: 'Configurações do Robô atualizadas!', data: s });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Erro ao atualizar robô' });
   }
 });
 
