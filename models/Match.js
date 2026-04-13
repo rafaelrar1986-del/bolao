@@ -16,16 +16,21 @@ const { Schema } = mongoose;
 
 const MatchSchema = new Schema(
   {
+    // ID Único da partida (ID da API para evitar duplicidade)
     matchId: { type: Number, required: true, unique: true, index: true },
+
+    // IDENTIFICAÇÃO DA LIGA (O segredo para separar os campeonatos)
+    leagueId: { type: Number, required: true, index: true }, 
+    leagueName: { type: String, default: '' },
 
     teamA: { type: String, required: true, trim: true },
     teamB: { type: String, required: true, trim: true },
 
-    // NOVOS CAMPOS: Logos dos times (URLs da API/CDN)
+    // Logos dos times (URLs da API/CDN)
     logoA: { type: String, default: '' },
     logoB: { type: String, default: '' },
 
-    group: { type: String, required: true, trim: true },
+    group: { type: String, required: true, trim: true }, // Ex: "Grupo A" ou "Rodada 1"
     phase: { type: String, enum: ['group', 'knockout'], default: 'group', index: true },
 
     qualifiedSide: { type: String, enum: ['A', 'B', null], default: null },
@@ -87,7 +92,7 @@ MatchSchema.virtual('isFinished').get(function () {
   return this.status === 'finished';
 });
 
-// Verifica se o jogo está rolando (em qualquer uma das etapas)
+// Verifica se o jogo está rolando
 MatchSchema.virtual('isLive').get(function () {
   const liveStatus = ['1_tempo', 'intervalo', '2_tempo', 'prorrogacao', 'penaltis'];
   return liveStatus.includes(this.status);
@@ -104,6 +109,7 @@ MatchSchema.virtual('winner').get(function () {
   
   // 1. Se houve disputa de pênaltis, o vencedor real é decidido por eles
   if (this.penaltiesA !== null && this.penaltiesB !== null) {
+      if (this.penaltiesA === this.penaltiesB) return 'D';
       return this.penaltiesA > this.penaltiesB ? 'A' : 'B';
   }
 
@@ -114,6 +120,13 @@ MatchSchema.virtual('winner').get(function () {
 });
 
 // ---------- Métodos Estáticos ----------
+
+/**
+ * Busca partidas filtradas por liga (Uso: Match.getByLeague(71))
+ */
+MatchSchema.statics.getByLeague = function (leagueId) {
+  return this.find({ leagueId: Number(leagueId) }).sort({ date: 1, time: 1 });
+};
 
 /**
  * Finaliza a partida e salva os resultados
@@ -127,14 +140,14 @@ MatchSchema.statics.finishMatch = async function (matchId, scoreA, scoreB, penA 
   match.penaltiesA = penA !== null ? Number(penA) : null;
   match.penaltiesB = penB !== null ? Number(penB) : null;
   match.status = 'finished';
-  match.minute = "Fim"; // Limpa o minuto para exibir fim
+  match.minute = "Fim";
 
   await match.save();
   return match;
 };
 
 /**
- * Reverte uma partida para o estado agendado (limpa placares)
+ * Reverte uma partida para o estado agendado
  */
 MatchSchema.statics.unfinishMatch = async function (matchId, statusBack = 'scheduled') {
   const match = await this.findOne({ matchId: Number(matchId) });
@@ -153,6 +166,7 @@ MatchSchema.statics.unfinishMatch = async function (matchId, statusBack = 'sched
 };
 
 // Índices para performance
-MatchSchema.index({ group: 1, matchId: 1 });
+// Adicionado leagueId ao índice composto para buscas rápidas por liga
+MatchSchema.index({ leagueId: 1, group: 1, matchId: 1 });
 
 module.exports = mongoose.models.Match || mongoose.model('Match', MatchSchema);
