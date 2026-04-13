@@ -34,7 +34,7 @@ async function updateMatches() {
     const settings = await Settings.findById('global_settings');
 
     const config = {
-      leagues: settings?.api_leagues || [4, 6, 32, 33],
+      leagues: settings?.api_leagues || [27],
       season: settings?.api_season || 2026
     };
 
@@ -44,7 +44,7 @@ async function updateMatches() {
     const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
     const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
 
-    let nextUrl = `https://sports.bzzoiro.com/api/events/?date_from=${yesterday}&date_to=${tomorrow}`;
+    let nextUrl = `https://sports.bzzoiro.com/api/events/?date_from=2026-06-10&date_to=2026-06-28`;
     let updatedCount = 0;
     let page = 1;
 
