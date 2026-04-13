@@ -7,6 +7,7 @@ const Match = require('../models/Match');
 const mapStatus = (apiStatus) => {
     const statusMap = {
         'notstarted': 'scheduled',
+        'inprogress': '1_tempo', // Mapeamento comum para andamento
         '1st_half': '1_tempo',
         'ht': 'intervalo',
         '2nd_half': '2_tempo',
@@ -73,8 +74,16 @@ exports.fetchAndSyncMatches = async (req, res) => {
                 minute: '2-digit' 
             });
 
+            // Extração segura dos dados da liga
+            const currentLeagueId = item.league ? Number(item.league.id) : Number(leagueId);
+            const currentLeagueName = item.league ? item.league.name : "";
+
             const updateData = {
                 apiId: item.id,
+                // NOVOS CAMPOS PARA SEPARAÇÃO DE CAMPEONATO
+                leagueId: currentLeagueId,
+                leagueName: currentLeagueName,
+                
                 teamA: item.home_team,
                 teamB: item.away_team,
                 group: `Rodada ${item.round_number}`,
@@ -87,12 +96,17 @@ exports.fetchAndSyncMatches = async (req, res) => {
                 penaltiesA: item.home_score_penalties ?? null,
                 penaltiesB: item.away_score_penalties ?? null,
                 apiStatus: item.period || 'NS',
-                minute: item.current_minute ? `${item.current_minute}'` : ""
+                minute: item.current_minute ? `${item.current_minute}'` : "",
+                // Opcional: Adicionar logos se a API fornecer no objeto home_team_obj/away_team_obj
+                logoA: item.home_team_obj?.api_id ? `https://sports.bzzoiro.com/img/team/${item.home_team_obj.api_id}/?token=${API_KEY}` : '',
+                logoB: item.away_team_obj?.api_id ? `https://sports.bzzoiro.com/img/team/${item.away_team_obj.api_id}/?token=${API_KEY}` : ''
             };
 
+            // Busca por apiId (que é o ID 8287 do seu exemplo)
             let match = await Match.findOne({ apiId: item.id });
 
             if (!match) {
+                // Lógica de autoincremento para o matchId interno
                 const lastMatch = await Match.findOne().sort({ matchId: -1 });
                 const nextId = lastMatch && lastMatch.matchId ? lastMatch.matchId + 1 : 1;
                 
@@ -100,9 +114,12 @@ exports.fetchAndSyncMatches = async (req, res) => {
                     ...updateData,
                     matchId: nextId
                 });
+                
+                // validateBeforeSave: false ajuda na migração inicial se houver campos obrigatórios vazios
                 await match.save();
                 createdCount++;
             } else {
+                // Só atualiza se a partida ainda não foi processada (encerrada/pontuada)
                 if (!match.processed) {
                     Object.assign(match, updateData);
                     await match.save();
