@@ -39,7 +39,7 @@ async function updateMatches() {
     };
 
     const now = Date.now();
-    console.log(`🚀 [Cron] Iniciando execução forçada (Monitorando Gols e Minutos)...`);
+    console.log(`🚀 [Cron] Iniciando execução (Injetando LeagueID e Monitorando Gols)...`);
 
     const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
     const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
@@ -60,14 +60,17 @@ async function updateMatches() {
       for (const game of games) {
         if (!config.leagues.includes(game.league?.id)) continue;
 
+        // BUSCA POR apiId (que é o game.id da API)
         const match = await Match.findOne({ apiId: game.id });
         if (!match) continue;
 
         const newStatus = statusMap[game.status] || 'scheduled';
-        
-        // Formata o minuto exatamente como será exibido (ex: "25'")
         const newMinute = game.current_minute ? `${game.current_minute}'` : '';
         
+        // Dados da Liga vindos da API
+        const newLeagueId = Number(game.league?.id);
+        const newLeagueName = game.league?.name || '';
+
         const apiHomeId = game.home_team_obj?.api_id;
         const apiAwayId = game.away_team_obj?.api_id;
         const newLogoA = apiHomeId ? `https://sports.bzzoiro.com/img/team/${apiHomeId}/?token=${API_KEY}` : '';
@@ -80,8 +83,7 @@ async function updateMatches() {
            autoQualifiedSide = determineQualifier(game);
         }
 
-        // A MÁGICA ACONTECE AQUI: 
-        // Se o minuto mudou de "25'" para "26'", o 'changed' será TRUE.
+        // VERIFICAÇÃO DE MUDANÇA (Adicionado leagueId e leagueName aqui)
         const changed =
           match.status !== newStatus ||
           match.scoreA !== game.home_score ||
@@ -89,6 +91,7 @@ async function updateMatches() {
           match.minute !== newMinute || 
           match.logoA !== newLogoA ||
           match.logoB !== newLogoB ||
+          match.leagueId !== newLeagueId || // <--- Mudança detectada se faltar o ID
           match.qualifiedSide !== autoQualifiedSide; 
 
         if (!changed) continue;
@@ -96,30 +99,30 @@ async function updateMatches() {
         const oldStatus = match.status;
         const oldMinute = match.minute;
         
-        // Atualiza os campos
+        // Atualiza os campos (Injetando os dados da liga)
+        match.leagueId = newLeagueId;
+        match.leagueName = newLeagueName;
+        
         match.scoreA = game.home_score;
         match.scoreB = game.away_score;
         match.status = newStatus;
         match.apiStatus = game.status;
-        match.minute = newMinute; // Salva o novo minuto (ex: "26'")
+        match.minute = newMinute;
         match.logoA = newLogoA; 
         match.logoB = newLogoB; 
         match.penaltiesA = game.home_penalty_score ?? null;
         match.penaltiesB = game.away_penalty_score ?? null;
         match.qualifiedSide = autoQualifiedSide;
 
-        // O save() dispara o ChangeStream no MongoDB, que por sua vez dispara o SSE
+        // Salva e dispara o SSE via ChangeStream
         await match.save();
 
-        // Log detalhado para acompanhamento
         if (match.scoreA !== game.home_score || match.scoreB !== game.away_score) {
             console.log(`⚽ GOL: ${match.teamA} ${game.home_score}x${game.away_score} ${match.teamB}`);
-        } else if (oldMinute !== newMinute) {
-            console.log(`⏱️ MINUTO: ${match.teamA} vs ${match.teamB} evoluiu para ${newMinute}`);
         }
 
         if (oldStatus !== 'finished' && newStatus === 'finished') {
-          console.log(`🥇 [Sistema] Partida encerrada. Recalculando pontos...`);
+          console.log(`🥇 [Sistema] Partida encerrada. Recalculando pontos para Liga ${newLeagueId}...`);
           try {
             const result = await recalculateAllPoints();
             console.log(`✅ [Sucesso] ${result.updated} usuários atualizados.`);
@@ -139,7 +142,7 @@ async function updateMatches() {
       $set: { last_api_run: now } 
     });
 
-    console.log(`✨ [Fim da Rodada] Sincronizados: ${updatedCount} jogos com alterações.`);
+    console.log(`✨ [Fim] Sincronizados: ${updatedCount} jogos (Ligas Separation OK).`);
 
   } catch (err) {
     console.error('❌ [Erro Crítico no Updater]:', err.message);
