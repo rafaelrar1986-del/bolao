@@ -17,7 +17,7 @@ const { Schema } = mongoose;
 const MatchSchema = new Schema(
   {
     // ID Único da partida (ID da API para evitar duplicidade)
-    matchId: { type: Number, required: true, unique: false, index: true },
+    matchId: { type: Number, required: false, unique: false, index: true },
 
     // IDENTIFICAÇÃO DA LIGA (O segredo para separar os campeonatos)
     leagueId: { type: Number, required: true, index: true }, 
