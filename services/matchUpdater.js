@@ -1,55 +1,18 @@
 const axios = require('axios');
 const Match = require('../models/Match');
-const Settings = require('../models/Settings');
-const { recalculateAllPoints } = require('./pointsService');
-const { trySaveDailyPoints } = require('./dailyHistoryService');
 
 const API_KEY = process.env.API_FOOTBALL_KEY;
 
-const statusMap = {
-  notstarted: 'scheduled',
-  inprogress: '1_tempo',
-  '1st_half': '1_tempo',
-  halftime: 'intervalo',
-  '2nd_half': '2_tempo',
-  extra_time: 'prorrogacao',
-  'extra_time_first_half': 'prorrogacao',
-  'extra_time_second_half': 'prorrogacao',
-  penalties: 'penaltis',
-  finished: 'finished',
-  postponed: 'postponed',
-  cancelled: 'cancelled'
-};
-
-function determineQualifier(game) {
-  if (game.home_score > game.away_score) return 'A';
-  if (game.away_score > game.home_score) return 'B';
-  if (game.home_penalty_score > game.away_penalty_score) return 'A';
-  if (game.away_penalty_score > game.home_penalty_score) return 'B';
-  return null;
-}
-
-async function updateMatches() {
+async function runMigration() {
   try {
-    const settings = await Settings.findById('global_settings');
+    console.log(`🚀 Iniciando migração de LeagueID...`);
 
-    const config = {
-      leagues: settings?.api_leagues || [27],
-      season: settings?.api_season || 2026
-    };
-
-    const now = Date.now();
-    console.log(`🚀 [Cron] Iniciando execução (Injetando LeagueID e Monitorando Gols)...`);
-
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-    const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
-
+    // Usando a URL específica que você forneceu
     let nextUrl = `https://sports.bzzoiro.com/api/events/?date_from=2026-06-10&date_to=2026-06-28`;
-    let updatedCount = 0;
-    let page = 1;
+    let updatedTotal = 0;
 
     while (nextUrl) {
-      console.log(`\n📄 PROCESSANDO PÁGINA ${page}...`);
+      console.log(`📡 Buscando dados em: ${nextUrl}`);
       
       const response = await axios.get(nextUrl, {
         headers: { Authorization: `Token ${API_KEY}` }
@@ -58,95 +21,32 @@ async function updateMatches() {
       const games = response.data.results || [];
 
       for (const game of games) {
-        if (!config.leagues.includes(game.league?.id)) continue;
-
-        // BUSCA POR apiId (que é o game.id da API)
+        // Busca a partida pelo ApiId que você já tem no banco (8287, etc)
         const match = await Match.findOne({ apiId: game.id });
-        if (!match) continue;
 
-        const newStatus = statusMap[game.status] || 'scheduled';
-        const newMinute = game.current_minute ? `${game.current_minute}'` : '';
-        
-        // Dados da Liga vindos da API
-        const newLeagueId = Number(game.league?.id);
-        const newLeagueName = game.league?.name || '';
+        if (match) {
+          // Forçamos a atualização dos novos campos de liga
+          match.leagueId = Number(game.league?.id);
+          match.leagueName = game.league?.name;
+          
+          // Opcional: Atualiza também o api_id secundário se estiver vazio
+          if (!match.apiId) match.apiId = game.api_id;
 
-        const apiHomeId = game.home_team_obj?.api_id;
-        const apiAwayId = game.away_team_obj?.api_id;
-        const newLogoA = apiHomeId ? `https://sports.bzzoiro.com/img/team/${apiHomeId}/?token=${API_KEY}` : '';
-        const newLogoB = apiAwayId ? `https://sports.bzzoiro.com/img/team/${apiAwayId}/?token=${API_KEY}` : '';
-
-        let autoQualifiedSide = match.qualifiedSide;
-        const isKnockout = match.phase === 'knockout' || match.phase === 'mata-mata';
-        
-        if (isKnockout && newStatus === 'finished' && !match.qualifiedSide) {
-           autoQualifiedSide = determineQualifier(game);
+          await match.save();
+          console.log(`✅ Atualizado: ${match.teamA} x ${match.teamB} -> Liga: ${match.leagueId}`);
+          updatedTotal++;
         }
-
-        // VERIFICAÇÃO DE MUDANÇA (Adicionado leagueId e leagueName aqui)
-        const changed =
-          match.status !== newStatus ||
-          match.scoreA !== game.home_score ||
-          match.scoreB !== game.away_score ||
-          match.minute !== newMinute || 
-          match.logoA !== newLogoA ||
-          match.logoB !== newLogoB ||
-          match.leagueId !== newLeagueId || // <--- Mudança detectada se faltar o ID
-          match.qualifiedSide !== autoQualifiedSide; 
-
-        if (!changed) continue;
-
-        const oldStatus = match.status;
-        const oldMinute = match.minute;
-        
-        // Atualiza os campos (Injetando os dados da liga)
-        match.leagueId = newLeagueId;
-        match.leagueName = newLeagueName;
-        
-        match.scoreA = game.home_score;
-        match.scoreB = game.away_score;
-        match.status = newStatus;
-        match.apiStatus = game.status;
-        match.minute = newMinute;
-        match.logoA = newLogoA; 
-        match.logoB = newLogoB; 
-        match.penaltiesA = game.home_penalty_score ?? null;
-        match.penaltiesB = game.away_penalty_score ?? null;
-        match.qualifiedSide = autoQualifiedSide;
-
-        // Salva e dispara o SSE via ChangeStream
-        await match.save();
-
-        if (match.scoreA !== game.home_score || match.scoreB !== game.away_score) {
-            console.log(`⚽ GOL: ${match.teamA} ${game.home_score}x${game.away_score} ${match.teamB}`);
-        }
-
-        if (oldStatus !== 'finished' && newStatus === 'finished') {
-          console.log(`🥇 [Sistema] Partida encerrada. Recalculando pontos para Liga ${newLeagueId}...`);
-          try {
-            const result = await recalculateAllPoints();
-            console.log(`✅ [Sucesso] ${result.updated} usuários atualizados.`);
-            await trySaveDailyPoints(game.event_date);
-          } catch (procError) {
-            console.error(`❌ [Erro Recálculo]:`, procError.message);
-          }
-        }
-        updatedCount++;
       }
 
       nextUrl = response.data.next; 
-      page++;
     }
 
-    await Settings.findByIdAndUpdate('global_settings', { 
-      $set: { last_api_run: now } 
-    });
-
-    console.log(`✨ [Fim] Sincronizados: ${updatedCount} jogos (Ligas Separation OK).`);
+    console.log(`\n✨ MIGRACÃO CONCLUÍDA!`);
+    console.log(`📊 Total de partidas carimbadas com LeagueID: ${updatedTotal}`);
 
   } catch (err) {
-    console.error('❌ [Erro Crítico no Updater]:', err.message);
+    console.error('❌ Erro na migração:', err.message);
   }
 }
 
-module.exports = updateMatches;
+module.exports = runMigration;
