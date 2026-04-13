@@ -5,14 +5,15 @@ const API_KEY = process.env.API_FOOTBALL_KEY;
 
 async function runMigration() {
   try {
-    console.log(`🚀 Iniciando migração de LeagueID...`);
+    console.log(`🚀 Iniciando migração forcada de LeagueID...`);
 
-    // Usando a URL específica que você forneceu
+    // URL com as datas da Copa que você solicitou
     let nextUrl = `https://sports.bzzoiro.com/api/events/?date_from=2026-06-10&date_to=2026-06-28`;
-    let updatedTotal = 0;
+    let foundCount = 0;
+    let updatedCount = 0;
 
     while (nextUrl) {
-      console.log(`📡 Buscando dados em: ${nextUrl}`);
+      console.log(`📡 Consultando página: ${nextUrl}`);
       
       const response = await axios.get(nextUrl, {
         headers: { Authorization: `Token ${API_KEY}` }
@@ -21,31 +22,35 @@ async function runMigration() {
       const games = response.data.results || [];
 
       for (const game of games) {
-        // Busca a partida pelo ApiId que você já tem no banco (8287, etc)
+        // IMPORTANTE: Buscamos no seu banco (apiId) usando o (id) da API
+        // No seu exemplo: apiId no banco é 8287
         const match = await Match.findOne({ apiId: game.id });
 
         if (match) {
-          // Forçamos a atualização dos novos campos de liga
-          match.leagueId = Number(game.league?.id);
-          match.leagueName = game.league?.name;
+          foundCount++;
           
-          // Opcional: Atualiza também o api_id secundário se estiver vazio
-          if (!match.apiId) match.apiId = game.api_id;
+          // Injetando os dados da liga
+          match.leagueId = Number(game.league.id); // Ex: 27
+          match.leagueName = game.league.name;     // Ex: "World Cup 2026"
 
-          await match.save();
-          console.log(`✅ Atualizado: ${match.teamA} x ${match.teamB} -> Liga: ${match.leagueId}`);
-          updatedTotal++;
+          // Removendo temporariamente a validação de campos obrigatórios para garantir o save
+          // caso haja algum campo antigo vazio no seu banco
+          await match.save({ validateBeforeSave: false });
+          
+          console.log(`✅ [${match.leagueId}] ${match.teamA} x ${match.teamB} atualizado.`);
+          updatedCount++;
         }
       }
 
       nextUrl = response.data.next; 
     }
 
-    console.log(`\n✨ MIGRACÃO CONCLUÍDA!`);
-    console.log(`📊 Total de partidas carimbadas com LeagueID: ${updatedTotal}`);
+    console.log(`\n--- RELATÓRIO FINAL ---`);
+    console.log(`🔎 Jogos encontrados na API: ${foundCount}`);
+    console.log(`💾 Jogos atualizados no banco: ${updatedCount}`);
 
   } catch (err) {
-    console.error('❌ Erro na migração:', err.message);
+    console.error('❌ Erro Crítico:', err.message);
   }
 }
 
