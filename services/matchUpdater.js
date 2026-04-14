@@ -31,27 +31,21 @@ function determineQualifier(game) {
 
 async function updateMatches() {
   try {
-    // 1. Busca TODAS as configurações de ligas (Copa, Champions, etc)
+    // Busca todas as configurações de ligas ativas
     const allSettings = await Settings.find({});
 
     if (!allSettings || allSettings.length === 0) {
-      console.log('⚠️ Nenhuma configuração de liga encontrada no banco.');
+      console.log('⚠️ Nenhuma configuração de liga encontrada.');
       return;
     }
 
     const now = Date.now();
-    console.log(`🚀 [Cron] Iniciando atualização de ${allSettings.length} ligas...`);
-
     const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
     const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
 
-    // Endpoint da API externa
     let nextUrl = `https://sports.bzzoiro.com/api/events/?date_from=${yesterday}&date_to=${tomorrow}`;
-    let page = 1;
-
+    
     while (nextUrl) {
-      console.log(`\n📄 PROCESSANDO PÁGINA ${page}...`);
-      
       const response = await axios.get(nextUrl, {
         headers: { Authorization: `Token ${API_KEY}` }
       });
@@ -59,10 +53,9 @@ async function updateMatches() {
       const games = response.data.results || [];
 
       for (const game of games) {
-        // 2. Identifica qual configuração de liga corresponde a este jogo da API
-        const currentLeagueConfig = allSettings.find(s => s.api_leagues.includes(game.league?.id));
-        
-        if (!currentLeagueConfig) continue;
+        // Verifica se o jogo pertence a alguma das ligas configuradas
+        const config = allSettings.find(s => s.api_leagues.includes(game.league?.id));
+        if (!config) continue;
 
         const match = await Match.findOne({ apiId: game.id });
         if (!match) continue;
@@ -76,9 +69,7 @@ async function updateMatches() {
         const newLogoB = apiAwayId ? `https://sports.bzzoiro.com/img/team/${apiAwayId}/?token=${API_KEY}` : '';
 
         let autoQualifiedSide = match.qualifiedSide;
-        const isKnockout = match.phase === 'knockout' || match.phase === 'mata-mata';
-        
-        if (isKnockout && newStatus === 'finished' && !match.qualifiedSide) {
+        if ((match.phase === 'knockout' || match.phase === 'mata-mata') && newStatus === 'finished' && !match.qualifiedSide) {
            autoQualifiedSide = determineQualifier(game);
         }
 
@@ -94,9 +85,7 @@ async function updateMatches() {
         if (!changed) continue;
 
         const oldStatus = match.status;
-        const oldMinute = match.minute;
         
-        // Atualiza os dados no banco local
         match.scoreA = game.home_score;
         match.scoreB = game.away_score;
         match.status = newStatus;
@@ -110,38 +99,21 @@ async function updateMatches() {
 
         await match.save();
 
-        // Logs de acompanhamento
-        if (match.scoreA !== game.home_score || match.scoreB !== game.away_score) {
-            console.log(`⚽ GOL: ${match.teamA} ${game.home_score}x${game.away_score} ${match.teamB}`);
-        } else if (oldMinute !== newMinute) {
-            console.log(`⏱️ MINUTO: ${match.teamA} vs ${match.teamB} em ${newMinute}`);
-        }
-
-        // Se o jogo acabou, recalcula pontos e salva histórico
         if (oldStatus !== 'finished' && newStatus === 'finished') {
-          console.log(`🥇 Partida encerrada. Recalculando pontos para a liga ${currentLeagueConfig._id}...`);
           try {
-            // Passamos o leagueId para o recálculo (ajuste seu pointsService se necessário)
-            const result = await recalculateAllPoints(); 
-            console.log(`✅ ${result.updated} usuários recalculados.`);
+            await recalculateAllPoints(); 
             await trySaveDailyPoints(game.event_date);
           } catch (procError) {
             console.error(`❌ Erro no recálculo:`, procError.message);
           }
         }
       }
-
       nextUrl = response.data.next; 
-      page++;
     }
 
-    // Atualiza o timestamp de execução em todas as ligas processadas
     await Settings.updateMany({}, { $set: { last_api_run: now } });
-
-    console.log(`✨ Sincronização finalizada.`);
-
   } catch (err) {
-    console.error('❌ [Erro Crítico no Updater]:', err.message);
+    console.error('❌ [Erro no Updater]:', err.message);
   }
 }
 
