@@ -89,29 +89,37 @@ router.post('/save', protect, checkPaid, async (req, res) => {
   try {
     const { groupMatches, podium, knockoutQualifiers, leagueId } = req.body;
     
+    // 1. Validação de entrada
     if (!leagueId) return res.status(400).json({ success: false, message: 'leagueId é obrigatório' });
     if (!groupMatches || typeof groupMatches !== 'object') {
       return res.status(400).json({ success: false, message: 'groupMatches inválido' });
     }
 
-    const existing = await Bet.findOne({ user: req.user._id });
     const matchIdsEnviados = Object.keys(groupMatches).map(Number);
     
-    // Pegamos as partidas no banco para validar se pertencem à liga
-    const dbMatches = await Match.find({ matchId: { $in: matchIdsEnviados }, leagueId: Number(leagueId) }).select('matchId').lean();
+    // 2. Validação das partidas (Importante: converter leagueId para o tipo correto do seu schema)
+    // Se no seu schema Match o leagueId for String, use String(leagueId). Se for Number, Number(leagueId).
+    const dbMatches = await Match.find({ 
+      matchId: { $in: matchIdsEnviados }, 
+      leagueId: String(leagueId) // 👈 Ajuste conforme seu schema de Match
+    }).select('matchId').lean();
+
     const validMatchIds = new Set(dbMatches.map(m => m.matchId));
 
-    // Mantemos os palpites de OUTRAS ligas e atualizamos apenas os desta liga
+    // 3. Recuperar aposta existente ou preparar novo Map
+    const existing = await Bet.findOne({ user: req.user._id });
     const gmMap = new Map();
+
     if (existing && Array.isArray(existing.groupMatches)) {
       existing.groupMatches.forEach((b) => {
         gmMap.set(b.matchId, b);
       });
     }
 
+    // 4. Atualizar apenas os palpites das partidas que pertencem à liga enviada
     Object.entries(groupMatches).forEach(([matchId, choice]) => {
       const idNum = Number(matchId);
-      if (!validMatchIds.has(idNum)) return; // Ignora se o jogo não for da liga correta
+      if (!validMatchIds.has(idNum)) return; 
       if (!['A', 'B', 'draw'].includes(choice)) return;
 
       let qualifier = null;
@@ -130,15 +138,17 @@ router.post('/save', protect, checkPaid, async (req, res) => {
     });
 
     const now = new Date();
+
+    // 5. Montagem do Payload (AQUI ESTÁ A CHAVE DO PROBLEMA)
     const payload = {
       user: req.user._id,
+      leagueId: String(leagueId), // 👈 ESSENCIAL: Grava a liga no nível raiz para o snapshot funcionar!
       groupMatches: Array.from(gmMap.values()),
       hasSubmitted: true,
       lastUpdate: now,
       firstSubmission: existing?.firstSubmission || now,
     };
 
-    // Se houver pódio no body, atualiza (o pódio pode ser global ou por liga, aqui mantemos global como seu esquema original)
     if (podium && podium.first) {
       payload.podium = {
         first: String(podium.first).trim(),
@@ -148,6 +158,7 @@ router.post('/save', protect, checkPaid, async (req, res) => {
       };
     }
 
+    // 6. Persistência
     const bet = await Bet.findOneAndUpdate(
       { user: req.user._id },
       { $set: payload },
@@ -160,7 +171,6 @@ router.post('/save', protect, checkPaid, async (req, res) => {
     return res.status(500).json({ success: false, message: 'Erro ao salvar palpites' });
   }
 });
-
 /**
  * 🏆 Leaderboard (Oficial + Parcial LIVE filtrado por LIGA)
  */
