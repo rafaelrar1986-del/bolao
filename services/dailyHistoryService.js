@@ -37,14 +37,13 @@ function normalizeToUTCDate(input) {
 /**
  * Tenta salvar o histórico de pontos do dia para uma LIGA específica
  */
-async function trySaveDailyPoints(matchDateInput, leagueId) { // 👈 Adicionado leagueId
+async function trySaveDailyPoints(matchDateInput, leagueId) {
   try {
+    // 1️⃣ Validação de Entrada
     if (!leagueId) {
       console.log('⛔ [dailyHistory] leagueId não informado, abortando snapshot');
       return;
     }
-
-    console.log(`📅 [dailyHistory] [Liga: ${leagueId}] Data recebida:`, matchDateInput);
 
     const historyDate = normalizeToUTCDate(matchDateInput);
     if (!historyDate) {
@@ -57,62 +56,72 @@ async function trySaveDailyPoints(matchDateInput, leagueId) { // 👈 Adicionado
     const year  = historyDate.getUTCFullYear();
     const matchDateStr = `${day}/${month}/${year}`;
 
-    // 1️⃣ Buscar partidas do dia filtrando por LIGA
+    // 2️⃣ Buscar partidas do dia filtrando por LIGA (Conversão de tipo para segurança)
     const matches = await Match.find({ 
       date: matchDateStr, 
-      leagueId: leagueId // 👈 Filtro essencial
+      leagueId: String(leagueId) 
     });
 
-    console.log(`📅 [dailyHistory] [${leagueId}] Jogos encontrados:`, matches.length);
-
     if (!matches.length) {
-      console.log(`⛔ [dailyHistory] Nenhum jogo encontrado para a liga ${leagueId} no dia`);
+      console.log(`⛔ [dailyHistory] [Liga: ${leagueId}] Nenhum jogo em ${matchDateStr}`);
       return;
     }
 
-    // 2️⃣ Verificar se todas desta liga estão finalizadas
+    // 3️⃣ Verificar se todas desta liga estão finalizadas
     const allFinished = matches.every(m => m.status === 'finished');
-
     if (!allFinished) {
-      console.log(`⛔ [dailyHistory] [${leagueId}] Ainda existem jogos pendentes nesta liga hoje.`);
+      console.log(`⛔ [dailyHistory] [${leagueId}] Ainda existem jogos pendentes hoje.`);
       return;
     }
 
-    // 3️⃣ Evitar duplicação por DIA e por LIGA
+    // 4️⃣ Evitar duplicação por DIA e por LIGA
     const alreadySaved = await PointsHistory.findOne({
       date: historyDate,
-      leagueId: leagueId // 👈 Snapshot agora é por liga
+      leagueId: String(leagueId)
     });
 
     if (alreadySaved) {
-      console.log(`⛔ [dailyHistory] Histórico da liga ${leagueId} já salvo hoje.`);
+      console.log(`⛔ [dailyHistory] Histórico da liga ${leagueId} já existe para esta data.`);
       return;
     }
 
-    // 4️⃣ Buscar pontos das apostas DESTA LIGA
-    const bets = await Bet.find({ leagueId: leagueId }).populate('user');
+    // 5️⃣ Buscar apostas DESTA LIGA
+    // Usamos populate('user') para garantir que temos o ID do usuário
+    const bets = await Bet.find({ leagueId: String(leagueId) }).populate('user');
 
-    console.log(`👥 [dailyHistory] [${leagueId}] Processando ${bets.length} usuários...`);
+    if (!bets || bets.length === 0) {
+      console.log(`⚠️ [dailyHistory] [${leagueId}] Nenhuma aposta encontrada.`);
+      return;
+    }
 
-    const snapshots = bets.map(bet => {
-      if (!bet.user) return null;
+    // 6️⃣ Criar Snapshots Únicos por Usuário
+    const snapshotsMap = new Map();
 
-      return {
-        user: bet.user._id,
-        leagueId: leagueId, // 👈 Salva de qual liga é esse histórico
-        date: historyDate,
-        points: bet.totalPoints || 0
-      };
-    }).filter(Boolean);
+    bets.forEach(bet => {
+      if (bet.user && bet.user._id) {
+        const userId = bet.user._id.toString();
+        
+        // Garantimos que pegamos o totalPoints atualizado do documento Bet
+        snapshotsMap.set(userId, {
+          user: bet.user._id,
+          leagueId: String(leagueId), // 🔑 CRUCIAL: Agora gravando explicitamente
+          date: historyDate,
+          points: bet.totalPoints || 0
+        });
+      }
+    });
+
+    const snapshots = Array.from(snapshotsMap.values());
 
     if (snapshots.length > 0) {
       await PointsHistory.insertMany(snapshots);
+      console.log(`✅ [dailyHistory] [${leagueId}] Sucesso: ${snapshots.length} usuários salvos (${matchDateStr})`);
+    } else {
+      console.log(`⚠️ [dailyHistory] [${leagueId}] Nenhum snapshot válido gerado.`);
     }
 
-    console.log(`✅ [dailyHistory] Histórico da liga ${leagueId} salvo com sucesso (${matchDateStr})`);
-
   } catch (err) {
-    console.error(`❌ [dailyHistory] Erro ao salvar histórico (Liga: ${leagueId}):`, err);
+    console.error(`❌ [dailyHistory] Erro Crítico (Liga: ${leagueId}):`, err);
   }
 }
 
