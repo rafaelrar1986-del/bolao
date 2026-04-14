@@ -1,4 +1,3 @@
-// models/Settings.js
 const mongoose = require('mongoose');
 
 const SettingsSchema = new mongoose.Schema(
@@ -21,7 +20,7 @@ const SettingsSchema = new mongoose.Schema(
     },
     api_leagues: {
       type: [Number],
-      default: [4, 6, 32, 33] // IDs das ligas na API externa correspondentes a esta liga do bolão
+      default: [4, 6, 32, 33] 
     },
     api_season: {
       type: Number,
@@ -33,7 +32,6 @@ const SettingsSchema = new mongoose.Schema(
     },
 
     // 🔒 BLOQUEIOS DE EDIÇÃO POR LIGA
-    // Permite fechar as apostas de uma liga sem afetar as outras
     blockSaveBets: {
       type: Boolean,
       default: false
@@ -47,10 +45,10 @@ const SettingsSchema = new mongoose.Schema(
       default: false
     },
 
-    // 🔐 CONTROLE DE VISIBILIDADE (O que os usuários podem ver uns dos outros nesta liga)
+    // 🔐 CONTROLE DE VISIBILIDADE
     unlockedPhases: {
       type: [String], 
-      default: ['group'] // 'group', 'round_16', 'quarter', 'semi', 'final'
+      default: ['group']
     },
 
     // 📊 ESTATÍSTICAS E RANKING
@@ -65,20 +63,46 @@ const SettingsSchema = new mongoose.Schema(
     unlockAt: {
       type: Date,
       default: null
+    },
+
+    // 🏆 [ADICIONADO] CAMPO DE PÓDIO
+    // Necessário para que o pointsService funcione corretamente
+    podium: {
+      first: { type: String, default: null },
+      second: { type: String, default: null },
+      third: { type: String, default: null },
+      fourth: { type: String, default: null }
+    },
+    
+    // Campo auxiliar para buscas se necessário (sem índice único)
+    key: {
+      type: String,
+      default: 'league_settings'
+    },
+    leagueId: {
+      type: Number
     }
   },
   {
-    // Adiciona createdAt e updatedAt automaticamente
-    timestamps: true
+    timestamps: true,
+    // Bloqueia a criação automática de índices para evitar o erro 11000
+    autoIndex: false 
   }
 );
 
-// ... final do seu arquivo Settings.js ...
-
+// Criamos o modelo
 const Settings = mongoose.model('Settings', SettingsSchema);
 
-// Comando para forçar a remoção dos índices fantasmas no próximo deploy
-Settings.collection.dropIndex('key_1').catch(() => {});
-Settings.collection.dropIndex('key_1_leagueId_1').catch(() => {});
+/**
+ * 🧹 LIMPEZA DE EMERGÊNCIA
+ * Tenta remover os índices que estavam travando o banco de dados.
+ * Isso roda apenas uma vez quando o servidor sobe.
+ */
+Settings.collection.dropIndex('key_1').catch(() => {
+  // Ignora erro se o índice não existir
+});
+Settings.collection.dropIndex('key_1_leagueId_1').catch(() => {
+  // Ignora erro se o índice não existir
+});
 
-module.exports = Settings;);
+module.exports = Settings;
