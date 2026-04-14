@@ -73,4 +73,12 @@ const SettingsSchema = new mongoose.Schema(
   }
 );
 
-module.exports = mongoose.model('Settings', SettingsSchema);
+// ... final do seu arquivo Settings.js ...
+
+const Settings = mongoose.model('Settings', SettingsSchema);
+
+// Comando para forçar a remoção dos índices fantasmas no próximo deploy
+Settings.collection.dropIndex('key_1').catch(() => {});
+Settings.collection.dropIndex('key_1_leagueId_1').catch(() => {});
+
+module.exports = Settings;);
