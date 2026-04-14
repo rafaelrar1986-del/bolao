@@ -191,7 +191,11 @@ router.post('/admin/finish/:matchId', protect, admin, async (req, res) => {
 
     const resultWinner = match.winner; 
 
-    const cursor = Bet.find({ 'groupMatches.matchId': matchId }).cursor();
+    const cursor = Bet.find({ 
+      'groupMatches.matchId': matchId,
+      leagueId: match.leagueId // 👈 Garante que só atualiza apostas da liga correta
+    }).cursor();
+
     for await (const bet of cursor) {
       bet.groupMatches = (bet.groupMatches || []).map(gm => {
         if (gm.matchId === matchId) {
@@ -199,7 +203,8 @@ router.post('/admin/finish/:matchId', protect, admin, async (req, res) => {
           gm.points = hitResult ? 1 : 0;
 
           let hitQualifier = false;
-          const realQualifier = match.qualifiedSide || (resultWinner !== 'D' ? resultWinner : null);
+          const realQualifier = match.qualifiedSide || (resultWinner !== 'draw' ? resultWinner : null);
+          
           if (gm.qualifier && (gm.qualifier === 'A' || gm.qualifier === 'B')) {
             if (realQualifier && gm.qualifier === realQualifier) hitQualifier = true;
           }
@@ -214,8 +219,12 @@ router.post('/admin/finish/:matchId', protect, admin, async (req, res) => {
       await bet.save();
     }
 
+    // 🔥 GATILHO CORRIGIDO: Agora enviamos a data E o leagueId
     const normalizedDate = parseMatchDate(match.date);
-    if (normalizedDate) await trySaveDailyPoints(normalizedDate);
+    if (normalizedDate) {
+      console.log(`🚀 Iniciando checagem de snapshot diário para Liga: ${match.leagueId}`);
+      await trySaveDailyPoints(normalizedDate, match.leagueId); 
+    }
 
     res.json({ success: true, message: 'Partida finalizada e pontos atualizados', data: match });
   } catch (err) {
@@ -223,7 +232,6 @@ router.post('/admin/finish/:matchId', protect, admin, async (req, res) => {
     res.status(500).json({ success: false, message: 'Erro ao finalizar partida' });
   }
 });
-
 // ======================
 // 7. POST /api/matches/admin/unfinish/:matchId (Admin)
 // ======================
