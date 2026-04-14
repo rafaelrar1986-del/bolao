@@ -1,14 +1,19 @@
+// models/Settings.js
 const mongoose = require('mongoose');
 
 const SettingsSchema = new mongoose.Schema(
   {
-    // ⚠️ Mantém o mesmo ID fixo para garantir que só exista um documento de config no banco
+    /**
+     * 🆔 ID DA CONFIGURAÇÃO
+     * Em vez de 'global_settings', usaremos o ID da liga (ex: 'league_27', 'league_1')
+     * Isso permite que cada campeonato tenha regras de bloqueio independentes.
+     */
     _id: {
       type: String,
-      default: 'global_settings'
+      required: true
     },
 
-    // 🤖 CONFIGURAÇÕES DO ATUALIZADOR AUTOMÁTICO (ROBÔ)
+    // 🤖 CONFIGURAÇÕES DO ATUALIZADOR AUTOMÁTICO (ROBÔ POR LIGA)
     cron_interval: {
       type: Number,
       default: 5, // Intervalo em minutos
@@ -16,7 +21,7 @@ const SettingsSchema = new mongoose.Schema(
     },
     api_leagues: {
       type: [Number],
-      default: [4, 6, 32, 33] // IDs das ligas padrão
+      default: [4, 6, 32, 33] // IDs das ligas na API externa correspondentes a esta liga do bolão
     },
     api_season: {
       type: Number,
@@ -27,7 +32,8 @@ const SettingsSchema = new mongoose.Schema(
       default: 0
     },
 
-    // 🔒 BLOQUEIOS DE EDIÇÃO (Impedem o usuário de salvar/mudar palpites)
+    // 🔒 BLOQUEIOS DE EDIÇÃO POR LIGA
+    // Permite fechar as apostas de uma liga sem afetar as outras
     blockSaveBets: {
       type: Boolean,
       default: false
@@ -41,10 +47,10 @@ const SettingsSchema = new mongoose.Schema(
       default: false
     },
 
-    // 🔐 CONTROLE DE VISIBILIDADE (O que os usuários podem ver uns dos outros)
+    // 🔐 CONTROLE DE VISIBILIDADE (O que os usuários podem ver uns dos outros nesta liga)
     unlockedPhases: {
       type: [String], 
-      default: ['group'] // Por padrão, libera a visualização da fase de grupos
+      default: ['group'] // 'group', 'round_16', 'quarter', 'semi', 'final'
     },
 
     // 📊 ESTATÍSTICAS E RANKING
