@@ -1,3 +1,4 @@
+// models/PointsHistory.js
 const mongoose = require('mongoose');
 
 const pointsHistorySchema = new mongoose.Schema(
@@ -9,17 +10,29 @@ const pointsHistorySchema = new mongoose.Schema(
       index: true
     },
 
-    // 📅 Dia da pontuação (normalizado para 00:00:00)
+    // 🔑 ID DA LIGA (Essencial para filtrar o gráfico por campeonato)
+    leagueId: {
+      type: String,
+      required: true,
+      index: true
+    },
+
+    // 📅 Dia da pontuação (normalizado para 00:00:00 UTC)
     date: {
       type: Date,
       required: true,
       index: true
     },
 
-    // 📊 Pontuação total do usuário naquele dia
+    // 📊 Pontuação total acumulada do usuário naquele dia
     points: {
       type: Number,
       required: true
+    },
+
+    // 🏅 Posição do usuário no ranking naquele dia (opcional, mas ótimo para o gráfico de linha de posição)
+    position: {
+      type: Number
     }
   },
   {
@@ -27,9 +40,13 @@ const pointsHistorySchema = new mongoose.Schema(
   }
 );
 
-// 🔒 REGRA ABSOLUTA: 1 registro por usuário por dia
+/**
+ * 🔒 REGRA ABSOLUTA ATUALIZADA:
+ * 1 registro por usuário, por dia, POR LIGA.
+ * Isso permite que o usuário participe de vários campeonatos simultâneos.
+ */
 pointsHistorySchema.index(
-  { user: 1, date: 1 },
+  { user: 1, date: 1, leagueId: 1 },
   { unique: true }
 );
 
