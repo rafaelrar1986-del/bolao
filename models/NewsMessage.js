@@ -1,7 +1,8 @@
+// models/NewsMessage.js
 const mongoose = require('mongoose');
 
 /* =========================
-   Subdocumento de Reação
+    Subdocumento de Reação
 ========================= */
 const NewsReactionSchema = new mongoose.Schema(
   {
@@ -20,7 +21,7 @@ const NewsReactionSchema = new mongoose.Schema(
 );
 
 /* =========================
-   Mensagem do News
+    Mensagem do News
 ========================= */
 const NewsMessageSchema = new mongoose.Schema(
   {
@@ -28,6 +29,13 @@ const NewsMessageSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true
+    },
+
+    // 🔑 ID DA LIGA (Garante que as notícias sejam exclusivas de cada campeonato)
+    leagueId: {
+      type: String,
+      required: true,
+      index: true
     },
 
     text: {
@@ -43,14 +51,16 @@ const NewsMessageSchema = new mongoose.Schema(
     }
   },
   {
+    // Criamos apenas createdAt para o controle do TTL (auto-delete)
     timestamps: { createdAt: true, updatedAt: false }
   }
 );
 
 /* =========================
-   ⏱️ TTL — APAGA APÓS 6 HORAS
+    ⏱️ TTL — APAGA APÓS 6 HORAS
 ========================= */
-// 6 horas = 6 * 60 * 60 = 21600 segundos
+// 6 horas = 21600 segundos
+// O MongoDB verifica periodicamente e remove documentos onde (now - createdAt) > 21600
 NewsMessageSchema.index(
   { createdAt: 1 },
   { expireAfterSeconds: 21600 }
