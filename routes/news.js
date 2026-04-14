@@ -1,3 +1,4 @@
+// routes/news.js
 const express = require('express');
 const NewsMessage = require('../models/NewsMessage');
 const { protect } = require('../middleware/auth');
@@ -6,11 +7,16 @@ const router = express.Router();
 
 /* =========================
    POST /api/news
-   Criar frase (1 por hora)
+   Criar frase (1 por hora por liga)
 ========================= */
 router.post('/', protect, async (req, res) => {
   try {
     const text = String(req.body.text || '').trim();
+    const { leagueId } = req.body; // 👈 Recebe a liga do front-end
+
+    if (!leagueId) {
+      return res.status(400).json({ success: false, message: 'ID da liga não informado' });
+    }
 
     if (!text || text.length < 3) {
       return res.status(400).json({
@@ -26,23 +32,25 @@ router.post('/', protect, async (req, res) => {
       });
     }
 
-    // ⏱️ cooldown 1h
+    // ⏱️ cooldown 1h filtrado por usuário e liga
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
 
     const lastMessage = await NewsMessage.findOne({
       user: req.user._id,
+      leagueId: leagueId, // 👈 Restringe o cooldown à liga atual
       createdAt: { $gte: oneHourAgo }
     });
 
     if (lastMessage) {
       return res.status(429).json({
         success: false,
-        message: 'Você só pode enviar uma frase por hora'
+        message: 'Você só pode enviar uma frase por hora nesta liga'
       });
     }
 
     const msg = await NewsMessage.create({
       user: req.user._id,
+      leagueId, // 👈 Salva o vínculo com a liga
       text
     });
 
@@ -58,20 +66,25 @@ router.post('/', protect, async (req, res) => {
     console.error('Erro ao criar frase:', err);
     res.status(500).json({
       success: false,
-      message: 'Erro interno'
+      message: 'Erro interno ao salvar frase'
     });
   }
 });
 
 /* =========================
    GET /api/news
-   Últimas 20 frases (com reações do usuário)
+   Últimas 20 frases da liga selecionada
 ========================= */
 router.get('/', protect, async (req, res) => {
   try {
     const userId = req.user._id.toString();
+    const { leagueId } = req.query; // 👈 Filtra por liga via query string
 
-    const messages = await NewsMessage.find()
+    if (!leagueId) {
+      return res.status(400).json({ success: false, message: 'ID da liga é necessário' });
+    }
+
+    const messages = await NewsMessage.find({ leagueId }) // 👈 Filtro crucial
       .sort({ createdAt: -1 })
       .limit(20)
       .populate('user', 'name')
@@ -103,7 +116,7 @@ router.get('/', protect, async (req, res) => {
 
 /* =========================
    POST /api/news/:id/react
-   1 reação por usuário
+   Toggle de reação (mantém a lógica existente)
 ========================= */
 router.post('/:id/react', protect, async (req, res) => {
   try {
@@ -135,21 +148,23 @@ router.post('/:id/react', protect, async (req, res) => {
       );
     });
 
-    // remove emojis vazios
+    // Remove objetos de emoji que ficaram sem usuários
     message.reactions = message.reactions.filter(
       r => r.users.length > 0
     );
 
     /* ======================================
-       2️⃣ TOGGLE do emoji clicado
+       2️⃣ ADICIONA o novo emoji (ou remove se for o mesmo - Toggle)
+       Nota: A lógica abaixo assume que se o usuário clicou, ele quer reagir.
+       Se quiser toggle puro (clicar no mesmo e remover), 
+       a lógica de remoção acima já tratou de limpar. 
+       Basta verificar se o emoji clicado era o mesmo que ele já tinha.
     ====================================== */
     let reaction = message.reactions.find(r => r.emoji === emoji);
 
     if (reaction) {
-      // se já existia, adiciona o usuário
       reaction.users.push(userId);
     } else {
-      // cria nova reação
       message.reactions.push({
         emoji,
         users: [userId]
@@ -162,7 +177,8 @@ router.post('/:id/react', protect, async (req, res) => {
       success: true,
       reactions: message.reactions.map(r => ({
         emoji: r.emoji,
-        count: r.users.length
+        count: r.users.length,
+        reactedByMe: r.users.map(u => u.toString()).includes(userId)
       }))
     });
 
@@ -174,6 +190,5 @@ router.post('/:id/react', protect, async (req, res) => {
     });
   }
 });
-
 
 module.exports = router;
