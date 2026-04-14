@@ -9,9 +9,13 @@ const Match = require('../models/Match');
 // ============== Definir / atualizar pódio (admin) ==============
 router.post('/process-podium', protect, admin, async (req, res) => {
   try {
-    const { first, second, third, fourth } = req.body || {};
+    const { first, second, third, fourth, leagueId } = req.body || {};
 
-    // bloqueia apenas request totalmente vazia
+    if (!leagueId) {
+      return res.status(400).json({ success: false, message: 'ID da liga não informado' });
+    }
+
+    // bloqueia apenas request totalmente vazia nas posições
     if (
       first === undefined &&
       second === undefined &&
@@ -28,12 +32,13 @@ router.post('/process-podium', protect, admin, async (req, res) => {
       first,
       second,
       third,
-      fourth
+      fourth,
+      leagueId
     });
 
     return res.json({
       success: true,
-      message: 'Pódio atualizado com sucesso',
+      message: 'Pódio atualizado com sucesso e pontos distribuídos',
       updated: result.updated
     });
   } catch (err) {
@@ -42,11 +47,15 @@ router.post('/process-podium', protect, admin, async (req, res) => {
   }
 });
 
-
 // ============== OBTER PÓDIO OFICIAL (GET) ==============
 router.get('/podium', protect, async (req, res) => {
   try {
-    const podium = await PointsService.getPodium();
+    const { leagueId } = req.query;
+    if (!leagueId) {
+      return res.status(400).json({ success: false, message: 'ID da liga é necessário' });
+    }
+
+    const podium = await PointsService.getPodium(leagueId);
 
     return res.json({
       success: true,
@@ -64,10 +73,15 @@ router.get('/podium', protect, async (req, res) => {
 // ============== Zerar pódio (admin) ==============
 router.post('/podium/reset', protect, admin, async (req, res) => {
   try {
-    const result = await PointsService.resetPodium();
+    const { leagueId } = req.body;
+    if (!leagueId) {
+      return res.status(400).json({ success: false, message: 'ID da liga é necessário' });
+    }
+
+    const result = await PointsService.resetPodium(leagueId);
     return res.json({
       success: true,
-      message: 'Pódio zerado e pontos recalculados',
+      message: 'Pódio zerado e pontos recalculados para esta liga',
       updated: result.updated
     });
   } catch (err) {
@@ -76,14 +90,18 @@ router.post('/podium/reset', protect, admin, async (req, res) => {
   }
 });
 
-
 // ============== Recalcular todos os pontos (admin) ==============
 router.post('/recalculate-all', protect, admin, async (req, res) => {
   try {
-    const result = await PointsService.recalculateAllPoints();
+    const { leagueId } = req.body;
+    if (!leagueId) {
+      return res.status(400).json({ success: false, message: 'ID da liga é necessário' });
+    }
+
+    const result = await PointsService.recalculateAllPoints(leagueId);
     return res.json({
       success: true,
-      message: `Pontos recalculados`,
+      message: `Pontos recalculados com sucesso`,
       updated: result.updated
     });
   } catch (err) {
@@ -95,10 +113,17 @@ router.post('/recalculate-all', protect, admin, async (req, res) => {
 // ============== Checagem de integridade (admin) ==============
 router.get('/integrity-check', protect, admin, async (req, res) => {
   try {
-    const betsCount = await Bet.countDocuments({});
-    const finishedMatches = await Match.countDocuments({ status: 'finished' });
-    const scheduledMatches = await Match.countDocuments({ status: 'scheduled' });
-    const inProgressMatches = await Match.countDocuments({ status: 'in_progress' });
+    const { leagueId } = req.query;
+    if (!leagueId) {
+      return res.status(400).json({ success: false, message: 'ID da liga é necessário' });
+    }
+
+    const query = { leagueId };
+
+    const betsCount = await Bet.countDocuments(query);
+    const finishedMatches = await Match.countDocuments({ ...query, status: 'finished' });
+    const scheduledMatches = await Match.countDocuments({ ...query, status: 'scheduled' });
+    const inProgressMatches = await Match.countDocuments({ ...query, status: 'in_progress' });
 
     return res.json({
       success: true,
