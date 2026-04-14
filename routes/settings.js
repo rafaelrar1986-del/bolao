@@ -5,15 +5,22 @@ const { protect, admin } = require('../middleware/auth');
 
 /**
  * @route   GET /api/settings/global
- * @desc    Busca as configurações globais do sistema
+ * @desc    Busca as configurações de uma liga específica
  * @access  Público
  */
 router.get('/global', async (req, res) => {
   try {
-    let s = await Settings.findById('global_settings').lean();
+    // Agora buscamos pelo leagueId enviado via query (ex: ?leagueId=27)
+    const leagueId = req.query.leagueId || '1';
+    const configId = `league_${leagueId}`;
+
+    let s = await Settings.findById(configId).lean();
+    
     if (!s) {
-      s = await Settings.create({ _id: 'global_settings' });
+      // Se não existir, cria a configuração inicial para essa liga
+      s = await Settings.create({ _id: configId });
     }
+    
     res.json({ success: true, data: s });
   } catch (err) {
     console.error('Erro ao ler configurações:', err);
@@ -28,6 +35,10 @@ router.get('/global', async (req, res) => {
  */
 router.post('/global', protect, admin, async (req, res) => {
   try {
+    const { leagueId } = req.body;
+    if (!leagueId) return res.status(400).json({ success: false, message: 'leagueId é obrigatório' });
+
+    const configId = `league_${leagueId}`;
     const updates = {};
 
     const booleanFields = [
@@ -56,14 +67,14 @@ router.post('/global', protect, admin, async (req, res) => {
     }
 
     const s = await Settings.findByIdAndUpdate(
-      'global_settings', 
+      configId, 
       { $set: updates }, 
       { new: true, upsert: true }
     ).lean();
 
     res.json({ 
       success: true, 
-      message: 'Configurações atualizadas com sucesso',
+      message: `Configurações da liga ${leagueId} atualizadas!`,
       data: s 
     });
 
@@ -74,13 +85,13 @@ router.post('/global', protect, admin, async (req, res) => {
 });
 
 /**
- * ✅ NOVA ROTA: POST /api/settings/admin/update
- * Esta é a rota que seu frontend chamou e deu erro 404.
- * Agora ela processa os dados do Robô e as 34 ligas.
+ * ✅ ROTA: POST /api/settings/admin/update
+ * Processa dados do Robô e bloqueios para uma liga específica.
  */
 router.post('/admin/update', protect, admin, async (req, res) => {
   try {
     const { 
+      leagueId,
       cron_interval, 
       api_season, 
       api_leagues,
@@ -90,9 +101,12 @@ router.post('/admin/update', protect, admin, async (req, res) => {
       statsLocked 
     } = req.body;
 
+    if (!leagueId) return res.status(400).json({ success: false, message: 'leagueId é obrigatório' });
+    const configId = `league_${leagueId}`;
+
     const updates = {};
 
-    // 🤖 Configurações do Robô (Campos do seu Model)
+    // 🤖 Configurações do Robô
     if (cron_interval !== undefined) updates.cron_interval = Number(cron_interval);
     if (api_season !== undefined) updates.api_season = Number(api_season);
     if (api_leagues !== undefined) {
@@ -101,39 +115,42 @@ router.post('/admin/update', protect, admin, async (req, res) => {
         : [];
     }
 
-    // 🔒 Sincroniza também os booleanos caso venham nesta chamada
+    // 🔒 Sincroniza também os booleanos
     if (blockSaveBets !== undefined) updates.blockSaveBets = !!blockSaveBets;
     if (blockSaveKnockout !== undefined) updates.blockSaveKnockout = !!blockSaveKnockout;
     if (requireAllBets !== undefined) updates.requireAllBets = !!requireAllBets;
     if (statsLocked !== undefined) updates.statsLocked = !!statsLocked;
 
     const s = await Settings.findByIdAndUpdate(
-      'global_settings',
+      configId,
       { $set: updates },
       { new: true, upsert: true, runValidators: true }
     ).lean();
 
     res.json({ 
       success: true, 
-      message: 'Configurações do Robô salvas com sucesso!', 
+      message: `Configurações da liga ${leagueId} salvas com sucesso!`, 
       data: s 
     });
   } catch (err) {
     console.error('Erro na rota /admin/update:', err);
-    res.status(500).json({ success: false, message: 'Erro ao salvar configurações do robô' });
+    res.status(500).json({ success: false, message: 'Erro ao salvar configurações' });
   }
 });
 
 /**
- * ✅ ROTA ADICIONAL: POST /api/settings/robot
- * Mantida para compatibilidade, mas agora usa os campos do novo Model
+ * ✅ ROTA: POST /api/settings/robot
+ * Atualiza especificamente os dados da API para uma liga.
  */
 router.post('/robot', protect, admin, async (req, res) => {
   try {
-    const { cron_interval, api_season, api_leagues } = req.body;
+    const { leagueId, cron_interval, api_season, api_leagues } = req.body;
+    if (!leagueId) return res.status(400).json({ success: false, message: 'leagueId é obrigatório' });
+
+    const configId = `league_${leagueId}`;
     
     const s = await Settings.findByIdAndUpdate(
-      'global_settings',
+      configId,
       { 
         $set: { 
           cron_interval: Number(cron_interval) || 5,
@@ -144,7 +161,7 @@ router.post('/robot', protect, admin, async (req, res) => {
       { new: true, upsert: true }
     ).lean();
 
-    res.json({ success: true, message: 'Robô atualizado!', data: s });
+    res.json({ success: true, message: `Robô da liga ${leagueId} atualizado!`, data: s });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Erro ao atualizar robô' });
   }
