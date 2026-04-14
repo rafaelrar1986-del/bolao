@@ -1,29 +1,7 @@
-// services/pointsService.js
 const mongoose = require('mongoose');
 const Bet = require('../models/Bet');
 const Match = require('../models/Match');
-
-/**
- * Guardamos o pódio final em um documento "Setting" vinculado a cada liga.
- */
-const SettingsSchema = new mongoose.Schema(
-  {
-    key: { type: String, required: true, index: true }, // 'podium'
-    leagueId: { type: Number, required: true, index: true }, // 👈 Vincula o pódio à liga
-    podium: {
-      first: { type: String },
-      second: { type: String },
-      third: { type: String },
-      fourth: { type: String }
-    }
-  },
-  { timestamps: true }
-);
-
-// Índice único para garantir apenas um pódio por liga
-SettingsSchema.index({ key: 1, leagueId: 1 }, { unique: true });
-
-const Setting = mongoose.models.Setting || mongoose.model('Setting', SettingsSchema);
+const Setting = require('../models/Settings'); // Importação correta do modelo central
 
 // --------- helpers ---------
 function winnerFromScores(a, b) {
@@ -58,7 +36,7 @@ async function setPodium(leagueId, { first, second, third, fourth }) {
     { upsert: true }
   );
 
-  // Só recalcula se os principais postos forem definidos
+  // Só recalcula se o pódio começar a ser definido
   const podium = await getPodium(leagueId);
   if (podium?.first) {
     const result = await recalculateAllPoints(leagueId);
@@ -69,17 +47,17 @@ async function setPodium(leagueId, { first, second, third, fourth }) {
 }
 
 /**
- * Recalcula os pontos de TODOS os bets de uma LIGA específica.
+ * Recalcula os pontos de TODOS os palpites de uma LIGA específica.
  */
 async function recalculateAllPoints(leagueId) {
   if (!leagueId) throw new Error("leagueId é obrigatório para recalcular pontos");
 
-  // 1. Busca apenas partidas e pódio da liga em questão
+  // 1. Busca partidas e pódio da liga
   const matches = await Match.find({ leagueId: Number(leagueId) }).lean();
   const matchMap = new Map(matches.map(m => [m.matchId, m]));
   const podium = await getPodium(leagueId);
 
-  // 2. Busca apenas apostas desta liga
+  // 2. Busca apenas apostas desta liga que já foram submetidas
   const bets = await Bet.find({ leagueId: Number(leagueId), hasSubmitted: true });
   let updated = 0;
 
@@ -95,18 +73,12 @@ async function recalculateAllPoints(leagueId) {
         continue;
       }
 
-      // Validação de fase (group ou knockout)
-      if (m.phase && !['group', 'knockout'].includes(m.phase)) {
-        gm.points = 0;
-        gm.qualifierPoints = 0;
-        continue;
-      }
-
+      // Vencedor Real (Baseado no placar)
       const real = winnerFromScores(Number(m.scoreA), Number(m.scoreB));
       const hitResult = real && gm.winner && real === gm.winner;
 
-      // Lógica de qualificado (para empates em mata-mata)
-      const realQualifier = (m.qualifiedSide) ? m.qualifiedSide : real;
+      // Lógica de qualificado (Usa qualifiedSide para mata-mata/empates)
+      const realQualifier = m.qualifiedSide || real;
 
       let hitQualifier = false;
       if (gm.qualifier && (gm.qualifier === 'A' || gm.qualifier === 'B')) {
