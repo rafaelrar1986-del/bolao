@@ -53,7 +53,8 @@ async function updateMatches() {
       const games = response.data.results || [];
 
       for (const game of games) {
-        // Verifica se o jogo pertence a alguma das ligas configuradas
+        // 1. Verifica se o jogo pertence a alguma liga configurada
+        // O robô agora identifica qual a 'config' (e o leagueId) baseada no api_leagues
         const config = allSettings.find(s => s.api_leagues.includes(game.league?.id));
         if (!config) continue;
 
@@ -99,19 +100,29 @@ async function updateMatches() {
 
         await match.save();
 
+        // 2. Recálculo condicional por LIGA
         if (oldStatus !== 'finished' && newStatus === 'finished') {
           try {
-            await recalculateAllPoints(); 
-            await trySaveDailyPoints(game.event_date);
+            // CRÍTICO: Agora passamos o leagueId da configuração encontrada
+            // match.leagueId geralmente é um Number, e config.leagueId também.
+            const targetLeagueId = match.leagueId || config.leagueId;
+
+            if (targetLeagueId) {
+              console.log(`⚽ Partida finalizada. Recalculando pontos para liga: ${targetLeagueId}`);
+              await recalculateAllPoints(targetLeagueId); 
+              await trySaveDailyPoints(game.event_date);
+            }
           } catch (procError) {
-            console.error(`❌ Erro no recálculo:`, procError.message);
+            console.error(`❌ Erro no recálculo para liga ${match.leagueId}:`, procError.message);
           }
         }
       }
       nextUrl = response.data.next; 
     }
 
+    // Atualiza o timestamp de execução em todas as ligas processadas
     await Settings.updateMany({}, { $set: { last_api_run: now } });
+
   } catch (err) {
     console.error('❌ [Erro no Updater]:', err.message);
   }
