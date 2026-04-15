@@ -4,20 +4,28 @@ const Settings = require('../models/Settings');
 const { protect, admin } = require('../middleware/auth');
 
 /**
+ * 🛠️ HELPER: Define o ID do documento
+ * Se o frontend não enviar leagueId (comum no cron/robô antigo), 
+ * usamos '1' como padrão para evitar erros de validação.
+ */
+const getConfigId = (leagueId) => {
+  const id = leagueId || '1';
+  return `league_${id}`;
+};
+
+/**
  * @route   GET /api/settings/global
  * @desc    Busca as configurações de uma liga específica
  * @access  Público
  */
 router.get('/global', async (req, res) => {
   try {
-    // Agora buscamos pelo leagueId enviado via query (ex: ?leagueId=27)
-    const leagueId = req.query.leagueId || '1';
-    const configId = `league_${leagueId}`;
+    const configId = getConfigId(req.query.leagueId);
 
     let s = await Settings.findById(configId).lean();
     
     if (!s) {
-      // Se não existir, cria a configuração inicial para essa liga
+      // Cria a configuração inicial se não existir
       s = await Settings.create({ _id: configId });
     }
     
@@ -35,10 +43,8 @@ router.get('/global', async (req, res) => {
  */
 router.post('/global', protect, admin, async (req, res) => {
   try {
-    const { leagueId } = req.body;
-    if (!leagueId) return res.status(400).json({ success: false, message: 'leagueId é obrigatório' });
-
-    const configId = `league_${leagueId}`;
+    // Se não vier leagueId, assume league_1 para não travar o front
+    const configId = getConfigId(req.body.leagueId);
     const updates = {};
 
     const booleanFields = [
@@ -74,7 +80,7 @@ router.post('/global', protect, admin, async (req, res) => {
 
     res.json({ 
       success: true, 
-      message: `Configurações da liga ${leagueId} atualizadas!`,
+      message: `Configurações atualizadas!`,
       data: s 
     });
 
@@ -86,7 +92,7 @@ router.post('/global', protect, admin, async (req, res) => {
 
 /**
  * ✅ ROTA: POST /api/settings/admin/update
- * Processa dados do Robô e bloqueios para uma liga específica.
+ * Processa dados do Robô e bloqueios. Aceita chamadas sem leagueId.
  */
 router.post('/admin/update', protect, admin, async (req, res) => {
   try {
@@ -101,8 +107,8 @@ router.post('/admin/update', protect, admin, async (req, res) => {
       statsLocked 
     } = req.body;
 
-    if (!leagueId) return res.status(400).json({ success: false, message: 'leagueId é obrigatório' });
-    const configId = `league_${leagueId}`;
+    // Se o frontend antigo não enviar leagueId, vira 'league_1'
+    const configId = getConfigId(leagueId);
 
     const updates = {};
 
@@ -129,7 +135,7 @@ router.post('/admin/update', protect, admin, async (req, res) => {
 
     res.json({ 
       success: true, 
-      message: `Configurações da liga ${leagueId} salvas com sucesso!`, 
+      message: `Configurações salvas com sucesso!`, 
       data: s 
     });
   } catch (err) {
@@ -140,14 +146,12 @@ router.post('/admin/update', protect, admin, async (req, res) => {
 
 /**
  * ✅ ROTA: POST /api/settings/robot
- * Atualiza especificamente os dados da API para uma liga.
+ * Atualiza especificamente os dados da API. Aceita chamadas sem leagueId.
  */
 router.post('/robot', protect, admin, async (req, res) => {
   try {
-    const { leagueId, cron_interval, api_season, api_leagues } = req.body;
-    if (!leagueId) return res.status(400).json({ success: false, message: 'leagueId é obrigatório' });
-
-    const configId = `league_${leagueId}`;
+    const configId = getConfigId(req.body.leagueId);
+    const { cron_interval, api_season, api_leagues } = req.body;
     
     const s = await Settings.findByIdAndUpdate(
       configId,
@@ -161,8 +165,9 @@ router.post('/robot', protect, admin, async (req, res) => {
       { new: true, upsert: true }
     ).lean();
 
-    res.json({ success: true, message: `Robô da liga ${leagueId} atualizado!`, data: s });
+    res.json({ success: true, message: `Robô atualizado!`, data: s });
   } catch (err) {
+    console.error('Erro ao atualizar robô:', err);
     res.status(500).json({ success: false, message: 'Erro ao atualizar robô' });
   }
 });
