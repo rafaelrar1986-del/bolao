@@ -97,7 +97,7 @@ router.post('/save', protect, checkPaid, async (req, res) => {
     
     const dbMatches = await Match.find({ 
       matchId: { $in: matchIdsEnviados }, 
-      leagueId: Number(leagueId) // Ajustado para Number para seguir o padrão do seu Match.find
+      leagueId: Number(leagueId) 
     }).select('matchId').lean();
 
     const validMatchIds = new Set(dbMatches.map(m => m.matchId));
@@ -173,7 +173,6 @@ router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, r
     const isPartial = type === 'partial';
     const lId = Number(leagueId);
 
-    // Otimização: Buscamos apenas apostas que pertençam a esta liga
     const [matches, bets] = await Promise.all([
       Match.find({ leagueId: lId }).select('matchId status scoreA scoreB phase qualifiedSide').lean(),
       Bet.find({ hasSubmitted: true, leagueId: lId }).populate('user', 'name avatar').lean()
@@ -266,11 +265,10 @@ router.get('/all-bets', protect, checkPaid, blockStatsIfLocked, async (req, res)
 
     const bets = await Bet.find(query)
       .populate('user', 'name')
-      .select('user groupMatches podium totalPoints lastUpdate')
+      .select('user groupMatches podium totalPoints lastUpdate leagueId')
       .lean();
 
     const enriched = bets.map(b => {
-      // Mapeia e filtra os palpites mantendo a estrutura que o stats.js entende
       const viewGroupMatches = (b.groupMatches || [])
         .filter(gm => matchIdsFilter.includes(gm.matchId))
         .map(gm => {
@@ -285,7 +283,7 @@ router.get('/all-bets', protect, checkPaid, blockStatsIfLocked, async (req, res)
 
           return {
             ...gm,
-            winner: isLocked ? '🔒' : gm.winner, // Stats.js lê .winner ou .choice
+            winner: isLocked ? '🔒' : gm.winner, 
             choiceLabel: isLocked ? 'Bloqueado' : toWinnerLabel(gm.winner, m?.teamA, m?.teamB)
           };
         });
@@ -293,7 +291,7 @@ router.get('/all-bets', protect, checkPaid, blockStatsIfLocked, async (req, res)
       return {
         ...b,
         userName: b.user?.name || 'Usuário',
-        groupMatches: viewGroupMatches // Retornando o campo original para o Stats.js
+        groupMatches: viewGroupMatches 
       };
     });
 
