@@ -69,13 +69,14 @@ router.get('/my-bets', protect, checkPaid, async (req, res) => {
   }
 });
 
-/**
- * 💾 Salvar palpites
+/**/**
+ * 💾 Salvar palpites (CORRIGIDO PARA MULTICAMPEONATO)
  */
 router.post('/save', protect, checkPaid, async (req, res) => {
   try {
     const { groupMatches, podium, knockoutQualifiers, leagueId } = req.body;
     
+    // 1. Validação crítica do leagueId
     if (!leagueId) return res.status(400).json({ success: false, message: 'leagueId é obrigatório' });
 
     const matchIdsEnviados = Object.keys(groupMatches || {}).map(Number);
@@ -88,7 +89,8 @@ router.post('/save', protect, checkPaid, async (req, res) => {
 
     const validMatchIds = new Set(dbMatches.map(m => m.matchId));
 
-    const existing = await Bet.findOne({ user: req.user._id });
+    // 🔍 CORREÇÃO 1: Buscar a aposta ESPECÍFICA desta liga
+    const existing = await Bet.findOne({ user: req.user._id, leagueId: String(leagueId) });
     const gmMap = new Map();
 
     if (existing && Array.isArray(existing.groupMatches)) {
@@ -118,7 +120,9 @@ router.post('/save', protect, checkPaid, async (req, res) => {
 
     const now = new Date();
     const payload = {
+      // 🔍 CORREÇÃO 2: Garantir que o leagueId faça parte do payload de criação
       user: req.user._id,
+      leagueId: String(leagueId), 
       groupMatches: Array.from(gmMap.values()),
       hasSubmitted: true,
       lastUpdate: now,
@@ -134,10 +138,11 @@ router.post('/save', protect, checkPaid, async (req, res) => {
       };
     }
 
+    // 🔍 CORREÇÃO 3: O filtro do findOneAndUpdate DEVE conter o leagueId
     const bet = await Bet.findOneAndUpdate(
-      { user: req.user._id },
+      { user: req.user._id, leagueId: String(leagueId) }, // Filtro único por Usuário + Liga
       { $set: payload },
-      { new: true, upsert: true, setDefaultsOnInsert: true }
+      { new: true, upsert: true, setDefaultsOnInsert: true, runValidators: true }
     );
 
     return res.json({ success: true, message: 'Palpites salvos!', data: { id: bet._id } });
@@ -146,7 +151,6 @@ router.post('/save', protect, checkPaid, async (req, res) => {
     return res.status(500).json({ success: false, message: 'Erro ao salvar palpites' });
   }
 });
-
 /**
  * 🏆 Leaderboard (Filtrado por LIGA)
  */
