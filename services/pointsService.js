@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 const Bet = require('../models/Bet');
 const Match = require('../models/Match');
-const Setting = require('../models/Settings'); // Importação correta do modelo central
+const Setting = require('../models/Settings');
 
 // --------- helpers ---------
 function winnerFromScores(a, b) {
@@ -11,12 +11,28 @@ function winnerFromScores(a, b) {
   return 'draw';
 }
 
+/**
+ * Busca as configurações de pódio de todas as ligas
+ * Retorna um Map: leagueId -> podium object
+ */
+async function getAllPodiumsMap() {
+  const docs = await Setting.find({ key: 'podium' }).lean();
+  const map = new Map();
+  docs.forEach(d => {
+    map.set(Number(d.leagueId), d.podium || null);
+  });
+  return map;
+}
+
 async function getPodium(leagueId) {
   if (!leagueId) return null;
   const doc = await Setting.findOne({ key: 'podium', leagueId: Number(leagueId) }).lean();
   return doc?.podium || null;
 }
 
+/**
+ * Define o pódio e dispara o recálculo global
+ */
 async function setPodium(leagueId, { first, second, third, fourth }) {
   if (!leagueId) throw new Error("leagueId é obrigatório para definir o pódio");
 
@@ -26,9 +42,7 @@ async function setPodium(leagueId, { first, second, third, fourth }) {
   if (third !== undefined) update['podium.third'] = third || null;
   if (fourth !== undefined) update['podium.fourth'] = fourth || null;
 
-  if (Object.keys(update).length === 0) {
-    return { ok: true, updated: 0 };
-  }
+  if (Object.keys(update).length === 0) return { ok: true, updated: 0 };
 
   await Setting.updateOne(
     { key: 'podium', leagueId: Number(leagueId) },
@@ -36,34 +50,33 @@ async function setPodium(leagueId, { first, second, third, fourth }) {
     { upsert: true }
   );
 
-  // Só recalcula se o pódio começar a ser definido
-  const podium = await getPodium(leagueId);
-  if (podium?.first) {
-    const result = await recalculateAllPoints(leagueId);
-    return { ok: true, updated: result.updated };
-  }
-
-  return { ok: true, updated: 0 };
+  // Recalcula TUDO para garantir que a mudança reflita em todos os usuários
+  const result = await recalculateAllPoints();
+  return { ok: true, updated: result.updated };
 }
 
 /**
- * Recalcula os pontos de TODOS os palpites de uma LIGA específica.
+ * RECALCULO GLOBAL: Processa todos os palpites de todas as ligas.
+ * Ideal para rodar via backend após fim de jogos ou definição de pódio.
  */
-async function recalculateAllPoints(leagueId) {
-  if (!leagueId) throw new Error("leagueId é obrigatório para recalcular pontos");
+async function recalculateAllPoints() {
+  // 1. Carrega dados de referência globais
+  const [matches, podiumsMap] = await Promise.all([
+    Match.find({}).lean(),
+    getAllPodiumsMap()
+  ]);
 
-  // 1. Busca partidas e pódio da liga
-  const matches = await Match.find({ leagueId: Number(leagueId) }).lean();
   const matchMap = new Map(matches.map(m => [m.matchId, m]));
-  const podium = await getPodium(leagueId);
-
-  // 2. Busca apenas apostas desta liga que já foram submetidas
-  const bets = await Bet.find({ leagueId: Number(leagueId), hasSubmitted: true });
+  
+  // 2. Busca todas as apostas submetidas (independente de liga)
+  const bets = await Bet.find({ hasSubmitted: true });
   let updated = 0;
 
   for (const bet of bets) {
     let groupPoints = 0;
+    const currentLeagueId = Number(bet.leagueId);
 
+    // --- Pontos por Partida ---
     for (const gm of bet.groupMatches || []) {
       const m = matchMap.get(gm.matchId);
       
@@ -73,13 +86,11 @@ async function recalculateAllPoints(leagueId) {
         continue;
       }
 
-      // Vencedor Real (Baseado no placar)
-      const real = winnerFromScores(Number(m.scoreA), Number(m.scoreB));
-      const hitResult = real && gm.winner && real === gm.winner;
+      const realWinner = winnerFromScores(Number(m.scoreA), Number(m.scoreB));
+      const hitResult = realWinner && gm.winner && realWinner === gm.winner;
 
-      // Lógica de qualificado (Usa qualifiedSide para mata-mata/empates)
-      const realQualifier = m.qualifiedSide || real;
-
+      // Qualificado (Mata-mata)
+      const realQualifier = m.qualifiedSide || realWinner;
       let hitQualifier = false;
       if (gm.qualifier && (gm.qualifier === 'A' || gm.qualifier === 'B')) {
         if (realQualifier && realQualifier !== 'draw' && gm.qualifier === realQualifier) {
@@ -92,21 +103,25 @@ async function recalculateAllPoints(leagueId) {
       groupPoints += (gm.points + gm.qualifierPoints);
     }
 
-    // ---- Pontos de Pódio ----
+    // --- Pontos de Pódio (Cruzando com a liga da Bet) ---
     let podiumPoints = 0;
-    if (podium && bet.podium) {
-      if (bet.podium.first && bet.podium.first === podium.first) podiumPoints += 7;
-      if (bet.podium.second && bet.podium.second === podium.second) podiumPoints += 4;
-      if (bet.podium.third && bet.podium.third === podium.third) podiumPoints += 2;
-      if (bet.podium.fourth && bet.podium.fourth === podium.fourth) podiumPoints += 2;
+    const leaguePodium = podiumsMap.get(currentLeagueId);
+
+    if (leaguePodium && bet.podium) {
+      if (bet.podium.first && bet.podium.first === leaguePodium.first) podiumPoints += 7;
+      if (bet.podium.second && bet.podium.second === leaguePodium.second) podiumPoints += 4;
+      if (bet.podium.third && bet.podium.third === leaguePodium.third) podiumPoints += 2;
+      if (bet.podium.fourth && bet.podium.fourth === leaguePodium.fourth) podiumPoints += 2;
     }
 
-    // Atualização dos campos do documento Bet
+    // --- Persistência dos Resultados ---
     bet.groupPoints = groupPoints;
     bet.podiumPoints = podiumPoints;
     bet.totalPoints = groupPoints + podiumPoints + (bet.bonusPoints || 0);
     bet.lastUpdate = new Date();
 
+    // MarkModified é necessário se groupMatches for um Mixed Type no Schema
+    bet.markModified('groupMatches'); 
     await bet.save();
     updated++;
   }
@@ -130,7 +145,7 @@ async function resetPodium(leagueId) {
     { upsert: true }
   );
 
-  const result = await recalculateAllPoints(leagueId);
+  const result = await recalculateAllPoints();
   return { ok: true, updated: result.updated };
 }
 
