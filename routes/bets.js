@@ -53,7 +53,6 @@ router.get('/my-bets', protect, checkPaid, async (req, res) => {
       return res.json({ success: true, data: null, hasSubmitted: false });
     }
 
-    // Filtra apenas os palpites que pertencem aos jogos desta liga
     const matchIdsDaLiga = matches.map(m => m.matchId);
     const gm = (bet.groupMatches || [])
       .filter(b => matchIdsDaLiga.includes(b.matchId))
@@ -89,7 +88,6 @@ router.post('/save', protect, checkPaid, async (req, res) => {
   try {
     const { groupMatches, podium, knockoutQualifiers, leagueId } = req.body;
     
-    // 1. Validação de entrada
     if (!leagueId) return res.status(400).json({ success: false, message: 'leagueId é obrigatório' });
     if (!groupMatches || typeof groupMatches !== 'object') {
       return res.status(400).json({ success: false, message: 'groupMatches inválido' });
@@ -97,16 +95,12 @@ router.post('/save', protect, checkPaid, async (req, res) => {
 
     const matchIdsEnviados = Object.keys(groupMatches).map(Number);
     
-    // 2. Validação das partidas (Importante: converter leagueId para o tipo correto do seu schema)
-    // Se no seu schema Match o leagueId for String, use String(leagueId). Se for Number, Number(leagueId).
     const dbMatches = await Match.find({ 
       matchId: { $in: matchIdsEnviados }, 
-      leagueId: String(leagueId) // 👈 Ajuste conforme seu schema de Match
+      leagueId: Number(leagueId) // Ajustado para Number para seguir o padrão do seu Match.find
     }).select('matchId').lean();
 
     const validMatchIds = new Set(dbMatches.map(m => m.matchId));
-
-    // 3. Recuperar aposta existente ou preparar novo Map
     const existing = await Bet.findOne({ user: req.user._id });
     const gmMap = new Map();
 
@@ -116,7 +110,6 @@ router.post('/save', protect, checkPaid, async (req, res) => {
       });
     }
 
-    // 4. Atualizar apenas os palpites das partidas que pertencem à liga enviada
     Object.entries(groupMatches).forEach(([matchId, choice]) => {
       const idNum = Number(matchId);
       if (!validMatchIds.has(idNum)) return; 
@@ -138,11 +131,9 @@ router.post('/save', protect, checkPaid, async (req, res) => {
     });
 
     const now = new Date();
-
-    // 5. Montagem do Payload (AQUI ESTÁ A CHAVE DO PROBLEMA)
     const payload = {
       user: req.user._id,
-      leagueId: String(leagueId), // 👈 ESSENCIAL: Grava a liga no nível raiz para o snapshot funcionar!
+      leagueId: Number(leagueId), 
       groupMatches: Array.from(gmMap.values()),
       hasSubmitted: true,
       lastUpdate: now,
@@ -158,7 +149,6 @@ router.post('/save', protect, checkPaid, async (req, res) => {
       };
     }
 
-    // 6. Persistência
     const bet = await Bet.findOneAndUpdate(
       { user: req.user._id },
       { $set: payload },
@@ -171,8 +161,9 @@ router.post('/save', protect, checkPaid, async (req, res) => {
     return res.status(500).json({ success: false, message: 'Erro ao salvar palpites' });
   }
 });
+
 /**
- * 🏆 Leaderboard (Oficial + Parcial LIVE filtrado por LIGA)
+ * 🏆 Leaderboard (Otimizado com leagueId)
  */
 router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
   try {
@@ -182,15 +173,13 @@ router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, r
     const isPartial = type === 'partial';
     const lId = Number(leagueId);
 
-    // 1. Buscamos as Partidas da LIGA e todas as Apostas
+    // Otimização: Buscamos apenas apostas que pertençam a esta liga
     const [matches, bets] = await Promise.all([
       Match.find({ leagueId: lId }).select('matchId status scoreA scoreB phase qualifiedSide').lean(),
-      Bet.find({ hasSubmitted: true }).populate('user', 'name avatar').lean()
+      Bet.find({ hasSubmitted: true, leagueId: lId }).populate('user', 'name avatar').lean()
     ]);
 
     const matchMap = new Map(matches.map(m => [m.matchId, m]));
-    const matchIdsDaLiga = new Set(matches.map(m => m.matchId));
-
     const getWinner = (a, b) => {
       if (a === null || b === null) return null;
       if (a > b) return 'A';
@@ -203,25 +192,17 @@ router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, r
       let groupPhasePoints = 0;
       let knockoutPoints = 0;
 
-      // Filtra apenas os palpites do usuário que pertencem a esta liga
-      const userBetsDaLiga = (b.groupMatches || []).filter(gm => matchIdsDaLiga.has(gm.matchId));
-
-      userBetsDaLiga.forEach(gm => {
+      (b.groupMatches || []).forEach(gm => {
         const m = matchMap.get(gm.matchId);
         if (!m || m.status === 'scheduled') return;
 
-        // Lógica de cálculo (independente de ser oficial ou parcial, calculamos sobre os jogos da liga)
         const realWinner = getWinner(m.scoreA, m.scoreB);
-        
-        // Acerto Vencedor
         if (realWinner && gm.winner === realWinner) {
-          const p = 1; // Você pode tornar isso dinâmico por liga se quiser
-          totalPoints += p;
-          if (m.phase === 'group') groupPhasePoints += p;
-          else knockoutPoints += p;
+          totalPoints += 1;
+          if (m.phase === 'group') groupPhasePoints += 1;
+          else knockoutPoints += 1;
         }
 
-        // Acerto Classificado (Mata-mata)
         const realQual = m.qualifiedSide || (realWinner !== 'draw' ? realWinner : null);
         if (gm.qualifier && realQual && gm.qualifier === realQual) {
           totalPoints += 1;
@@ -229,12 +210,9 @@ router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, r
         }
       });
 
-      // Nota: Pódio e Bônus geralmente são globais, mas aqui você pode decidir se soma no ranking da liga
-      const finalPoints = totalPoints + (b.bonusPoints || 0); 
-
       return {
         user: b.user,
-        totalPoints: finalPoints,
+        totalPoints: totalPoints + (b.bonusPoints || 0),
         groupPhasePoints,
         knockoutPoints,
         lastUpdate: b.lastUpdate
@@ -261,11 +239,11 @@ router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, r
 });
 
 /**
- * 👁️ Todos os palpites (Com suporte a filtro de liga)
+ * 👁️ Todos os palpites (CORRIGIDO PARA STATS.JS)
  */
 router.get('/all-bets', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
   try {
-    const { search, matchId, group, leagueId, sortBy = 'user' } = req.query;
+    const { search, matchId, group, leagueId } = req.query;
     const isAdmin = req.user?.isAdmin === true;
 
     const settings = await Settings.findById('global_settings').lean();
@@ -280,12 +258,11 @@ router.get('/all-bets', protect, checkPaid, blockStatsIfLocked, async (req, res)
     const matchIdsFilter = matches.map(m => m.matchId);
 
     let query = { hasSubmitted: true };
+    if (leagueId) query.leagueId = Number(leagueId);
     if (search) {
       const users = await User.find({ name: { $regex: search, $options: 'i' } }).select('_id').lean();
       query.user = { $in: users.map(u => u._id) };
     }
-    // Filtra apenas bets que tenham algum jogo da lista filtrada
-    query['groupMatches.matchId'] = { $in: matchIdsFilter };
 
     const bets = await Bet.find(query)
       .populate('user', 'name')
@@ -293,38 +270,42 @@ router.get('/all-bets', protect, checkPaid, blockStatsIfLocked, async (req, res)
       .lean();
 
     const enriched = bets.map(b => {
-      const gm = (b.groupMatches || []).filter(x => matchIdsFilter.includes(x.matchId));
+      // Mapeia e filtra os palpites mantendo a estrutura que o stats.js entende
+      const viewGroupMatches = (b.groupMatches || [])
+        .filter(gm => matchIdsFilter.includes(gm.matchId))
+        .map(gm => {
+          const m = matches.find(x => x.matchId === gm.matchId);
+          let isLocked = !isAdmin;
+          
+          if (m?.phase === 'group') {
+             isLocked = !unlockedPhases.includes('group');
+          } else if (m?.phase === 'knockout') {
+             isLocked = !unlockedPhases.includes(m.group);
+          }
 
-      const viewBets = gm.map(g => {
-        const m = matches.find(x => x.matchId === g.matchId);
-        let isLocked = !isAdmin;
-        if (m?.phase === 'group') isLocked = !unlockedPhases.includes('group');
-        else if (m?.phase === 'knockout') isLocked = !unlockedPhases.includes(m.group);
-
-        return {
-          matchId: g.matchId,
-          choice: isLocked ? '🔒' : g.winner,
-          choiceLabel: isLocked ? 'Bloqueado' : toWinnerLabel(g.winner, m?.teamA, m?.teamB),
-          matchName: m ? `${m.teamA} vs ${m.teamB}` : `Jogo ${g.matchId}`,
-          status: m?.status || 'scheduled'
-        };
-      });
+          return {
+            ...gm,
+            winner: isLocked ? '🔒' : gm.winner, // Stats.js lê .winner ou .choice
+            choiceLabel: isLocked ? 'Bloqueado' : toWinnerLabel(gm.winner, m?.teamA, m?.teamB)
+          };
+        });
 
       return {
+        ...b,
         userName: b.user?.name || 'Usuário',
-        totalPoints: b.totalPoints || 0, // Pontos totais do perfil
-        bets: viewBets
+        groupMatches: viewGroupMatches // Retornando o campo original para o Stats.js
       };
     });
 
     res.json({ success: true, data: enriched });
   } catch (e) {
+    console.error('All-Bets Error:', e);
     res.status(500).json({ success: false, message: 'Erro ao carregar apostas' });
   }
 });
 
 /**
- * 🔍 Partidas para filtro (Filtrado por Liga)
+ * 🔍 Partidas para filtro
  */
 router.get('/matches-for-filter', protect, checkPaid, async (req, res) => {
   try {
@@ -352,7 +333,7 @@ router.get('/users-for-filter', protect, async (req, res) => {
 });
 
 /**
- * ⚠️ Admin: resets (mantidos globais)
+ * ⚠️ Admin: resets
  */
 router.post('/admin/reset-all', protect, admin, async (req, res) => {
   try {
