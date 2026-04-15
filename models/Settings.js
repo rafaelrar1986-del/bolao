@@ -106,4 +106,3 @@ Settings.collection.dropIndex('key_1_leagueId_1').catch(() => {
 });
 
 module.exports = Settings;
-me devolva completo e atualizado
