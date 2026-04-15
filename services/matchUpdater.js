@@ -31,7 +31,6 @@ function determineQualifier(game) {
 
 async function updateMatches() {
   try {
-    // Busca todas as configurações (incluindo a league_1 que criamos)
     const allSettings = await Settings.find({});
 
     if (!allSettings || allSettings.length === 0) {
@@ -53,7 +52,6 @@ async function updateMatches() {
       const games = response.data.results || [];
 
       for (const game of games) {
-        // Vincula o jogo à configuração da liga correta
         const config = allSettings.find(s => s.api_leagues.includes(game.league?.id));
         if (!config) continue;
 
@@ -101,8 +99,7 @@ async function updateMatches() {
 
         if (oldStatus !== 'finished' && newStatus === 'finished') {
           try {
-            // Usa o ID da liga vindo do jogo ou da config global
-            const targetLeagueId = match.leagueId || config.leagueId;
+            const targetLeagueId = match.leagueId || (config ? config.leagueId : null);
             if (targetLeagueId) {
               console.log(`⚽ Partida finalizada. Recalculando pontos para liga: ${targetLeagueId}`);
               await recalculateAllPoints(targetLeagueId); 
@@ -116,7 +113,6 @@ async function updateMatches() {
       nextUrl = response.data.next; 
     }
 
-    // Atualiza o tempo da última rodada em todas as ligas
     await Settings.updateMany({}, { $set: { last_api_run: now } });
 
   } catch (err) {
