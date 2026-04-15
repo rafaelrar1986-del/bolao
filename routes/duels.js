@@ -9,13 +9,13 @@ const router = express.Router();
 
 /**
  * @route   GET /api/duels/:userId
- * @desc    Busca palpites de um usuário específico para comparação, respeitando as travas de fase e liga
+ * @desc    Busca palpites de um usuário específico respeitando travas de visibilidade por liga
  * @access  Protegido
  */
 router.get('/:userId', protect, async (req, res) => {
   try {
     const { userId } = req.params;
-    const { leagueId } = req.query; // 👈 Recebe a liga para filtrar o duelo corretamente
+    const { leagueId } = req.query;
 
     if (!leagueId) {
       return res.status(400).json({ 
@@ -24,14 +24,18 @@ router.get('/:userId', protect, async (req, res) => {
       });
     }
 
-    const isRequestingOwnProfile = req.user._id.toString() === userId;
+    // 1. Identificação de permissão (Dono ou Admin vê tudo)
+    const isRequestingOwnProfile = req.user._id.toString() === userId.toString();
     const isAdmin = req.user.isAdmin === true;
 
-    // 1. Busca configurações, partidas e palpites filtrados pela LIGA
+    // 🛠️ CONSTRUÇÃO DO ID DE SETTINGS (Padrão: league_27)
+    const settingsId = `league_${leagueId}`;
+
+    // 2. Busca simultânea de Configurações, Partidas e Apostas
     const [settings, matches, bet] = await Promise.all([
-      Settings.findOne({ leagueId: leagueId }).lean(), // 👈 Configurações da liga específica
-      Match.find({ leagueId: leagueId }, 'matchId phase group').lean(), 
-      Bet.findOne({ user: userId, leagueId: leagueId })
+      Settings.findById(settingsId).lean(), 
+      Match.find({ leagueId: Number(leagueId) }, 'matchId phase group').lean(), 
+      Bet.findOne({ user: userId, leagueId: String(leagueId) })
         .select('groupMatches podium hasSubmitted')
         .lean()
     ]);
@@ -43,7 +47,7 @@ router.get('/:userId', protect, async (req, res) => {
       });
     }
 
-    // Se for o próprio usuário ou admin, retorna tudo sem filtros de visibilidade
+    // Se for o próprio usuário ou admin, retorna os dados originais imediatamente
     if (isRequestingOwnProfile || isAdmin) {
       return res.json({
         success: true,
@@ -55,46 +59,37 @@ router.get('/:userId', protect, async (req, res) => {
       });
     }
 
-    // 2. Lógica de Bloqueio (Filtro para comparação entre outros usuários)
-    const unlockedPhases = settings?.unlockedPhases || [];
+    // 3. Lógica de Mascaramento (Para visitantes/comparação)
+    // Normalizamos as fases para minúsculas para evitar erro de "Oitavas" vs "oitavas"
+    const unlockedPhases = (settings?.unlockedPhases || []).map(p => p.toLowerCase());
     
-    // Mapeia os dados das partidas para consulta rápida de fase/grupo
     const matchDataMap = {};
     matches.forEach(m => {
       matchDataMap[m.matchId] = {
         phase: m.phase,
-        group: m.group
+        group: m.group ? m.group.toLowerCase() : ''
       };
     });
 
-    // Filtra os palpites: oculta o que ainda não foi liberado pelo administrador
     const maskedGroupMatches = (bet.groupMatches || []).map(m => {
       const matchInfo = matchDataMap[m.matchId];
       
-      // Se não encontrar dados da partida, bloqueia por segurança
       if (!matchInfo) {
-        return { 
-          matchId: m.matchId, 
-          winner: '🔒', 
-          qualifier: m.qualifier ? '🔒' : null, 
-          isLocked: true 
-        };
+        return { matchId: m.matchId, winner: '🔒', qualifier: m.qualifier ? '🔒' : null, isLocked: true };
       }
 
       let isUnlocked = false;
 
-      // Verificação de visibilidade dinâmica
       if (matchInfo.phase === 'group') {
-        // Se a fase de grupos estiver desbloqueada
         isUnlocked = unlockedPhases.includes('group');
       } else {
-        // Se a sub-fase do mata-mata (ex: 'oitavas', 'quartas') estiver desbloqueada
-        isUnlocked = unlockedPhases.includes(matchInfo.group);
+        // Verifica se o nome simplificado da fase (ex: 'oitavas') está contido em alguma string do array
+        // Isso resolve o problema de ter "Oitavas de final" no settings e "oitavas" no match
+        isUnlocked = unlockedPhases.some(p => p.includes(matchInfo.group));
       }
 
       if (isUnlocked) return m;
 
-      // Se bloqueado, retorna o ID mas mascara os valores
       return {
         matchId: m.matchId,
         winner: '🔒', 
@@ -103,9 +98,13 @@ router.get('/:userId', protect, async (req, res) => {
       };
     });
 
-    // Lógica para o Pódio: liberado se 'podium' ou 'final' estiver no array de desbloqueio
-    const podiumLocked = !unlockedPhases.includes('podium') && !unlockedPhases.includes('final');
-    const maskedPodium = podiumLocked ? null : bet.podium;
+    // 4. Lógica do Pódio (Mascarado se não estiver liberado)
+    const isPodiumUnlocked = unlockedPhases.includes('podium') || unlockedPhases.includes('final');
+    
+    // Retornamos um objeto com cadeados no pódio para o DuelRenderer identificar visualmente
+    const maskedPodium = isPodiumUnlocked ? bet.podium : {
+      first: '🔒', second: '🔒', third: '🔒', fourth: '🔒'
+    };
 
     res.json({
       success: true,
@@ -113,7 +112,7 @@ router.get('/:userId', protect, async (req, res) => {
         groupMatches: maskedGroupMatches,
         podium: maskedPodium,
         hasSubmitted: bet.hasSubmitted,
-        isFiltered: true // Indica ao front-end que os dados estão mascarados por privacidade
+        isFiltered: true
       }
     });
 
