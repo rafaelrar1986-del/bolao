@@ -52,7 +52,7 @@ async function updateMatches() {
       const games = response.data.results || [];
 
       for (const game of games) {
-        const config = allSettings.find(s => s.api_leagues.includes(game.league?.id));
+        const config = allSettings.find(s => s.api_leagues && s.api_leagues.includes(game.league?.id));
         if (!config) continue;
 
         const match = await Match.findOne({ apiId: game.id });
