@@ -377,4 +377,3 @@ router.get('/more-access', protect, async (req, res) => {
 });
 
 module.exports = router;
-checa se ta alinhado com stats.js
