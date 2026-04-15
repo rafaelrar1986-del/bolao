@@ -234,7 +234,7 @@ router.get('/all-bets', protect, checkPaid, blockStatsIfLocked, async (req, res)
     const { search, matchId, group, leagueId } = req.query;
     const isAdmin = req.user?.isAdmin === true;
 
-    // Busca configurações específicas da liga para saber o que desbloquear
+    // 1. Busca configurações específicas da liga para saber o que desbloquear
     const configId = getConfigId(leagueId);
     const settings = await Settings.findById(configId).lean();
     const unlockedPhases = settings?.unlockedPhases || [];
@@ -254,6 +254,7 @@ router.get('/all-bets', protect, checkPaid, blockStatsIfLocked, async (req, res)
     }
     query['groupMatches.matchId'] = { $in: matchIdsFilter };
 
+    // Buscamos as apostas (incluindo o campo podium agora)
     const bets = await Bet.find(query).populate('user', 'name').lean();
 
     const enriched = bets.map(b => {
@@ -262,12 +263,10 @@ router.get('/all-bets', protect, checkPaid, blockStatsIfLocked, async (req, res)
       const viewBets = gm.map(g => {
         const m = matches.find(x => x.matchId === g.matchId);
         
-        // Regra de Visibilidade: Admin vê tudo. User só vê se a fase estiver no unlockedPhases da LIGA.
         let isLocked = !isAdmin;
         if (m?.phase === 'group') {
             isLocked = !unlockedPhases.includes('group');
         } else {
-            // Se for mata-mata, verifica se a fase específica (ex: 'oitavas') está liberada
             isLocked = !unlockedPhases.includes(m?.group);
         }
 
@@ -276,14 +275,21 @@ router.get('/all-bets', protect, checkPaid, blockStatsIfLocked, async (req, res)
           choice: isLocked ? '🔒' : g.winner,
           choiceLabel: isLocked ? 'Bloqueado' : toWinnerLabel(g.winner, m?.teamA, m?.teamB),
           matchName: m ? `${m.teamA} vs ${m.teamB}` : `Jogo ${g.matchId}`,
-          status: m?.status || 'scheduled'
+          status: m?.status || 'scheduled',
+          qualifier: isLocked ? null : g.qualifier // Importante para o Glow no frontend
         };
       });
+
+      // 🎯 CORREÇÃO DO PÓDIO: 
+      // Se a trava de pódio estiver ativa, enviamos um objeto mascarado
+      const isPodiumLocked = !isAdmin && !unlockedPhases.includes('podium');
+      const finalPodium = (b.podium && !isPodiumLocked) ? b.podium : (b.podium ? { first: '🔒', second: '🔒', third: '🔒', fourth: '🔒' } : null);
 
       return {
         userName: b.user?.name || 'Usuário',
         totalPoints: b.totalPoints || 0,
-        bets: viewBets
+        bets: viewBets,
+        podium: finalPodium // Agora o frontend recebe o pódio (aberto ou com cadeado)
       };
     });
 
@@ -303,13 +309,17 @@ router.get('/matches-for-filter', protect, checkPaid, async (req, res) => {
     let filter = {};
     if (leagueId) filter.leagueId = Number(leagueId);
 
-    const matches = await Match.find(filter).select('matchId teamA teamB group date leagueId').sort('matchId').lean();
+    const matches = await Match.find(filter)
+      .select('matchId teamA teamB group phase date leagueId')
+      .sort('matchId')
+      .lean();
+      
     res.json({ success: true, data: matches });
   } catch (e) {
+    console.error('Matches filter error:', e);
     res.status(500).json({ success: false, message: 'Erro ao buscar partidas' });
   }
-} );
-
+});
 /**
  * ⚠️ Admin: Reset (Protegido por leagueId)
  */
