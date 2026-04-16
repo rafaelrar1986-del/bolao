@@ -70,18 +70,20 @@ router.get('/my-bets', protect, checkPaid, async (req, res) => {
 });
 
 /**
- * 💾 Salvar palpites (CORRIGIDO PARA MULTICAMPEONATO)
+ * 💾 Salvar palpites (CORRIGIDO PARA MULTICAMPEONATO + VÍNCULO DE USUÁRIO)
  */
 router.post('/save', protect, checkPaid, async (req, res) => {
   try {
     const { groupMatches, podium, knockoutQualifiers, leagueId } = req.body;
     
     // 1. Validação crítica do leagueId
-    if (!leagueId) return res.status(400).json({ success: false, message: 'leagueId é obrigatório' });
+    if (!leagueId) {
+      return res.status(400).json({ success: false, message: 'leagueId é obrigatório' });
+    }
 
     const matchIdsEnviados = Object.keys(groupMatches || {}).map(Number);
     
-    // Valida se as partidas pertencem à liga informada
+    // 2. Valida se as partidas pertencem à liga informada
     const dbMatches = await Match.find({ 
       matchId: { $in: matchIdsEnviados }, 
       leagueId: Number(leagueId) 
@@ -89,7 +91,7 @@ router.post('/save', protect, checkPaid, async (req, res) => {
 
     const validMatchIds = new Set(dbMatches.map(m => m.matchId));
 
-    // 🔍 CORREÇÃO 1: Buscar a aposta ESPECÍFICA desta liga
+    // 3. Busca a aposta ESPECÍFICA desta liga para manter o histórico
     const existing = await Bet.findOne({ user: req.user._id, leagueId: String(leagueId) });
     const gmMap = new Map();
 
@@ -97,7 +99,7 @@ router.post('/save', protect, checkPaid, async (req, res) => {
       existing.groupMatches.forEach((b) => gmMap.set(b.matchId, b));
     }
 
-    // Atualiza apenas palpites da liga atual
+    // 4. Atualiza apenas palpites que pertencem à liga atual
     Object.entries(groupMatches || {}).forEach(([matchId, choice]) => {
       const idNum = Number(matchId);
       if (!validMatchIds.has(idNum)) return; 
@@ -120,7 +122,6 @@ router.post('/save', protect, checkPaid, async (req, res) => {
 
     const now = new Date();
     const payload = {
-      // 🔍 CORREÇÃO 2: Garantir que o leagueId faça parte do payload de criação
       user: req.user._id,
       leagueId: String(leagueId), 
       groupMatches: Array.from(gmMap.values()),
@@ -129,6 +130,7 @@ router.post('/save', protect, checkPaid, async (req, res) => {
       firstSubmission: existing?.firstSubmission || now,
     };
 
+    // 5. Trata o pódio se enviado
     if (podium && podium.first) {
       payload.podium = {
         first: String(podium.first).trim(),
@@ -138,20 +140,33 @@ router.post('/save', protect, checkPaid, async (req, res) => {
       };
     }
 
-    // 🔍 CORREÇÃO 3: O filtro do findOneAndUpdate DEVE conter o leagueId
+    // 6. Atualiza ou Cria a Aposta
     const bet = await Bet.findOneAndUpdate(
-      { user: req.user._id, leagueId: String(leagueId) }, // Filtro único por Usuário + Liga
+      { user: req.user._id, leagueId: String(leagueId) },
       { $set: payload },
       { new: true, upsert: true, setDefaultsOnInsert: true, runValidators: true }
     );
 
-    return res.json({ success: true, message: 'Palpites salvos!', data: { id: bet._id } });
+    // ============================================================
+    // 🔥 O CARIMBO: VÍNCULO DO USUÁRIO COM A LIGA
+    // Garante que o usuário apareça no modal de participantes e rankings
+    // ============================================================
+    const User = require('../models/User'); // Certifique-se de que o caminho está correto
+    await User.findByIdAndUpdate(req.user._id, {
+      $addToSet: { leagues: Number(leagueId) }
+    });
+
+    return res.json({ 
+      success: true, 
+      message: 'Palpites salvos e participação confirmada!', 
+      data: { id: bet._id } 
+    });
+
   } catch (e) {
     console.error('POST /save error:', e);
     return res.status(500).json({ success: false, message: 'Erro ao salvar palpites' });
   }
-});
-/**
+});/**
  * 🏆 Leaderboard (Filtrado por LIGA)
  */
 router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
