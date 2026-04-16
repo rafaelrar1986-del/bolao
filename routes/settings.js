@@ -1,3 +1,4 @@
+// routes/settings.js (ou o arquivo de rotas de configuração)
 const express = require('express');
 const router = express.Router();
 const Settings = require('../models/Settings');
@@ -5,9 +6,10 @@ const { protect, admin } = require('../middleware/auth');
 
 /**
  * 🛠️ HELPER: Define o ID do documento
- * Usado para separar as gavetas de configuração por liga.
+ * Garante que cada liga tenha sua própria "gaveta" no banco de dados.
  */
 const getConfigId = (leagueId) => {
+  // Se leagueId vier nulo, assume '1' por segurança
   const id = leagueId || '1';
   return `league_${id}`;
 };
@@ -19,13 +21,20 @@ const getConfigId = (leagueId) => {
  */
 router.get('/global', async (req, res) => {
   try {
-    const configId = getConfigId(req.query.leagueId);
+    const leagueId = req.query.leagueId || '1';
+    const configId = getConfigId(leagueId);
 
     let s = await Settings.findById(configId).lean();
     
     if (!s) {
       // Cria a configuração inicial específica para esta liga se não existir
-      s = await Settings.create({ _id: configId });
+      s = await Settings.create({ 
+        _id: configId,
+        leagueId: String(leagueId),
+        unlockedPhases: ['group'], // Valor inicial padrão
+        blockSaveBets: false,
+        blockSaveKnockout: false
+      });
     }
     
     res.json({ success: true, data: s });
@@ -37,16 +46,16 @@ router.get('/global', async (req, res) => {
 
 /**
  * @route   POST /api/settings/global
- * @desc    Atualiza travas de interface (Individual por liga) e Robô (Sempre na liga 1)
- * @access  Privado (Admin)
+ * @desc    Rota unificada: Travas vão para a liga Alvo, Robô vai sempre para a Liga 1
  */
 router.post('/global', protect, admin, async (req, res) => {
   try {
-    const targetLeagueId = req.body.leagueId || '1';
+    // 🔍 CORREÇÃO: Pega o leagueId do Body ou da Query para não perder a referência
+    const targetLeagueId = req.body.leagueId || req.query.leagueId || '1';
     const configId = getConfigId(targetLeagueId);
     const mainLeagueId = getConfigId('1'); 
 
-    // 1. 🔒 Separar campos de TRAVA (Respeitam a liga selecionada)
+    // 1. 🔒 CAMPOS DE TRAVA (Vão para a liga que você está mexendo agora)
     const lockUpdates = {};
     const booleanFields = ['blockSaveBets', 'blockSaveKnockout', 'requireAllBets', 'statsLocked'];
     
@@ -57,19 +66,21 @@ router.post('/global', protect, admin, async (req, res) => {
     if (req.body.unlockedPhases && Array.isArray(req.body.unlockedPhases)) {
       lockUpdates.unlockedPhases = req.body.unlockedPhases;
     }
+    
     if (req.body.lockedReason !== undefined) lockUpdates.lockedReason = req.body.lockedReason;
+    
     if (req.body.unlockAt !== undefined) {
       lockUpdates.unlockAt = req.body.unlockAt ? new Date(req.body.unlockAt) : null;
     }
 
-    // Salva as travas na liga alvo (ex: league_27)
+    // Salva na liga alvo (ex: league_27)
     const s = await Settings.findByIdAndUpdate(
       configId,
-      { $set: lockUpdates },
+      { $set: { ...lockUpdates, leagueId: String(targetLeagueId) } },
       { new: true, upsert: true }
     ).lean();
 
-    // 2. 🤖 Separar campos do ROBÔ (Forçados sempre para league_1)
+    // 2. 🤖 CAMPOS DO ROBÔ (Sempre forçados para league_1)
     const robotUpdates = {};
     let hasRobotUpdates = false;
 
@@ -98,7 +109,7 @@ router.post('/global', protect, admin, async (req, res) => {
 
     res.json({ 
       success: true, 
-      message: `Travas aplicadas à liga ${targetLeagueId}. API configurada na liga 1.`,
+      message: `Configurações da liga ${targetLeagueId} atualizadas.`,
       data: s 
     });
 
@@ -110,47 +121,43 @@ router.post('/global', protect, admin, async (req, res) => {
 
 /**
  * ✅ ROTA: POST /api/settings/admin/update
- * Sincronização completa. Mantém a lógica de proteção por ID.
+ * Sincronização secundária
  */
 router.post('/admin/update', protect, admin, async (req, res) => {
   try {
-    const targetLeagueId = req.body.leagueId || '1';
+    const targetLeagueId = req.body.leagueId || req.query.leagueId || '1';
     const configId = getConfigId(targetLeagueId);
     const mainLeagueId = getConfigId('1');
 
     const updates = {};
     const robotUpdates = {};
 
-    // Dados do Robô (Vão para a 1)
+    // Dados do Robô -> Liga 1
     if (req.body.cron_interval !== undefined) robotUpdates.cron_interval = Number(req.body.cron_interval);
     if (req.body.api_season !== undefined) robotUpdates.api_season = Number(req.body.api_season);
     if (req.body.api_leagues !== undefined) {
-      robotUpdates.api_leagues = Array.isArray(req.body.api_leagues) 
-        ? req.body.api_leagues.map(id => Number(id)) 
-        : [];
+      robotUpdates.api_leagues = Array.isArray(req.body.api_leagues) ? req.body.api_leagues : [];
     }
 
-    // Travas (Vão para a liga alvo)
-    if (req.body.blockSaveBets !== undefined) updates.blockSaveBets = !!req.body.blockSaveBets;
-    if (req.body.blockSaveKnockout !== undefined) updates.blockSaveKnockout = !!req.body.blockSaveKnockout;
-    if (req.body.requireAllBets !== undefined) updates.requireAllBets = !!req.body.requireAllBets;
-    if (req.body.statsLocked !== undefined) updates.statsLocked = !!req.body.statsLocked;
+    // Travas -> Liga Alvo
+    const lockFields = ['blockSaveBets', 'blockSaveKnockout', 'requireAllBets', 'statsLocked'];
+    lockFields.forEach(f => {
+        if (req.body[f] !== undefined) updates[f] = !!req.body[f];
+    });
 
-    // Executa atualizações
     const s = await Settings.findByIdAndUpdate(
       configId,
-      { $set: updates },
-      { new: true, upsert: true, runValidators: true }
+      { $set: { ...updates, leagueId: String(targetLeagueId) } },
+      { new: true, upsert: true }
     ).lean();
 
     if (Object.keys(robotUpdates).length > 0) {
       await Settings.findByIdAndUpdate(mainLeagueId, { $set: robotUpdates }, { upsert: true });
     }
 
-    res.json({ success: true, message: `Configurações salvas com sucesso!`, data: s });
+    res.json({ success: true, data: s });
   } catch (err) {
-    console.error('Erro na rota /admin/update:', err);
-    res.status(500).json({ success: false, message: 'Erro ao salvar configurações' });
+    res.status(500).json({ success: false, message: 'Erro ao salvar' });
   }
 });
 
@@ -175,9 +182,8 @@ router.post('/robot', protect, admin, async (req, res) => {
       { new: true, upsert: true }
     ).lean();
 
-    res.json({ success: true, message: `Robô atualizado na configuração global (Liga 1)!`, data: s });
+    res.json({ success: true, message: `Robô atualizado na Liga 1`, data: s });
   } catch (err) {
-    console.error('Erro ao atualizar robô:', err);
     res.status(500).json({ success: false, message: 'Erro ao atualizar robô' });
   }
 });
