@@ -55,6 +55,11 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: null
   }
+  // 🏆 LIGAS QUE O USUÁRIO PARTICIPA
+  leagues: {
+    type: [Number], // Array de números (ex: [7, 27])
+    default: []
+  }
 }, {
   timestamps: true,
   toJSON: {
