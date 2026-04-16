@@ -10,6 +10,7 @@ const mapStatus = (apiStatus) => {
         'inprogress': '1_tempo',
         '1st_half': '1_tempo',
         'ht': 'intervalo',
+        'halftime': 'intervalo', // Adicionado fallback para halftime
         '2nd_half': '2_tempo',
         'extra_time': 'prorrogacao',
         'penalties': 'penaltis',
@@ -77,12 +78,13 @@ exports.fetchAndSyncMatches = async (req, res) => {
             const currentLeagueId = item.league ? Number(item.league.id) : Number(leagueId);
             const currentLeagueName = item.league ? item.league.name : "";
 
-            /**
-             * LÓGICA DE GRUPO:
-             * Se o Admin disse que é 'knockout', usamos o nome da fase escolhido (ex: '16-avos de final')
-             * Se o Admin disse que é 'group', usamos o padrão 'Rodada X'
-             */
             const groupValue = phaseType === 'knockout' ? knockoutPhase : `Rodada ${item.round_number}`;
+
+            // --- CORREÇÃO DOS LOGOS (BUSCANDO .id EM VEZ DE .api_id) ---
+            const teamA_ID = item.home_team_obj?.id || item.home_id;
+            const teamB_ID = item.away_team_obj?.id || item.away_id;
+
+            let match = await Match.findOne({ apiId: item.id });
 
             const updateData = {
                 apiId: item.id,
@@ -91,7 +93,7 @@ exports.fetchAndSyncMatches = async (req, res) => {
                 teamA: item.home_team,
                 teamB: item.away_team,
                 group: groupValue, 
-                phase: phaseType || 'group', // 'group' ou 'knockout'
+                phase: phaseType || 'group', 
                 date: dateStr,
                 time: timeStr,
                 status: mapStatus(item.status),
@@ -101,11 +103,10 @@ exports.fetchAndSyncMatches = async (req, res) => {
                 penaltiesB: item.away_score_penalties ?? null,
                 apiStatus: item.period || 'NS',
                 minute: item.current_minute ? `${item.current_minute}'` : "",
-                logoA: item.home_team_obj?.api_id ? `https://sports.bzzoiro.com/img/team/${item.home_team_obj.api_id}/?token=${API_KEY}` : '',
-                logoB: item.away_team_obj?.api_id ? `https://sports.bzzoiro.com/img/team/${item.away_team_obj.api_id}/?token=${API_KEY}` : ''
+                // Se encontrar o ID, gera a URL. Caso contrário, tenta manter o logo que já estava no banco.
+                logoA: teamA_ID ? `https://sports.bzzoiro.com/img/team/${teamA_ID}/?token=${API_KEY}` : (match?.logoA || ''),
+                logoB: teamB_ID ? `https://sports.bzzoiro.com/img/team/${teamB_ID}/?token=${API_KEY}` : (match?.logoB || '')
             };
-
-            let match = await Match.findOne({ apiId: item.id });
 
             if (!match) {
                 const lastMatch = await Match.findOne().sort({ matchId: -1 });
@@ -119,6 +120,7 @@ exports.fetchAndSyncMatches = async (req, res) => {
                 await match.save();
                 createdCount++;
             } else {
+                // Só atualiza se a partida não foi finalizada/processada pelo sistema de pontos
                 if (!match.processed) {
                     Object.assign(match, updateData);
                     await match.save();
@@ -129,7 +131,7 @@ exports.fetchAndSyncMatches = async (req, res) => {
 
         res.json({
             success: true,
-            message: `Sincronização concluída! ${allResults.length} jogos vinculados à fase: ${phaseType === 'knockout' ? knockoutPhase : 'Grupos'}.`,
+            message: `Sincronização concluída! ${allResults.length} jogos processados.`,
             details: { criados: createdCount, atualizados: updatedCount }
         });
 
