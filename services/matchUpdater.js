@@ -31,19 +31,34 @@ function determineQualifier(game) {
 
 async function updateMatches() {
   try {
-    const allSettings = await Settings.find({});
+    // 🔍 BUSCA CONFIGURAÇÃO NA LIGA 1 (Gaveta global do Robô)
+    const robotSettings = await Settings.findById('league_1');
 
-    if (!allSettings || allSettings.length === 0) {
-      console.log('⚠️ Nenhuma configuração de liga encontrada.');
+    if (!robotSettings) {
+      console.log('⚠️ Configurações da Liga 1 não encontradas. Abortando Updater.');
+      return;
+    }
+
+    const config = {
+      leagues: robotSettings.api_leagues || [], // IDs das ligas da API (ex: [4, 6])
+      season: robotSettings.api_season || 2026
+    };
+
+    if (config.leagues.length === 0) {
+      console.log('⚠️ Nenhuma liga configurada no robô da Liga 1.');
       return;
     }
 
     const now = Date.now();
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-    const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+    console.log(`🚀 [Cron] Iniciando Updater (Monitorando ${config.leagues.length} ligas)...`);
+
+    const yesterday = new Date(now - 86400000).toISOString().split('T')[0];
+    const tomorrow = new Date(now + 86400000).toISOString().split('T')[0];
 
     let nextUrl = `https://sports.bzzoiro.com/api/events/?date_from=${yesterday}&date_to=${tomorrow}`;
-    
+    let updatedCount = 0;
+    let page = 1;
+
     while (nextUrl) {
       const response = await axios.get(nextUrl, {
         headers: { Authorization: `Token ${API_KEY}` }
@@ -52,8 +67,8 @@ async function updateMatches() {
       const games = response.data.results || [];
 
       for (const game of games) {
-        const config = allSettings.find(s => s.api_leagues && s.api_leagues.includes(game.league?.id));
-        if (!config) continue;
+        // Verifica se esta liga do jogo está na lista permitida da Liga 1
+        if (!config.leagues.includes(game.league?.id)) continue;
 
         const match = await Match.findOne({ apiId: game.id });
         if (!match) continue;
@@ -63,11 +78,13 @@ async function updateMatches() {
         
         const apiHomeId = game.home_team_obj?.api_id;
         const apiAwayId = game.away_team_obj?.api_id;
-        const newLogoA = apiHomeId ? `https://sports.bzzoiro.com/img/team/${apiHomeId}/?token=${API_KEY}` : '';
-        const newLogoB = apiAwayId ? `https://sports.bzzoiro.com/img/team/${apiAwayId}/?token=${API_KEY}` : '';
+        const newLogoA = apiHomeId ? `https://sports.bzzoiro.com/img/team/${apiHomeId}/?token=${API_KEY}` : match.logoA;
+        const newLogoB = apiAwayId ? `https://sports.bzzoiro.com/img/team/${apiAwayId}/?token=${API_KEY}` : match.logoB;
 
         let autoQualifiedSide = match.qualifiedSide;
-        if ((match.phase === 'knockout' || match.phase === 'mata-mata') && newStatus === 'finished' && !match.qualifiedSide) {
+        const isKnockout = match.phase === 'knockout' || match.phase === 'mata-mata';
+        
+        if (isKnockout && newStatus === 'finished' && !match.qualifiedSide) {
            autoQualifiedSide = determineQualifier(game);
         }
 
@@ -83,12 +100,13 @@ async function updateMatches() {
         if (!changed) continue;
 
         const oldStatus = match.status;
+        const oldMinute = match.minute;
         
         match.scoreA = game.home_score;
         match.scoreB = game.away_score;
         match.status = newStatus;
         match.apiStatus = game.status;
-        match.minute = newMinute;
+        match.minute = newMinute; 
         match.logoA = newLogoA; 
         match.logoB = newLogoB; 
         match.penaltiesA = game.home_penalty_score ?? null;
@@ -97,26 +115,41 @@ async function updateMatches() {
 
         await match.save();
 
+        // Logs de monitoramento
+        if (match.scoreA !== game.home_score || match.scoreB !== game.away_score) {
+            console.log(`⚽ GOL na Liga ${match.leagueId}: ${match.teamA} ${game.home_score}x${game.away_score} ${match.teamB}`);
+        } else if (oldMinute !== newMinute) {
+            console.log(`⏱️ MINUTO: ${match.teamA} vs ${match.teamB} (${newMinute})`);
+        }
+
+        // Se a partida terminou, recalcula pontos da liga correspondente
         if (oldStatus !== 'finished' && newStatus === 'finished') {
+          const targetLeagueId = match.leagueId || '1';
+          console.log(`🥇 [Sistema] Partida encerrada na Liga ${targetLeagueId}. Recalculando...`);
           try {
-            const targetLeagueId = match.leagueId || (config ? config.leagueId : null);
-            if (targetLeagueId) {
-              console.log(`⚽ Partida finalizada. Recalculando pontos para liga: ${targetLeagueId}`);
-              await recalculateAllPoints(targetLeagueId); 
-              await trySaveDailyPoints(game.event_date);
-            }
+            // Passa o targetLeagueId para o serviço de pontos saber qual liga processar
+            await recalculateAllPoints(targetLeagueId); 
+            await trySaveDailyPoints(game.event_date);
           } catch (procError) {
-            console.error(`❌ Erro no recálculo:`, procError.message);
+            console.error(`❌ [Erro Recálculo Liga ${targetLeagueId}]:`, procError.message);
           }
         }
+        updatedCount++;
       }
+
       nextUrl = response.data.next; 
+      page++;
     }
 
-    await Settings.updateMany({}, { $set: { last_api_run: now } });
+    // Atualiza o timestamp da última execução na Liga 1
+    await Settings.findByIdAndUpdate('league_1', { 
+      $set: { last_api_run: now } 
+    });
+
+    console.log(`✨ [Fim da Rodada] Sincronizados: ${updatedCount} jogos com alterações.`);
 
   } catch (err) {
-    console.error('❌ [Erro no Updater]:', err.message);
+    console.error('❌ [Erro Crítico no Updater]:', err.message);
   }
 }
 
