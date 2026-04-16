@@ -54,7 +54,7 @@ const userSchema = new mongoose.Schema({
   lockUntil: {
     type: Date,
     default: null
-  }
+  },
   // 🏆 LIGAS QUE O USUÁRIO PARTICIPA
   leagues: {
     type: [Number], // Array de números (ex: [7, 27])
