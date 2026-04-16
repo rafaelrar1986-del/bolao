@@ -352,6 +352,36 @@ router.post('/admin/reset-all', protect, admin, async (req, res) => {
   }
 });
 
+/**
+ * 👥 Usuários para filtro (Filtrado por LeagueId)
+ */
+router.get('/users-for-filter', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
+  try {
+    const { leagueId } = req.query;
+
+    if (!leagueId) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'O parâmeto leagueId é obrigatório para filtrar os usuários.' 
+      });
+    }
+
+    // Filtramos os usuários que possuem o leagueId na sua lista de ligas/participações
+    // O ajuste abaixo depende de como você estruturou o vínculo Usuário <-> Liga
+    const query = { leagues: leagueId }; // Exemplo: se o usuário tem um array de IDs de ligas
+
+    const users = await User.find(query)
+      .select('_id name')
+      .sort('name')
+      .lean();
+
+    res.json({ success: true, data: users });
+  } catch (e) {
+    console.error('Erro na rota users-for-filter:', e.message);
+    res.status(500).json({ success: false, message: 'Erro ao buscar usuários da liga' });
+  }
+});
+
 // 🔐 PERMISSÃO PARA MENU "MORE"
 router.get('/more-access', protect, async (req, res) => {
   try {
