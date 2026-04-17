@@ -194,27 +194,30 @@ router.post('/save', protect, checkPaid, async (req, res) => {
 });
 
 
-// * 🏆 Leaderboard (Filtrado por LIGA)
-// * Corrigido: Ranking Oficial considera apenas partidas com status 'finished'
- //
+/**
+ * 🏆 Leaderboard (Filtrado por LIGA)
+ * Totalmente alinhado com ranking.js
+ */
 router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
   try {
-    const { leagueId } = req.query;
+    // Captura os parâmetros exatamente como o seu frontend envia
+    const { leagueId, type } = req.query; 
     if (!leagueId) return res.status(400).json({ success: false, message: 'leagueId é obrigatório' });
 
     const lIdNum = Number(leagueId);
     const lIdStr = String(leagueId);
+    
+    // Define se é parcial baseado no que o ranking.js enviou
+    const isPartialRequest = type === 'partial';
 
     const [matches, bets] = await Promise.all([
       Match.find({ leagueId: lIdNum }).select('matchId status scoreA scoreB phase qualifiedSide').lean(),
-      // CORREÇÃO CRÍTICA: Filtrar por leagueId para não pegar apostas de outras competições
       Bet.find({ 
         hasSubmitted: true, 
         leagueId: lIdStr 
       }).populate('user', 'name avatar').lean()
     ]);
 
-    // Criamos um Map de partidas para busca rápida O(1)
     const matchMap = new Map(matches.map(m => [Number(m.matchId), m]));
     const matchIdsDaLiga = new Set(matches.map(m => Number(m.matchId)));
 
@@ -230,15 +233,21 @@ router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, r
       let groupPhasePoints = 0;
       let knockoutPoints = 0;
 
-      // Garantimos que estamos comparando Numbers
       const userBetsDaLiga = (b.groupMatches || []).filter(gm => matchIdsDaLiga.has(Number(gm.matchId)));
 
       userBetsDaLiga.forEach(gm => {
         const m = matchMap.get(Number(gm.matchId));
-        
-        // --- ALTERAÇÃO SOLICITADA: Só pontua se estiver 'finished' ---
-        if (!m || m.status !== 'finished') return;
-        // -------------------------------------------------------------
+        if (!m) return;
+
+        // --- LÓGICA DE FILTRAGEM POR TIPO ---
+        if (isPartialRequest) {
+          // No modo PARCIAL: Ignora apenas o que ainda não começou (scheduled)
+          if (m.status === 'scheduled') return;
+        } else {
+          // No modo OFICIAL: Ignora tudo que não está FINALIZADO
+          if (m.status !== 'finished') return;
+        }
+        // ------------------------------------
 
         const realWinner = getWinner(m.scoreA, m.scoreB);
         
@@ -259,9 +268,10 @@ router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, r
 
       return {
         user: b.user,
-        totalPoints,
+        totalPoints, // O frontend usa este campo para os pontos
         groupPhasePoints,
         knockoutPoints,
+        podiumPoints: b.podiumPoints || 0, // Mantido para o card de detalhes do mobile
         lastUpdate: b.lastUpdate
       };
     });
@@ -269,7 +279,7 @@ router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, r
     // Ordenação: Pontos Descendente -> Nome Ascendente
     ranked.sort((a, b) => b.totalPoints - a.totalPoints || (a.user?.name || "").localeCompare(b.user?.name || ""));
 
-    // Atribuição de posições (tratando empates)
+    // Atribuição de posições
     let lastPoints = null;
     let position = 0;
     const finalData = ranked.map((item, index) => {
@@ -286,7 +296,8 @@ router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, r
     res.status(500).json({ success: false, message: 'Erro ao processar ranking' });
   }
 });
- //👁️ Todos os palpites (Com trava de visibilidade por liga)
+
+//👁️ Todos os palpites (Com trava de visibilidade por liga)
  
 router.get('/all-bets', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
   try {
