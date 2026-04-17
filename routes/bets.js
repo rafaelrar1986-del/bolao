@@ -191,10 +191,9 @@ router.post('/save', protect, checkPaid, async (req, res) => {
     console.error('POST /save error:', e);
     return res.status(500).json({ success: false, message: 'Erro ao salvar palpites' });
   }
-});/**
-/**
-/**
- /**
+});
+
+
  * 🏆 Leaderboard (Filtrado por LIGA)
  * Corrigido: Ranking Oficial considera apenas partidas com status 'finished'
  */
@@ -287,8 +286,8 @@ router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, r
     res.status(500).json({ success: false, message: 'Erro ao processar ranking' });
   }
 });
- * 👁️ Todos os palpites (Com trava de visibilidade por liga)
- */
+ //👁️ Todos os palpites (Com trava de visibilidade por liga)
+ 
 router.get('/all-bets', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
   try {
     const { search, matchId, group, leagueId } = req.query;
