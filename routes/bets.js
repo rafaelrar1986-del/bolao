@@ -193,27 +193,27 @@ router.post('/save', protect, checkPaid, async (req, res) => {
   }
 });/**
 /**
+/**
  * 🏆 Leaderboard (Filtrado por LIGA)
- * Corrigido para evitar duplicidade de usuários com apostas em múltiplas ligas
+ * Corrigido para diferenciar Ranking Oficial (apenas finished) e Parcial (em andamento)
  */
 router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
   try {
-    const { leagueId } = req.query;
+    const { leagueId, live } = req.query; // live=true vindo do toggle parcial
     if (!leagueId) return res.status(400).json({ success: false, message: 'leagueId é obrigatório' });
 
     const lIdNum = Number(leagueId);
     const lIdStr = String(leagueId);
+    const isLiveMode = live === 'true';
 
     const [matches, bets] = await Promise.all([
       Match.find({ leagueId: lIdNum }).select('matchId status scoreA scoreB phase qualifiedSide').lean(),
-      // CORREÇÃO CRÍTICA: Filtrar por leagueId para não pegar apostas de outras competições
       Bet.find({ 
         hasSubmitted: true, 
         leagueId: lIdStr 
       }).populate('user', 'name avatar').lean()
     ]);
 
-    // Criamos um Map de partidas para busca rápida O(1)
     const matchMap = new Map(matches.map(m => [Number(m.matchId), m]));
     const matchIdsDaLiga = new Set(matches.map(m => Number(m.matchId)));
 
@@ -229,12 +229,21 @@ router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, r
       let groupPhasePoints = 0;
       let knockoutPoints = 0;
 
-      // Garantimos que estamos comparando Numbers
       const userBetsDaLiga = (b.groupMatches || []).filter(gm => matchIdsDaLiga.has(Number(gm.matchId)));
 
       userBetsDaLiga.forEach(gm => {
         const m = matchMap.get(Number(gm.matchId));
-        if (!m || m.status === 'scheduled') return;
+        if (!m) return;
+
+        // --- LÓGICA DE FILTRO DE STATUS ATUALIZADA ---
+        if (isLiveMode) {
+          // No PARCIAL: Contabiliza tudo que começou (diferente de scheduled)
+          if (m.status === 'scheduled') return;
+        } else {
+          // No OFICIAL: Contabiliza APENAS o que já terminou
+          if (m.status !== 'finished') return;
+        }
+        // ----------------------------------------------
 
         const realWinner = getWinner(m.scoreA, m.scoreB);
         
@@ -281,8 +290,7 @@ router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, r
     console.error('Leaderboard Error:', e);
     res.status(500).json({ success: false, message: 'Erro ao processar ranking' });
   }
-});
-/**
+});/**
  * 👁️ Todos os palpites (Com trava de visibilidade por liga)
  */
 router.get('/all-bets', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
