@@ -147,28 +147,24 @@ router.post('/save', protect, checkPaid, async (req, res) => {
       firstSubmission: existing?.firstSubmission || now,
     };
 
-    // 5. Trata o pódio se enviado
-    // 5. Trata o pódio com proteção total (Blindagem contra dados do Robô)
-if (podium) {
-  try {
-    payload.podium = {
-      // Usamos String(...) para garantir que seja texto e trim() para limpar espaços extras do robô
-      // Se o campo não vier, ele salva uma string vazia em vez de dar erro 500
-      first:  podium.first  ? String(podium.first).trim()  : '',
-      second: podium.second ? String(podium.second).trim() : '',
-      third:  podium.third  ? String(podium.third).trim()  : '',
-      fourth: podium.fourth ? String(podium.fourth).trim() : ''
-    };
     
-    // Log para você conferir no Render se os nomes dos times do robô estão vindo certos
-    console.log(`[PÓDIO LIGA ${leagueId}] Salvando:`, payload.podium);
-    
-  } catch (podiumError) {
-    console.error("Erro ao processar strings do pódio:", podiumError);
-    // Se algo der muito errado, salva o pódio vazio para não travar o servidor
-    payload.podium = { first: '', second: '', third: '', fourth: '' };
-  }
-}
+// 5. Trata o pódio se enviado
+
+    if (podium && podium.first) {
+
+      payload.podium = {
+
+        first: String(podium.first).trim(),
+
+        second: String(podium.second).trim(),
+
+        third: String(podium.third).trim(),
+
+        fourth: podium.fourth ? String(podium.fourth).trim() : ''
+
+      };
+
+    }
     // 6. Atualiza ou Cria a Aposta
     const bet = await Bet.findOneAndUpdate(
       { user: req.user._id, leagueId: String(leagueId) },
