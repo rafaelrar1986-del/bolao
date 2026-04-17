@@ -194,9 +194,9 @@ router.post('/save', protect, checkPaid, async (req, res) => {
 });
 
 
- * 🏆 Leaderboard (Filtrado por LIGA)
- * Corrigido: Ranking Oficial considera apenas partidas com status 'finished'
- */
+// * 🏆 Leaderboard (Filtrado por LIGA)
+// * Corrigido: Ranking Oficial considera apenas partidas com status 'finished'
+ //
 router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
   try {
     const { leagueId } = req.query;
