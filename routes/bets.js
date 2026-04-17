@@ -26,26 +26,42 @@ function toWinnerLabel(choice, teamA, teamB) {
 
 /**
  * 🎯 Meus palpites (Filtrado por Liga)
+ * Corrigido para evitar conflito entre ligas
  */
 router.get('/my-bets', protect, checkPaid, async (req, res) => {
   try {
     const { leagueId } = req.query;
-    if (!leagueId) return res.status(400).json({ success: false, message: 'ID da liga é obrigatório' });
+    if (!leagueId) {
+      return res.status(400).json({ success: false, message: 'ID da liga é obrigatório' });
+    }
+
+    // Convertemos para Number e String para garantir compatibilidade
+    const lIdNum = Number(leagueId);
+    const lIdStr = String(leagueId);
 
     const [bet, matches] = await Promise.all([
-      Bet.findOne({ user: req.user._id }).lean(),
-      Match.find({ leagueId: Number(leagueId) }).lean()
+      // AQUI ESTAVA O ERRO: Adicionamos o leagueId na busca da aposta
+      Bet.findOne({ 
+        user: req.user._id, 
+        leagueId: lIdStr 
+      }).lean(),
+      
+      Match.find({ leagueId: lIdNum }).lean()
     ]);
 
+    // Se não encontrou aposta para ESTA LIGA específica
     if (!bet) {
       return res.json({ success: true, data: null, hasSubmitted: false });
     }
 
-    const matchIdsDaLiga = matches.map(m => m.matchId);
+    // Criamos um Set de IDs de partidas da liga atual (para performance e comparação segura)
+    const matchIdsDaLiga = new Set(matches.map(m => Number(m.matchId)));
+
+    // Filtramos os palpites que pertencem APENAS a esta liga
     const gm = (bet.groupMatches || [])
-      .filter(b => matchIdsDaLiga.includes(b.matchId))
+      .filter(b => matchIdsDaLiga.has(Number(b.matchId))) // Comparação Number vs Number
       .map((b) => {
-        const m = matches.find(x => x.matchId === b.matchId);
+        const m = matches.find(x => Number(x.matchId) === Number(b.matchId));
         const teamA = m?.teamA || 'Time A';
         const teamB = m?.teamB || 'Time B';
         return {
@@ -58,17 +74,18 @@ router.get('/my-bets', protect, checkPaid, async (req, res) => {
         };
       });
 
+    // O status de submissão agora é real por liga
     return res.json({
       success: true,
       data: { ...bet, groupMatches: gm },
       hasSubmitted: gm.length > 0
     });
+
   } catch (e) {
     console.error('GET /my-bets error:', e);
     res.status(500).json({ success: false, message: 'Erro ao carregar palpites' });
   }
 });
-
 /**
  * 💾 Salvar palpites (CORRIGIDO PARA MULTICAMPEONATO + VÍNCULO DE USUÁRIO)
  */
@@ -179,22 +196,30 @@ if (podium) {
     return res.status(500).json({ success: false, message: 'Erro ao salvar palpites' });
   }
 });/**
+/**
  * 🏆 Leaderboard (Filtrado por LIGA)
+ * Corrigido para evitar duplicidade de usuários com apostas em múltiplas ligas
  */
 router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
   try {
     const { leagueId } = req.query;
     if (!leagueId) return res.status(400).json({ success: false, message: 'leagueId é obrigatório' });
 
-    const lId = Number(leagueId);
+    const lIdNum = Number(leagueId);
+    const lIdStr = String(leagueId);
 
     const [matches, bets] = await Promise.all([
-      Match.find({ leagueId: lId }).select('matchId status scoreA scoreB phase qualifiedSide').lean(),
-      Bet.find({ hasSubmitted: true }).populate('user', 'name avatar').lean()
+      Match.find({ leagueId: lIdNum }).select('matchId status scoreA scoreB phase qualifiedSide').lean(),
+      // CORREÇÃO CRÍTICA: Filtrar por leagueId para não pegar apostas de outras competições
+      Bet.find({ 
+        hasSubmitted: true, 
+        leagueId: lIdStr 
+      }).populate('user', 'name avatar').lean()
     ]);
 
-    const matchMap = new Map(matches.map(m => [m.matchId, m]));
-    const matchIdsDaLiga = new Set(matches.map(m => m.matchId));
+    // Criamos um Map de partidas para busca rápida O(1)
+    const matchMap = new Map(matches.map(m => [Number(m.matchId), m]));
+    const matchIdsDaLiga = new Set(matches.map(m => Number(m.matchId)));
 
     const getWinner = (a, b) => {
       if (a === undefined || b === undefined || a === null || b === null) return null;
@@ -208,20 +233,23 @@ router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, r
       let groupPhasePoints = 0;
       let knockoutPoints = 0;
 
-      const userBetsDaLiga = (b.groupMatches || []).filter(gm => matchIdsDaLiga.has(gm.matchId));
+      // Garantimos que estamos comparando Numbers
+      const userBetsDaLiga = (b.groupMatches || []).filter(gm => matchIdsDaLiga.has(Number(gm.matchId)));
 
       userBetsDaLiga.forEach(gm => {
-        const m = matchMap.get(gm.matchId);
+        const m = matchMap.get(Number(gm.matchId));
         if (!m || m.status === 'scheduled') return;
 
         const realWinner = getWinner(m.scoreA, m.scoreB);
         
+        // 1. Ponto por acertar o vencedor/empate
         if (realWinner && gm.winner === realWinner) {
           totalPoints += 1;
           if (m.phase === 'group') groupPhasePoints += 1;
           else knockoutPoints += 1;
         }
 
+        // 2. Ponto por acertar quem classifica (Mata-mata)
         const realQual = m.qualifiedSide || (realWinner !== 'draw' ? realWinner : null);
         if (gm.qualifier && realQual && gm.qualifier === realQual) {
           totalPoints += 1;
@@ -238,8 +266,10 @@ router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, r
       };
     });
 
+    // Ordenação: Pontos Descendente -> Nome Ascendente
     ranked.sort((a, b) => b.totalPoints - a.totalPoints || (a.user?.name || "").localeCompare(b.user?.name || ""));
 
+    // Atribuição de posições (tratando empates)
     let lastPoints = null;
     let position = 0;
     const finalData = ranked.map((item, index) => {
@@ -250,13 +280,12 @@ router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, r
       return { ...item, position };
     });
 
-    res.json({ success: true, data: finalData, leagueId: lId });
+    res.json({ success: true, data: finalData, leagueId: lIdNum });
   } catch (e) {
     console.error('Leaderboard Error:', e);
     res.status(500).json({ success: false, message: 'Erro ao processar ranking' });
   }
 });
-
 /**
  * 👁️ Todos os palpites (Com trava de visibilidade por liga)
  */
