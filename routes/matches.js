@@ -240,7 +240,18 @@ router.post('/admin/unfinish/:matchId', protect, admin, async (req, res) => {
     const matchId = Number(req.params.matchId);
     const match = await Match.findOneAndUpdate(
       { matchId },
-      { $set: { status: 'scheduled', penaltiesA: null, penaltiesB: null }, $unset: { scoreA: 1, scoreB: 1, qualifiedSide: 1 } },
+      { 
+        $set: { 
+          status: 'scheduled', 
+          scoreA: null,        // Agora definido como null
+          scoreB: null,        // Agora definido como null
+          penaltiesA: null, 
+          penaltiesB: null 
+        }, 
+        $unset: { 
+          qualifiedSide: 1     // Mantido no unset para remover a lógica de quem passou
+        } 
+      },
       { new: true }
     );
 
@@ -249,7 +260,10 @@ router.post('/admin/unfinish/:matchId', protect, admin, async (req, res) => {
     const cursor = Bet.find({ 'groupMatches.matchId': matchId }).cursor();
     for await (const bet of cursor) {
       bet.groupMatches = (bet.groupMatches || []).map(gm => {
-        if (gm.matchId === matchId) { gm.points = 0; gm.qualifierPoints = 0; }
+        if (gm.matchId === matchId) { 
+          gm.points = 0; 
+          gm.qualifierPoints = 0; 
+        }
         return gm;
       });
       bet.groupPoints = (bet.groupMatches || []).reduce((s, gm) => s + (gm.points || 0) + (gm.qualifierPoints || 0), 0);
@@ -262,7 +276,6 @@ router.post('/admin/unfinish/:matchId', protect, admin, async (req, res) => {
     res.status(500).json({ success: false, message: 'Erro ao reabrir partida' });
   }
 });
-
 // ======================
 // 8. DELETE /api/matches/admin/delete/:matchId (Admin)
 // ======================
