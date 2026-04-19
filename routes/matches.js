@@ -232,72 +232,98 @@ router.post('/admin/finish/:matchId', protect, admin, async (req, res) => {
     res.status(500).json({ success: false, message: 'Erro ao finalizar partida' });
   }
 });
-// ======================
-// 7. POST /api/matches/admin/unfinish/:matchId (Admin)
-// ======================
-router.post('/admin/unfinish/:matchId', protect, admin, async (req, res) => {
+// ============================================================
+// AUXILIAR: RECALCULAR PONTOS DE UMA BET
+// ============================================================
+const recalculateBetPoints = (bet) => {
+  bet.groupPoints = (bet.groupMatches || []).reduce((s, gm) => s + (gm.points || 0) + (gm.qualifierPoints || 0), 0);
+  bet.totalPoints = (bet.groupPoints || 0) + (bet.podiumPoints || 0) + (bet.bonusPoints || 0);
+  return bet;
+};
+
+// ============================================================
+// 7. REABRIR (UNFINISH) - ÚNICA, GRUPO OU LIGA
+// ============================================================
+router.post('/admin/unfinish-bulk', protect, admin, async (req, res) => {
   try {
-    const matchId = Number(req.params.matchId);
-    const match = await Match.findOneAndUpdate(
-      { matchId },
-      { 
-        $set: { 
-          status: 'scheduled', 
-          scoreA: null,        // Agora definido como null
-          scoreB: null,        // Agora definido como null
-          penaltiesA: null, 
-          penaltiesB: null 
-        }, 
-        $unset: { 
-          qualifiedSide: 1     // Mantido no unset para remover a lógica de quem passou
-        } 
-      },
-      { new: true }
-    );
+    const { matchId, leagueName, groupName } = req.body;
+    let filter = {};
 
-    if (!match) return res.status(404).json({ success: false, message: 'Partida não encontrada' });
+    // Define o escopo da reabertura
+    if (matchId) filter = { matchId: Number(matchId) };
+    else if (leagueName && groupName) filter = { leagueName, group: groupName };
+    else if (leagueName) filter = { $or: [{ leagueName }, { group: leagueName }] };
+    else return res.status(400).json({ success: false, message: 'Parâmetros insuficientes' });
 
-    const cursor = Bet.find({ 'groupMatches.matchId': matchId }).cursor();
+    const matches = await Match.find(filter).select('matchId');
+    const ids = matches.map(m => m.matchId);
+
+    if (ids.length === 0) return res.status(404).json({ success: false, message: 'Nenhuma partida encontrada' });
+
+    // 1. Resetar Partidas
+    await Match.updateMany(filter, {
+      $set: { status: 'scheduled', scoreA: null, scoreB: null, penaltiesA: null, penaltiesB: null },
+      $unset: { qualifiedSide: 1 }
+    });
+
+    // 2. Resetar Pontos nos Palpites
+    const cursor = Bet.find({ 'groupMatches.matchId': { $in: ids } }).cursor();
     for await (const bet of cursor) {
       bet.groupMatches = (bet.groupMatches || []).map(gm => {
-        if (gm.matchId === matchId) { 
-          gm.points = 0; 
-          gm.qualifierPoints = 0; 
+        if (ids.includes(gm.matchId)) {
+          gm.points = 0;
+          gm.qualifierPoints = 0;
         }
         return gm;
       });
-      bet.groupPoints = (bet.groupMatches || []).reduce((s, gm) => s + (gm.points || 0) + (gm.qualifierPoints || 0), 0);
-      bet.totalPoints = (bet.groupPoints || 0) + (bet.podiumPoints || 0) + (bet.bonusPoints || 0);
-      await bet.save();
+      await recalculateBetPoints(bet).save();
     }
 
-    res.json({ success: true, message: 'Partida reaberta.' });
+    res.json({ success: true, message: `${ids.length} partida(s) reaberta(s).` });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Erro ao reabrir partida' });
+    res.status(500).json({ success: false, message: 'Erro ao reabrir partidas' });
   }
 });
-// ======================
-// 8. DELETE /api/matches/admin/delete/:matchId (Admin)
-// ======================
-router.delete('/admin/delete/:matchId', protect, admin, async (req, res) => {
+
+// ============================================================
+// 8. EXCLUIR (DELETE) - ÚNICA, GRUPO OU LIGA
+// ============================================================
+router.delete('/admin/delete-bulk', protect, admin, async (req, res) => {
   try {
-    const matchId = Number(req.params.matchId);
-    const removed = await Match.findOneAndDelete({ matchId });
-    if (!removed) return res.status(404).json({ success: false, message: 'Partida não encontrada' });
+    const { matchId, leagueName, groupName } = req.body;
+    let filter = {};
 
-    const cursor = Bet.find({ 'groupMatches.matchId': matchId }).cursor();
-    for await (const bet of cursor) {
-      bet.groupMatches = (bet.groupMatches || []).filter(gm => gm.matchId !== matchId);
-      bet.groupPoints = (bet.groupMatches || []).reduce((s, gm) => s + (gm.points || 0), 0);
-      bet.totalPoints = (bet.groupPoints || 0) + (bet.podiumPoints || 0) + (bet.bonusPoints || 0);
-      await bet.save();
+    if (matchId) filter = { matchId: Number(matchId) };
+    else if (leagueName && groupName) filter = { leagueName, group: groupName };
+    else if (leagueName) filter = { $or: [{ leagueName }, { group: leagueName }] };
+    else return res.status(400).json({ success: false, message: 'Parâmetros insuficientes' });
+
+    const matchesToDelete = await Match.find(filter).select('matchId');
+    const ids = matchesToDelete.map(m => m.matchId);
+
+    if (ids.length === 0) return res.status(404).json({ success: false, message: 'Nada para excluir' });
+
+    // 1. Remover Partidas
+    await Match.deleteMany({ matchId: { $in: ids } });
+
+    // 2. Remover dos Palpites e Recalcular
+    await Bet.updateMany(
+      { 'groupMatches.matchId': { $in: ids } },
+      { $pull: { groupMatches: { matchId: { $in: ids } } } }
+    );
+
+    const cursor = Bet.find({ 'groupMatches.matchId': { $in: ids } }).cursor(); // Otimizado: só quem tinha essas bets
+    const allBetsCursor = Bet.find().cursor(); // Para garantir integridade, rodamos em todos
+    
+    for await (const bet of allBetsCursor) {
+      await recalculateBetPoints(bet).save();
     }
-    res.json({ success: true, message: 'Partida excluída' });
+
+    res.json({ success: true, message: `${ids.length} partida(s) excluída(s) e pontos atualizados.` });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Erro ao excluir partida' });
+    res.status(500).json({ success: false, message: 'Erro ao excluir bulk' });
   }
 });
-
 // ======================
 // 9. GET & PUT /api/matches/admin/settings (Admin)
 // ======================
