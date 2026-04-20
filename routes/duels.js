@@ -6,7 +6,6 @@ const { protect } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Helper idêntico ao que você deve ter no all-bets
 const getConfigId = (leagueId) => `league_${leagueId}`;
 
 router.get('/:userId', protect, async (req, res) => {
@@ -21,8 +20,9 @@ router.get('/:userId', protect, async (req, res) => {
     const isRequestingOwnProfile = req.user._id.toString() === userId.toString();
     const isAdmin = req.user.isAdmin === true;
 
-    // 1. Busca configurações, partidas e aposta (Igual ao all-bets)
     const configId = getConfigId(leagueId);
+    
+    // 1. Busca os dados (Matches filtradas por liga)
     const [settings, matches, bet] = await Promise.all([
       Settings.findById(configId).lean(),
       Match.find({ leagueId: Number(leagueId) }).lean(),
@@ -33,7 +33,7 @@ router.get('/:userId', protect, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Palpites não encontrados' });
     }
 
-    // Se for o próprio usuário ou admin, não precisa de máscara
+    // Se for o dono ou admin, libera tudo
     if (isRequestingOwnProfile || isAdmin) {
       return res.json({
         success: true,
@@ -47,23 +47,25 @@ router.get('/:userId', protect, async (req, res) => {
 
     const unlockedPhases = settings?.unlockedPhases || [];
 
-    // 2. Mapeia os palpites com a lógica idêntica ao all-bets
+    // 2. Mapeamento com checagem rigorosa
     const maskedGroupMatches = (bet.groupMatches || []).map(g => {
-      const m = matches.find(x => x.matchId === g.matchId);
+      // Garantimos que a comparação de ID seja numérica
+      const m = matches.find(x => Number(x.matchId) === Number(g.matchId));
       
-      // LOGICA DO ALL-BETS REPLICADA:
-      let isLocked = true; // Por padrão, bloqueado
-      
-      if (m?.phase === 'group') {
-          // Se for grupo, checa se 'group' está desbloqueado
+      let isLocked = true; // Começa bloqueado por segurança
+
+      if (m) {
+        if (m.phase === 'group') {
+          // Bloqueia se 'group' NÃO estiver no array
           isLocked = !unlockedPhases.includes('group');
-      } else {
-          // Se for mata-mata, checa se o nome da fase (armazenado em m.group) está desbloqueado
-          // No seu sistema de mata-mata, m.group costuma guardar 'oitavas', 'quartas', etc.
-          isLocked = !unlockedPhases.includes(m?.group);
+        } else {
+          // Bloqueia se a fase (m.group) NÃO estiver no array
+          // m.group aqui costuma ser 'oitavas', 'quartas', etc.
+          isLocked = !unlockedPhases.includes(m.group);
+        }
       }
 
-      // Se estiver bloqueado, envia o cadeado. Se não, envia o dado real.
+      // Se estiver bloqueado, SOBRESCREVEMOS o valor. Não há como o front ler o original.
       return {
         matchId: g.matchId,
         winner: isLocked ? '🔒' : g.winner,
@@ -72,7 +74,7 @@ router.get('/:userId', protect, async (req, res) => {
       };
     });
 
-    // 3. Lógica do Pódio (Igual ao all-bets)
+    // 3. Trava do Pódio
     const isPodiumLocked = !unlockedPhases.includes('podium');
     const finalPodium = (bet.podium && !isPodiumLocked) ? bet.podium : (bet.podium ? { 
         first: '🔒', second: '🔒', third: '🔒', fourth: '🔒' 
@@ -89,8 +91,8 @@ router.get('/:userId', protect, async (req, res) => {
     });
 
   } catch (e) {
-    console.error('Erro na rota de duelo:', e);
-    res.status(500).json({ success: false, message: 'Erro ao carregar dados do duelo' });
+    console.error('Erro crítico no duelo:', e);
+    res.status(500).json({ success: false, message: 'Erro interno no servidor' });
   }
 });
 
