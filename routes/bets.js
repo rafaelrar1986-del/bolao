@@ -52,18 +52,24 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     const targetBet = bets.find(b => b.user._id.toString() === activeUserId);
     if (!targetBet) return res.status(404).json({ success: false, message: 'Aposta não encontrada' });
 
-    // 2. Lógica de Times Vivos (Essencial para o Pódio ser real)
-    const eliminatedTeams = new Set();
-    matches.forEach(m => {
-      if (m.status === 'finished' && m.phase === 'knockout') {
-        const scoreA = Number(m.scoreA || 0);
-        const scoreB = Number(m.scoreB || 0);
-        const loser = scoreA < scoreB ? m.teamA : m.teamB;
-        // Times que perdem a semi ainda disputam 3º, logo não estão "mortos" para o pódio
-        if (m.group !== 'semifinal') eliminatedTeams.add(loser);
-      }
-    });
+    // 2. Lógica de Times Vivos (Ajustada para entender Pênaltis com .lean())
+const eliminatedTeams = new Set();
+matches.forEach(m => {
+  if (m.status === 'finished' && m.phase === 'knockout') {
+    // Como o .lean() remove o virtual 'winner', calculamos a lógica aqui:
+    let winnerSide;
+    if (m.penaltiesA !== null && m.penaltiesB !== null) {
+      winnerSide = m.penaltiesA > m.penaltiesB ? 'A' : 'B';
+    } else {
+      winnerSide = m.scoreA > m.scoreB ? 'A' : (m.scoreA < m.scoreB ? 'B' : null);
+    }
 
+    const loser = winnerSide === 'A' ? m.teamB : (winnerSide === 'B' ? m.teamA : null);
+
+    // Times que perdem a semi ainda disputam 3º, logo não estão "mortos" para o pódio
+    if (loser && m.group !== 'semifinal') eliminatedTeams.add(loser);
+  }
+});
     const futureMatches = matches
       .filter(m => m.status === 'scheduled')
       .sort((a, b) => a.matchId - b.matchId);
