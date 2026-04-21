@@ -25,6 +25,104 @@ function toWinnerLabel(choice, teamA, teamB) {
 }
 
 /**
+ * 🧠 LÓGICA DE ESTRATÉGIA: Caminho da Liderança
+ * Simula o cenário onde o usuário acerta tudo e identifica quem ele está "secando".
+ */
+router.get('/leadership-path', protect, checkPaid, async (req, res) => {
+  try {
+    const { leagueId } = req.query;
+    if (!leagueId) return res.status(400).json({ success: false, message: 'ID da liga obrigatório' });
+
+    const lIdNum = Number(leagueId);
+    const lIdStr = String(leagueId);
+    const userId = req.user._id.toString();
+
+    // 1. Carrega dados da liga (Apostas e Jogos agendados)
+    const [matches, bets] = await Promise.all([
+      Match.find({ leagueId: lIdNum }).lean(),
+      Bet.find({ hasSubmitted: true, leagueId: lIdStr }).populate('user', 'name').lean()
+    ]);
+
+    const myBet = bets.find(b => b.user._id.toString() === userId);
+    if (!myBet) return res.status(404).json({ success: false, message: 'Aposta não encontrada' });
+
+    const futureMatches = matches
+      .filter(m => m.status === 'scheduled')
+      .sort((a, b) => a.matchId - b.matchId);
+
+    // 2. Projeção de Ranking (Cenário de Ouro para o Usuário)
+    const projectedRanking = bets.map(b => {
+      let projectedPoints = b.totalPoints || 0;
+      const isMe = b.user._id.toString() === userId;
+
+      futureMatches.forEach(m => {
+        const myPick = myBet.groupMatches.find(gm => gm.matchId === m.matchId);
+        const rivalPick = b.groupMatches.find(gm => gm.matchId === m.matchId);
+
+        if (isMe) {
+          projectedPoints += 1; // Acerto de vencedor
+          if (m.phase === 'knockout') projectedPoints += 1; // Acerto de classificado
+        } else if (myPick && rivalPick) {
+          // Rival só pontua se o palpite for idêntico ao do usuário (Consenso)
+          if (myPick.winner === rivalPick.winner) projectedPoints += 1;
+          if (m.phase === 'knockout' && myPick.qualifier === rivalPick.qualifier) projectedPoints += 1;
+        }
+      });
+
+      return { userId: b.user?._id.toString(), name: b.user?.name, totalPoints: projectedPoints };
+    });
+
+    // 3. Ordenação Visual e Cálculo de Posição Esportiva (1-1-3-4...)
+    projectedRanking.sort((a, b) => b.totalPoints - a.totalPoints || a.name.localeCompare(b.name));
+
+    let lastPoints = null, position = 0, myMaxPosition = 0;
+    projectedRanking.forEach((item, index) => {
+      if (lastPoints === null || item.totalPoints !== lastPoints) {
+        position = index + 1;
+        lastPoints = item.totalPoints;
+      }
+      if (item.userId === userId) myMaxPosition = position;
+    });
+
+    // 4. Mapeamento de Impacto (Tabela de Secagem)
+    const matchesAnalysis = futureMatches.map(m => {
+      const myPick = myBet.groupMatches.find(gm => gm.matchId === m.matchId);
+      const rivalsAbove = bets.filter(b => b.totalPoints > myBet.totalPoints); // Rivais à frente HOJE
+      
+      const opponentsToWatch = rivalsAbove.filter(rb => {
+        const rp = rb.groupMatches.find(gm => gm.matchId === m.matchId);
+        if (!rp) return false;
+        const diffWin = rp.winner !== myPick?.winner;
+        const diffQualy = m.phase === 'knockout' && rp.qualifier !== myPick?.qualifier;
+        return diffWin || diffQualy;
+      }).map(rb => rb.user?.name);
+
+      return {
+        matchId: m.matchId,
+        teams: `${m.teamA} x ${m.teamB}`,
+        hasImpact: opponentsToWatch.length > 0,
+        myChoice: { 
+          winner: myPick?.winner, 
+          label: toWinnerLabel(myPick?.winner, m.teamA, m.teamB),
+          qualifier: myPick?.qualifier 
+        },
+        opponentsToWatch
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        summary: { maxPosition: myMaxPosition, canReachFirst: myMaxPosition === 1, totalMatches: futureMatches.length },
+        matches: matchesAnalysis
+      }
+    });
+  } catch (e) {
+    console.error('Leadership Path Error:', e);
+    res.status(500).json({ success: false, message: 'Erro ao calcular estratégia' });
+  }
+});
+/**
  * 🎯 Meus palpites (Filtrado por Liga)
  * Corrigido para evitar conflito entre ligas
  */
