@@ -26,7 +26,7 @@ function toWinnerLabel(choice, teamA, teamB) {
 
 /**
  * 🧠 ESTRATÉGIA: Caminho da Liderança (Versão Final Refatorada)
- * Inclui: Probabilidade Real, Verificação de Times Vivos e Pódio.
+ * Inclui: Probabilidade Real, Verificação de Times Vivos e Teto de Pontos.
  */
 router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
   try {
@@ -56,7 +56,9 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     const eliminatedTeams = new Set();
     matches.forEach(m => {
       if (m.status === 'finished' && m.phase === 'knockout') {
-        const loser = Number(m.scoreA) < Number(m.scoreB) ? m.teamA : m.teamB;
+        const scoreA = Number(m.scoreA || 0);
+        const scoreB = Number(m.scoreB || 0);
+        const loser = scoreA < scoreB ? m.teamA : m.teamB;
         // Times que perdem a semi ainda disputam 3º, logo não estão "mortos" para o pódio
         if (m.group !== 'semifinal') eliminatedTeams.add(loser);
       }
@@ -72,13 +74,12 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     let myPodiumPotential = 0;
 
     // Só calculamos potencial se o pódio oficial da liga ainda não foi definido pelo ADM
-    if (!leaguePodium.first) {
-      if (targetBet.podium) {
-        if (targetBet.podium.first && !eliminatedTeams.has(targetBet.podium.first)) myPodiumPotential += podiumWeights.first;
-        if (targetBet.podium.second && !eliminatedTeams.has(targetBet.podium.second)) myPodiumPotential += podiumWeights.second;
-        if (targetBet.podium.third && !eliminatedTeams.has(targetBet.podium.third)) myPodiumPotential += podiumWeights.third;
-        if (targetBet.podium.fourth && !eliminatedTeams.has(targetBet.podium.fourth)) myPodiumPotential += podiumWeights.fourth;
-      }
+    if (!leaguePodium.first && targetBet.podium) {
+        const p = targetBet.podium;
+        if (p.first && !eliminatedTeams.has(p.first)) myPodiumPotential += podiumWeights.first;
+        if (p.second && !eliminatedTeams.has(p.second)) myPodiumPotential += podiumWeights.second;
+        if (p.third && !eliminatedTeams.has(p.third)) myPodiumPotential += podiumWeights.third;
+        if (p.fourth && !eliminatedTeams.has(p.fourth)) myPodiumPotential += podiumWeights.fourth;
     }
 
     // 4. Projeção de Ranking (Cenário de Ouro)
@@ -119,8 +120,8 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
       if (item.userId === activeUserId) myMaxPosition = position;
     });
 
-    // 6. Cálculo da Probabilidade Estatística
-    const leaderPoints = Math.max(...bets.map(b => b.totalPoints));
+    // 6. Cálculo da Probabilidade Estatística e Teto
+    const leaderPoints = Math.max(...bets.map(b => b.totalPoints || 0), 0);
     let matchPointsLeft = 0;
     futureMatches.forEach(m => {
       matchPointsLeft += 1;
@@ -128,22 +129,22 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     });
 
     const totalPotentialDisputed = matchPointsLeft + myPodiumPotential;
-    const myMaxTotal = targetBet.totalPoints + totalPotentialDisputed;
-    const gap = leaderPoints - targetBet.totalPoints;
+    const myMaxTotal = (targetBet.totalPoints || 0) + totalPotentialDisputed;
+    const gap = leaderPoints - (targetBet.totalPoints || 0);
 
     let probability = 0;
     if (myMaxTotal >= leaderPoints) {
       if (gap <= 0) {
         const advantage = Math.abs(gap);
-        probability = Math.min(99, 75 + (advantage * 5)); // Líder isolado tende a 99%
+        probability = Math.min(99, 75 + (advantage * 5)); 
       } else {
-        // Distância vs Pontos Restantes (Quanto mais perto do fim, menor a chance de tirar o gap)
-        const reachability = (totalPotentialDisputed - gap) / totalPotentialDisputed;
+        // Proteção contra divisão por zero se não houver mais jogos
+        const reachability = totalPotentialDisputed > 0 ? (totalPotentialDisputed - gap) / totalPotentialDisputed : 0;
         probability = Math.max(1, Math.round(reachability * 70));
       }
     }
 
-    // 7. Mapeamento de Impacto (Secagem) com trava de Settings
+    // 7. Mapeamento de Impacto (Secagem)
     const matchesAnalysis = futureMatches.map(m => {
       let isLocked = !isAdmin;
       if (m.phase === 'group') {
@@ -153,8 +154,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
       }
 
       const myPick = targetBet.groupMatches.find(gm => gm.matchId === m.matchId);
-      // Rivais acima de você hoje
-      const rivalsAbove = bets.filter(b => b.totalPoints > targetBet.totalPoints);
+      const rivalsAbove = bets.filter(b => (b.totalPoints || 0) > (targetBet.totalPoints || 0));
       
       const opponentsToWatch = isLocked 
         ? ["Conteúdo Bloqueado 🔒"] 
@@ -188,8 +188,9 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
           canReachFirst: myMaxPosition === 1, 
           probability: probability,
           totalMatches: futureMatches.length,
-          currentPoints: targetBet.totalPoints,
-          podiumPotential: myPodiumPotential
+          currentPoints: targetBet.totalPoints || 0,
+          podiumPotential: myPodiumPotential,
+          maxPoints: myMaxTotal // << ADICIONADO PARA O FRONTEND
         },
         matches: matchesAnalysis
       }
