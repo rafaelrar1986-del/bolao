@@ -21,11 +21,19 @@ const statusMap = {
   cancelled: 'cancelled'
 };
 
+/**
+ * Determina o lado qualificado com base nos placares normais e pênaltis da API
+ */
 function determineQualifier(game) {
   if (game.home_score > game.away_score) return 'A';
   if (game.away_score > game.home_score) return 'B';
-  if (game.home_penalty_score > game.away_penalty_score) return 'A';
-  if (game.away_penalty_score > game.home_penalty_score) return 'B';
+  
+  // Extração segura dos pênaltis do novo objeto da API
+  const penHome = game.penalty_shootout?.home || 0;
+  const penAway = game.penalty_shootout?.away || 0;
+  
+  if (penHome > penAway) return 'A';
+  if (penAway > penHome) return 'B';
   return null;
 }
 
@@ -81,9 +89,9 @@ async function updateMatches() {
         const newLogoA = apiHomeId ? `https://sports.bzzoiro.com/img/team/${apiHomeId}/?token=${API_KEY}` : match.logoA;
         const newLogoB = apiAwayId ? `https://sports.bzzoiro.com/img/team/${apiAwayId}/?token=${API_KEY}` : match.logoB;
 
-        // Pênaltis vindos da API
-        const newPenA = game.home_penalty_score ?? null;
-        const newPenB = game.away_penalty_score ?? null;
+        // --- 🎯 AJUSTE PÊNALTIS: Pegando do lugar correto da API ---
+        const newPenA = game.penalty_shootout?.home ?? null;
+        const newPenB = game.penalty_shootout?.away ?? null;
 
         let autoQualifiedSide = match.qualifiedSide;
         const isKnockout = match.phase === 'knockout' || match.phase === 'mata-mata';
@@ -92,7 +100,7 @@ async function updateMatches() {
            autoQualifiedSide = determineQualifier(game);
         }
 
-        // --- 🔍 CORREÇÃO CRÍTICA: Adicionado comparação de pênaltis no 'changed' ---
+        // --- 🔍 COMPARAÇÃO DE MUDANÇAS ---
         const changed =
           match.status !== newStatus ||
           match.scoreA !== game.home_score ||
@@ -100,7 +108,7 @@ async function updateMatches() {
           match.minute !== newMinute || 
           match.logoA !== newLogoA ||
           match.logoB !== newLogoB ||
-          match.penaltiesA !== newPenA || // Se o pênalti mudar, agora salvamos!
+          match.penaltiesA !== newPenA || 
           match.penaltiesB !== newPenB ||
           match.qualifiedSide !== autoQualifiedSide; 
 
@@ -109,7 +117,7 @@ async function updateMatches() {
         const oldStatus = match.status;
         const oldMinute = match.minute;
         
-        // Atualiza os campos
+        // Atualiza os campos no Model
         match.scoreA = game.home_score;
         match.scoreB = game.away_score;
         match.status = newStatus;
@@ -127,8 +135,7 @@ async function updateMatches() {
         if (match.scoreA !== game.home_score || match.scoreB !== game.away_score) {
             console.log(`⚽ GOL na Liga ${match.leagueId}: ${match.teamA} ${game.home_score}x${game.away_score} ${match.teamB}`);
         } else if (newStatus === 'penaltis') {
-            // Log extra para monitorar os pênaltis no servidor
-            console.log(`🎯 PÊNALTIS: ${match.teamA} (${newPenA})x(${newPenB}) ${match.teamB}`);
+            console.log(`🎯 PÊNALTIS (Sincronizando): ${match.teamA} (${newPenA})x(${newPenB}) ${match.teamB}`);
         } else if (oldMinute !== newMinute) {
             console.log(`⏱️ MINUTO: ${match.teamA} vs ${match.teamB} (${newMinute})`);
         }
