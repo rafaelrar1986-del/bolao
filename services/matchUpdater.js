@@ -81,6 +81,10 @@ async function updateMatches() {
         const newLogoA = apiHomeId ? `https://sports.bzzoiro.com/img/team/${apiHomeId}/?token=${API_KEY}` : match.logoA;
         const newLogoB = apiAwayId ? `https://sports.bzzoiro.com/img/team/${apiAwayId}/?token=${API_KEY}` : match.logoB;
 
+        // Pênaltis vindos da API
+        const newPenA = game.home_penalty_score ?? null;
+        const newPenB = game.away_penalty_score ?? null;
+
         let autoQualifiedSide = match.qualifiedSide;
         const isKnockout = match.phase === 'knockout' || match.phase === 'mata-mata';
         
@@ -88,6 +92,7 @@ async function updateMatches() {
            autoQualifiedSide = determineQualifier(game);
         }
 
+        // --- 🔍 CORREÇÃO CRÍTICA: Adicionado comparação de pênaltis no 'changed' ---
         const changed =
           match.status !== newStatus ||
           match.scoreA !== game.home_score ||
@@ -95,6 +100,8 @@ async function updateMatches() {
           match.minute !== newMinute || 
           match.logoA !== newLogoA ||
           match.logoB !== newLogoB ||
+          match.penaltiesA !== newPenA || // Se o pênalti mudar, agora salvamos!
+          match.penaltiesB !== newPenB ||
           match.qualifiedSide !== autoQualifiedSide; 
 
         if (!changed) continue;
@@ -102,6 +109,7 @@ async function updateMatches() {
         const oldStatus = match.status;
         const oldMinute = match.minute;
         
+        // Atualiza os campos
         match.scoreA = game.home_score;
         match.scoreB = game.away_score;
         match.status = newStatus;
@@ -109,15 +117,18 @@ async function updateMatches() {
         match.minute = newMinute; 
         match.logoA = newLogoA; 
         match.logoB = newLogoB; 
-        match.penaltiesA = game.home_penalty_score ?? null;
-        match.penaltiesB = game.away_penalty_score ?? null;
+        match.penaltiesA = newPenA;
+        match.penaltiesB = newPenB;
         match.qualifiedSide = autoQualifiedSide;
 
         await match.save();
 
-        // Logs de monitoramento
+        // --- 📊 LOGS DE MONITORAMENTO ---
         if (match.scoreA !== game.home_score || match.scoreB !== game.away_score) {
             console.log(`⚽ GOL na Liga ${match.leagueId}: ${match.teamA} ${game.home_score}x${game.away_score} ${match.teamB}`);
+        } else if (newStatus === 'penaltis') {
+            // Log extra para monitorar os pênaltis no servidor
+            console.log(`🎯 PÊNALTIS: ${match.teamA} (${newPenA})x(${newPenB}) ${match.teamB}`);
         } else if (oldMinute !== newMinute) {
             console.log(`⏱️ MINUTO: ${match.teamA} vs ${match.teamB} (${newMinute})`);
         }
@@ -127,7 +138,6 @@ async function updateMatches() {
           const targetLeagueId = match.leagueId || '1';
           console.log(`🥇 [Sistema] Partida encerrada na Liga ${targetLeagueId}. Recalculando...`);
           try {
-            // Passa o targetLeagueId para o serviço de pontos saber qual liga processar
             await recalculateAllPoints(targetLeagueId); 
             await trySaveDailyPoints(game.event_date);
           } catch (procError) {
