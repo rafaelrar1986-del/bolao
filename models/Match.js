@@ -19,7 +19,7 @@ const MatchSchema = new Schema(
     // ID Único da partida (ID da API para evitar duplicidade)
     matchId: { type: Number, required: true, unique: false, index: true },
 
-    // IDENTIFICAÇÃO DA LIGA (O segredo para separar os campeonatos)
+    // IDENTIFICAÇÃO DA LIGA
     leagueId: { type: Number, required: false, index: true }, 
     leagueName: { type: String, default: '' },
 
@@ -31,8 +31,9 @@ const MatchSchema = new Schema(
     logoB: { type: String, default: '' },
 
     group: { type: String, required: true, trim: true }, // Ex: "Grupo A" ou "Rodada 1"
-    phase: { type: String, enum: ['group', 'knockout'], default: 'group', index: true },
+    phase: { type: String, enum: ['group', 'knockout', 'mata-mata'], default: 'group', index: true },
 
+    // Definido automaticamente pelo middleware para mata-mata
     qualifiedSide: { type: String, enum: ['A', 'B', null], default: null },
     stadium: { type: String, default: '', trim: true },
 
@@ -85,6 +86,30 @@ const MatchSchema = new Schema(
   }
 );
 
+// ---------- Middlewares (A Lógica Automática) ----------
+
+/**
+ * JUÍZ AUTOMÁTICO: Define o qualifiedSide (quem avança) no mata-mata
+ * Roda sempre que .save() é chamado (no Admin e no Robô)
+ */
+MatchSchema.pre('save', function (next) {
+  const isKnockout = this.phase === 'knockout' || this.phase === 'mata-mata';
+  
+  if (this.status === 'finished' && isKnockout) {
+    // 1. Prioridade: Pênaltis (Se houver empate e penais registrados)
+    if (this.penaltiesA !== null && this.penaltiesB !== null) {
+      if (this.penaltiesA > this.penaltiesB) this.qualifiedSide = 'A';
+      else if (this.penaltiesB > this.penaltiesA) this.qualifiedSide = 'B';
+    } 
+    // 2. Prioridade: Gols (Tempo Normal ou Prorrogação)
+    else if (this.scoreA !== null && this.scoreB !== null) {
+      if (this.scoreA > this.scoreB) this.qualifiedSide = 'A';
+      else if (this.scoreB > this.scoreA) this.qualifiedSide = 'B';
+    }
+  }
+  next();
+});
+
 // ---------- Virtuals ----------
 
 // Retorna se a partida encerrou
@@ -98,7 +123,7 @@ MatchSchema.virtual('isLive').get(function () {
   return liveStatus.includes(this.status);
 });
 
-// Determina o vencedor para o cálculo do ranking
+// Determina o vencedor para o cálculo do ranking e estatísticas
 MatchSchema.virtual('winner').get(function () {
   if (this.status !== 'finished') return null;
   
@@ -107,7 +132,7 @@ MatchSchema.virtual('winner').get(function () {
   
   if (a === null || b === null) return null;
   
-  // 1. Se houve disputa de pênaltis, o vencedor real é decidido por eles
+  // 1. Pênaltis definem o vencedor real do evento
   if (this.penaltiesA !== null && this.penaltiesB !== null) {
       if (this.penaltiesA === this.penaltiesB) return 'D';
       return this.penaltiesA > this.penaltiesB ? 'A' : 'B';
@@ -116,20 +141,20 @@ MatchSchema.virtual('winner').get(function () {
   // 2. Resultado do tempo normal/prorrogação
   if (a > b) return 'A';
   if (b > a) return 'B';
-  return 'D'; // Draw (Empate)
+  return 'D'; // Empate
 });
 
 // ---------- Métodos Estáticos ----------
 
 /**
- * Busca partidas filtradas por liga (Uso: Match.getByLeague(71))
+ * Busca partidas filtradas por liga
  */
 MatchSchema.statics.getByLeague = function (leagueId) {
   return this.find({ leagueId: Number(leagueId) }).sort({ date: 1, time: 1 });
 };
 
 /**
- * Finaliza a partida e salva os resultados
+ * Finaliza a partida e salva os resultados (Aciona o Middleware pre-save)
  */
 MatchSchema.statics.finishMatch = async function (matchId, scoreA, scoreB, penA = null, penB = null) {
   const match = await this.findOne({ matchId: Number(matchId) });
@@ -142,6 +167,7 @@ MatchSchema.statics.finishMatch = async function (matchId, scoreA, scoreB, penA 
   match.status = 'finished';
   match.minute = "Fim";
 
+  // O middleware pre('save') preencherá o qualifiedSide aqui
   await match.save();
   return match;
 };
@@ -158,6 +184,7 @@ MatchSchema.statics.unfinishMatch = async function (matchId, statusBack = 'sched
   match.scoreB = null;
   match.penaltiesA = null;
   match.penaltiesB = null;
+  match.qualifiedSide = null;
   match.minute = "";
   match.processed = false;
 
@@ -166,7 +193,6 @@ MatchSchema.statics.unfinishMatch = async function (matchId, statusBack = 'sched
 };
 
 // Índices para performance
-// Adicionado leagueId ao índice composto para buscas rápidas por liga
 MatchSchema.index({ leagueId: 1, group: 1, matchId: 1 });
 
 module.exports = mongoose.models.Match || mongoose.model('Match', MatchSchema);
