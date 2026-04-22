@@ -153,29 +153,39 @@ mongoose
       console.log('🧹 Limpeza de índices antigos executada.');
     } catch (e) {}
 
-    // [REAL-TIME] ChangeStream
-    try {
-      const matchCollection = mongoose.connection.collection('matches');
-      const changeStream = matchCollection.watch([], { fullDocument: 'updateLookup' });
+    // [REAL-TIME] ChangeStream - ATUALIZADO
+try {
+  const matchCollection = mongoose.connection.collection('matches');
+  const changeStream = matchCollection.watch([], { fullDocument: 'updateLookup' });
 
-      changeStream.on('change', (change) => {
-        if (['update', 'replace', 'insert'].includes(change.operationType)) {
-          const doc = change.fullDocument;
-          if (doc) {
-            broadcastUpdate({ 
-              type: 'MATCH_UPDATE', 
-              matchId: doc.matchId || doc._id,
-              scoreA: doc.scoreA, scoreB: doc.scoreB,
-              status: doc.status, minute: doc.minute,
-              timestamp: new Date().toISOString()
-            });
-          }
+  changeStream.on('change', (change) => {
+    if (['update', 'replace', 'insert'].includes(change.operationType)) {
+      const doc = change.fullDocument;
+      if (doc) {
+        // --- ADICIONADO PENALTIESA E PENALTIESB ABAIXO ---
+        broadcastUpdate({ 
+          type: 'MATCH_UPDATE', 
+          matchId: doc.matchId || doc._id,
+          scoreA: doc.scoreA, 
+          scoreB: doc.scoreB,
+          penaltiesA: doc.penaltiesA, // <--- O QUE FALTA
+          penaltiesB: doc.penaltiesB, // <--- O QUE FALTA
+          status: doc.status, 
+          minute: doc.minute,
+          timestamp: new Date().toISOString()
+        });
+        
+        // Log para você ver no terminal do servidor se está enviando
+        if (doc.status === 'penaltis') {
+          console.log(`📡 SSE Enviado (Pênaltis): ${doc.matchId} -> ${doc.penaltiesA}x${doc.penaltiesB}`);
         }
-      });
-      console.log('👀 Monitor de partidas ativo (Real-time pronto)');
-    } catch (streamError) {
-      console.error('⚠️ ChangeStream não suportado');
+      }
     }
+  });
+  console.log('👀 Monitor de partidas ativo (Real-time pronto)');
+} catch (streamError) {
+  console.error('⚠️ ChangeStream não suportado');
+}
   })
   .catch(err => console.error('❌ ERRO MongoDB:', err.message));
 
