@@ -99,8 +99,8 @@ exports.fetchAndSyncMatches = async (req, res) => {
                 status: mapStatus(item.status),
                 scoreA: item.home_score,
                 scoreB: item.away_score,
-                penaltiesA: item.home_score_penalties ?? null,
-                penaltiesB: item.away_score_penalties ?? null,
+                penaltiesA: item.penalty_shootout?.home ?? null,
+                penaltiesB: item.penalty_shootout?.away ?? null,
                 apiStatus: item.period || 'NS',
                 minute: item.current_minute ? `${item.current_minute}'` : "",
                 // Se encontrar o ID, gera a URL. Caso contrário, tenta manter o logo que já estava no banco.
