@@ -20,6 +20,12 @@ const upload = multer({
 });
 
 /**
+ * @route    GET /api/admin/robot/available-leagues
+ * @desc     Busca a lista de ligas disponíveis na API externa de esportes
+ */
+router.get('/robot/available-leagues', protect, admin, robotController.getAvailableLeagues);
+
+/**
  * @route    POST /api/admin/robot/sync
  * @desc     Sincroniza partidas da API externa (Bzzoiro) com paginação
  */
