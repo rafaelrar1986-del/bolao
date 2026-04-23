@@ -49,11 +49,12 @@ exports.getAvailableLeagues = async (req, res) => {
 };
 
 /**
- * SINCRONIZAÇÃO DE PARTIDAS
+ * SINCRONIZAÇÃO DE PARTIDAS (CORRIGIDO)
  */
 exports.fetchAndSyncMatches = async (req, res) => {
     try {
-        const { leagueId, dateFrom, dateTo, phaseType, knockoutPhase } = req.body;
+        // Adicionamos 'unifyGroups' que vem do seu admin.js
+        const { leagueId, dateFrom, dateTo, phaseType, knockoutPhase, unifyGroups } = req.body;
         const API_KEY = process.env.API_FOOTBALL_KEY;
 
         if (!leagueId || !dateFrom || !dateTo) {
@@ -99,7 +100,19 @@ exports.fetchAndSyncMatches = async (req, res) => {
 
             const currentLeagueId = item.league ? Number(item.league.id) : Number(leagueId);
             const currentLeagueName = item.league ? item.league.name : "";
-            const groupValue = phaseType === 'knockout' ? knockoutPhase : `Rodada ${item.round_number}`;
+
+            // --- LÓGICA DE AGRUPAMENTO CORRIGIDA ---
+            let groupValue;
+            if (phaseType === 'knockout') {
+                groupValue = knockoutPhase; // Ex: "Oitavas de Final"
+            } else if (unifyGroups) {
+                // Se for pontos corridos, usamos o nome da liga enviado pelo admin ou o da API
+                // Isso garante que "Rodada 1" e "Rodada 2" fiquem na mesma tabela
+                groupValue = knockoutPhase || currentLeagueName || 'Classificação Geral';
+            } else {
+                // Comportamento antigo: separa por rodada (ex: Fase de Grupos da Copa)
+                groupValue = `Rodada ${item.round_number}`;
+            }
 
             const teamA_ID = item.home_team_obj?.id || item.home_id;
             const teamB_ID = item.away_team_obj?.id || item.away_id;
@@ -123,10 +136,10 @@ exports.fetchAndSyncMatches = async (req, res) => {
                 penaltiesB: item.penalty_shootout?.away ?? null,
                 apiStatus: item.period || 'NS',
                 minute: item.current_minute ? `${item.current_minute}'` : "",
+                // Mantém logos existentes se a API falhar em prover IDs
                 logoA: teamA_ID ? `https://sports.bzzoiro.com/img/team/${teamA_ID}/?token=${API_KEY}` : (match?.logoA || ''),
                 logoB: teamB_ID ? `https://sports.bzzoiro.com/img/team/${teamB_ID}/?token=${API_KEY}` : (match?.logoB || '')
             };
-
             if (!match) {
                 const lastMatch = await Match.findOne().sort({ matchId: -1 });
                 const nextId = lastMatch && lastMatch.matchId ? lastMatch.matchId + 1 : 1;
