@@ -64,6 +64,15 @@ const MatchSchema = new Schema(
     penaltiesA: { type: Number, default: null },
     penaltiesB: { type: Number, default: null },
 
+    // Detalhes dos Gols (Marcadores e Minutos) - ATUALIZADO
+    goalsDetail: [
+      {
+        name: { type: String },
+        min: { type: Number },
+        side: { type: String, enum: ['home', 'away'] }
+      }
+    ],
+
     // Dados de tempo real da API
     apiStatus: { type: String, default: 'NS' }, 
     minute: { type: String, default: '' },      
@@ -89,10 +98,15 @@ const MatchSchema = new Schema(
 // ---------- Middlewares (A Lógica Automática) ----------
 
 /**
- * JUÍZ AUTOMÁTICO: Define o qualifiedSide (quem avança) no mata-mata
- * Roda sempre que .save() é chamado (no Admin e no Robô)
+ * JUÍZ AUTOMÁTICO e GARANTIA DE PERSISTÊNCIA
+ * Define o qualifiedSide e avisa o Mongoose sobre mudanças em arrays
  */
 MatchSchema.pre('save', function (next) {
+  // Garante que o array de gols seja marcado como modificado para salvar no Mongo
+  if (this.isModified('goalsDetail')) {
+    this.markModified('goalsDetail');
+  }
+
   const isKnockout = this.phase === 'knockout' || this.phase === 'mata-mata';
   
   if (this.status === 'finished' && isKnockout) {
@@ -187,6 +201,7 @@ MatchSchema.statics.unfinishMatch = async function (matchId, statusBack = 'sched
   match.qualifiedSide = null;
   match.minute = "";
   match.processed = false;
+  match.goalsDetail = []; // Limpa os gols ao desfazer finalização
 
   await match.save();
   return match;
