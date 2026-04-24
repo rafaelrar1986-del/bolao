@@ -136,7 +136,7 @@ mongoose
   .connect(MONGODB_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
-    autoIndex: false, // 🚀 BLOQUEIA CRIAÇÃO AUTOMÁTICA DE ÍNDICES PROBLEMÁTICOS
+    autoIndex: false, 
     serverSelectionTimeoutMS: 30000, 
     socketTimeoutMS: 45000, 
     retryWrites: true,
@@ -145,7 +145,7 @@ mongoose
   .then(async () => {
     console.log('✅ MongoDB conectado com sucesso!');
 
-    // 🧹 LIMPEZA MANUAL DE ÍNDICES FANTASMAS (Roda uma vez no boot)
+    // 🧹 LIMPEZA MANUAL DE ÍNDICES FANTASMAS
     try {
       const settingsColl = mongoose.connection.collection('settings');
       await settingsColl.dropIndex('key_1').catch(() => {});
@@ -153,39 +153,40 @@ mongoose
       console.log('🧹 Limpeza de índices antigos executada.');
     } catch (e) {}
 
-    // [REAL-TIME] ChangeStream - ATUALIZADO
-try {
-  const matchCollection = mongoose.connection.collection('matches');
-  const changeStream = matchCollection.watch([], { fullDocument: 'updateLookup' });
+    // [REAL-TIME] ChangeStream - MONITORAMENTO ATUALIZADO
+    try {
+      const matchCollection = mongoose.connection.collection('matches');
+      const changeStream = matchCollection.watch([], { fullDocument: 'updateLookup' });
 
-  changeStream.on('change', (change) => {
-    if (['update', 'replace', 'insert'].includes(change.operationType)) {
-      const doc = change.fullDocument;
-      if (doc) {
-        // --- ADICIONADO PENALTIESA E PENALTIESB ABAIXO ---
-        broadcastUpdate({ 
-          type: 'MATCH_UPDATE', 
-          matchId: doc.matchId || doc._id,
-          scoreA: doc.scoreA, 
-          scoreB: doc.scoreB,
-          penaltiesA: doc.penaltiesA, // <--- O QUE FALTA
-          penaltiesB: doc.penaltiesB, // <--- O QUE FALTA
-          status: doc.status, 
-          minute: doc.minute,
-          timestamp: new Date().toISOString()
-        });
-        
-        // Log para você ver no terminal do servidor se está enviando
-        if (doc.status === 'penaltis') {
-          console.log(`📡 SSE Enviado (Pênaltis): ${doc.matchId} -> ${doc.penaltiesA}x${doc.penaltiesB}`);
+      changeStream.on('change', (change) => {
+        if (['update', 'replace', 'insert'].includes(change.operationType)) {
+          const doc = change.fullDocument;
+          if (doc) {
+            // ENVIANDO PACOTE COMPLETO PARA O FRONT-END
+            broadcastUpdate({ 
+              type: 'MATCH_UPDATE', 
+              matchId: doc.matchId || doc._id,
+              scoreA: doc.scoreA, 
+              scoreB: doc.scoreB,
+              penaltiesA: doc.penaltiesA, 
+              penaltiesB: doc.penaltiesB,
+              goalsDetail: doc.goalsDetail || [], // <--- Gols detalhados para o card
+              status: doc.status, 
+              minute: doc.minute,
+              timestamp: new Date().toISOString()
+            });
+            
+            // LOGS DE MONITORAMENTO EM TEMPO REAL
+            if (doc.status === 'penaltis') {
+              console.log(`📡 SSE (Pênaltis): ${doc.teamA} (${doc.penaltiesA})x(${doc.penaltiesB}) ${doc.teamB}`);
+            }
+          }
         }
-      }
+      });
+      console.log('👀 Monitor de partidas ativo (Real-time pronto)');
+    } catch (streamError) {
+      console.error('⚠️ ChangeStream não suportado no ambiente atual');
     }
-  });
-  console.log('👀 Monitor de partidas ativo (Real-time pronto)');
-} catch (streamError) {
-  console.error('⚠️ ChangeStream não suportado');
-}
   })
   .catch(err => console.error('❌ ERRO MongoDB:', err.message));
 
@@ -197,7 +198,7 @@ app.get('/', (req, res) => {
 });
 
 app.use('/api/groups', groupRoutes); 
-app.use('/api/bets', rankingRoutes);
+app.use('/api/bets', rankingRoutes); // Nota: rankings e bets usam rotas similares, verifique redundância se necessário
 app.use('/api/news', newsRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
@@ -231,9 +232,14 @@ app.use((error, req, res, next) => {
 // ======================
 // CRON E SERVIDOR
 // ======================
+// Atualização a cada minuto
 cron.schedule('*/1 * * * *', async () => {
-  console.log('🔄 Atualizando jogos...');
-  try { await updateMatches(); } catch (err) { console.error('❌ Erro no cron:', err.message); }
+  console.log('🔄 Sincronizando dados com API...');
+  try { 
+    await updateMatches(); 
+  } catch (err) { 
+    console.error('❌ Erro no cron de atualização:', err.message); 
+  }
 });
 
 const PORT = process.env.PORT || 5000;
