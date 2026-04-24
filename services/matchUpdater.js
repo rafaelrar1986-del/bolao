@@ -29,7 +29,8 @@ function extractGoals(incidents) {
   return incidents
     .filter(i => i.type === 'goal')
     .map(g => ({
-      name: g.player_name || g.player,
+      // Prioriza player_name, depois player, depois fallback
+      name: g.player_name || g.player || 'GOL', 
       min: g.minute,
       side: g.is_home ? 'home' : 'away'
     }));
