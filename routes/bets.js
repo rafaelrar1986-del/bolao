@@ -277,7 +277,7 @@ router.get('/my-bets', protect, checkPaid, async (req, res) => {
   }
 });
 /**
- * 💾 Salvar palpites (CORRIGIDO PARA MULTICAMPEONATO + VÍNCULO DE USUÁRIO)
+ * 💾 Salvar palpites (ATUALIZADO COM TRAVA DE GRADE AUTOMÁTICA)
  */
 router.post('/save', protect, checkPaid, async (req, res) => {
   try {
@@ -288,15 +288,35 @@ router.post('/save', protect, checkPaid, async (req, res) => {
       return res.status(400).json({ success: false, message: 'leagueId é obrigatório' });
     }
 
+    const configId = `league_${leagueId}`;
+    const Settings = require('../models/Settings'); // Certifique-se do caminho correto
+    const settings = await Settings.findById(configId).lean();
+
     const matchIdsEnviados = Object.keys(groupMatches || {}).map(Number);
     
-    // 2. Valida se as partidas pertencem à liga informada
+    // 2. Valida se as partidas pertencem à liga e busca seus grupos (fases)
     const dbMatches = await Match.find({ 
       matchId: { $in: matchIdsEnviados }, 
       leagueId: Number(leagueId) 
-    }).select('matchId').lean();
+    }).select('matchId group').lean();
 
     const validMatchIds = new Set(dbMatches.map(m => m.matchId));
+
+    // ============================================================
+    // 🛡️ NOVO: VALIDAÇÃO DE GRADE TRANCADA (Lógica do Robô)
+    // ============================================================
+    if (settings && settings.lockedPhases && settings.lockedPhases.length > 0) {
+      for (const matchId of matchIdsEnviados) {
+        const matchData = dbMatches.find(m => m.matchId === matchId);
+        if (matchData && settings.lockedPhases.includes(matchData.group)) {
+          return res.status(403).json({ 
+            success: false, 
+            message: `As apostas para a grade "${matchData.group}" já foram encerradas!` 
+          });
+        }
+      }
+    }
+    // ============================================================
 
     // 3. Busca a aposta ESPECÍFICA desta liga para manter o histórico
     const existing = await Bet.findOne({ user: req.user._id, leagueId: String(leagueId) });
@@ -306,7 +326,7 @@ router.post('/save', protect, checkPaid, async (req, res) => {
       existing.groupMatches.forEach((b) => gmMap.set(b.matchId, b));
     }
 
-    // 4. Atualiza apenas palpites que pertencem à liga atual
+    // 4. Atualiza apenas palpites que pertencem à liga atual e não estão trancados
     Object.entries(groupMatches || {}).forEach(([matchId, choice]) => {
       const idNum = Number(matchId);
       if (!validMatchIds.has(idNum)) return; 
@@ -337,24 +357,16 @@ router.post('/save', protect, checkPaid, async (req, res) => {
       firstSubmission: existing?.firstSubmission || now,
     };
 
-    
-// 5. Trata o pódio se enviado
-
+    // 5. Trata o pódio se enviado
     if (podium && podium.first) {
-
       payload.podium = {
-
         first: String(podium.first).trim(),
-
         second: String(podium.second).trim(),
-
         third: String(podium.third).trim(),
-
         fourth: podium.fourth ? String(podium.fourth).trim() : ''
-
       };
-
     }
+
     // 6. Atualiza ou Cria a Aposta
     const bet = await Bet.findOneAndUpdate(
       { user: req.user._id, leagueId: String(leagueId) },
@@ -364,9 +376,8 @@ router.post('/save', protect, checkPaid, async (req, res) => {
 
     // ============================================================
     // 🔥 O CARIMBO: VÍNCULO DO USUÁRIO COM A LIGA
-    // Garante que o usuário apareça no modal de participantes e rankings
     // ============================================================
-    const User = require('../models/User'); // Certifique-se de que o caminho está correto
+    const User = require('../models/User');
     await User.findByIdAndUpdate(req.user._id, {
       $addToSet: { leagues: Number(leagueId) }
     });
@@ -382,7 +393,6 @@ router.post('/save', protect, checkPaid, async (req, res) => {
     return res.status(500).json({ success: false, message: 'Erro ao salvar palpites' });
   }
 });
-
 
 /**
  * 🏆 Leaderboard (Filtrado por LIGA)
