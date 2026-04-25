@@ -1,5 +1,9 @@
 const axios = require('axios');
 const Match = require('../models/Match');
+const Settings = require('../models/Settings');
+const User = require('../models/User');
+const auditService = require('../services/auditService');
+const emailService = require('../services/emailService');
 
 /**
  * Mapeia os status da API para os Enums do seu MatchSchema
@@ -23,18 +27,15 @@ const mapStatus = (apiStatus) => {
 
 /**
  * BUSCA DE LIGAS (DINÂMICA)
- * Usa o process.env.API_FOOTBALL_KEY para autorização
  */
 exports.getAvailableLeagues = async (req, res) => {
     try {
-        // Puxa a chave do .env para garantir que a API aceite a chamada
         const API_KEY = process.env.API_FOOTBALL_KEY; 
         
         const response = await axios.get('https://sports.bzzoiro.com/api/leagues/', {
             headers: { 'Authorization': `Token ${API_KEY}` }
         });
 
-        // Retorna a lista de ligas (results) para o Frontend
         res.json({
             success: true,
             results: response.data.results 
@@ -49,11 +50,10 @@ exports.getAvailableLeagues = async (req, res) => {
 };
 
 /**
- * SINCRONIZAÇÃO DE PARTIDAS (CORRIGIDO)
+ * SINCRONIZAÇÃO DE PARTIDAS (ATUALIZADO: BLOQUEIO + VISIBILIDADE + AUDITORIA CSV)
  */
 exports.fetchAndSyncMatches = async (req, res) => {
     try {
-        // Adicionamos 'unifyGroups' que vem do seu admin.js
         const { leagueId, dateFrom, dateTo, phaseType, knockoutPhase, unifyGroups } = req.body;
         const API_KEY = process.env.API_FOOTBALL_KEY;
 
@@ -101,16 +101,13 @@ exports.fetchAndSyncMatches = async (req, res) => {
             const currentLeagueId = item.league ? Number(item.league.id) : Number(leagueId);
             const currentLeagueName = item.league ? item.league.name : "";
 
-            // --- LÓGICA DE AGRUPAMENTO CORRIGIDA ---
+            // --- LÓGICA DE AGRUPAMENTO ---
             let groupValue;
             if (phaseType === 'knockout') {
-                groupValue = knockoutPhase; // Ex: "Oitavas de Final"
+                groupValue = knockoutPhase; 
             } else if (unifyGroups) {
-                // Se for pontos corridos, usamos o nome da liga enviado pelo admin ou o da API
-                // Isso garante que "Rodada 1" e "Rodada 2" fiquem na mesma tabela
                 groupValue = knockoutPhase || currentLeagueName || 'Classificação Geral';
             } else {
-                // Comportamento antigo: separa por rodada (ex: Fase de Grupos da Copa)
                 groupValue = `Rodada ${item.round_number}`;
             }
 
@@ -118,6 +115,48 @@ exports.fetchAndSyncMatches = async (req, res) => {
             const teamB_ID = item.away_team_obj?.id || item.away_id;
 
             let match = await Match.findOne({ apiId: item.id });
+            const newMappedStatus = mapStatus(item.status);
+
+            // ============================================================
+            // 🛡️ LÓGICA DE TRANSIÇÃO: BLOQUEIO, VISIBILIDADE E AUDITORIA
+            // ============================================================
+            if (match && match.status === 'scheduled' && 
+                (newMappedStatus !== 'scheduled' && newMappedStatus !== 'cancelled')) {
+                
+                const configId = `league_${currentLeagueId}`;
+                
+                // 1. Tranca a grade e libera o ranking no banco
+                await Settings.findByIdAndUpdate(configId, {
+                    $addToSet: { lockedPhases: groupValue },
+                    $set: { statsLocked: false } 
+                });
+
+                console.log(`[ROBÔ] 🔒 Grade "${groupValue}" trancada na liga ${currentLeagueId}. Gerando auditoria...`);
+                
+                // 2. Processo de Auditoria (CSV + E-mail via Brevo)
+                try {
+                    // Gera o arquivo físico do CSV
+                    const csvFile = await auditService.generateAuditCSV(currentLeagueId, groupValue);
+                    
+                    if (csvFile) {
+                        // Busca e-mails de quem participa desta liga
+                        const users = await User.find({ leagues: Number(currentLeagueId) }, 'email');
+                        const emailList = users.map(u => u.email).filter(e => !!e);
+
+                        if (emailList.length > 0) {
+                            const subject = `🔒 Auditoria Oficial: Grade ${groupValue} Trancada`;
+                            const message = `A bola rolou para a fase: ${groupValue}!\n\nConforme as regras do Bolão, os palpites para esta grade foram trancados e a visualização no site está liberada.\n\nSegue em anexo o arquivo CSV contendo a cópia de segurança de todos os palpites para conferência pública.`;
+
+                            // Dispara o broadcast usando seu emailService (Brevo)
+                            await emailService.sendBroadcastEmail(emailList, subject, message, csvFile);
+                            console.log(`[ROBÔ] 📧 Auditoria enviada para ${emailList.length} usuários.`);
+                        }
+                    }
+                } catch (auditErr) {
+                    console.error("❌ Erro no processo de auditoria pós-bloqueio:", auditErr.message);
+                }
+            }
+            // ============================================================
 
             const updateData = {
                 apiId: item.id,
@@ -129,17 +168,17 @@ exports.fetchAndSyncMatches = async (req, res) => {
                 phase: phaseType || 'group', 
                 date: dateStr,
                 time: timeStr,
-                status: mapStatus(item.status),
+                status: newMappedStatus,
                 scoreA: item.home_score,
                 scoreB: item.away_score,
                 penaltiesA: item.penalty_shootout?.home ?? null,
                 penaltiesB: item.penalty_shootout?.away ?? null,
                 apiStatus: item.period || 'NS',
                 minute: item.current_minute ? `${item.current_minute}'` : "",
-                // Mantém logos existentes se a API falhar em prover IDs
                 logoA: teamA_ID ? `https://sports.bzzoiro.com/img/team/${teamA_ID}/?token=${API_KEY}` : (match?.logoA || ''),
                 logoB: teamB_ID ? `https://sports.bzzoiro.com/img/team/${teamB_ID}/?token=${API_KEY}` : (match?.logoB || '')
             };
+
             if (!match) {
                 const lastMatch = await Match.findOne().sort({ matchId: -1 });
                 const nextId = lastMatch && lastMatch.matchId ? lastMatch.matchId + 1 : 1;
@@ -152,7 +191,6 @@ exports.fetchAndSyncMatches = async (req, res) => {
                 await match.save();
                 createdCount++;
             } else {
-                // Proteção: só atualiza se a partida não foi finalizada/processada
                 if (!match.processed) {
                     Object.assign(match, updateData);
                     await match.save();
