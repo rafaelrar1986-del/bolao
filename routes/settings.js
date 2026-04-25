@@ -1,4 +1,4 @@
-// routes/settings.js (ou o arquivo de rotas de configuração)
+// routes/settings.js
 const express = require('express');
 const router = express.Router();
 const Settings = require('../models/Settings');
@@ -9,7 +9,6 @@ const { protect, admin } = require('../middleware/auth');
  * Garante que cada liga tenha sua própria "gaveta" no banco de dados.
  */
 const getConfigId = (leagueId) => {
-  // Se leagueId vier nulo, assume '1' por segurança
   const id = leagueId || '1';
   return `league_${id}`;
 };
@@ -31,9 +30,11 @@ router.get('/global', async (req, res) => {
       s = await Settings.create({ 
         _id: configId,
         leagueId: String(leagueId),
-        unlockedPhases: ['group'], // Valor inicial padrão
+        unlockedPhases: ['group'], // O que o usuário vê (Gerenciador)
+        lockedPhases: [],          // O que o Robô tranca (Segurança)
         blockSaveBets: false,
-        blockSaveKnockout: false
+        blockSaveKnockout: false,
+        statsLocked: true
       });
     }
     
@@ -50,7 +51,6 @@ router.get('/global', async (req, res) => {
  */
 router.post('/global', protect, admin, async (req, res) => {
   try {
-    // 🔍 CORREÇÃO: Pega o leagueId do Body ou da Query para não perder a referência
     const targetLeagueId = req.body.leagueId || req.query.leagueId || '1';
     const configId = getConfigId(targetLeagueId);
     const mainLeagueId = getConfigId('1'); 
@@ -63,8 +63,15 @@ router.post('/global', protect, admin, async (req, res) => {
       if (req.body[k] !== undefined) lockUpdates[k] = !!req.body[k];
     });
 
+    // Sincroniza a lógica de Grade (Visibilidade)
     if (req.body.unlockedPhases && Array.isArray(req.body.unlockedPhases)) {
       lockUpdates.unlockedPhases = req.body.unlockedPhases;
+    }
+
+    // 🛡️ NOVO: Sincroniza a lógica de Grade de Bloqueio (Segurança/Robô)
+    // Permite que o admin remova uma grade do cadeado manualmente se necessário
+    if (req.body.lockedPhases && Array.isArray(req.body.lockedPhases)) {
+      lockUpdates.lockedPhases = req.body.lockedPhases;
     }
     
     if (req.body.lockedReason !== undefined) lockUpdates.lockedReason = req.body.lockedReason;
@@ -144,6 +151,10 @@ router.post('/admin/update', protect, admin, async (req, res) => {
     lockFields.forEach(f => {
         if (req.body[f] !== undefined) updates[f] = !!req.body[f];
     });
+
+    // Sincronização manual das fases (Visíveis e Trancadas)
+    if (req.body.unlockedPhases) updates.unlockedPhases = req.body.unlockedPhases;
+    if (req.body.lockedPhases) updates.lockedPhases = req.body.lockedPhases;
 
     const s = await Settings.findByIdAndUpdate(
       configId,
