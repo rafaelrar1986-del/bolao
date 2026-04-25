@@ -1,6 +1,9 @@
 const axios = require('axios');
 const Match = require('../models/Match');
 const Settings = require('../models/Settings');
+const User = require('../models/User');
+const auditService = require('../services/auditService');
+const emailService = require('../services/emailService');
 const { recalculateAllPoints } = require('./pointsService');
 const { trySaveDailyPoints } = require('./dailyHistoryService');
 
@@ -29,7 +32,6 @@ function extractGoals(incidents) {
   return incidents
     .filter(i => i.type === 'goal')
     .map(g => ({
-      // Prioriza player_name, depois player, depois fallback
       name: g.player_name || g.player || 'GOL', 
       min: g.minute,
       side: g.is_home ? 'home' : 'away'
@@ -58,16 +60,14 @@ async function updateMatches() {
     const yesterday = new Date(now - 86400000).toISOString().split('T')[0];
     const tomorrow = new Date(now + 86400000).toISOString().split('T')[0];
 
-    // 1️⃣ --- BUSCA PARTIDAS AO VIVO (30s cache) ---
-    // Nota: O Live não aceita filtro de liga na URL, filtramos no processGameList
+    // 1️⃣ --- BUSCA PARTIDAS AO VIVO ---
     console.log(`📡 [Live] Checando tempo real...`);
     const liveRes = await axios.get(`https://sports.bzzoiro.com/api/live/?tz=America/Fortaleza`, {
       headers: { Authorization: `Token ${API_KEY}` }
     });
     await processGameList(liveRes.data.results, allowedLeagues, "LIVE");
 
-    // 2️⃣ --- BUSCA RODADA COMPLETA (2min cache) ---
-    // Usamos o filtro de ligas dinâmico aqui para otimizar a resposta
+    // 2️⃣ --- BUSCA RODADA COMPLETA ---
     const leaguesFilter = allowedLeagues.join(',');
     console.log(`🔍 [Events] Sincronizando ligas: ${leaguesFilter}`);
     
@@ -110,7 +110,49 @@ async function processGameList(games, allowedLeagues, source) {
        autoQualifiedSide = determineQualifier(game);
     }
 
-    // --- COMPARAÇÃO DE MUDANÇAS ---
+    // ============================================================
+    // 🛡️ DETECÇÃO DE INÍCIO DE JOGO (TRAVA, VISIBILIDADE E AUDITORIA)
+    // ============================================================
+    if (match.status === 'scheduled' && (newStatus !== 'scheduled' && newStatus !== 'cancelled')) {
+      
+      const configId = `league_${match.leagueId || 1}`;
+      const groupValue = match.group;
+
+      console.log(`[SISTEMA] 🔒 Início detectado: ${match.teamA} x ${match.teamB}`);
+      console.log(`[SISTEMA] 🔓 Liberando visibilidade da grade "${groupValue}" e Pódio...`);
+
+      // 1. Bloqueia palpites, libera a fase específica, o pódio e abre a página global
+      await Settings.findByIdAndUpdate(configId, {
+        $addToSet: { 
+          lockedPhases: groupValue,
+          unlockedPhases: { $each: [groupValue, 'podium'] } 
+        },
+        $set: { statsLocked: false } 
+      });
+
+      // 2. Processo de Auditoria (CSV + E-mail Broadcast)
+      try {
+        const csvFile = await auditService.generateAuditCSV(match.leagueId || 1, groupValue);
+        
+        if (csvFile) {
+          const users = await User.find({ leagues: Number(match.leagueId || 1) }, 'email');
+          const emails = users.map(u => u.email).filter(e => !!e);
+
+          if (emails.length > 0) {
+            const subject = `🔒 Auditoria Oficial: Grade ${groupValue} Trancada`;
+            const message = `A bola rolou para a fase: ${groupValue}!\n\nConforme as regras, os palpites para esta grade e as escolhas do Pódio foram trancados. A visualização de todos os palpites já está liberada no site.\n\nSegue em anexo o arquivo de auditoria com a cópia de segurança dos dados.`;
+
+            await emailService.sendBroadcastEmail(emails, subject, message, csvFile);
+            console.log(`[SISTEMA] 📧 Auditoria enviada para ${emails.length} participantes.`);
+          }
+        }
+      } catch (auditErr) {
+        console.error("❌ Erro no processo de auditoria:", auditErr.message);
+      }
+    }
+    // ============================================================
+
+    // --- COMPARAÇÃO PARA ATUALIZAÇÃO DE PLACAR/TEMPO ---
     const scoreChanged = match.scoreA !== game.home_score || match.scoreB !== game.away_score;
     const statusChanged = match.status !== newStatus;
     const minuteChanged = match.minute !== newMinute;
@@ -122,9 +164,7 @@ async function processGameList(games, allowedLeagues, source) {
     if (!changed) continue;
 
     const oldStatus = match.status;
-    const oldMinute = match.minute;
     
-    // Atualização do banco
     match.scoreA = game.home_score;
     match.scoreB = game.away_score;
     match.status = newStatus;
@@ -136,20 +176,14 @@ async function processGameList(games, allowedLeagues, source) {
 
     await match.save();
 
-    // --- LOGS DE MONITORAMENTO ---
     if (scoreChanged) {
       console.log(`⚽ GOL [${source}]: ${match.teamA} ${game.home_score}x${game.away_score} ${match.teamB}`);
-    } else if (newStatus === 'penaltis') {
-      console.log(`🎯 PÊNALTIS: ${match.teamA} (${newPenA})x(${newPenB}) ${match.teamB}`);
-    } else if (minuteChanged && !scoreChanged && !statusChanged) {
-      // Log específico para mudança de tempo
-      console.log(`⏱️ MINUTO [${source}]: ${match.teamA} vs ${match.teamB} (${newMinute})`);
     }
 
-    // --- GATILHO DE RECALCULO ---
+    // --- GATILHO DE FINALIZAÇÃO E PONTUAÇÃO ---
     if (oldStatus !== 'finished' && newStatus === 'finished') {
       const targetLeagueId = match.leagueId || '1';
-      console.log(`🥇 [Sistema] Finalizado em ${source}. Recalculando Liga ${targetLeagueId}...`);
+      console.log(`🥇 [Sistema] Finalizado. Recalculando Liga ${targetLeagueId}...`);
       try {
         await recalculateAllPoints(targetLeagueId); 
         await trySaveDailyPoints(game.event_date);
