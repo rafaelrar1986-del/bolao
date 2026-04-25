@@ -119,18 +119,22 @@ async function processGameList(games, allowedLeagues, source) {
       const groupValue = match.group;
 
       console.log(`[SISTEMA] 🔒 Início detectado: ${match.teamA} x ${match.teamB}`);
-      console.log(`[SISTEMA] 🔓 Liberando visibilidade da grade "${groupValue}" e Pódio...`);
+      console.log(`[SISTEMA] 🛡️ Bloqueando Salvamento e Liberando Visibilidade/Pódio...`);
 
-      // 1. Bloqueia palpites, libera a fase específica, o pódio e abre a página global
+      // 1. Atualiza configurações de segurança e visibilidade
       await Settings.findByIdAndUpdate(configId, {
         $addToSet: { 
           lockedPhases: groupValue,
           unlockedPhases: { $each: [groupValue, 'podium'] } 
         },
-        $set: { statsLocked: false } 
+        $set: { 
+          statsLocked: false,         // Abre visualização geral
+          blockSaveBets: true,        // Bloqueia salvamento pontos corridos
+          blockSaveKnockout: true     // Bloqueia salvamento mata-mata
+        } 
       });
 
-      // 2. Processo de Auditoria (CSV + E-mail Broadcast)
+      // 2. Processo de Auditoria (CSV + E-mail Broadcast via Brevo)
       try {
         const csvFile = await auditService.generateAuditCSV(match.leagueId || 1, groupValue);
         
