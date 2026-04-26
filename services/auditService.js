@@ -4,12 +4,22 @@ const fs = require('fs');
 const path = require('path');
 
 exports.generateAuditCSV = async (leagueId, groupName) => {
+    // --- CORREÇÃO DA BUSCA ---
+    // Agora ele busca jogos da liga onde o identificador (Rodada ou Grupo) coincida
     const matches = await Match.find({ 
-        leagueId: Number(leagueId), 
-        group: groupName 
+        leagueId: Number(leagueId),
+        $or: [
+            { group: groupName },
+            { phaseName: groupName }
+        ]
     }).sort({ matchId: 1 }).lean();
 
-    if (matches.length === 0) return null;
+    // Se não achar jogos com esse nome, o e-mail não seria enviado. 
+    // Com a busca $or acima, ele vai achar tanto "Grupo A" quanto "Rodada 6".
+    if (matches.length === 0) {
+        console.log(`[AUDITORIA] Nenhum jogo encontrado para a liga ${leagueId} com identificador ${groupName}`);
+        return null;
+    }
 
     const allBets = await Bet.find({ leagueId: String(leagueId) })
         .populate('user', 'name email')
@@ -23,20 +33,36 @@ exports.generateAuditCSV = async (leagueId, groupName) => {
         if (!bet.user) return;
         let row = `${bet.user.name};${bet.user.email};`;
         const palpites = matches.map(m => {
+            // Busca o palpite dentro do array de groupMatches do usuário
             const p = (bet.groupMatches || []).find(gm => gm.matchId === m.matchId);
             if (!p) return "---";
+            
+            // Lógica de exibição do palpite no CSV
             if (p.winner === 'A') return m.teamA;
             if (p.winner === 'B') return m.teamB;
-            return "Empate";
+            if (p.winner === 'Empate' || p.winner === 'draw') return "Empate";
+            
+            // Caso seu sistema use placares (scoreA/scoreB) no palpite
+            if (p.scoreA !== undefined && p.scoreB !== undefined) {
+                return `${p.scoreA} x ${p.scoreB}`;
+            }
+            
+            return "---";
         });
         csv += row + palpites.join(";") + "\n";
     });
 
-    // Criar arquivo temporário para o Brevo ler
-    const fileName = `Auditoria_${groupName.replace(/\s/g, '_')}.csv`;
-    const filePath = path.join('/tmp', fileName); // No Windows pode usar path.join(__dirname, fileName)
+    // Criar arquivo temporário sanitizando o nome para evitar erros de caractere no anexo
+    const safeFileName = groupName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    const fileName = `Auditoria_${safeFileName}.csv`;
+    const filePath = path.join('/tmp', fileName); 
     
-    fs.writeFileSync(filePath, csv);
+    try {
+        fs.writeFileSync(filePath, csv);
+    } catch (fsErr) {
+        console.error("❌ Erro ao escrever arquivo de auditoria:", fsErr.message);
+        return null;
+    }
 
     return {
         path: filePath,
