@@ -107,7 +107,11 @@ router.get('/admin/all', protect, admin, async (req, res) => {
 // ======================
 router.post('/admin/add', protect, admin, async (req, res) => {
   try {
-    const { matchId, teamA, teamB, date, time, group, stadium, phase, apiId, leagueId, leagueName } = req.body;
+    // Adicionado phaseName na desestruturação
+    const { 
+      matchId, teamA, teamB, date, time, group, phaseName, 
+      stadium, phase, apiId, leagueId, leagueName 
+    } = req.body;
 
     if (!matchId || !teamA || !teamB || !date || !time || (phase !== 'knockout' && !group)) {
       return res.status(400).json({ success: false, message: 'Campos obrigatórios ausentes' });
@@ -127,14 +131,19 @@ router.post('/admin/add', protect, admin, async (req, res) => {
       date: String(date).trim(),
       time: String(time).trim(),
       group: String(group).trim(),
+      phaseName: phaseName ? String(phaseName).trim() : undefined, // ✨ Atualizado: Suporte a Rodadas
       stadium: stadium ? String(stadium).trim() : undefined,
       phase: phase || 'group',
       status: 'scheduled',
-      scoreA: null, scoreB: null, penaltiesA: null, penaltiesB: null
+      scoreA: null, 
+      scoreB: null, 
+      penaltiesA: null, 
+      penaltiesB: null
     });
 
     res.json({ success: true, data: m });
   } catch (err) {
+    console.error('Erro ao adicionar partida:', err);
     res.status(500).json({ success: false, message: 'Erro ao adicionar partida' });
   }
 });
@@ -146,24 +155,38 @@ router.put('/admin/edit/:matchId', protect, admin, async (req, res) => {
   try {
     const matchId = Number(req.params.matchId);
     const updates = {};
-    const fields = ['teamA','teamB','date','time','group','stadium','phase','status','scoreA','scoreB','apiId','penaltiesA','penaltiesB','leagueId', 'leagueName'];
+    
+    // Lista de campos expandida para incluir phaseName
+    const fields = [
+      'teamA', 'teamB', 'date', 'time', 'group', 'phaseName', 
+      'stadium', 'phase', 'status', 'scoreA', 'scoreB', 
+      'apiId', 'penaltiesA', 'penaltiesB', 'leagueId', 'leagueName'
+    ];
 
     fields.forEach(k => {
       if (req.body[k] !== undefined) updates[k] = req.body[k];
     });
 
+    // Tratamento de tipos e limpeza de strings
     if (updates.leagueName) updates.leagueName = String(updates.leagueName).trim();
+    if (updates.phaseName) updates.phaseName = String(updates.phaseName).trim(); // ✨ Atualizado
+    if (updates.group) updates.group = String(updates.group).trim();
     if (updates.leagueId) updates.leagueId = Number(updates.leagueId);
 
-    const match = await Match.findOneAndUpdate({ matchId }, { $set: updates }, { new: true });
+    const match = await Match.findOneAndUpdate(
+      { matchId }, 
+      { $set: updates }, 
+      { new: true }
+    );
+
     if (!match) return res.status(404).json({ success: false, message: 'Partida não encontrada' });
 
     res.json({ success: true, data: match });
   } catch (err) {
+    console.error('Erro ao editar partida:', err);
     res.status(500).json({ success: false, message: 'Erro ao editar partida' });
   }
 });
-
 // ======================
 // 6. POST /api/matches/admin/finish/:matchId (Admin)
 // ======================
