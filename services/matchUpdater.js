@@ -116,16 +116,20 @@ async function processGameList(games, allowedLeagues, source) {
     if (match.status === 'scheduled' && (newStatus !== 'scheduled' && newStatus !== 'cancelled')) {
       
       const configId = `league_${match.leagueId || 1}`;
-      const groupValue = match.group;
+      
+      // ✨ AJUSTE PONTOS CORRIDOS: 
+      // Se tiver phaseName (Ex: Rodada 6), travamos a Rodada. 
+      // Caso contrário, travamos o Grupo (Ex: Grupo A).
+      const lockIdentifier = match.phaseName || match.group;
 
       console.log(`[SISTEMA] 🔒 Início detectado: ${match.teamA} x ${match.teamB}`);
-      console.log(`[SISTEMA] 🛡️ Bloqueando Salvamento e Liberando Visibilidade/Pódio...`);
+      console.log(`[SISTEMA] 🛡️ Bloqueando Salvamento e Liberando Visibilidade para: ${lockIdentifier}`);
 
       // 1. Atualiza configurações de segurança e visibilidade
       await Settings.findByIdAndUpdate(configId, {
         $addToSet: { 
-          lockedPhases: groupValue,
-          unlockedPhases: { $each: [groupValue, 'podium'] } 
+          lockedPhases: lockIdentifier,
+          unlockedPhases: { $each: [lockIdentifier, 'podium'] } 
         },
         $set: { 
           statsLocked: false,         // Abre visualização geral
@@ -136,15 +140,16 @@ async function processGameList(games, allowedLeagues, source) {
 
       // 2. Processo de Auditoria (CSV + E-mail Broadcast via Brevo)
       try {
-        const csvFile = await auditService.generateAuditCSV(match.leagueId || 1, groupValue);
+        // Passamos o lockIdentifier para que o CSV contenha apenas os dados da rodada/grupo atual
+        const csvFile = await auditService.generateAuditCSV(match.leagueId || 1, lockIdentifier);
         
         if (csvFile) {
           const users = await User.find({ leagues: Number(match.leagueId || 1) }, 'email');
           const emails = users.map(u => u.email).filter(e => !!e);
 
           if (emails.length > 0) {
-            const subject = `🔒 Auditoria Oficial: Grade ${groupValue} Trancada`;
-            const message = `A bola rolou para a fase: ${groupValue}!\n\nConforme as regras, os palpites para esta grade e as escolhas do Pódio foram trancados. A visualização de todos os palpites já está liberada no site.\n\nSegue em anexo o arquivo de auditoria com a cópia de segurança dos dados.`;
+            const subject = `🔒 Auditoria Oficial: Grade ${lockIdentifier} Trancada`;
+            const message = `A bola rolou para a fase: ${lockIdentifier}!\n\nConforme as regras, os palpites para esta grade e as escolhas do Pódio foram trancados. A visualização de todos os palpites já está liberada no site.\n\nSegue em anexo o arquivo de auditoria com a cópia de segurança dos dados.`;
 
             await emailService.sendBroadcastEmail(emails, subject, message, csvFile);
             console.log(`[SISTEMA] 📧 Auditoria enviada para ${emails.length} participantes.`);
@@ -163,7 +168,10 @@ async function processGameList(games, allowedLeagues, source) {
     const penaltiesChanged = match.penaltiesA !== newPenA || match.penaltiesB !== newPenB;
     const qualificationChanged = match.qualifiedSide !== autoQualifiedSide;
 
-    const changed = scoreChanged || statusChanged || minuteChanged || penaltiesChanged || qualificationChanged;
+    // Se o RobotController/API enviar um round_number e o banco estiver vazio, atualiza o phaseName
+    const phaseNameChanged = !match.phaseName && game.round_number;
+
+    const changed = scoreChanged || statusChanged || minuteChanged || penaltiesChanged || qualificationChanged || phaseNameChanged;
 
     if (!changed) continue;
 
@@ -177,6 +185,10 @@ async function processGameList(games, allowedLeagues, source) {
     match.penaltiesB = newPenB;
     match.qualifiedSide = autoQualifiedSide;
     match.goalsDetail = extractGoals(game.incidents);
+    
+    if (phaseNameChanged) {
+        match.phaseName = `Rodada ${game.round_number}`;
+    }
 
     await match.save();
 
