@@ -533,12 +533,20 @@ router.get('/all-bets', protect, checkPaid, blockStatsIfLocked, async (req, res)
       const viewBets = gm.map(g => {
         const m = matches.find(x => x.matchId === g.matchId);
         
-        let isLocked = !isAdmin;
-        if (m?.phase === 'group') {
-            isLocked = !unlockedPhases.includes('group');
-        } else {
-            isLocked = !unlockedPhases.includes(m?.group);
-        }
+        // ... dentro do bets.map
+let isLocked = !isAdmin;
+
+if (m?.phase === 'group') {
+    // Lógica Híbrida: Liberta se tiver a chave mestra OU a rodada específica
+    const groupUnlocked = unlockedPhases.includes('group');
+    const specificRoundUnlocked = unlockedPhases.includes(m?.group);
+    const phaseNameUnlocked = unlockedPhases.includes(m?.phaseName);
+
+    isLocked = !isAdmin && !groupUnlocked && !specificRoundUnlocked && !phaseNameUnlocked;
+} else {
+    // Mata-mata (oitavas, etc)
+    isLocked = !isAdmin && !unlockedPhases.includes(m?.group);
+}
 
         return {
           matchId: g.matchId,
