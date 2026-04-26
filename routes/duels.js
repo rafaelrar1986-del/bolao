@@ -55,23 +55,26 @@ router.get('/:userId', protect, async (req, res) => {
       let isLocked = true; // Começa bloqueado por segurança
 
       if (m) {
-        if (m.phase === 'group') {
-          // Bloqueia se 'group' NÃO estiver no array
-          isLocked = !unlockedPhases.includes('group');
-        } else {
-          // Bloqueia se a fase (m.group) NÃO estiver no array
-          // m.group aqui costuma ser 'oitavas', 'quartas', etc.
-          isLocked = !unlockedPhases.includes(m.group);
-        }
-      }
+  if (m.phase === 'group') {
+    // Verifica todas as possibilidades de desbloqueio para pontos corridos ou copa
+    const canSeeGroup = unlockedPhases.includes('group') || 
+                        unlockedPhases.includes(m.group) || 
+                        unlockedPhases.includes(m.phaseName);
+    
+    isLocked = !canSeeGroup;
+  } else {
+    // Lógica padrão para fases eliminatórias
+    isLocked = !unlockedPhases.includes(m.group);
+  }
+}
 
-      // Se estiver bloqueado, SOBRESCREVEMOS o valor. Não há como o front ler o original.
-      return {
-        matchId: g.matchId,
-        winner: isLocked ? '🔒' : g.winner,
-        qualifier: isLocked ? (g.qualifier ? '🔒' : null) : g.qualifier,
-        isLocked: isLocked
-      };
+// O resto do código mantém a segurança:
+return {
+  matchId: g.matchId,
+  winner: (isLocked && !isAdmin) ? '🔒' : g.winner,
+  qualifier: (isLocked && !isAdmin) ? (g.qualifier ? '🔒' : null) : g.qualifier,
+  isLocked: isLocked && !isAdmin
+};
     });
 
     // 3. Trava do Pódio
