@@ -30,7 +30,7 @@ router.get('/global', async (req, res) => {
       s = await Settings.create({ 
         _id: configId,
         leagueId: String(leagueId),
-        unlockedPhases: ['group'], // O que o usuário vê (Gerenciador)
+        unlockedPhases: [], // O que o usuário vê (Gerenciador)
         lockedPhases: [],          // O que o Robô tranca (Segurança)
         blockSaveBets: false,
         blockSaveKnockout: false,
