@@ -117,9 +117,8 @@ async function processGameList(games, allowedLeagues, source) {
       
       const configId = `league_${match.leagueId || 1}`;
       
-      // ✨ AJUSTE PONTOS CORRIDOS: 
-      // Se tiver phaseName (Ex: Rodada 6), travamos a Rodada. 
-      // Caso contrário, travamos o Grupo (Ex: Grupo A).
+      // ✨ LÓGICA DE IDENTIFICAÇÃO PARA PONTOS CORRIDOS VS COPA
+      // Se for Brasileirão, lockIdentifier será "Rodada X". Se for Copa, será o Grupo.
       const lockIdentifier = match.phaseName || match.group;
 
       console.log(`[SISTEMA] 🔒 Início detectado: ${match.teamA} x ${match.teamB}`);
@@ -140,7 +139,7 @@ async function processGameList(games, allowedLeagues, source) {
 
       // 2. Processo de Auditoria (CSV + E-mail Broadcast via Brevo)
       try {
-        // Passamos o lockIdentifier para que o CSV contenha apenas os dados da rodada/grupo atual
+        // Usamos o lockIdentifier para garantir que o CSV pegue a rodada correta
         const csvFile = await auditService.generateAuditCSV(match.leagueId || 1, lockIdentifier);
         
         if (csvFile) {
@@ -168,10 +167,7 @@ async function processGameList(games, allowedLeagues, source) {
     const penaltiesChanged = match.penaltiesA !== newPenA || match.penaltiesB !== newPenB;
     const qualificationChanged = match.qualifiedSide !== autoQualifiedSide;
 
-    // Se o RobotController/API enviar um round_number e o banco estiver vazio, atualiza o phaseName
-    const phaseNameChanged = !match.phaseName && game.round_number;
-
-    const changed = scoreChanged || statusChanged || minuteChanged || penaltiesChanged || qualificationChanged || phaseNameChanged;
+    const changed = scoreChanged || statusChanged || minuteChanged || penaltiesChanged || qualificationChanged;
 
     if (!changed) continue;
 
@@ -185,10 +181,6 @@ async function processGameList(games, allowedLeagues, source) {
     match.penaltiesB = newPenB;
     match.qualifiedSide = autoQualifiedSide;
     match.goalsDetail = extractGoals(game.incidents);
-    
-    if (phaseNameChanged) {
-        match.phaseName = `Rodada ${game.round_number}`;
-    }
 
     await match.save();
 
