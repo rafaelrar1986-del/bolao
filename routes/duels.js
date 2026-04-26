@@ -23,17 +23,24 @@ router.get('/:userId', protect, async (req, res) => {
     const configId = getConfigId(leagueId);
     
     // 1. Busca os dados (Matches filtradas por liga)
+    // Adicionamos flexibilidade na busca da Bet (leagueId como String ou Number)
     const [settings, matches, bet] = await Promise.all([
       Settings.findById(configId).lean(),
       Match.find({ leagueId: Number(leagueId) }).lean(),
-      Bet.findOne({ user: userId, leagueId: String(leagueId) }).lean()
+      Bet.findOne({ 
+        user: userId, 
+        $or: [
+          { leagueId: String(leagueId) },
+          { leagueId: Number(leagueId) }
+        ] 
+      }).lean()
     ]);
 
     if (!bet) {
       return res.status(404).json({ success: false, message: 'Palpites não encontrados' });
     }
 
-    // Se for o dono ou admin, libera tudo
+    // Se for o dono ou admin, libera tudo imediatamente
     if (isRequestingOwnProfile || isAdmin) {
       return res.json({
         success: true,
@@ -47,34 +54,37 @@ router.get('/:userId', protect, async (req, res) => {
 
     const unlockedPhases = settings?.unlockedPhases || [];
 
-    // 2. Mapeamento com checagem rigorosa
+    // 2. Mapeamento com checagem rigorosa de visibilidade
     const maskedGroupMatches = (bet.groupMatches || []).map(g => {
-      // Garantimos que a comparação de ID seja numérica
+      // Garantimos que a comparação de ID seja numérica para evitar erros de tipo
       const m = matches.find(x => Number(x.matchId) === Number(g.matchId));
       
       let isLocked = true; // Começa bloqueado por segurança
 
       if (m) {
-  if (m.phase === 'group') {
-    // Verifica todas as possibilidades de desbloqueio para pontos corridos ou copa
-    const canSeeGroup = unlockedPhases.includes('group') || 
-                        unlockedPhases.includes(m.group) || 
-                        unlockedPhases.includes(m.phaseName);
-    
-    isLocked = !canSeeGroup;
-  } else {
-    // Lógica padrão para fases eliminatórias
-    isLocked = !unlockedPhases.includes(m.group);
-  }
-}
+        // Lógica para fase de grupos OU pontos corridos
+        if (m.phase === 'group' || m.phase === 'pontos_corridos') {
+          // Verifica todas as chaves de desbloqueio
+          const canSeeGroup = unlockedPhases.includes('group') || 
+                              unlockedPhases.includes(m.group) || 
+                              unlockedPhases.includes(m.phaseName);
+          
+          isLocked = !canSeeGroup;
+        } else {
+          // Lógica padrão para fases eliminatórias (Mata-mata)
+          isLocked = !unlockedPhases.includes(m.group);
+        }
+      }
 
-// O resto do código mantém a segurança:
-return {
-  matchId: g.matchId,
-  winner: (isLocked && !isAdmin) ? '🔒' : g.winner,
-  qualifier: (isLocked && !isAdmin) ? (g.qualifier ? '🔒' : null) : g.qualifier,
-  isLocked: isLocked && !isAdmin
-};
+      // Retorna o palpite mascarado se estiver trancado
+      return {
+        matchId: g.matchId,
+        winner: isLocked ? '🔒' : g.winner,
+        scoreA: isLocked ? '?' : g.scoreA, // Adicionado suporte para placar se existir
+        scoreB: isLocked ? '?' : g.scoreB,
+        qualifier: (isLocked) ? (g.qualifier ? '🔒' : null) : g.qualifier,
+        isLocked: isLocked
+      };
     });
 
     // 3. Trava do Pódio
