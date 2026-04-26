@@ -23,6 +23,12 @@ const MatchSchema = new Schema(
     leagueId: { type: Number, required: false, index: true }, 
     leagueName: { type: String, default: '' },
 
+    phaseName: { 
+  type: String, 
+  required: false, // Pode ser opcional para não quebrar jogos antigos
+  trim: true       // Remove espaços vazios acidentais ("Rodada 32 " -> "Rodada 32")
+},
+
     teamA: { type: String, required: true, trim: true },
     teamB: { type: String, required: true, trim: true },
 
