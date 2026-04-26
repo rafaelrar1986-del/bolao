@@ -48,12 +48,9 @@ exports.getAvailableLeagues = async (req, res) => {
     }
 };
 
-/**
- * SINCRONIZAÇÃO DE PARTIDAS (CORRIGIDO)
- */
 exports.fetchAndSyncMatches = async (req, res) => {
     try {
-        // Adicionamos 'unifyGroups' que vem do seu admin.js
+        // Recebemos os parâmetros do admin.js
         const { leagueId, dateFrom, dateTo, phaseType, knockoutPhase, unifyGroups } = req.body;
         const API_KEY = process.env.API_FOOTBALL_KEY;
 
@@ -67,6 +64,7 @@ exports.fetchAndSyncMatches = async (req, res) => {
         let nextUrl = `https://sports.bzzoiro.com/api/events/?date_from=${dateFrom}&date_to=${dateTo}&league=${leagueId}`;
         let allResults = [];
 
+        // Paginação da API
         while (nextUrl) {
             const response = await axios.get(nextUrl, {
                 headers: { Authorization: `Token ${API_KEY}` }
@@ -101,17 +99,24 @@ exports.fetchAndSyncMatches = async (req, res) => {
             const currentLeagueId = item.league ? Number(item.league.id) : Number(leagueId);
             const currentLeagueName = item.league ? item.league.name : "";
 
-            // --- LÓGICA DE AGRUPAMENTO CORRIGIDA ---
+            // --- LÓGICA DE AGRUPAMENTO E RODADAS (PONTOS CORRIDOS) ---
             let groupValue;
+            let phaseNameValue = null;
+
             if (phaseType === 'knockout') {
                 groupValue = knockoutPhase; // Ex: "Oitavas de Final"
+                phaseNameValue = knockoutPhase;
             } else if (unifyGroups) {
-                // Se for pontos corridos, usamos o nome da liga enviado pelo admin ou o da API
-                // Isso garante que "Rodada 1" e "Rodada 2" fiquem na mesma tabela
+                // Se for pontos corridos (Ex: Brasileirão)
+                // group: Nome da Liga (para agrupar todos na mesma tabela/estatística)
                 groupValue = knockoutPhase || currentLeagueName || 'Classificação Geral';
+                
+                // phaseName: Identificador da Rodada (para o bloqueio individual no frontend)
+                phaseNameValue = item.round_number ? `Rodada ${item.round_number}` : null;
             } else {
-                // Comportamento antigo: separa por rodada (ex: Fase de Grupos da Copa)
+                // Comportamento padrão/antigo (ex: Grupos da Copa)
                 groupValue = `Rodada ${item.round_number}`;
+                phaseNameValue = `Rodada ${item.round_number}`;
             }
 
             const teamA_ID = item.home_team_obj?.id || item.home_id;
@@ -127,6 +132,7 @@ exports.fetchAndSyncMatches = async (req, res) => {
                 teamB: item.away_team,
                 group: groupValue, 
                 phase: phaseType || 'group', 
+                phaseName: phaseNameValue, // ✨ Adicionado para suportar bloqueio por rodada
                 date: dateStr,
                 time: timeStr,
                 status: mapStatus(item.status),
@@ -140,6 +146,7 @@ exports.fetchAndSyncMatches = async (req, res) => {
                 logoA: teamA_ID ? `https://sports.bzzoiro.com/img/team/${teamA_ID}/?token=${API_KEY}` : (match?.logoA || ''),
                 logoB: teamB_ID ? `https://sports.bzzoiro.com/img/team/${teamB_ID}/?token=${API_KEY}` : (match?.logoB || '')
             };
+
             if (!match) {
                 const lastMatch = await Match.findOne().sort({ matchId: -1 });
                 const nextId = lastMatch && lastMatch.matchId ? lastMatch.matchId + 1 : 1;
@@ -152,7 +159,7 @@ exports.fetchAndSyncMatches = async (req, res) => {
                 await match.save();
                 createdCount++;
             } else {
-                // Proteção: só atualiza se a partida não foi finalizada/processada
+                // Proteção: só atualiza se a partida não foi finalizada/processada pelo sistema de pontos
                 if (!match.processed) {
                     Object.assign(match, updateData);
                     await match.save();
@@ -176,3 +183,10 @@ exports.fetchAndSyncMatches = async (req, res) => {
         });
     }
 };
+
+// Helper simples para mapear status se não estiver definido
+function mapStatus(apiStatus) {
+    if (apiStatus === 'finished' || apiStatus === 'FT' || apiStatus === 'AET' || apiStatus === 'PEN') return 'finished';
+    if (apiStatus === 'notstarted' || apiStatus === 'NS') return 'scheduled';
+    return 'live';
+}
