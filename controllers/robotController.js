@@ -184,9 +184,3 @@ exports.fetchAndSyncMatches = async (req, res) => {
     }
 };
 
-// Helper simples para mapear status se não estiver definido
-function mapStatus(apiStatus) {
-    if (apiStatus === 'finished' || apiStatus === 'FT' || apiStatus === 'AET' || apiStatus === 'PEN') return 'finished';
-    if (apiStatus === 'notstarted' || apiStatus === 'NS') return 'scheduled';
-    return 'live';
-}
