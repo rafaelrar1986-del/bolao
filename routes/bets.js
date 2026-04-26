@@ -497,8 +497,7 @@ router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, r
   }
 });
 
-//👁️ Todos os palpites (Com trava de visibilidade por liga)
- 
+// 👁️ Todos os palpites (Com trava de visibilidade por liga)
 router.get('/all-bets', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
   try {
     const { search, matchId, group, leagueId } = req.query;
@@ -511,42 +510,65 @@ router.get('/all-bets', protect, checkPaid, blockStatsIfLocked, async (req, res)
     
     let matchFilter = {};
     if (leagueId) matchFilter.leagueId = Number(leagueId);
-    if (group) matchFilter.group = { $regex: group, $options: 'i' };
+    
+    // ✨ CORREÇÃO CRÍTICA: Se vier um "group" na query (ex: Rodada 6), 
+    // buscamos tanto no campo 'group' quanto no 'phaseName'.
+    if (group) {
+      matchFilter.$or = [
+        { group: { $regex: group, $options: 'i' } },
+        { phaseName: { $regex: group, $options: 'i' } }
+      ];
+    }
+    
     if (matchId) matchFilter.matchId = Number(matchId);
 
     const matches = await Match.find(matchFilter).lean();
     const matchIdsFilter = matches.map(m => m.matchId);
+
+    // Se não achar partidas para esse filtro, já retornamos vazio para evitar erros
+    if (matchIdsFilter.length === 0) {
+      return res.json({ success: true, data: [] });
+    }
 
     let query = { hasSubmitted: true };
     if (search) {
       const users = await User.find({ name: { $regex: search, $options: 'i' } }).select('_id').lean();
       query.user = { $in: users.map(u => u._id) };
     }
+    
+    // Garantimos que o leagueId na busca das Bets também seja filtrado (se fornecido)
+    if (leagueId) {
+      query.$or = [
+        { leagueId: String(leagueId) },
+        { leagueId: Number(leagueId) }
+      ];
+    }
+
     query['groupMatches.matchId'] = { $in: matchIdsFilter };
 
-    // Buscamos as apostas (incluindo o campo podium agora)
+    // Buscamos as apostas (incluindo o campo podium)
     const bets = await Bet.find(query).populate('user', 'name').lean();
 
     const enriched = bets.map(b => {
+      // Filtramos apenas os palpites que pertencem aos jogos da rodada/grupo atual
       const gm = (b.groupMatches || []).filter(x => matchIdsFilter.includes(x.matchId));
 
       const viewBets = gm.map(g => {
         const m = matches.find(x => x.matchId === g.matchId);
         
-        // ... dentro do bets.map
-let isLocked = !isAdmin;
+        let isLocked = !isAdmin;
 
-if (m?.phase === 'group') {
-    // Lógica Híbrida: Liberta se tiver a chave mestra OU a rodada específica
-    const groupUnlocked = unlockedPhases.includes('group');
-    const specificRoundUnlocked = unlockedPhases.includes(m?.group);
-    const phaseNameUnlocked = unlockedPhases.includes(m?.phaseName);
+        if (m?.phase === 'group' || m?.phase === 'pontos_corridos') {
+            // Lógica Híbrida: Liberta se tiver a chave mestra 'group' OU a rodada específica OU o phaseName
+            const groupUnlocked = unlockedPhases.includes('group');
+            const specificGroupUnlocked = unlockedPhases.includes(m?.group);
+            const phaseNameUnlocked = unlockedPhases.includes(m?.phaseName);
 
-    isLocked = !isAdmin && !groupUnlocked && !specificRoundUnlocked && !phaseNameUnlocked;
-} else {
-    // Mata-mata (oitavas, etc)
-    isLocked = !isAdmin && !unlockedPhases.includes(m?.group);
-}
+            isLocked = !isAdmin && !groupUnlocked && !specificGroupUnlocked && !phaseNameUnlocked;
+        } else {
+            // Mata-mata (oitavas, etc)
+            isLocked = !isAdmin && !unlockedPhases.includes(m?.group);
+        }
 
         return {
           matchId: g.matchId,
@@ -554,12 +576,11 @@ if (m?.phase === 'group') {
           choiceLabel: isLocked ? 'Bloqueado' : toWinnerLabel(g.winner, m?.teamA, m?.teamB),
           matchName: m ? `${m.teamA} vs ${m.teamB}` : `Jogo ${g.matchId}`,
           status: m?.status || 'scheduled',
-          qualifier: isLocked ? null : g.qualifier // Importante para o Glow no frontend
+          qualifier: isLocked ? null : g.qualifier
         };
       });
 
-      // 🎯 CORREÇÃO DO PÓDIO: 
-      // Se a trava de pódio estiver ativa, enviamos um objeto mascarado
+      // 🎯 CONTROLE DO PÓDIO
       const isPodiumLocked = !isAdmin && !unlockedPhases.includes('podium');
       const finalPodium = (b.podium && !isPodiumLocked) ? b.podium : (b.podium ? { first: '🔒', second: '🔒', third: '🔒', fourth: '🔒' } : null);
 
@@ -567,7 +588,7 @@ if (m?.phase === 'group') {
         userName: b.user?.name || 'Usuário',
         totalPoints: b.totalPoints || 0,
         bets: viewBets,
-        podium: finalPodium // Agora o frontend recebe o pódio (aberto ou com cadeado)
+        podium: finalPodium
       };
     });
 
@@ -577,7 +598,6 @@ if (m?.phase === 'group') {
     res.status(500).json({ success: false, message: 'Erro ao carregar apostas' });
   }
 });
-
 /**
  * 🔍 Partidas para filtro (Filtrado por Liga)
  */
