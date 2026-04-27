@@ -275,9 +275,8 @@ router.get('/my-bets', protect, checkPaid, async (req, res) => {
     console.error('GET /my-bets error:', e);
     res.status(500).json({ success: false, message: 'Erro ao carregar palpites' });
   }
-});
-/**
- * 💾 Salvar palpites (ATUALIZADO COM TRAVA DE GRADE AUTOMÁTICA)
+});/**
+ * 💾 Salvar palpites (ATUALIZADO COM TRAVA DE GRADE AUTOMÁTICA E SUPORTE A RODADAS)
  */
 router.post('/save', protect, checkPaid, async (req, res) => {
   try {
@@ -289,30 +288,42 @@ router.post('/save', protect, checkPaid, async (req, res) => {
     }
 
     const configId = `league_${leagueId}`;
-    const Settings = require('../models/Settings'); // Certifique-se do caminho correto
+    const Settings = require('../models/Settings'); 
+    const Match = require('../models/Match');
+    const Bet = require('../models/Bet');
+    const User = require('../models/User');
+
     const settings = await Settings.findById(configId).lean();
 
     const matchIdsEnviados = Object.keys(groupMatches || {}).map(Number);
     
-    // 2. Valida se as partidas pertencem à liga e busca seus grupos (fases)
+    // 2. Valida se as partidas pertencem à liga e busca identificadores de fase/rodada
+    // 🛡️ CORREÇÃO: Adicionado 'phaseName' no select para que o bloqueio de rodadas funcione
     const dbMatches = await Match.find({ 
       matchId: { $in: matchIdsEnviados }, 
       leagueId: Number(leagueId) 
-    }).select('matchId group').lean();
+    }).select('matchId group phaseName').lean();
 
     const validMatchIds = new Set(dbMatches.map(m => m.matchId));
 
     // ============================================================
-    // 🛡️ NOVO: VALIDAÇÃO DE GRADE TRANCADA (Lógica do Robô)
+    // 🛡️ VALIDAÇÃO DE GRADE TRANCADA (Suporte a Rodadas e Grupos)
     // ============================================================
     if (settings && settings.lockedPhases && settings.lockedPhases.length > 0) {
       for (const matchId of matchIdsEnviados) {
         const matchData = dbMatches.find(m => m.matchId === matchId);
-        if (matchData && settings.lockedPhases.includes(matchData.group)) {
-          return res.status(403).json({ 
-            success: false, 
-            message: `As apostas para a grade "${matchData.group}" já foram encerradas!` 
-          });
+        
+        if (matchData) {
+          // 💡 EXPLICAÇÃO: Se for pontos corridos, a trava usa phaseName (ex: Rodada 6).
+          // Se for Copa, usa o group (ex: Grupo A).
+          const gradeDaPartida = matchData.phaseName || matchData.group;
+          
+          if (settings.lockedPhases.includes(gradeDaPartida)) {
+            return res.status(403).json({ 
+              success: false, 
+              message: `As apostas para a grade "${gradeDaPartida}" já foram encerradas!` 
+            });
+          }
         }
       }
     }
@@ -377,7 +388,6 @@ router.post('/save', protect, checkPaid, async (req, res) => {
     // ============================================================
     // 🔥 O CARIMBO: VÍNCULO DO USUÁRIO COM A LIGA
     // ============================================================
-    const User = require('../models/User');
     await User.findByIdAndUpdate(req.user._id, {
       $addToSet: { leagues: Number(leagueId) }
     });
