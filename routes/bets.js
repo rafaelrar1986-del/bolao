@@ -629,8 +629,8 @@ router.get('/matches-for-filter', protect, checkPaid, async (req, res) => {
   }
 });
 /**
- * ⚠️ Admin: Reset (Protegido por leagueId)
- * Deleta as apostas e remove o vínculo dos usuários com a liga
+ * ⚠️ Admin: Reset Total (Bets, Histórico e Vínculos)
+ * Atualizado para garantir que nenhum rastro de pontuação antiga permaneça.
  */
 router.post('/admin/reset-all', protect, admin, async (req, res) => {
   try {
@@ -642,29 +642,41 @@ router.post('/admin/reset-all', protect, admin, async (req, res) => {
     const lidStr = String(leagueId);
     const lidNum = Number(leagueId);
 
-    // 1. Deleta permanentemente os documentos de aposta desta liga
-    // Usamos String porque no schema de Bet o leagueId costuma ser String
-    const deleteResult = await Bet.deleteMany({ leagueId: lidStr });
+    // Importar os modelos necessários
+    const User = require('../models/User');
+    const Bet = require('../models/Bet');
+    const PointsHistory = require('../models/PointsHistory'); // Verifique se o nome do arquivo/model está correto
 
-    // 2. Remove o ID da liga do array 'leagues' de todos os usuários
-    // Isso garante que o site não ache que o usuário ainda participa da liga
-    await User.updateMany(
+    // 1. Deleta permanentemente os documentos de aposta desta liga
+    const deleteBets = await Bet.deleteMany({ leagueId: lidStr });
+
+    // 2. Deleta o histórico de pontos/evolução desta liga (O que faltava)
+    const deleteHistory = await PointsHistory.deleteMany({ leagueId: lidStr });
+
+    // 3. Remove o ID da liga do array 'leagues' de todos os usuários
+    // Isso evita que o front-end carregue dados inexistentes para o usuário
+    const userUpdate = await User.updateMany(
       { leagues: lidNum }, 
       { $pull: { leagues: lidNum } }
     );
 
-    console.log(`Reset da liga ${leagueId}: ${deleteResult.deletedCount} apostas removidas.`);
+    console.log(`[Reset Liga ${leagueId}] Apostas: ${deleteBets.deletedCount} | Histórico: ${deleteHistory.deletedCount}`);
 
     res.json({ 
       success: true, 
-      message: `Sucesso! ${deleteResult.deletedCount} apostas deletadas e vínculos de usuários removidos.` 
+      message: `Reset concluído com sucesso!`,
+      details: {
+        betsRemoved: deleteBets.deletedCount,
+        historyRecordsRemoved: deleteHistory.deletedCount,
+        usersUnlinked: userUpdate.modifiedCount
+      }
     });
+
   } catch (error) {
     console.error('Reset error:', error);
-    res.status(500).json({ success: false, message: 'Erro interno ao resetar liga' });
+    res.status(500).json({ success: false, message: 'Erro interno ao realizar reset total da liga' });
   }
-});
-/**
+});/**
  * 👥 Usuários para filtro (Filtrado por LeagueId)
  */
 router.get('/users-for-filter', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
