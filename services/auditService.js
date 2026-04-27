@@ -7,7 +7,7 @@ exports.generateAuditCSV = async (leagueId, groupName) => {
     console.log(`\n[DEBUG AUDITORIA] 🚀 Iniciando geração para Liga: ${leagueId}, Identificador: "${groupName}"`);
 
     try {
-        // 1. Busca partidas - Logando a query para ver o que o Mongo está procurando
+        // 1. Busca partidas - Filtra por Liga e por Grupo ou Fase
         const matchQuery = { 
             leagueId: Number(leagueId), 
             $or: [
@@ -20,68 +20,73 @@ exports.generateAuditCSV = async (leagueId, groupName) => {
         const matches = await Match.find(matchQuery).sort({ matchId: 1 }).lean();
 
         if (matches.length === 0) {
-            console.error(`[DEBUG AUDITORIA] ❌ ERRO: Nenhuma partida encontrada no banco para "${groupName}". Verifique se o campo group ou phaseName no banco é idêntico.`);
+            console.error(`[DEBUG AUDITORIA] ❌ ERRO: Nenhuma partida encontrada no banco para "${groupName}".`);
             return null;
         }
         console.log(`[DEBUG AUDITORIA] ✅ ${matches.length} partidas encontradas.`);
 
-        // 2. Busca apostas - Verificando o tipo do leagueId
-        console.log(`[DEBUG AUDITORIA] 🔍 Buscando apostas para leagueId (String): "${leagueId}"`);
+        // 2. Busca apostas da liga específica
+        console.log(`[DEBUG AUDITORIA] 🔍 Buscando apostas para leagueId: "${leagueId}"`);
         const allBets = await Bet.find({ leagueId: String(leagueId) })
             .populate('user', 'name email')
             .lean();
 
-        console.log(`[DEBUG AUDITORIA] 📊 Total de apostas recuperadas do banco: ${allBets.length}`);
+        console.log(`[DEBUG AUDITORIA] 📊 Total de documentos de aposta: ${allBets.length}`);
 
-        if (allBets.length === 0) {
-            console.warn(`[DEBUG AUDITORIA] ⚠️ Nenhuma aposta (documento Bet) encontrada para a liga ${leagueId}. O CSV ficará apenas com o cabeçalho.`);
-        }
-
-        // 3. Montagem do CSV
+        // 3. Montagem do CSV com suporte a UTF-8 (acentuação correta no Excel)
         let csv = "\ufeffParticipante;Email;"; 
         csv += matches.map(m => `${m.teamA} x ${m.teamB}`).join(";") + "\n";
 
         let usersWithBetsCount = 0;
         allBets.forEach(bet => {
-            if (!bet.user) {
-                console.log(`[DEBUG AUDITORIA] 💡 Aposta ignorada: documento Bet sem usuário vinculado (ID: ${bet._id})`);
-                return;
-            }
+            if (!bet.user) return; // Ignora se não houver usuário vinculado
 
             let row = `${bet.user.name};${bet.user.email};`;
-            const palpites = matches.map(m => {
-                // Compara matchId garantindo que ambos sejam String para não falhar
+            
+            const linhaPalpites = matches.map(m => {
+                // Localiza o palpite do usuário para esta partida específica
                 const p = (bet.groupMatches || []).find(gm => String(gm.matchId) === String(m.matchId));
                 
                 if (!p) return "---";
-                if (p.winner === 'A') return m.teamA;
-                if (p.winner === 'B') return m.teamB;
-                if (p.winner === 'Empate' || p.winner === 'draw') return "Empate";
-                
-                // Se for pontos corridos com placar
-                if (p.scoreA !== undefined && p.scoreB !== undefined) return `${p.scoreA}x${p.scoreB}`;
-                
-                return "---";
+
+                let infoResultado = "";
+
+                // Converte 'A', 'B' ou 'draw' para o nome real do time ou "Empate"
+                if (p.winner === 'A') {
+                    infoResultado = m.teamA;
+                } else if (p.winner === 'B') {
+                    infoResultado = m.teamB;
+                } else if (p.winner === 'draw' || p.winner === 'Empate') {
+                    infoResultado = "Empate";
+                }
+
+                // Se houver informação de classificado (Mata-Mata), adicionamos ao texto
+                // Mesmo que o usuário tenha escolhido Time A vencer e Time B passar, o CSV mostrará ambos.
+                if (p.qualifier) {
+                    const nomeClassificado = p.qualifier === 'A' ? m.teamA : m.teamB;
+                    return `${infoResultado} (Passa: ${nomeClassificado})`;
+                }
+
+                return infoResultado || "---";
             });
 
-            csv += row + palpites.join(";") + "\n";
+            csv += row + linhaPalpites.join(";") + "\n";
             usersWithBetsCount++;
         });
 
-        console.log(`[DEBUG AUDITORIA] 📝 CSV processado com ${usersWithBetsCount} linhas de usuários.`);
+        console.log(`[DEBUG AUDITORIA] 📝 CSV processado com ${usersWithBetsCount} participantes.`);
 
-        // 4. Criação do arquivo
+        // 4. Criação do arquivo físico no diretório temporário
         const safeName = groupName.replace(/\s/g, '_').replace(/[^\w]/gi, '');
         const fileName = `Auditoria_${safeName}.csv`;
         const filePath = path.join('/tmp', fileName); 
         
         console.log(`[DEBUG AUDITORIA] 📂 Gravando arquivo em: ${filePath}`);
-        
         fs.writeFileSync(filePath, csv);
 
-        // Verificação final de tamanho
+        // Verificação de integridade
         const stats = fs.statSync(filePath);
-        console.log(`[DEBUG AUDITORIA] 📁 Arquivo criado com sucesso. Tamanho: ${stats.size} bytes.`);
+        console.log(`[DEBUG AUDITORIA] 📁 Arquivo criado. Tamanho: ${stats.size} bytes.`);
 
         return {
             path: filePath,
