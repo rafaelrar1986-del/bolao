@@ -630,32 +630,40 @@ router.get('/matches-for-filter', protect, checkPaid, async (req, res) => {
 });
 /**
  * ⚠️ Admin: Reset (Protegido por leagueId)
+ * Deleta as apostas e remove o vínculo dos usuários com a liga
  */
 router.post('/admin/reset-all', protect, admin, async (req, res) => {
   try {
     const { leagueId } = req.body;
-    if (!leagueId) return res.status(400).json({ success: false, message: 'Informe o leagueId para resetar' });
+    if (!leagueId) {
+      return res.status(400).json({ success: false, message: 'Informe o leagueId para resetar' });
+    }
 
-    // Busca as partidas daquela liga
-    const matches = await Match.find({ leagueId: Number(leagueId) }).select('matchId').lean();
-    const matchIds = matches.map(m => m.matchId);
+    const lidStr = String(leagueId);
+    const lidNum = Number(leagueId);
 
-    // Remove os palpites dessas partidas de todos os usuários
-    await Bet.updateMany(
-      {},
-      { $pull: { groupMatches: { matchId: { $in: matchIds } } } }
+    // 1. Deleta permanentemente os documentos de aposta desta liga
+    // Usamos String porque no schema de Bet o leagueId costuma ser String
+    const deleteResult = await Bet.deleteMany({ leagueId: lidStr });
+
+    // 2. Remove o ID da liga do array 'leagues' de todos os usuários
+    // Isso garante que o site não ache que o usuário ainda participa da liga
+    await User.updateMany(
+      { leagues: lidNum }, 
+      { $pull: { leagues: lidNum } }
     );
 
-    // Opcional: Se quiser apagar o documento inteiro se ele ficar vazio
-    // await Bet.deleteMany({ groupMatches: { $size: 0 } });
+    console.log(`Reset da liga ${leagueId}: ${deleteResult.deletedCount} apostas removidas.`);
 
-    res.json({ success: true, message: `Apostas da liga ${leagueId} resetadas.` });
+    res.json({ 
+      success: true, 
+      message: `Sucesso! ${deleteResult.deletedCount} apostas deletadas e vínculos de usuários removidos.` 
+    });
   } catch (error) {
     console.error('Reset error:', error);
-    res.status(500).json({ success: false });
+    res.status(500).json({ success: false, message: 'Erro interno ao resetar liga' });
   }
 });
-
 /**
  * 👥 Usuários para filtro (Filtrado por LeagueId)
  */
