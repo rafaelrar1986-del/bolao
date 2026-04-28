@@ -153,43 +153,79 @@ mongoose
       console.log('🧹 Limpeza de índices antigos executada.');
     } catch (e) {}
 
-    // [REAL-TIME] ChangeStream - MONITORAMENTO ATUALIZADO
+   // [REAL-TIME] ChangeStream - MONITORAMENTO COMPLETO E ATUALIZADO
+try {
+  const matchCollection = mongoose.connection.collection('matches');
+  
+  // fullDocument: 'updateLookup' garante que tenhamos o documento completo após a mudança
+  const changeStream = matchCollection.watch([], { fullDocument: 'updateLookup' });
+
+  changeStream.on('change', (change) => {
     try {
-      const matchCollection = mongoose.connection.collection('matches');
-      const changeStream = matchCollection.watch([], { fullDocument: 'updateLookup' });
+      if (['update', 'replace', 'insert'].includes(change.operationType)) {
+        const doc = change.fullDocument;
 
-      changeStream.on('change', (change) => {
-        if (['update', 'replace', 'insert'].includes(change.operationType)) {
-          const doc = change.fullDocument;
-          if (doc) {
-            // ENVIANDO PACOTE COMPLETO PARA O FRONT-END
-            broadcastUpdate({ 
-              type: 'MATCH_UPDATE', 
-              matchId: doc.matchId || doc._id,
-              scoreA: doc.scoreA, 
-              scoreB: doc.scoreB,
-              penaltiesA: doc.penaltiesA, 
-              penaltiesB: doc.penaltiesB,
-              goalsDetail: doc.goalsDetail || [], // <--- Gols detalhados para o card
-              status: doc.status, 
-              minute: doc.minute,
-              timestamp: new Date().toISOString()
-            });
-            
-            // LOGS DE MONITORAMENTO EM TEMPO REAL
-            if (doc.status === 'penaltis') {
-              console.log(`📡 SSE (Pênaltis): ${doc.teamA} (${doc.penaltiesA})x(${doc.penaltiesB}) ${doc.teamB}`);
-            }
-          }
+        if (!doc) {
+          console.warn('⚠️ Evento ChangeStream recebido, mas documento não encontrado.');
+          return;
         }
-      });
-      console.log('👀 Monitor de partidas ativo (Real-time pronto)');
-    } catch (streamError) {
-      console.error('⚠️ ChangeStream não suportado no ambiente atual');
-    }
-  })
-  .catch(err => console.error('❌ ERRO MongoDB:', err.message));
 
+        // ENVIANDO PACOTE ENRIQUECIDO PARA O FRONT-END (ABAS 1, 2 e 3)
+        broadcastUpdate({ 
+          type: 'MATCH_UPDATE', 
+          matchId: doc.matchId || doc._id,
+          status: doc.status, 
+          minute: doc.minute,
+          scoreA: doc.scoreA, 
+          scoreB: doc.scoreB,
+          penaltiesA: doc.penaltiesA, 
+          penaltiesB: doc.penaltiesB,
+          
+          // Dados para Aba 1 (Cronologia e Posse)
+          goalsDetail: doc.goalsDetail || [], 
+          possession: doc.possession || { home: 0, away: 0 },
+
+          // Dados para Aba 2 (Estatísticas)
+          statistics: doc.statistics || [],
+
+          // Dados para Aba 3 (Escalações)
+          lineups: doc.lineups || { home: {}, away: {} },
+
+          timestamp: new Date().toISOString()
+        });
+        
+        // --- LOGS DE MONITORAMENTO EM TEMPO REAL ---
+        
+        // Log para Mudança de Placar/Gols
+        if (change.operationType === 'update' && change.updateDescription.updatedFields.scoreA !== undefined || change.updateDescription.updatedFields.scoreB !== undefined) {
+           console.log(`⚽ GOL DETECTADO: ${doc.teamA} ${doc.scoreA}x${doc.scoreB} ${doc.teamB}`);
+        }
+
+        // Log para Pênaltis
+        if (doc.status === 'penaltis') {
+          console.log(`📡 SSE (Pênaltis): ${doc.teamA} (${doc.penaltiesA})x(${doc.penaltiesB}) ${doc.teamB}`);
+        }
+
+        // Log Geral de Atualização (Opcional, para debug pesado)
+        // console.log(`🔄 Update via ChangeStream: Partida ${doc.matchId} - Status: ${doc.status}`);
+
+      }
+    } catch (innerError) {
+      console.error('❌ Erro ao processar evento do ChangeStream:', innerError.message);
+    }
+  });
+
+  // Monitor de erros no próprio Stream
+  changeStream.on('error', (err) => {
+    console.error('❌ Erro crítico no ChangeStream:', err.message);
+  });
+
+  console.log('👀 Monitor de partidas ativo (Real-time pronto para Abas Detalhadas)');
+
+} catch (streamError) {
+  console.error('⚠️ ChangeStream não suportado: Verifique se o MongoDB está em Replica Set.');
+  console.error('Dica: O ChangeStream requer MongoDB Atlas ou Replica Set local configurado.');
+}
 // ======================
 // ROTAS
 // ======================
