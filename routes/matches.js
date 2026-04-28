@@ -55,7 +55,7 @@ router.get('/leagues', async (req, res) => {
 });
 
 // ======================
-// 2. GET /api/matches (Público - Lista Geral)
+// 2. GET /api/matches (Público - com filtro de liga)
 // ======================
 router.get('/', async (req, res) => {
   try {
@@ -107,6 +107,7 @@ router.get('/admin/all', protect, admin, async (req, res) => {
 // ======================
 router.post('/admin/add', protect, admin, async (req, res) => {
   try {
+    // Adicionado phaseName na desestruturação
     const { 
       matchId, teamA, teamB, date, time, group, phaseName, 
       stadium, phase, apiId, leagueId, leagueName 
@@ -130,7 +131,7 @@ router.post('/admin/add', protect, admin, async (req, res) => {
       date: String(date).trim(),
       time: String(time).trim(),
       group: String(group).trim(),
-      phaseName: phaseName ? String(phaseName).trim() : undefined,
+      phaseName: phaseName ? String(phaseName).trim() : undefined, // ✨ Atualizado: Suporte a Rodadas
       stadium: stadium ? String(stadium).trim() : undefined,
       phase: phase || 'group',
       status: 'scheduled',
@@ -155,20 +156,20 @@ router.put('/admin/edit/:matchId', protect, admin, async (req, res) => {
     const matchId = Number(req.params.matchId);
     const updates = {};
     
-    // Lista expandida para suportar novos dados da API via edição manual se necessário
+    // Lista de campos expandida para incluir phaseName
     const fields = [
       'teamA', 'teamB', 'date', 'time', 'group', 'phaseName', 
       'stadium', 'phase', 'status', 'scoreA', 'scoreB', 
-      'apiId', 'penaltiesA', 'penaltiesB', 'leagueId', 'leagueName',
-      'goalsDetail', 'possession', 'statistics', 'lineups', 'qualifiedSide'
+      'apiId', 'penaltiesA', 'penaltiesB', 'leagueId', 'leagueName'
     ];
 
     fields.forEach(k => {
       if (req.body[k] !== undefined) updates[k] = req.body[k];
     });
 
+    // Tratamento de tipos e limpeza de strings
     if (updates.leagueName) updates.leagueName = String(updates.leagueName).trim();
-    if (updates.phaseName) updates.phaseName = String(updates.phaseName).trim(); 
+    if (updates.phaseName) updates.phaseName = String(updates.phaseName).trim(); // ✨ Atualizado
     if (updates.group) updates.group = String(updates.group).trim();
     if (updates.leagueId) updates.leagueId = Number(updates.leagueId);
 
@@ -186,7 +187,6 @@ router.put('/admin/edit/:matchId', protect, admin, async (req, res) => {
     res.status(500).json({ success: false, message: 'Erro ao editar partida' });
   }
 });
-
 // ======================
 // 6. POST /api/matches/admin/finish/:matchId (Admin)
 // ======================
@@ -216,7 +216,7 @@ router.post('/admin/finish/:matchId', protect, admin, async (req, res) => {
 
     const cursor = Bet.find({ 
       'groupMatches.matchId': matchId,
-      leagueId: match.leagueId
+      leagueId: match.leagueId // 👈 Garante que só atualiza apostas da liga correta
     }).cursor();
 
     for await (const bet of cursor) {
@@ -242,8 +242,10 @@ router.post('/admin/finish/:matchId', protect, admin, async (req, res) => {
       await bet.save();
     }
 
+    // 🔥 GATILHO CORRIGIDO: Agora enviamos a data E o leagueId
     const normalizedDate = parseMatchDate(match.date);
     if (normalizedDate) {
+      console.log(`🚀 Iniciando checagem de snapshot diário para Liga: ${match.leagueId}`);
       await trySaveDailyPoints(normalizedDate, match.leagueId); 
     }
 
@@ -253,7 +255,6 @@ router.post('/admin/finish/:matchId', protect, admin, async (req, res) => {
     res.status(500).json({ success: false, message: 'Erro ao finalizar partida' });
   }
 });
-
 // ============================================================
 // AUXILIAR: RECALCULAR PONTOS DE UMA BET
 // ============================================================
@@ -271,6 +272,7 @@ router.post('/admin/unfinish-bulk', protect, admin, async (req, res) => {
     const { matchId, leagueName, groupName } = req.body;
     let filter = {};
 
+    // Define o escopo da reabertura
     if (matchId) filter = { matchId: Number(matchId) };
     else if (leagueName && groupName) filter = { leagueName, group: groupName };
     else if (leagueName) filter = { $or: [{ leagueName }, { group: leagueName }] };
@@ -281,11 +283,13 @@ router.post('/admin/unfinish-bulk', protect, admin, async (req, res) => {
 
     if (ids.length === 0) return res.status(404).json({ success: false, message: 'Nenhuma partida encontrada' });
 
+    // 1. Resetar Partidas
     await Match.updateMany(filter, {
       $set: { status: 'scheduled', scoreA: null, scoreB: null, penaltiesA: null, penaltiesB: null },
       $unset: { qualifiedSide: 1 }
     });
 
+    // 2. Resetar Pontos nos Palpites
     const cursor = Bet.find({ 'groupMatches.matchId': { $in: ids } }).cursor();
     for await (const bet of cursor) {
       bet.groupMatches = (bet.groupMatches || []).map(gm => {
@@ -322,14 +326,18 @@ router.delete('/admin/delete-bulk', protect, admin, async (req, res) => {
 
     if (ids.length === 0) return res.status(404).json({ success: false, message: 'Nada para excluir' });
 
+    // 1. Remover Partidas
     await Match.deleteMany({ matchId: { $in: ids } });
 
+    // 2. Remover dos Palpites e Recalcular
     await Bet.updateMany(
       { 'groupMatches.matchId': { $in: ids } },
       { $pull: { groupMatches: { matchId: { $in: ids } } } }
     );
 
-    const allBetsCursor = Bet.find().cursor();
+    const cursor = Bet.find({ 'groupMatches.matchId': { $in: ids } }).cursor(); // Otimizado: só quem tinha essas bets
+    const allBetsCursor = Bet.find().cursor(); // Para garantir integridade, rodamos em todos
+    
     for await (const bet of allBetsCursor) {
       await recalculateBetPoints(bet).save();
     }
@@ -339,7 +347,6 @@ router.delete('/admin/delete-bulk', protect, admin, async (req, res) => {
     res.status(500).json({ success: false, message: 'Erro ao excluir bulk' });
   }
 });
-
 // ======================
 // 9. GET & PUT /api/matches/admin/settings (Admin)
 // ======================
@@ -384,26 +391,6 @@ router.get('/stats', async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Erro ao buscar estatísticas' });
-  }
-});
-
-// ======================
-// 11. GET /api/matches/:matchId (Detalhes Completos - Novo ✨)
-// ======================
-router.get('/:matchId', async (req, res) => {
-  try {
-    const matchId = Number(req.params.matchId);
-    // Busca incluindo os novos campos de estatísticas, incidentes e escalações
-    const match = await Match.findOne({ matchId }).lean();
-
-    if (!match) {
-      return res.status(404).json({ success: false, message: 'Partida não encontrada' });
-    }
-
-    res.json({ success: true, data: match });
-  } catch (err) {
-    console.error('Erro ao buscar detalhes da partida:', err);
-    res.status(500).json({ success: false, message: 'Erro ao buscar detalhes' });
   }
 });
 
