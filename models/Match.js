@@ -49,20 +49,22 @@ const MatchSchema = new Schema(
     status: {
       type: String,
       enum: [
-        'scheduled', 
-        '1_tempo', 
-        'intervalo', 
-        '2_tempo', 
-        'prorrogacao', 
-        'penaltis', 
-        'finished', 
-        'cancelled', 
-        'postponed'
+        'scheduled',    // Agendado (NS)
+        '1_tempo',      // 1º Tempo (1H)
+        'intervalo',    // Intervalo (HT)
+        '2_tempo',      // 2º Tempo (2H)
+        'prorrogacao',  // Prorrogação Geral (ET)
+        '1_tet',        // 1º Tempo da Prorrogação (ET1)
+        '2_tet',        // 2º Tempo da Prorrogação (ET2)
+        'penaltis',     // Disputa de Pênaltis (P)
+        'finished',     // Finalizado (FT, AET, PEN)
+        'cancelled',    // Cancelado
+        'postponed'     // Adiado
       ],
       default: 'scheduled',
       index: true,
     },
-
+    
     scoreA: { type: Number, default: null, min: 0 },
     scoreB: { type: Number, default: null, min: 0 },
 
