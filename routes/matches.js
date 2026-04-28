@@ -72,7 +72,77 @@ router.get('/', async (req, res) => {
     res.status(500).json({ success: false, message: 'Erro ao listar partidas' });
   }
 });
+// ======================
+// 2.1 GET /api/matches/match-technical/:matchId (Público - Detalhes em Tempo Real)
+// ======================
+router.get('/match-technical/:matchId', async (req, res) => {
+  try {
+    const { matchId } = req.params;
+    const { leagueId } = req.query;
 
+    if (!leagueId) {
+      return res.status(400).json({ success: false, message: 'leagueId é necessário' });
+    }
+
+    // Buscamos a partida. Usamos .lean() para performance e objeto puro
+    const match = await Match.findOne({ 
+      matchId: Number(matchId), 
+      leagueId: Number(leagueId) 
+    }).lean();
+
+    if (!match) {
+      return res.status(404).json({ success: false, message: 'Partida não encontrada' });
+    }
+
+    // 🕒 Unificando a Timeline (Gols + Eventos como cartões e substituições)
+    // Ordenamos pelo minuto para o front-end apenas mapear e exibir
+    const timeline = [
+      ...(match.goalsDetail || []).map(g => ({ ...g, type: 'goal' })),
+      ...(match.statistics?.events || [])
+    ].sort((a, b) => (parseInt(a.minute) || 0) - (parseInt(b.minute) || 0));
+
+    res.json({
+      success: true,
+      data: {
+        matchId: match.matchId,
+        status: match.status,
+        
+        // ⏱️ Info de Cronômetro (Essencial para seu SSE / updateMatchDOM)
+        currentTime: match.currentTime || "0", 
+        runningTime: match.runningTime || "", 
+
+        // 🔢 Placar e Penalidades
+        score: {
+          teamA: match.scoreA || 0,
+          teamB: match.scoreB || 0,
+          penaltiesA: match.penaltiesA ?? null,
+          penaltiesB: match.penaltiesB ?? null
+        },
+
+        // ⏱️ Timeline Pronta
+        timeline, 
+
+        // 📋 Escalações (Titulares e Reservas)
+        lineups: {
+          teamA: match.lineups?.teamA || [],
+          teamB: match.lineups?.teamB || []
+        },
+
+        // 📊 Estatísticas (Posse, Chutes, etc)
+        summary: {
+          possession: match.statistics?.possession || { teamA: "50%", teamB: "50%" },
+          shots: match.statistics?.shots || { teamA: 0, teamB: 0 },
+          corners: match.statistics?.corners || { teamA: 0, teamB: 0 },
+          fouls: match.statistics?.fouls || { teamA: 0, teamB: 0 }
+        }
+      }
+    });
+
+  } catch (e) {
+    console.error('Match Technical Error:', e);
+    res.status(500).json({ success: false, message: 'Erro ao carregar detalhes técnicos' });
+  }
+});
 // ======================
 // 3. GET /api/matches/admin/all (Admin)
 // ======================
