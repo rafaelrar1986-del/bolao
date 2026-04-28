@@ -175,7 +175,7 @@ async function processGameList(games, allowedLeagues, source, robotSettings) {
 
       // --- ATUALIZAÇÃO DE DADOS ---
       const currentIncidents = extractIncidents(game.incidents);
-      const isLive = ['1_tempo', 'intervalo', '2_tempo', 'prorrogacao', 'penaltis'].includes(newStatus);
+      const isLive = ['1_tempo', 'intervalo', '2_tempo', 'prorrogacao', '1_tet', '2_tet', 'penaltis'].includes(newStatus);
       const scoreChanged = match.scoreA !== game.home_score || match.scoreB !== game.away_score;
       const statusChanged = match.status !== newStatus;
       const incidentsChanged = JSON.stringify(match.goalsDetail) !== JSON.stringify(currentIncidents);
