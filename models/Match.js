@@ -108,11 +108,11 @@ const MatchSchema = new Schema(
     processed: { type: Boolean, default: false }, 
 
     betsCount: { type: Number, default: 0 },
-    apiId: {
+   apiId: {
       type: Number,
-      required: false,
-      index: true,
-      sparse: true
+      required: true,  // Agora ele é obrigatório para o robô funcionar bem
+      unique: true,    // Garante que não existam jogos repetidos
+      index: true      // Velocidade máxima na busca do Updater
     },
   },
   { 
