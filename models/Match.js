@@ -24,10 +24,10 @@ const MatchSchema = new Schema(
     leagueName: { type: String, default: '' },
 
     phaseName: { 
-  type: String, 
-  required: false, // Pode ser opcional para não quebrar jogos antigos
-  trim: true       // Remove espaços vazios acidentais ("Rodada 32 " -> "Rodada 32")
-},
+      type: String, 
+      required: false, 
+      trim: true 
+    },
 
     teamA: { type: String, required: true, trim: true },
     teamB: { type: String, required: true, trim: true },
@@ -70,14 +70,35 @@ const MatchSchema = new Schema(
     penaltiesA: { type: Number, default: null },
     penaltiesB: { type: Number, default: null },
 
-    // Detalhes dos Gols (Marcadores e Minutos) - ATUALIZADO
+    // --- ABA 1: EVENTOS COMPLETOS (CRONOLOGIA) ---
+    // Substitui a lógica de apenas gols por todos os incidentes
     goalsDetail: [
       {
-        name: { type: String },
-        min: { type: Number },
-        side: { type: String, enum: ['home', 'away'] }
+        type: { type: String },         // goal, card, substitution, var
+        name: { type: String },         // Nome do jogador
+        min: { type: Number },          // Minuto
+        extra: { type: Number },        // Acréscimo (ex: 45+2)
+        side: { type: String, enum: ['home', 'away'] },
+        description: { type: String },  // Ex: "Yellow Card", "Penalty"
+        playerIn: { type: String },     // Para trocas
+        playerOut: { type: String }     // Para trocas
       }
     ],
+
+    // --- ABA 1: POSSE DE BOLA ---
+    possession: {
+      home: { type: Number, default: 0 },
+      away: { type: Number, default: 0 }
+    },
+
+    // --- ABA 2: ESTATÍSTICAS DETALHADAS ---
+    statistics: { type: Array, default: [] },
+
+    // --- ABA 3: ESCALAÇÕES ---
+    lineups: {
+      home: { type: Object, default: {} },
+      away: { type: Object, default: {} }
+    },
 
     // Dados de tempo real da API
     apiStatus: { type: String, default: 'NS' }, 
@@ -103,25 +124,21 @@ const MatchSchema = new Schema(
 
 // ---------- Middlewares (A Lógica Automática) ----------
 
-/**
- * JUÍZ AUTOMÁTICO e GARANTIA DE PERSISTÊNCIA
- * Define o qualifiedSide e avisa o Mongoose sobre mudanças em arrays
- */
 MatchSchema.pre('save', function (next) {
-  // Garante que o array de gols seja marcado como modificado para salvar no Mongo
-  if (this.isModified('goalsDetail')) {
-    this.markModified('goalsDetail');
-  }
+  // Garante que arrays e objetos complexos sejam marcados como modificados
+  if (this.isModified('goalsDetail')) this.markModified('goalsDetail');
+  if (this.isModified('statistics')) this.markModified('statistics');
+  if (this.isModified('lineups')) this.markModified('lineups');
 
   const isKnockout = this.phase === 'knockout' || this.phase === 'mata-mata';
   
   if (this.status === 'finished' && isKnockout) {
-    // 1. Prioridade: Pênaltis (Se houver empate e penais registrados)
+    // 1. Prioridade: Pênaltis
     if (this.penaltiesA !== null && this.penaltiesB !== null) {
       if (this.penaltiesA > this.penaltiesB) this.qualifiedSide = 'A';
       else if (this.penaltiesB > this.penaltiesA) this.qualifiedSide = 'B';
     } 
-    // 2. Prioridade: Gols (Tempo Normal ou Prorrogação)
+    // 2. Prioridade: Gols
     else if (this.scoreA !== null && this.scoreB !== null) {
       if (this.scoreA > this.scoreB) this.qualifiedSide = 'A';
       else if (this.scoreB > this.scoreA) this.qualifiedSide = 'B';
@@ -132,18 +149,15 @@ MatchSchema.pre('save', function (next) {
 
 // ---------- Virtuals ----------
 
-// Retorna se a partida encerrou
 MatchSchema.virtual('isFinished').get(function () {
   return this.status === 'finished';
 });
 
-// Verifica se o jogo está rolando
 MatchSchema.virtual('isLive').get(function () {
   const liveStatus = ['1_tempo', 'intervalo', '2_tempo', 'prorrogacao', 'penaltis'];
   return liveStatus.includes(this.status);
 });
 
-// Determina o vencedor para o cálculo do ranking e estatísticas
 MatchSchema.virtual('winner').get(function () {
   if (this.status !== 'finished') return null;
   
@@ -152,13 +166,11 @@ MatchSchema.virtual('winner').get(function () {
   
   if (a === null || b === null) return null;
   
-  // 1. Pênaltis definem o vencedor real do evento
   if (this.penaltiesA !== null && this.penaltiesB !== null) {
       if (this.penaltiesA === this.penaltiesB) return 'D';
       return this.penaltiesA > this.penaltiesB ? 'A' : 'B';
   }
 
-  // 2. Resultado do tempo normal/prorrogação
   if (a > b) return 'A';
   if (b > a) return 'B';
   return 'D'; // Empate
@@ -166,16 +178,10 @@ MatchSchema.virtual('winner').get(function () {
 
 // ---------- Métodos Estáticos ----------
 
-/**
- * Busca partidas filtradas por liga
- */
 MatchSchema.statics.getByLeague = function (leagueId) {
   return this.find({ leagueId: Number(leagueId) }).sort({ date: 1, time: 1 });
 };
 
-/**
- * Finaliza a partida e salva os resultados (Aciona o Middleware pre-save)
- */
 MatchSchema.statics.finishMatch = async function (matchId, scoreA, scoreB, penA = null, penB = null) {
   const match = await this.findOne({ matchId: Number(matchId) });
   if (!match) throw new Error(`Partida ${matchId} não encontrada`);
@@ -187,14 +193,10 @@ MatchSchema.statics.finishMatch = async function (matchId, scoreA, scoreB, penA 
   match.status = 'finished';
   match.minute = "Fim";
 
-  // O middleware pre('save') preencherá o qualifiedSide aqui
   await match.save();
   return match;
 };
 
-/**
- * Reverte uma partida para o estado agendado
- */
 MatchSchema.statics.unfinishMatch = async function (matchId, statusBack = 'scheduled') {
   const match = await this.findOne({ matchId: Number(matchId) });
   if (!match) throw new Error(`Partida ${matchId} não encontrada`);
@@ -207,13 +209,14 @@ MatchSchema.statics.unfinishMatch = async function (matchId, statusBack = 'sched
   match.qualifiedSide = null;
   match.minute = "";
   match.processed = false;
-  match.goalsDetail = []; // Limpa os gols ao desfazer finalização
+  match.goalsDetail = [];
+  match.statistics = [];
+  match.lineups = { home: {}, away: {} };
 
   await match.save();
   return match;
 };
 
-// Índices para performance
 MatchSchema.index({ leagueId: 1, group: 1, matchId: 1 });
 
 module.exports = mongoose.models.Match || mongoose.model('Match', MatchSchema);
