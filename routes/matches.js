@@ -73,33 +73,23 @@ router.get('/', async (req, res) => {
   }
 });
 // ======================
-// 2.1 GET /api/matches/match-technical/:matchId (Público - Detalhes em Tempo Real)
+// 2.1 GET /api/matches/match-technical/:matchId (Alinhado com o Schema Real)
 // ======================
 router.get('/match-technical/:matchId', async (req, res) => {
   try {
     const { matchId } = req.params;
     const { leagueId } = req.query;
 
-    if (!leagueId) {
-      return res.status(400).json({ success: false, message: 'leagueId é necessário' });
-    }
-
-    // Buscamos a partida. Usamos .lean() para performance e objeto puro
     const match = await Match.findOne({ 
       matchId: Number(matchId), 
       leagueId: Number(leagueId) 
     }).lean();
 
-    if (!match) {
-      return res.status(404).json({ success: false, message: 'Partida não encontrada' });
-    }
+    if (!match) return res.status(404).json({ success: false, message: 'Partida não encontrada' });
 
-    // 🕒 Unificando a Timeline (Gols + Eventos como cartões e substituições)
-    // Ordenamos pelo minuto para o front-end apenas mapear e exibir
-    const timeline = [
-      ...(match.goalsDetail || []).map(g => ({ ...g, type: 'goal' })),
-      ...(match.statistics?.events || [])
-    ].sort((a, b) => (parseInt(a.minute) || 0) - (parseInt(b.minute) || 0));
+    // 🕒 Timeline: Note que no seu Schema o campo é 'min' e não 'minute'
+    // E no seu Schema, o goalsDetail já parece conter cartões e substituições (pelo comentário)
+    const timeline = (match.goalsDetail || []).sort((a, b) => (Number(a.min) || 0) - (Number(b.min) || 0));
 
     res.json({
       success: true,
@@ -107,33 +97,35 @@ router.get('/match-technical/:matchId', async (req, res) => {
         matchId: match.matchId,
         status: match.status,
         
-        // ⏱️ Info de Cronômetro (Essencial para seu SSE / updateMatchDOM)
-        currentTime: match.currentTime || "0", 
-        runningTime: match.runningTime || "", 
+        // ⏱️ Tempo Real (Usando seus campos apiStatus e minute)
+        currentTime: match.minute || "0", 
+        apiStatus: match.apiStatus, 
 
         // 🔢 Placar e Penalidades
         score: {
-          teamA: match.scoreA || 0,
-          teamB: match.scoreB || 0,
-          penaltiesA: match.penaltiesA ?? null,
-          penaltiesB: match.penaltiesB ?? null
+          teamA: match.scoreA ?? 0,
+          teamB: match.scoreB ?? 0,
+          penaltiesA: match.penaltiesA,
+          penaltiesB: match.penaltiesB
         },
 
-        // ⏱️ Timeline Pronta
+        // ⏱️ Cronologia (Gols, Cartões, Subs)
         timeline, 
 
-        // 📋 Escalações (Titulares e Reservas)
+        // 📋 Escalações (Usando home/away como está no seu Schema)
         lineups: {
-          teamA: match.lineups?.teamA || [],
-          teamB: match.lineups?.teamB || []
+          teamA: match.lineups?.home || {},
+          teamB: match.lineups?.away || {}
         },
 
-        // 📊 Estatísticas (Posse, Chutes, etc)
+        // 📊 Estatísticas e Posse
         summary: {
-          possession: match.statistics?.possession || { teamA: "50%", teamB: "50%" },
-          shots: match.statistics?.shots || { teamA: 0, teamB: 0 },
-          corners: match.statistics?.corners || { teamA: 0, teamB: 0 },
-          fouls: match.statistics?.fouls || { teamA: 0, teamB: 0 }
+          possession: {
+            teamA: `${match.possession?.home || 50}%`,
+            teamB: `${match.possession?.away || 50}%`
+          },
+          // No seu Schema, statistics é um Array bruto da API
+          rawStatistics: match.statistics || []
         }
       }
     });
