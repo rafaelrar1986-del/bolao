@@ -29,13 +29,12 @@ const app = express();
 // ======================
 const REQUIRED_ENV_VARS = ['MONGODB_URI'];
 const missingVars = REQUIRED_ENV_VARS.filter(varName => !process.env[varName]);
-
 if (missingVars.length > 0) {
   console.error('❌ Variáveis de ambiente faltando:', missingVars);
 }
 
 // ======================
-// CONFIGURAÇÃO CORS CORRIGIDA
+// CONFIGURAÇÃO CORS
 // ======================
 const allowedOrigins = [
   'https://bolao-d2zh.vercel.app',
@@ -115,62 +114,40 @@ const broadcastUpdate = (data) => {
 };
 
 // ======================
-// MIDDLEWARE DE DEBUG
-// ======================
-app.use((req, res, next) => {
-  if (req.path === '/api/events') return next();
-  console.log('='.repeat(50));
-  console.log(`📨 ${req.method} ${req.url}`);
-  console.log('📋 Origin:', req.headers.origin);
-  console.log('📦 Body KEYS:', Object.keys(req.body || {}));
-  console.log('='.repeat(50));
-  next();
-});
-
-// ======================
-// BANCO DE DADOS - CONEXÃO COM FIX DE ÍNDICES
+// BANCO DE DADOS E MONITORAMENTO (CHANGESTREAM)
 // ======================
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/bolao-copa-2026';
 
-mongoose
-  .connect(MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    autoIndex: false, 
-    serverSelectionTimeoutMS: 30000, 
-    socketTimeoutMS: 45000, 
-    retryWrites: true,
-    w: 'majority'
-  })
-  .then(async () => {
-    console.log('✅ MongoDB conectado com sucesso!');
+mongoose.connect(MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+  autoIndex: false, 
+  serverSelectionTimeoutMS: 30000, 
+  socketTimeoutMS: 45000, 
+  retryWrites: true,
+  w: 'majority'
+})
+.then(async () => {
+  console.log('✅ MongoDB conectado com sucesso!');
 
-    // 🧹 LIMPEZA MANUAL DE ÍNDICES FANTASMAS
-    try {
-      const settingsColl = mongoose.connection.collection('settings');
-      await settingsColl.dropIndex('key_1').catch(() => {});
-      await settingsColl.dropIndex('key_1_leagueId_1').catch(() => {});
-      console.log('🧹 Limpeza de índices antigos executada.');
-    } catch (e) {}
+  // Limpeza de índices
+  try {
+    const settingsColl = mongoose.connection.collection('settings');
+    await settingsColl.dropIndex('key_1').catch(() => {});
+    await settingsColl.dropIndex('key_1_leagueId_1').catch(() => {});
+    console.log('🧹 Limpeza de índices antigos executada.');
+  } catch (e) {}
 
-   // [REAL-TIME] ChangeStream - MONITORAMENTO COMPLETO E ATUALIZADO
-try {
-  const matchCollection = mongoose.connection.collection('matches');
-  
-  // fullDocument: 'updateLookup' garante que tenhamos o documento completo após a mudança
-  const changeStream = matchCollection.watch([], { fullDocument: 'updateLookup' });
+  // ChangeStream
+  try {
+    const matchCollection = mongoose.connection.collection('matches');
+    const changeStream = matchCollection.watch([], { fullDocument: 'updateLookup' });
 
-  changeStream.on('change', (change) => {
-    try {
+    changeStream.on('change', (change) => {
       if (['update', 'replace', 'insert'].includes(change.operationType)) {
         const doc = change.fullDocument;
+        if (!doc) return;
 
-        if (!doc) {
-          console.warn('⚠️ Evento ChangeStream recebido, mas documento não encontrado.');
-          return;
-        }
-
-        // ENVIANDO PACOTE ENRIQUECIDO PARA O FRONT-END (ABAS 1, 2 e 3)
         broadcastUpdate({ 
           type: 'MATCH_UPDATE', 
           matchId: doc.matchId || doc._id,
@@ -180,52 +157,28 @@ try {
           scoreB: doc.scoreB,
           penaltiesA: doc.penaltiesA, 
           penaltiesB: doc.penaltiesB,
-          
-          // Dados para Aba 1 (Cronologia e Posse)
           goalsDetail: doc.goalsDetail || [], 
           possession: doc.possession || { home: 0, away: 0 },
-
-          // Dados para Aba 2 (Estatísticas)
           statistics: doc.statistics || [],
-
-          // Dados para Aba 3 (Escalações)
           lineups: doc.lineups || { home: {}, away: {} },
-
           timestamp: new Date().toISOString()
         });
-        
-        // --- LOGS DE MONITORAMENTO EM TEMPO REAL ---
-        
-        // Log para Mudança de Placar/Gols
-        if (change.operationType === 'update' && change.updateDescription.updatedFields.scoreA !== undefined || change.updateDescription.updatedFields.scoreB !== undefined) {
-           console.log(`⚽ GOL DETECTADO: ${doc.teamA} ${doc.scoreA}x${doc.scoreB} ${doc.teamB}`);
+
+        if (change.operationType === 'update' && (change.updateDescription.updatedFields.scoreA !== undefined || change.updateDescription.updatedFields.scoreB !== undefined)) {
+          console.log(`⚽ GOL DETECTADO: ${doc.teamA} ${doc.scoreA}x${doc.scoreB} ${doc.teamB}`);
         }
-
-        // Log para Pênaltis
-        if (doc.status === 'penaltis') {
-          console.log(`📡 SSE (Pênaltis): ${doc.teamA} (${doc.penaltiesA})x(${doc.penaltiesB}) ${doc.teamB}`);
-        }
-
-        // Log Geral de Atualização (Opcional, para debug pesado)
-        // console.log(`🔄 Update via ChangeStream: Partida ${doc.matchId} - Status: ${doc.status}`);
-
       }
-    } catch (innerError) {
-      console.error('❌ Erro ao processar evento do ChangeStream:', innerError.message);
-    }
-  });
+    });
 
-  // Monitor de erros no próprio Stream
-  changeStream.on('error', (err) => {
-    console.error('❌ Erro crítico no ChangeStream:', err.message);
-  });
+    changeStream.on('error', (err) => console.error('❌ Erro no ChangeStream:', err.message));
+    console.log('👀 Monitor de partidas ativo (Real-time pronto)');
 
-  console.log('👀 Monitor de partidas ativo (Real-time pronto para Abas Detalhadas)');
+  } catch (streamError) {
+    console.error('⚠️ ChangeStream não suportado (Requer Replica Set).');
+  }
+})
+.catch(err => console.error('❌ Erro ao conectar ao MongoDB:', err));
 
-} catch (streamError) {
-  console.error('⚠️ ChangeStream não suportado: Verifique se o MongoDB está em Replica Set.');
-  console.error('Dica: O ChangeStream requer MongoDB Atlas ou Replica Set local configurado.');
-}
 // ======================
 // ROTAS
 // ======================
@@ -234,7 +187,7 @@ app.get('/', (req, res) => {
 });
 
 app.use('/api/groups', groupRoutes); 
-app.use('/api/bets', rankingRoutes); // Nota: rankings e bets usam rotas similares, verifique redundância se necessário
+app.use('/api/rankings', rankingRoutes); 
 app.use('/api/news', newsRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
@@ -253,14 +206,9 @@ app.use('/api/round-history', roundHistoryRoutes);
 app.use((error, req, res, next) => {
   if (res.headersSent) return next(error);
   console.error('💥 Erro:', error.message);
-
-  if (error.code === 11000) {
-    return res.status(400).json({ success: false, message: 'Dados duplicados detectados no banco.' });
-  }
-
   res.status(error.status || 500).json({
     success: false,
-    message: 'Erro interno do servidor',
+    message: error.code === 11000 ? 'Dados duplicados detectados.' : 'Erro interno do servidor',
     error: process.env.NODE_ENV === 'production' ? {} : error.message
   });
 });
@@ -268,7 +216,6 @@ app.use((error, req, res, next) => {
 // ======================
 // CRON E SERVIDOR
 // ======================
-// Atualização a cada minuto
 cron.schedule('*/1 * * * *', async () => {
   console.log('🔄 Sincronizando dados com API...');
   try { 
