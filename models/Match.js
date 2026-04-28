@@ -8,6 +8,8 @@ const { Schema } = mongoose;
  * - 'intervalo'    (Pausa - HT)
  * - '2_tempo'      (Em andamento - 2H)
  * - 'prorrogacao'  (Tempo Extra - ET)
+ * - '1_tet'        (1º Tempo da Prorrogação - ET1)
+ * - '2_tet'        (2º Tempo da Prorrogação - ET2)
  * - 'penaltis'     (Disputa de Penais - P)
  * - 'finished'     (Finalizado - FT, AET, PEN)
  * - 'cancelled'    (Cancelado)
@@ -73,7 +75,6 @@ const MatchSchema = new Schema(
     penaltiesB: { type: Number, default: null },
 
     // --- ABA 1: EVENTOS COMPLETOS (CRONOLOGIA) ---
-    // Substitui a lógica de apenas gols por todos os incidentes
     goalsDetail: [
       {
         type: { type: String },         // goal, card, substitution, var
@@ -110,7 +111,7 @@ const MatchSchema = new Schema(
     processed: { type: Boolean, default: false }, 
 
     betsCount: { type: Number, default: 0 },
-   apiId: {
+    apiId: {
       type: Number,
       required: true,  // Agora ele é obrigatório para o robô funcionar bem
       unique: true,    // Garante que não existam jogos repetidos
@@ -127,10 +128,11 @@ const MatchSchema = new Schema(
 // ---------- Middlewares (A Lógica Automática) ----------
 
 MatchSchema.pre('save', function (next) {
-  // Garante que arrays e objetos complexos sejam marcados como modificados
+  // Garante que arrays e objetos complexos sejam marcados como modificados para o ChangeStream
   if (this.isModified('goalsDetail')) this.markModified('goalsDetail');
   if (this.isModified('statistics')) this.markModified('statistics');
   if (this.isModified('lineups')) this.markModified('lineups');
+  if (this.isModified('possession')) this.markModified('possession');
 
   const isKnockout = this.phase === 'knockout' || this.phase === 'mata-mata';
   
@@ -156,7 +158,7 @@ MatchSchema.virtual('isFinished').get(function () {
 });
 
 MatchSchema.virtual('isLive').get(function () {
-  const liveStatus = ['1_tempo', 'intervalo', '2_tempo', 'prorrogacao', 'penaltis'];
+  const liveStatus = ['1_tempo', 'intervalo', '2_tempo', 'prorrogacao', '1_tet', '2_tet', 'penaltis'];
   return liveStatus.includes(this.status);
 });
 
