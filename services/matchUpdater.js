@@ -120,19 +120,70 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
 
       const newStatus = statusMap[gameDetail.status] || 'scheduled';
       const statusChanged = match.status !== newStatus;
+      
 
-      // Lógica de Auditoria e Travamento de Rodada
-      if (match.status === 'scheduled' && !['scheduled', 'cancelled', 'postponed'].includes(newStatus)) {
-        const lockIdentifier = match.phaseName || match.group;
-        if (!robotSettings.lockedPhases?.includes(lockIdentifier)) {
-          await Settings.findByIdAndUpdate(`league_1`, {
-            $addToSet: { lockedPhases: lockIdentifier, unlockedPhases: { $each: [lockIdentifier, 'podium'] } },
-            $set: { statsLocked: false, blockSaveBets: true, blockSaveKnockout: true }
-          });
-          robotSettings.lockedPhases = robotSettings.lockedPhases || [];
-          robotSettings.lockedPhases.push(lockIdentifier);
+     // ============================================================
+    // 🛡️ DETECÇÃO DE INÍCIO DE JOGO (TRAVA, VISIBILIDADE E AUDITORIA)
+    // ============================================================
+    if (match.status === 'scheduled' && (newStatus !== 'scheduled' && newStatus !== 'cancelled')) {
+      
+      const configId = `league_${match.leagueId || 1}`;
+      
+      // ✨ LÓGICA DE IDENTIFICAÇÃO PARA PONTOS CORRIDOS VS COPA
+      const lockIdentifier = match.phaseName || match.group;
+
+      console.log(`[SISTEMA] 🔒 Início detectado: ${match.teamA} x ${match.teamB}`);
+
+      // 🔍 VERIFICAÇÃO DE DUPLICIDADE: Só entra se a fase ainda não estiver nos lockedPhases
+      // Usamos as configurações carregadas no início da função (robotSettings)
+      const isAlreadyLocked = robotSettings.lockedPhases && robotSettings.lockedPhases.includes(lockIdentifier);
+
+      if (!isAlreadyLocked) {
+        console.log(`[SISTEMA] 🛡️ Bloqueando Salvamento e Liberando Visibilidade para: ${lockIdentifier}`);
+
+        // 1. Atualiza configurações de segurança e visibilidade no Banco
+        // O $addToSet evita duplicatas no array, mas o IF acima evita o re-envio do e-mail
+        await Settings.findByIdAndUpdate(configId, {
+          $addToSet: { 
+            lockedPhases: lockIdentifier,
+            unlockedPhases: { $each: [lockIdentifier, 'podium'] } 
+          },
+          $set: { 
+            statsLocked: false,          // Abre visualização geral
+            blockSaveBets: true,         // Bloqueia salvamento pontos corridos
+            blockSaveKnockout: true      // Bloqueia salvamento mata-mata
+          } 
+        });
+
+        // 2. Processo de Auditoria (CSV + E-mail Broadcast)
+        try {
+          console.log(`[SISTEMA] 📑 Gerando auditoria oficial para ${lockIdentifier}...`);
+          const csvFile = await auditService.generateAuditCSV(match.leagueId || 1, lockIdentifier);
+          
+          if (csvFile) {
+            const users = await User.find({ leagues: Number(match.leagueId || 1) }, 'email');
+            const emails = users.map(u => u.email).filter(e => !!e);
+
+            if (emails.length > 0) {
+              const subject = `🔒 Auditoria Oficial: Grade ${lockIdentifier} Trancada`;
+              const message = `A bola rolou para a fase: ${lockIdentifier}!\n\nConforme as regras, os palpites para esta grade e as escolhas do Pódio foram trancados. A visualização de todos os palpites já está liberada no site.\n\nSegue em anexo o arquivo de auditoria com a cópia de segurança dos dados de todos os participantes.`;
+
+              await emailService.sendBroadcastEmail(emails, subject, message, csvFile);
+              console.log(`[SISTEMA] 📧 Auditoria enviada com sucesso para ${emails.length} participantes.`);
+            }
+          }
+        } catch (auditErr) {
+          console.error("❌ Erro no processo de auditoria:", auditErr.message);
         }
+
+        // Atualiza a variável local para evitar que outros jogos no mesmo loop disparem o e-mail
+        robotSettings.lockedPhases.push(lockIdentifier);
+
+      } else {
+        console.log(`[SISTEMA] ℹ️ Grade ${lockIdentifier} já estava trancada. Pulando envio de auditoria.`);
       }
+    }
+
 
       // Verificação de Lineup Local: Se não tem, busca no detalhe
       const currentHasPlayers = match.lineups?.home?.players?.length > 0;
