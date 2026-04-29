@@ -146,10 +146,34 @@ async function processGameList(games, allowedLeagues, robotSettings, isFastLive 
         away: game.odds_away || null
       };
 
-      if (game.lineups) { 
-        match.lineups = game.lineups; 
-        match.markModified('lineups'); 
-      }
+      // --- 📋 ATUALIZAÇÃO DE ESCALAÇÕES E FORMAÇÕES ---
+// Verificamos se a API retornou dados de jogadores para evitar sobrescrever com objetos vazios
+if (game.lineups && game.lineups.home && game.lineups.home.players && game.lineups.home.players.length > 0) {
+  
+  match.lineups = {
+    home: {
+      formation: game.lineups.home.formation || "", // Ex: "4-2-3-1"
+      players: game.lineups.home.players || [],     // Titulares
+      substitutes: game.lineups.home.substitutes || [] // Reservas[cite: 1]
+    },
+    away: {
+      formation: game.lineups.away.formation || "", // Ex: "3-4-3"[cite: 1]
+      players: game.lineups.away.players || [],     // Titulares[cite: 1]
+      substitutes: game.lineups.away.substitutes || [] // Reservas[cite: 1]
+    },
+    confirmed: game.lineups.confirmed || false // Status oficial da escalação[cite: 1]
+  };
+
+  // Notifica o Mongoose que o objeto 'lineups' foi alterado para garantir o salvamento no MongoDB
+  match.markModified('lineups');
+  
+  console.log(`✅ [UPDATER] Escalações e reservas atualizadas para o jogo ${game.id}`);
+} else {
+  // Opcional: Log para debug se o jogo estiver em andamento mas sem escalação
+  if (['1_tempo', '2_tempo', 'intervalo'].includes(match.status)) {
+    console.warn(`⚠️ [UPDATER] Jogo ${game.id} em andamento, mas lineups.home.players está vazio.`);
+  }
+}
       
       if (game.unavailable_players) { 
         match.unavailable = game.unavailable_players; 
