@@ -25,7 +25,9 @@ const statusMap = {
   cancelled: 'cancelled'
 };
 
+// ======================
 // 🔥 MAPPER
+// ======================
 function mapPlayer(p) {
   return {
     id: p.player_id || null,
@@ -57,8 +59,13 @@ function mapLineupTeam(team) {
   };
 }
 
+// ======================
+// MAIN
+// ======================
 async function updateMatches() {
   try {
+    console.log('🚀 UPDATER START');
+
     const robotSettings = await Settings.findById('league_1');
     if (!robotSettings) return;
 
@@ -69,30 +76,40 @@ async function updateMatches() {
     const yesterday = new Date(now - 86400000).toISOString().split('T')[0];
     const tomorrow = new Date(now + 86400000).toISOString().split('T')[0];
 
+    // ======================
     // LIVE
+    // ======================
     try {
       const liveRes = await axios.get(
         `https://sports.bzzoiro.com/api/live/?tz=America/Fortaleza&spatial=true`,
         { headers, timeout: 10000 }
       );
 
+      console.log(`📡 LIVE: ${liveRes.data?.results?.length || 0} jogos`);
+
       if (liveRes.data?.results) {
-        await processGameList(liveRes.data.results, allowedLeagues, robotSettings);
+        await processGameList(liveRes.data.results, allowedLeagues, robotSettings, 'LIVE');
       }
     } catch (e) {
       console.error(`❌ [Erro API LIVE]: ${e.message}`);
     }
 
+    // ======================
     // EVENTS
+    // ======================
     const leaguesFilter = allowedLeagues.join(',');
     let nextUrl = `https://sports.bzzoiro.com/api/events/?date_from=${yesterday}&date_to=${tomorrow}&league=${leaguesFilter}&tz=America/Fortaleza&spatial=true`;
 
     while (nextUrl) {
       try {
+        console.log(`📡 EVENTS URL: ${nextUrl}`);
+
         const response = await axios.get(nextUrl, { headers, timeout: 15000 });
 
+        console.log(`📡 EVENTS: ${response.data?.results?.length || 0} jogos`);
+
         if (response.data?.results) {
-          await processGameList(response.data.results, allowedLeagues, robotSettings);
+          await processGameList(response.data.results, allowedLeagues, robotSettings, 'EVENTS');
         }
 
         nextUrl = response.data.next;
@@ -109,20 +126,27 @@ async function updateMatches() {
   }
 }
 
-async function processGameList(games, allowedLeagues, robotSettings) {
+// ======================
+// PROCESS GAMES
+// ======================
+async function processGameList(games, allowedLeagues, robotSettings, source) {
   if (!games || !Array.isArray(games)) return;
 
   for (let game of games) {
     try {
-      if (!allowedLeagues.includes(game.league?.id)) continue;
+      if (!game.league?.id || !allowedLeagues.includes(game.league.id)) continue;
 
       const match = await Match.findOne({ apiId: game.id });
       if (!match) continue;
 
+      console.log(`\n⚽ GAME ${game.id} (${source})`);
+
       const newStatus = statusMap[game.status] || 'scheduled';
       const statusChanged = match.status !== newStatus;
 
-      // 🔒 AUDITORIA
+      // ======================
+      // 🔒 AUDITORIA (INALTERADO)
+      // ======================
       if (match.status === 'scheduled' && !['scheduled', 'cancelled', 'postponed'].includes(newStatus)) {
         const configId = `league_${match.leagueId || 1}`;
         const lockIdentifier = match.phaseName || match.group;
@@ -158,84 +182,85 @@ async function processGameList(games, allowedLeagues, robotSettings) {
         }
       }
 
-      // 🚀 ENRIQUECIMENTO + ANTI-SPAM
-      const needsDetails =
-        !game.live_stats ||
-        !game.lineups?.home?.players?.length ||
-        !game.lineups?.away?.players?.length;
+      // ======================
+      // 🚀 DETAIL (FORÇADO PRA LINEUP)
+      // ======================
+      try {
+        console.log(`🔎 DETAIL ${game.id}`);
 
-      const recentlyFetched =
-        match.lastDetailFetch &&
-        Date.now() - match.lastDetailFetch < 30000;
+        const detailRes = await axios.get(
+          `https://sports.bzzoiro.com/api/events/${game.id}/?spatial=true`,
+          { headers, timeout: 8000 }
+        );
 
-      if (newStatus !== 'scheduled' && needsDetails && !recentlyFetched) {
-        try {
-          const detailRes = await axios.get(
-            `https://sports.bzzoiro.com/api/events/${game.id}/?spatial=true`,
-            { headers, timeout: 8000 }
-          );
+        if (detailRes.data) {
+          game = detailRes.data;
 
-          if (detailRes.data) {
-            game = detailRes.data;
-            match.lastDetailFetch = Date.now();
-          }
-        } catch {}
+          console.log(`👥 HOME players: ${game.lineups?.home?.players?.length || 0}`);
+          console.log(`👥 AWAY players: ${game.lineups?.away?.players?.length || 0}`);
+        }
+
+      } catch (err) {
+        console.error(`❌ DETAIL ERROR ${game.id}:`, err.message);
       }
 
+      // ======================
       // SCORE
+      // ======================
       match.scoreA = game.home_score;
       match.scoreB = game.away_score;
       match.status = newStatus;
-      match.minute = game.current_minute ? `${game.current_minute}'` : '';
+      match.minute = game.current_minute ? `${game.current_minute}'` : match.minute || '';
       match.penaltiesA = game.penalty_shootout?.home ?? null;
       match.penaltiesB = game.penalty_shootout?.away ?? null;
 
-      // xG
+      // ======================
+      // xG + ODDS (INALTERADO)
+      // ======================
       match.xg = {
         home: parseFloat(game.actual_home_xg || game.home_xg_live || game.live_stats?.home?.expected_goals) || 0,
         away: parseFloat(game.actual_away_xg || game.away_xg_live || game.live_stats?.away?.expected_goals) || 0
       };
 
-      // ODDS
       match.odds = {
         home: game.odds_home || null,
         draw: game.odds_draw || null,
         away: game.odds_away || null
       };
 
-      // 🔥 LINEUPS (COM PROTEÇÃO)
-     const hasLineup =
-  game.lineups?.home?.players?.length > 0 ||
-  game.lineups?.away?.players?.length > 0;
+      // ======================
+      // 🔥 LINEUP FIX REAL
+      // ======================
+      const hasPlayers =
+        game.lineups?.home?.players?.length > 0 ||
+        game.lineups?.away?.players?.length > 0;
 
-const isConfirmed = game.lineups?.confirmed;
+      if (hasPlayers) {
+        console.log(`🔥 SAVING LINEUP ${game.id}`);
 
-// 🔥 NOVO: verifica se já tem jogadores salvos
-const currentHasPlayers =
-  match.lineups?.home?.titulares?.length > 0 ||
-  match.lineups?.away?.titulares?.length > 0;
+        match.lineups = {
+          home: mapLineupTeam(game.lineups.home),
+          away: mapLineupTeam(game.lineups.away),
+          confirmed: game.lineups?.confirmed || false
+        };
+      } else {
+        console.log(`⚠️ SEM PLAYERS ${game.id}`);
+      }
 
-// 🔥 REGRA CORRETA
-if (hasLineup && (!currentHasPlayers || isConfirmed)) {
-  match.lineups = {
-    home: mapLineupTeam(game.lineups?.home),
-    away: mapLineupTeam(game.lineups?.away),
-    confirmed: isConfirmed || false
-  };
-}
-      // STATS
+      // ======================
+      // STATS (INALTERADO)
+      // ======================
       if (game.live_stats) {
         match.statistics = game.live_stats;
         match.possession = {
           home: Number(game.live_stats.home?.ball_possession) || 0,
           away: Number(game.live_stats.away?.ball_possession) || 0
         };
-
-        match.markModified('statistics');
-        match.markModified('possession');
       }
 
-      // INCIDENTES
+      // ======================
+      // INCIDENTES (INALTERADO)
+      // ======================
       if (Array.isArray(game.incidents)) {
         match.goalsDetail = game.incidents.map(i => ({
           type: i.type,
@@ -247,35 +272,36 @@ if (hasLineup && (!currentHasPlayers || isConfirmed)) {
           playerIn: i.player_in_name || null,
           playerOut: i.player_out_name || null
         }));
-
-        match.markModified('goalsDetail');
       }
 
-try {
-  await Match.updateOne(
-    { _id: match._id },
-    {
-      $set: {
-        scoreA: match.scoreA,
-        scoreB: match.scoreB,
-        status: match.status,
-        minute: match.minute,
-        penaltiesA: match.penaltiesA,
-        penaltiesB: match.penaltiesB,
-        xg: match.xg,
-        odds: match.odds,
-        lineups: match.lineups,
-        statistics: match.statistics,
-        possession: match.possession,
-        goalsDetail: match.goalsDetail,
-...(match.lastDetailFetch && { lastDetailFetch: match.lastDetailFetch })
-      }
-    }
-  );
-} catch (err) {
-  console.error(`❌ [Erro updateOne ${game.id}]:`, err.message);
-}
+      // ======================
+      // SAVE
+      // ======================
+      await Match.updateOne(
+        { _id: match._id },
+        {
+          $set: {
+            scoreA: match.scoreA,
+            scoreB: match.scoreB,
+            status: match.status,
+            minute: match.minute,
+            penaltiesA: match.penaltiesA,
+            penaltiesB: match.penaltiesB,
+            xg: match.xg,
+            odds: match.odds,
+            lineups: match.lineups,
+            statistics: match.statistics,
+            possession: match.possession,
+            goalsDetail: match.goalsDetail
+          }
+        }
+      );
+
+      console.log(`💾 SAVED ${game.id}`);
+
+      // ======================
       // FINALIZAÇÃO
+      // ======================
       if (statusChanged && newStatus === 'finished') {
         recalculateAllPoints(match.leagueId || '1')
           .then(() => trySaveDailyPoints(game.event_date))
