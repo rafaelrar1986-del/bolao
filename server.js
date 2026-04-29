@@ -129,37 +129,47 @@ mongoose.connect(process.env.MONGODB_URI)
     const stream = collection.watch([], { fullDocument: 'updateLookup' });
 
     stream.on('change', change => {
-      const doc = change.fullDocument;
-      if (!doc) return;
+  const doc = change.fullDocument;
+  if (!doc) return;
 
-      const payload = {
-        type: 'MATCH_UPDATE',
-        matchId: doc.matchId,
-        apiId: doc.apiId,
-        status: doc.status,
-        minute: doc.minute,
-        scoreA: doc.scoreA,
-        scoreB: doc.scoreB,
-        penaltiesA: doc.penaltiesA,
-        penaltiesB: doc.penaltiesB,
-        timestamp: new Date().toISOString()
-      };
+  // Payload base
+  const payload = {
+    type: 'MATCH_UPDATE',
+    matchId: doc.matchId,
+    apiId: doc.apiId,
+    status: doc.status,
+    minute: doc.minute,
+    scoreA: doc.scoreA,
+    scoreB: doc.scoreB,
+    penaltiesA: doc.penaltiesA,
+    penaltiesB: doc.penaltiesB,
+    timestamp: new Date().toISOString(),
+    goalsDetail: doc.goalsDetail || [],
+    possession: doc.possession || { home: 0, away: 0 },
+    statistics: doc.statistics || {},
+    xg: doc.xg || { home: 0, away: 0 },
+    odds: doc.odds || {},
+    aiAnalysis: doc.ai_analysis || ''
+  };
 
-      // 🔥 ENVIA CAMPOS IMPORTANTES (ALINHADO COM UPDATER)
-      payload.goalsDetail = doc.goalsDetail || [];
-      payload.possession = doc.possession || { home: 0, away: 0 };
-      payload.statistics = doc.statistics || {};
-      payload.lineups = doc.lineups || {
-        home: { formation: "", titulares: [], reservas: [] },
-        away: { formation: "", titulares: [], reservas: [] }
-      };
-      payload.xg = doc.xg || { home: 0, away: 0 };
-      payload.odds = doc.odds || {};
-      payload.aiAnalysis = doc.ai_analysis || '';
+  // 🔥 TRADUÇÃO DAS ESCALAÇÕES PARA O REALTIME
+  // Garante que o Front receba 'titulares' em vez de 'players'
+  payload.lineups = {
+    home: {
+      formation: doc.lineups?.home?.formation || "",
+      titulares: doc.lineups?.home?.players || [],      // Tradução aqui
+      reservas: doc.lineups?.home?.substitutes || []    // Tradução aqui
+    },
+    away: {
+      formation: doc.lineups?.away?.formation || "",
+      titulares: doc.lineups?.away?.players || [],      // Tradução aqui
+      reservas: doc.lineups?.away?.substitutes || []    // Tradução aqui
+    },
+    confirmed: doc.lineups?.confirmed || false
+  };
 
-      broadcastUpdate(payload);
-    });
-
+  broadcastUpdate(payload);
+});
     console.log('👀 ChangeStream ativo');
   })
   .catch(err => console.error('❌ Mongo erro:', err.message));
