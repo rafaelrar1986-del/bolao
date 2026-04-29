@@ -5,7 +5,7 @@ require('dotenv').config();
 const cron = require('node-cron');
 const updateMatches = require('./services/matchUpdater');
 
-// IMPORTAÇÃO DE ROTAS
+// ROTAS
 const groupRoutes = require('./routes/groupRoutes'); 
 const rankingRoutes = require('./routes/rankingRoutes');
 const authRoutes = require('./routes/auth');
@@ -22,21 +22,26 @@ const adminRoutes = require('./routes/admin');
 
 const app = express();
 
-// CONFIGURAÇÃO DE VARIÁVEIS DE AMBIENTE
+// ======================
+// ENV CHECK
+// ======================
 const REQUIRED_ENV_VARS = ['MONGODB_URI'];
-const missingVars = REQUIRED_ENV_VARS.filter(varName => !process.env[varName]);
+const missingVars = REQUIRED_ENV_VARS.filter(v => !process.env[v]);
+
 if (missingVars.length > 0) {
-  console.error('❌ CRÍTICO: Variáveis de ambiente faltando:', missingVars);
+  console.error('❌ Variáveis faltando:', missingVars);
 }
 
-// CONFIGURAÇÃO CORS
+// ======================
+// CORS
+// ======================
 const allowedOrigins = [
   'https://bolao-d2zh.vercel.app',
   'https://bolao-gamma.vercel.app',
   /\.vercel\.app$/,
   /\.netlify\.app$/,
   'https://bolao5.pages.dev',
-  /\.pages\.dev$/,   
+  /\.pages\.dev$/,
   'http://localhost:3000',
   'http://localhost:5173',
   'http://localhost:8000',
@@ -46,161 +51,128 @@ const allowedOrigins = [
 const corsOptions = {
   origin(origin, callback) {
     if (!origin) return callback(null, true);
-    const isAllowed = allowedOrigins.some(allowed =>
-      typeof allowed === 'string' ? origin === allowed : allowed.test(origin)
+
+    const allowed = allowedOrigins.some(o =>
+      typeof o === 'string' ? o === origin : o.test(origin)
     );
-    return isAllowed ? callback(null, true) : callback(new Error('Not allowed by CORS'));
+
+    return allowed ? callback(null, true) : callback(new Error('CORS bloqueado'));
   },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  optionsSuccessStatus: 204,
-  maxAge: 86400 
+  credentials: true
 };
 
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
 app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
 
-// IMPLEMENTAÇÃO SSE (Server-Sent Events)
+// ======================
+// SSE (REALTIME)
+// ======================
 let sseClients = [];
 
 setInterval(() => {
-  if (sseClients.length > 0) {
-    sseClients.forEach(client => {
-      try { client.res.write(': keep-alive\n\n'); } catch (e) {}
-    });
-  }
+  sseClients.forEach(c => {
+    try { c.res.write(': ping\n\n'); } catch {}
+  });
 }, 25000);
 
 app.get('/api/events', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders();
 
-  const clientId = Date.now();
-  const newClient = { id: clientId, res };
-  sseClients.push(newClient);
+  const client = { id: Date.now(), res };
+  sseClients.push(client);
 
-  console.log(`🔌 [SSE] Cliente conectado: ${clientId} | Total: ${sseClients.length}`);
-  res.write(`data: ${JSON.stringify({ type: 'CONNECTED', id: clientId })}\n\n`);
+  res.write(`data: ${JSON.stringify({ type: 'CONNECTED' })}\n\n`);
 
   req.on('close', () => {
-    sseClients = sseClients.filter(c => c.id !== clientId);
-    console.log(`❌ [SSE] Cliente desconectado: ${clientId}`);
+    sseClients = sseClients.filter(c => c !== client);
   });
 });
 
-const broadcastUpdate = (data) => {
-  if (sseClients.length === 0) return;
+function broadcastUpdate(data) {
   const payload = `data: ${JSON.stringify(data)}\n\n`;
-  sseClients.forEach(client => {
-    try { client.res.write(payload); } catch (err) {}
+  sseClients.forEach(c => {
+    try { c.res.write(payload); } catch {}
   });
-};
+}
 
-// MIDDLEWARE DE DEBUG
+// ======================
+// DEBUG
+// ======================
 app.use((req, res, next) => {
   if (req.path === '/api/events') return next();
+
   const start = Date.now();
-  
   res.on('finish', () => {
-    const duration = Date.now() - start;
+    const ms = Date.now() - start;
     if (res.statusCode >= 400) {
-        console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} - ${res.statusCode} (${duration}ms)`);
+      console.log(`${req.method} ${req.url} ${res.statusCode} (${ms}ms)`);
     }
   });
+
   next();
 });
 
-// BANCO DE DADOS E CHANGESTREAM
-const MONGODB_URI = process.env.MONGODB_URI;
+// ======================
+// DATABASE + CHANGE STREAM
+// ======================
+mongoose.connect(process.env.MONGODB_URI)
+  .then(() => {
+    console.log('✅ Mongo conectado');
 
-mongoose.connect(MONGODB_URI)
-  .then(async () => {
-    console.log('✅ [DATABASE] MongoDB conectado com sucesso!');
+    const collection = mongoose.connection.collection('matches');
+    const stream = collection.watch([], { fullDocument: 'updateLookup' });
 
-    // REAL-TIME CHANGESTREAM SINCRONIZADO
-    try {
-      const matchCollection = mongoose.connection.collection('matches');
-      const changeStream = matchCollection.watch([], { fullDocument: 'updateLookup' });
+    stream.on('change', change => {
+      const doc = change.fullDocument;
+      if (!doc) return;
 
-      changeStream.on('change', (change) => {
-        try {
-          const { operationType, updateDescription, fullDocument: doc } = change;
-          if (!['update', 'replace', 'insert'].includes(operationType) || !doc) return;
+      const payload = {
+        type: 'MATCH_UPDATE',
+        matchId: doc.matchId,
+        apiId: doc.apiId,
+        status: doc.status,
+        minute: doc.minute,
+        scoreA: doc.scoreA,
+        scoreB: doc.scoreB,
+        penaltiesA: doc.penaltiesA,
+        penaltiesB: doc.penaltiesB,
+        timestamp: new Date().toISOString()
+      };
 
-          // Payload base alinhado com MatchSchema
-          const payload = {
-            type: 'MATCH_UPDATE',
-            matchId: doc.matchId,
-            apiId: doc.apiId,
-            status: doc.status,
-            minute: doc.minute,
-            scoreA: doc.scoreA,
-            scoreB: doc.scoreB,
-            penaltiesA: doc.penaltiesA,
-            penaltiesB: doc.penaltiesB,
-            timestamp: new Date().toISOString()
-          };
+      // 🔥 ENVIA CAMPOS IMPORTANTES (ALINHADO COM UPDATER)
+      payload.goalsDetail = doc.goalsDetail || [];
+      payload.possession = doc.possession || { home: 0, away: 0 };
+      payload.statistics = doc.statistics || {};
+      payload.lineups = doc.lineups || {
+        home: { formation: "", titulares: [], reservas: [] },
+        away: { formation: "", titulares: [], reservas: [] }
+      };
+      payload.xg = doc.xg || { home: 0, away: 0 };
+      payload.odds = doc.odds || {};
+      payload.aiAnalysis = doc.ai_analysis || '';
 
-          // Se for update, enviamos apenas o que mudou para economizar banda SSE
-          if (operationType === 'update' && updateDescription) {
-            const updatedFields = updateDescription.updatedFields || {};
-            
-            // Repassamos campos técnicos/complexos se eles estiverem na atualização
-            if (updatedFields.goalsDetail) payload.goalsDetail = doc.goalsDetail;
-            if (updatedFields.possession) payload.possession = doc.possession;
-            if (updatedFields.statistics) payload.statistics = doc.statistics;
-            if (updatedFields.lineups) payload.lineups = doc.lineups;
-            
-            // --- ALINHAMENTO COM SPATIAL UPDATER ---
-            if (updatedFields.xg) payload.xg = doc.xg;
-            if (updatedFields.odds) payload.odds = doc.odds;
-            if (updatedFields.ai_analysis) payload.aiAnalysis = doc.ai_analysis;
-            // ---------------------------------------
+      broadcastUpdate(payload);
+    });
 
-            if (updatedFields.scoreA !== undefined || updatedFields.scoreB !== undefined) {
-              console.log(`⚽ [GOL]: ${doc.teamA} ${doc.scoreA}x${doc.scoreB} ${doc.teamB}`);
-            }
-          } else {
-            // Em insert ou replace, enviamos o objeto técnico completo
-            payload.goalsDetail = doc.goalsDetail || [];
-            payload.possession = doc.possession || { home: 0, away: 0 };
-            payload.statistics = doc.statistics || [];
-            payload.lineups = doc.lineups || { home: {}, away: {} };
-            payload.xg = doc.xg || { home: 0, away: 0 };
-          }
-
-          broadcastUpdate(payload);
-        } catch (innerError) {
-          console.error('❌ [STREAM ERROR]:', innerError.message);
-        }
-      });
-
-      changeStream.on('error', (err) => {
-        console.error('❌ [STREAM CRITICAL]:', err.message);
-        // Opcional: Implementar lógica de reconexão aqui se necessário
-      });
-
-      console.log('👀 [STREAM] Monitoramento em tempo real ativo.');
-
-    } catch (streamError) {
-      console.error('⚠️ [STREAM] Falha ao iniciar ChangeStream:', streamError.message);
-    }
+    console.log('👀 ChangeStream ativo');
   })
-  .catch(err => console.error('❌ [DATABASE] Erro fatal:', err.message));
+  .catch(err => console.error('❌ Mongo erro:', err.message));
 
-// ROTAS
+// ======================
+// ROUTES
+// ======================
 app.get('/', (req, res) => {
-  res.json({ status: 'online', version: '1.0.2', timestamp: new Date().toISOString() });
+  res.json({ status: 'ok', time: new Date().toISOString() });
 });
 
-app.use('/api/groups', groupRoutes); 
-app.use('/api/rankings', rankingRoutes); 
+app.use('/api/groups', groupRoutes);
+app.use('/api/rankings', rankingRoutes);
 app.use('/api/news', newsRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
@@ -210,32 +182,36 @@ app.use('/api/bets', betsRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/points', pointsRoutes);
 app.use('/api/points-history', pointsHistoryRoutes);
-app.use('/api/admin', adminRoutes); 
+app.use('/api/admin', adminRoutes);
 app.use('/api/round-history', roundHistoryRoutes);
 
-// MIDDLEWARES DE ERRO
-app.use((error, req, res, next) => {
-  console.error(`💥 [ERRO]: ${error.message}`);
-  const status = error.status || 500;
-  res.status(status).json({
-    success: false,
-    message: error.message || 'Erro interno do servidor'
-  });
+// ======================
+// ERROR
+// ======================
+app.use((err, req, res, next) => {
+  console.error(err.message);
+  res.status(500).json({ success: false, message: err.message });
 });
 
-// CRON E SERVIDOR
+// ======================
+// CRON
+// ======================
 cron.schedule('*/1 * * * *', async () => {
-  try { 
-    await updateMatches(); 
-    console.log('✅ [CRON] Sincronização de partidas executada.');
-  } catch (err) { 
-    console.error('❌ [CRON] Erro:', err.message); 
+  try {
+    await updateMatches();
+    console.log('🔄 updater rodou');
+  } catch (e) {
+    console.error('❌ updater erro:', e.message);
   }
 });
 
+// ======================
+// START
+// ======================
 const PORT = process.env.PORT || 5000;
+
 app.listen(PORT, () => {
-  console.log(`🎯 Servidor rodando na porta ${PORT} - ${new Date().toLocaleString()}`);
+  console.log(`🚀 Server rodando na porta ${PORT}`);
 });
 
 module.exports = app;
