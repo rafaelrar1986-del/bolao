@@ -77,7 +77,7 @@ async function updateMatches() {
       );
 
       if (liveRes.data?.results) {
-        await processGameList(liveRes.data.results, allowedLeagues, robotSettings, true);
+        await processGameList(liveRes.data.results, allowedLeagues, robotSettings);
       }
     } catch (e) {
       console.error(`❌ [Erro API LIVE]: ${e.message}`);
@@ -92,7 +92,7 @@ async function updateMatches() {
         const response = await axios.get(nextUrl, { headers, timeout: 15000 });
 
         if (response.data?.results) {
-          await processGameList(response.data.results, allowedLeagues, robotSettings, false);
+          await processGameList(response.data.results, allowedLeagues, robotSettings);
         }
 
         nextUrl = response.data.next;
@@ -158,7 +158,7 @@ async function processGameList(games, allowedLeagues, robotSettings) {
         }
       }
 
-      // 🚀 ENRIQUECIMENTO INTELIGENTE + ANTI-SPAM
+      // 🚀 ENRIQUECIMENTO + ANTI-SPAM
       const needsDetails =
         !game.live_stats ||
         !game.lineups?.home?.players?.length ||
@@ -203,15 +203,18 @@ async function processGameList(games, allowedLeagues, robotSettings) {
         away: game.odds_away || null
       };
 
-      // 🔥 LINEUPS (AGORA NÃO PERDE PARCIAL)
-      if (
+      // 🔥 LINEUPS (COM PROTEÇÃO)
+      const hasLineup =
         game.lineups?.home?.players?.length > 0 ||
-        game.lineups?.away?.players?.length > 0
-      ) {
+        game.lineups?.away?.players?.length > 0;
+
+      const isConfirmed = game.lineups?.confirmed;
+
+      if (hasLineup && (isConfirmed || !match.lineups?.confirmed)) {
         match.lineups = {
           home: mapLineupTeam(game.lineups?.home),
           away: mapLineupTeam(game.lineups?.away),
-          confirmed: game.lineups?.confirmed || false
+          confirmed: isConfirmed || false
         };
 
         match.markModified('lineups');
@@ -221,8 +224,8 @@ async function processGameList(games, allowedLeagues, robotSettings) {
       if (game.live_stats) {
         match.statistics = game.live_stats;
         match.possession = {
-          home: parseInt(game.live_stats.home?.ball_possession) || 0,
-          away: parseInt(game.live_stats.away?.ball_possession) || 0
+          home: Number(game.live_stats.home?.ball_possession) || 0,
+          away: Number(game.live_stats.away?.ball_possession) || 0
         };
 
         match.markModified('statistics');
