@@ -26,7 +26,7 @@ const statusMap = {
 };
 
 /**
- * CORE DO UPDATER - Exportado corretamente como função única
+ * CORE DO UPDATER - Sincronizado com MatchSchema e Spatial Data
  */
 async function updateMatches() {
   try {
@@ -43,7 +43,7 @@ async function updateMatches() {
     // 1️⃣ BUSCA LIVE (Rápida)
     try {
       const liveRes = await axios.get(`https://sports.bzzoiro.com/api/live/?tz=America/Fortaleza&spatial=true`, { headers, timeout: 10000 });
-      if (liveRes.data && liveRes.data.results) {
+      if (liveRes.data?.results) {
         await processGameList(liveRes.data.results, allowedLeagues, robotSettings, true);
       }
     } catch (e) {
@@ -57,8 +57,8 @@ async function updateMatches() {
     while (nextUrl) {
       try {
         const response = await axios.get(nextUrl, { headers, timeout: 15000 });
-        if (response.data && response.data.results) {
-            await processGameList(response.data.results, allowedLeagues, robotSettings, false);
+        if (response.data?.results) {
+          await processGameList(response.data.results, allowedLeagues, robotSettings, false);
         }
         nextUrl = response.data.next;
       } catch (e) {
@@ -86,20 +86,16 @@ async function processGameList(games, allowedLeagues, robotSettings, isFastLive 
       const newStatus = statusMap[game.status] || 'scheduled';
       const statusChanged = match.status !== newStatus;
 
-      // --- 🛡️ LÓGICA DE AUDITORIA E BLOQUEIO DE GRADE ---
+      // --- 🛡️ AUDITORIA E BLOQUEIO ---
       if (match.status === 'scheduled' && !['scheduled', 'cancelled', 'postponed'].includes(newStatus)) {
         const configId = `league_${match.leagueId || 1}`;
         const lockIdentifier = match.phaseName || match.group;
         const isAlreadyLocked = robotSettings.lockedPhases?.includes(lockIdentifier);
 
         if (!isAlreadyLocked) {
-          console.log(`🛡️ [Audit]: Trancando Grade ${lockIdentifier} e Gerando CSV...`);
           await Settings.findByIdAndUpdate(configId, {
-            $addToSet: { 
-              lockedPhases: lockIdentifier,
-              unlockedPhases: { $each: [lockIdentifier, 'podium'] } 
-            },
-            $set: { statsLocked: false, blockSaveBets: true, blockSaveKnockout: true } 
+            $addToSet: { lockedPhases: lockIdentifier, unlockedPhases: { $each: [lockIdentifier, 'podium'] } },
+            $set: { statsLocked: false, blockSaveBets: true, blockSaveKnockout: true }
           });
 
           auditService.generateAuditCSV(match.leagueId || 1, lockIdentifier).then(async (csvFile) => {
@@ -107,25 +103,22 @@ async function processGameList(games, allowedLeagues, robotSettings, isFastLive 
               const users = await User.find({ leagues: Number(match.leagueId || 1) }, 'email');
               const emails = users.map(u => u.email).filter(e => !!e);
               if (emails.length > 0) {
-                await emailService.sendBroadcastEmail(emails, `🔒 Auditoria: Grade ${lockIdentifier} Trancada`, "Segue em anexo a auditoria dos palpites.", csvFile);
+                await emailService.sendBroadcastEmail(emails, `🔒 Auditoria: ${lockIdentifier}`, "Palpites trancados.", csvFile);
               }
             }
-          }).catch(e => console.error("❌ [Audit CSV Error]:", e.message));
-
-          if (!robotSettings.lockedPhases) robotSettings.lockedPhases = [];
-          robotSettings.lockedPhases.push(lockIdentifier);
+          }).catch(e => console.error("❌ [Audit Error]:", e.message));
         }
       }
 
-      // --- 🚀 ENRIQUECIMENTO DE DADOS (SPATIAL) ---
+      // --- 🚀 ENRIQUECIMENTO (SPATIAL) ---
       if (!isFastLive && newStatus !== 'scheduled' && !game.live_stats) {
         try {
           const detailRes = await axios.get(`https://sports.bzzoiro.com/api/events/${game.id}/?spatial=true`, { headers, timeout: 8000 });
           if (detailRes.data) game = detailRes.data;
-        } catch (err) { console.error(`⚠️ [Detail Error ${game.id}]: ${err.message}`); }
+        } catch (err) {}
       }
 
-      // --- 📝 ATUALIZAÇÃO DOS CAMPOS ---
+      // --- 📝 ATUALIZAÇÃO DO MATCH MODEL ---
       match.scoreA = game.home_score;
       match.scoreB = game.away_score;
       match.status = newStatus;
@@ -133,47 +126,33 @@ async function processGameList(games, allowedLeagues, robotSettings, isFastLive 
       match.penaltiesA = game.penalty_shootout?.home ?? null;
       match.penaltiesB = game.penalty_shootout?.away ?? null;
 
-      // xG Tratado
+      // xG e Odds (Alinhado ao novo Schema)
       match.xg = {
-        home: parseFloat(game.actual_home_xg || game.home_xg_live || game.live_stats?.home?.expected_goals) || 0,
-        away: parseFloat(game.actual_away_xg || game.away_xg_live || game.live_stats?.away?.expected_goals) || 0
+        home: parseFloat(game.actual_home_xg || game.home_xg_live || 0),
+        away: parseFloat(game.actual_away_xg || game.away_xg_live || 0)
       };
-      
-      // Odds
-      match.odds = {
-        home: game.odds_home || null,
-        draw: game.odds_draw || null,
-        away: game.odds_away || null
-      };
+      match.odds = { home: game.odds_home, draw: game.odds_draw, away: game.odds_away };
 
-      if (game.lineups) { 
-        match.lineups = game.lineups; 
-        match.markModified('lineups'); 
-      }
-      
-      if (game.unavailable_players) { 
-        match.unavailable = game.unavailable_players; 
-        match.markModified('unavailable'); 
-      }
+      if (game.lineups) { match.lineups = game.lineups; match.markModified('lineups'); }
+      if (game.unavailable_players) { match.unavailable = game.unavailable_players; match.markModified('unavailable'); }
       
       if (game.live_stats) {
         match.statistics = game.live_stats;
         match.possession = {
-          home: parseInt(game.live_stats.home?.ball_possession || game.live_stats.home?.possession) || 0,
-          away: parseInt(game.live_stats.away?.ball_possession || game.live_stats.away?.possession) || 0
+          home: parseInt(game.live_stats.home?.ball_possession) || 0,
+          away: parseInt(game.live_stats.away?.ball_possession) || 0
         };
         match.markModified('statistics');
         match.markModified('possession');
       }
 
-      // Incidentes
-      if (game.incidents && Array.isArray(game.incidents)) {
+      if (game.incidents) {
         match.goalsDetail = game.incidents.map(i => ({
           type: i.type,
-          name: i.player_name || i.player || 'Jogador',
+          name: i.player_name || 'Jogador',
           min: i.minute,
           side: i.is_home ? 'home' : 'away',
-          description: i.goal_type || i.card_type || i.subtype || ''
+          description: i.goal_type || i.card_type || ''
         }));
         match.markModified('goalsDetail');
       }
@@ -182,23 +161,16 @@ async function processGameList(games, allowedLeagues, robotSettings, isFastLive 
 
       // --- 🏆 FINALIZAÇÃO ---
       if (statusChanged && newStatus === 'finished') {
-        await auditService.createLog(null, 'MATCH_FINISHED', {
-          matchId: match._id,
-          teams: `${match.teamA} x ${match.teamB}`,
-          score: `${match.scoreA}-${match.scoreB}`
-        });
-
-        console.log(`🏁 Finalizado: ${match.teamA} x ${match.teamB}. Calculando...`);
         recalculateAllPoints(match.leagueId || '1')
           .then(() => trySaveDailyPoints(game.event_date))
           .catch(e => console.error("❌ [Erro Pontos]:", e.message));
       }
 
     } catch (gameErr) {
-      console.error(`❌ [Erro Crítico Jogo ${game.id}]:`, gameErr.message);
+      console.error(`❌ [Erro Jogo ${game.id}]:`, gameErr.message);
     }
   }
 }
 
-// 🔑 A CHAVE DA CORREÇÃO: Exportar a função diretamente
+// 🚀 A CORREÇÃO DO ERRO: Exporta a função diretamente
 module.exports = updateMatches;
