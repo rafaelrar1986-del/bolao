@@ -73,13 +73,14 @@ router.get('/', async (req, res) => {
   }
 });
 // ======================
-// 2.1 GET /api/matches/match-technical/:matchId (Alinhado com o Schema Real)
+// 2.1 GET /api/matches/match-technical/:matchId
 // ======================
 router.get('/match-technical/:matchId', async (req, res) => {
   try {
     const { matchId } = req.params;
     const { leagueId } = req.query;
 
+    // Buscamos usando apiId ou matchId conforme seu padrão de index
     const match = await Match.findOne({ 
       matchId: Number(matchId), 
       leagueId: Number(leagueId) 
@@ -87,46 +88,60 @@ router.get('/match-technical/:matchId', async (req, res) => {
 
     if (!match) return res.status(404).json({ success: false, message: 'Partida não encontrada' });
 
-    // 🕒 Timeline: Note que no seu Schema o campo é 'min' e não 'minute'
-    // E no seu Schema, o goalsDetail já parece conter cartões e substituições (pelo comentário)
-    const timeline = (match.goalsDetail || []).sort((a, b) => (Number(a.min) || 0) - (Number(b.min) || 0));
+    // 🕒 Timeline organizada por minuto
+    const timeline = (match.goalsDetail || []).sort((a, b) => {
+      const minA = (a.min || 0) + (a.extra || 0);
+      const minB = (b.min || 0) + (b.extra || 0);
+      return minA - minB;
+    });
 
     res.json({
       success: true,
       data: {
         matchId: match.matchId,
         status: match.status,
-        
-        // ⏱️ Tempo Real (Usando seus campos apiStatus e minute)
-        currentTime: match.minute || "0", 
         apiStatus: match.apiStatus, 
+        currentTime: match.minute || "0", 
 
-        // 🔢 Placar e Penalidades
+        // 🔢 Placar e Decisão
         score: {
           teamA: match.scoreA ?? 0,
           teamB: match.scoreB ?? 0,
           penaltiesA: match.penaltiesA,
-          penaltiesB: match.penaltiesB
+          penaltiesB: match.penaltiesB,
+          qualifiedSide: match.qualifiedSide // Informação crucial para mata-mata
         },
 
-        // ⏱️ Cronologia (Gols, Cartões, Subs)
+        // 📈 Performance Avançada (Novos campos do seu Schema)
+        advanced: {
+          xg: match.xg || { home: 0, away: 0 },
+          odds: match.odds || { home: null, draw: null, away: null },
+          aiAnalysis: match.ai_analysis || '',
+          videoUrl: match.video_url || ''
+        },
+
+        // ⏱️ Cronologia Completa
         timeline, 
 
-        // 📋 Escalações (Usando home/away como está no seu Schema)
+        // 📋 Escalações e Desfalques
         lineups: {
           teamA: match.lineups?.home || {},
-          teamB: match.lineups?.away || {}
+          teamB: match.lineups?.away || {},
+          unavailable: match.unavailable || [] // Jogadores fora da partida
         },
 
-        // 📊 Estatísticas e Posse
+        // 📊 Resumo Estatístico
         summary: {
           possession: {
-            teamA: `${match.possession?.home || 50}%`,
-            teamB: `${match.possession?.away || 50}%`
+            teamA: match.possession?.home ?? 50,
+            teamB: match.possession?.away ?? 50
           },
-          // No seu Schema, statistics é um Array bruto da API
-          rawStatistics: match.statistics || []
-        }
+          // Estatísticas detalhadas (chutes, escanteios, etc)
+          stats: match.statistics || []
+        },
+
+        // Informações de Local
+        venue: match.stadium || 'Não informado'
       }
     });
 
