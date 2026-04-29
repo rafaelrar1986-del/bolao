@@ -73,46 +73,63 @@ router.get('/', async (req, res) => {
   }
 });
 // ======================
-// 2.1 GET /api/matches/match-technical/:matchId
+// GET /api/matches/match-technical/:matchId
 // ======================
 router.get('/match-technical/:matchId', async (req, res) => {
   try {
     const { matchId } = req.params;
     const { leagueId } = req.query;
 
-    // Buscamos usando apiId ou matchId conforme seu padrão de index
-    const match = await Match.findOne({ 
-      matchId: Number(matchId), 
-      leagueId: Number(leagueId) 
+    const match = await Match.findOne({
+      matchId: Number(matchId),
+      leagueId: Number(leagueId)
     }).lean();
 
-    if (!match) return res.status(404).json({ success: false, message: 'Partida não encontrada' });
+    if (!match) {
+      return res.status(404).json({
+        success: false,
+        message: 'Partida não encontrada'
+      });
+    }
 
-    // 🕒 Timeline organizada por minuto
+    // 🕒 Timeline ordenada
     const timeline = (match.goalsDetail || []).sort((a, b) => {
       const minA = (a.min || 0) + (a.extra || 0);
       const minB = (b.min || 0) + (b.extra || 0);
       return minA - minB;
     });
 
+    // 🔥 LINEUPS PADRONIZADO (ALINHADO COM UPDATER)
+    const lineupHome = match.lineups?.home || {
+      formation: "",
+      titulares: [],
+      reservas: []
+    };
+
+    const lineupAway = match.lineups?.away || {
+      formation: "",
+      titulares: [],
+      reservas: []
+    };
+
     res.json({
       success: true,
       data: {
         matchId: match.matchId,
         status: match.status,
-        apiStatus: match.apiStatus, 
-        currentTime: match.minute || "0", 
+        apiStatus: match.apiStatus,
+        currentTime: match.minute || "0",
 
-        // 🔢 Placar e Decisão
+        // 🔢 PLACAR
         score: {
           teamA: match.scoreA ?? 0,
           teamB: match.scoreB ?? 0,
-          penaltiesA: match.penaltiesA,
-          penaltiesB: match.penaltiesB,
-          qualifiedSide: match.qualifiedSide // Informação crucial para mata-mata
+          penaltiesA: match.penaltiesA ?? null,
+          penaltiesB: match.penaltiesB ?? null,
+          qualifiedSide: match.qualifiedSide ?? null
         },
 
-        // 📈 Performance Avançada (Novos campos do seu Schema)
+        // 📈 DADOS AVANÇADOS
         advanced: {
           xg: match.xg || { home: 0, away: 0 },
           odds: match.odds || { home: null, draw: null, away: null },
@@ -120,34 +137,48 @@ router.get('/match-technical/:matchId', async (req, res) => {
           videoUrl: match.video_url || ''
         },
 
-        // ⏱️ Cronologia Completa
-        timeline, 
+        // ⏱️ TIMELINE
+        timeline,
 
-        // 📋 Escalações e Desfalques
+        // 📋 ESCALAÇÕES
         lineups: {
-          teamA: match.lineups?.home || {},
-          teamB: match.lineups?.away || {},
-          unavailable: match.unavailable || [] // Jogadores fora da partida
+          teamA: {
+            formation: lineupHome.formation,
+            titulares: lineupHome.titulares || [],
+            reservas: lineupHome.reservas || []
+          },
+          teamB: {
+            formation: lineupAway.formation,
+            titulares: lineupAway.titulares || [],
+            reservas: lineupAway.reservas || []
+          },
+          confirmed: match.lineups?.confirmed || false,
+          unavailable: match.unavailable || []
         },
 
-        // 📊 Resumo Estatístico
+        // 📊 RESUMO
         summary: {
           possession: {
             teamA: match.possession?.home ?? 50,
             teamB: match.possession?.away ?? 50
           },
-          // Estatísticas detalhadas (chutes, escanteios, etc)
-          stats: match.statistics || []
+
+          // 🔥 AGORA SUPORTA OBJETO (NOVA API)
+          stats: match.statistics || {}
         },
 
-        // Informações de Local
+        // 📍 LOCAL
         venue: match.stadium || 'Não informado'
       }
     });
 
   } catch (e) {
     console.error('Match Technical Error:', e);
-    res.status(500).json({ success: false, message: 'Erro ao carregar detalhes técnicos' });
+
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao carregar detalhes técnicos'
+    });
   }
 });
 // ======================
