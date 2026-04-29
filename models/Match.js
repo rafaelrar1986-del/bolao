@@ -82,11 +82,19 @@ const MatchSchema = new Schema(
 
     statistics: { type: Array, default: [] }, // live_stats
 
-    lineups: {
-      home: { type: Object, default: {} },
-      away: { type: Object, default: {} }
-    },
-
+lineups: {
+  home: {
+    formation: { type: String, default: "" },
+    players: { type: Array, default: [] },
+    substitutes: { type: Array, default: [] }
+  },
+  away: {
+    formation: { type: String, default: "" },
+    players: { type: Array, default: [] },
+    substitutes: { type: Array, default: [] }
+  },
+  confirmed: { type: Boolean, default: false }
+},
     apiStatus: { type: String, default: 'NS' }, 
     minute: { type: String, default: '' },      
     
