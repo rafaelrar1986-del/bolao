@@ -273,41 +273,41 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
           playerOut: i.player_out_name || null
         }));
       }
+// ======================
+// SAVE (PROTEGIDO)
+// ======================
+await Match.updateOne(
+  { _id: match._id },
+  {
+    $set: {
+      scoreA: match.scoreA,
+      scoreB: match.scoreB,
+      status: match.status,
+      minute: match.minute,
+      penaltiesA: match.penaltiesA,
+      penaltiesB: match.penaltiesB,
+      xg: match.xg,
+      odds: match.odds,
+      statistics: match.statistics,
+      possession: match.possession,
+      goalsDetail: match.goalsDetail,
 
-      // ======================
-      // SAVE
-      // ======================
-      await Match.updateOne(
-        { _id: match._id },
-        {
-          $set: {
-            scoreA: match.scoreA,
-            scoreB: match.scoreB,
-            status: match.status,
-            minute: match.minute,
-            penaltiesA: match.penaltiesA,
-            penaltiesB: match.penaltiesB,
-            xg: match.xg,
-            odds: match.odds,
-            lineups: match.lineups,
-            statistics: match.statistics,
-            possession: match.possession,
-            goalsDetail: match.goalsDetail
-          }
-        }
-      );
+      // 🔥 CORREÇÃO DO LINEUP (única mudança)
+      ...(hasPlayers && { lineups: match.lineups })
+    }
+  }
+);
 
-      console.log(`💾 SAVED ${game.id}`);
+console.log(`💾 SAVED ${game.id}`);
 
-      // ======================
-      // FINALIZAÇÃO
-      // ======================
-      if (statusChanged && newStatus === 'finished') {
-        recalculateAllPoints(match.leagueId || '1')
-          .then(() => trySaveDailyPoints(game.event_date))
-          .catch(() => {});
-      }
-
+// ======================
+// FINALIZAÇÃO
+// ======================
+if (statusChanged && newStatus === 'finished') {
+  recalculateAllPoints(match.leagueId || '1')
+    .then(() => trySaveDailyPoints(game.event_date))
+    .catch(() => {});
+}
     } catch (err) {
       console.error(`❌ [Erro jogo ${game.id}]:`, err.message);
     }
