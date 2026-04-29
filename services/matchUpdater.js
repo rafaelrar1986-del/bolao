@@ -25,8 +25,9 @@ const statusMap = {
   cancelled: 'cancelled'
 };
 
-// --- CORE DO UPDATER ---
-
+/**
+ * CORE DO UPDATER - Exportado corretamente como função única
+ */
 async function updateMatches() {
   try {
     const robotSettings = await Settings.findById('league_1');
@@ -42,7 +43,9 @@ async function updateMatches() {
     // 1️⃣ BUSCA LIVE (Rápida)
     try {
       const liveRes = await axios.get(`https://sports.bzzoiro.com/api/live/?tz=America/Fortaleza&spatial=true`, { headers, timeout: 10000 });
-      await processGameList(liveRes.data.results, allowedLeagues, robotSettings, true);
+      if (liveRes.data && liveRes.data.results) {
+        await processGameList(liveRes.data.results, allowedLeagues, robotSettings, true);
+      }
     } catch (e) {
       console.error(`❌ [Erro API LIVE]: ${e.message}`);
     }
@@ -54,7 +57,9 @@ async function updateMatches() {
     while (nextUrl) {
       try {
         const response = await axios.get(nextUrl, { headers, timeout: 15000 });
-        await processGameList(response.data.results, allowedLeagues, robotSettings, false);
+        if (response.data && response.data.results) {
+            await processGameList(response.data.results, allowedLeagues, robotSettings, false);
+        }
         nextUrl = response.data.next;
       } catch (e) {
         console.error(`❌ [Erro API EVENTS]: ${e.message}`);
@@ -80,10 +85,8 @@ async function processGameList(games, allowedLeagues, robotSettings, isFastLive 
 
       const newStatus = statusMap[game.status] || 'scheduled';
       const statusChanged = match.status !== newStatus;
-      const scoreChanged = match.scoreA !== game.home_score || match.scoreB !== game.away_score;
 
       // --- 🛡️ LÓGICA DE AUDITORIA E BLOQUEIO DE GRADE ---
-      // Se o jogo começou (saiu de scheduled), tranca a fase e gera o CSV de auditoria
       if (match.status === 'scheduled' && !['scheduled', 'cancelled', 'postponed'].includes(newStatus)) {
         const configId = `league_${match.leagueId || 1}`;
         const lockIdentifier = match.phaseName || match.group;
@@ -99,23 +102,22 @@ async function processGameList(games, allowedLeagues, robotSettings, isFastLive 
             $set: { statsLocked: false, blockSaveBets: true, blockSaveKnockout: true } 
           });
 
-          // Disparo da Auditoria CSV e Email
           auditService.generateAuditCSV(match.leagueId || 1, lockIdentifier).then(async (csvFile) => {
             if (csvFile) {
               const users = await User.find({ leagues: Number(match.leagueId || 1) }, 'email');
               const emails = users.map(u => u.email).filter(e => !!e);
               if (emails.length > 0) {
-                await emailService.sendBroadcastEmail(emails, `🔒 Auditoria: Grade ${lockIdentifier} Trancada`, "Segue em anexo a auditoria dos palpites antes do início da rodada.", csvFile);
+                await emailService.sendBroadcastEmail(emails, `🔒 Auditoria: Grade ${lockIdentifier} Trancada`, "Segue em anexo a auditoria dos palpites.", csvFile);
               }
             }
           }).catch(e => console.error("❌ [Audit CSV Error]:", e.message));
 
+          if (!robotSettings.lockedPhases) robotSettings.lockedPhases = [];
           robotSettings.lockedPhases.push(lockIdentifier);
         }
       }
 
       // --- 🚀 ENRIQUECIMENTO DE DADOS (SPATIAL) ---
-      // Se não for live rápida e o jogo tiver dados, atualizamos o objeto game
       if (!isFastLive && newStatus !== 'scheduled' && !game.live_stats) {
         try {
           const detailRes = await axios.get(`https://sports.bzzoiro.com/api/events/${game.id}/?spatial=true`, { headers, timeout: 8000 });
@@ -123,7 +125,7 @@ async function processGameList(games, allowedLeagues, robotSettings, isFastLive 
         } catch (err) { console.error(`⚠️ [Detail Error ${game.id}]: ${err.message}`); }
       }
 
-      // --- 📝 ATUALIZAÇÃO DOS CAMPOS DO MODELO ---
+      // --- 📝 ATUALIZAÇÃO DOS CAMPOS ---
       match.scoreA = game.home_score;
       match.scoreB = game.away_score;
       match.status = newStatus;
@@ -131,32 +133,41 @@ async function processGameList(games, allowedLeagues, robotSettings, isFastLive 
       match.penaltiesA = game.penalty_shootout?.home ?? null;
       match.penaltiesB = game.penalty_shootout?.away ?? null;
 
-      // Dados Avançados (xG, Odds, Lineups)
+      // xG Tratado
       match.xg = {
         home: parseFloat(game.actual_home_xg || game.home_xg_live || game.live_stats?.home?.expected_goals) || 0,
         away: parseFloat(game.actual_away_xg || game.away_xg_live || game.live_stats?.away?.expected_goals) || 0
       };
       
+      // Odds
       match.odds = {
         home: game.odds_home || null,
         draw: game.odds_draw || null,
         away: game.odds_away || null
       };
 
-      if (game.lineups) { match.lineups = game.lineups; match.markModified('lineups'); }
-      if (game.unavailable_players) { match.unavailable = game.unavailable_players; match.markModified('unavailable'); }
+      if (game.lineups) { 
+        match.lineups = game.lineups; 
+        match.markModified('lineups'); 
+      }
+      
+      if (game.unavailable_players) { 
+        match.unavailable = game.unavailable_players; 
+        match.markModified('unavailable'); 
+      }
       
       if (game.live_stats) {
         match.statistics = game.live_stats;
         match.possession = {
-          home: parseInt(game.live_stats.home?.ball_possession) || 0,
-          away: parseInt(game.live_stats.away?.ball_possession) || 0
+          home: parseInt(game.live_stats.home?.ball_possession || game.live_stats.home?.possession) || 0,
+          away: parseInt(game.live_stats.away?.ball_possession || game.live_stats.away?.possession) || 0
         };
         match.markModified('statistics');
+        match.markModified('possession');
       }
 
-      // Incidentes (Gols e Cartões)
-      if (game.incidents) {
+      // Incidentes
+      if (game.incidents && Array.isArray(game.incidents)) {
         match.goalsDetail = game.incidents.map(i => ({
           type: i.type,
           name: i.player_name || i.player || 'Jogador',
@@ -169,16 +180,15 @@ async function processGameList(games, allowedLeagues, robotSettings, isFastLive 
 
       await match.save();
 
-      // --- 🏆 FINALIZAÇÃO E PONTOS ---
+      // --- 🏆 FINALIZAÇÃO ---
       if (statusChanged && newStatus === 'finished') {
-        // Log de Auditoria de Finalização no Banco
         await auditService.createLog(null, 'MATCH_FINISHED', {
           matchId: match._id,
           teams: `${match.teamA} x ${match.teamB}`,
           score: `${match.scoreA}-${match.scoreB}`
         });
 
-        console.log(`🏁 Finalizado: ${match.teamA} x ${match.teamB}. Calculando pontos...`);
+        console.log(`🏁 Finalizado: ${match.teamA} x ${match.teamB}. Calculando...`);
         recalculateAllPoints(match.leagueId || '1')
           .then(() => trySaveDailyPoints(game.event_date))
           .catch(e => console.error("❌ [Erro Pontos]:", e.message));
@@ -190,4 +200,5 @@ async function processGameList(games, allowedLeagues, robotSettings, isFastLive 
   }
 }
 
-module.exports = { updateMatches };
+// 🔑 A CHAVE DA CORREÇÃO: Exportar a função diretamente
+module.exports = updateMatches;
