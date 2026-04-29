@@ -2,46 +2,28 @@ const mongoose = require('mongoose');
 const { Schema } = mongoose;
 
 /**
- * Status Detalhados (Baseados na API):
- * - 'scheduled'    (Agendado - NS)
- * - '1_tempo'      (Em andamento - 1H)
- * - 'intervalo'    (Pausa - HT)
- * - '2_tempo'      (Em andamento - 2H)
- * - 'prorrogacao'  (Tempo Extra - ET)
- * - '1_tet'        (1º Tempo da Prorrogação - ET1)
- * - '2_tet'        (2º Tempo da Prorrogação - ET2)
- * - 'penaltis'     (Disputa de Penais - P)
- * - 'finished'     (Finalizado - FT, AET, PEN)
- * - 'cancelled'    (Cancelado)
- * - 'postponed'    (Adiado)
+ * Status Detalhado: Sincronizado com statusMap do Updater
  */
-
 const MatchSchema = new Schema(
   {
-    // ID Único da partida (ID da API para evitar duplicidade)
-    matchId: { type: Number, required: true, unique: false, index: true },
+    // ID Único da partida
+    matchId: { type: Number, required: true, index: true },
 
     // IDENTIFICAÇÃO DA LIGA
     leagueId: { type: Number, required: false, index: true }, 
     leagueName: { type: String, default: '' },
 
-    phaseName: { 
-      type: String, 
-      required: false, 
-      trim: true 
-    },
+    phaseName: { type: String, required: false, trim: true },
 
     teamA: { type: String, required: true, trim: true },
     teamB: { type: String, required: true, trim: true },
 
-    // Logos dos times (URLs da API/CDN)
     logoA: { type: String, default: '' },
     logoB: { type: String, default: '' },
 
-    group: { type: String, required: true, trim: true }, // Ex: "Grupo A" ou "Rodada 1"
+    group: { type: String, required: true, trim: true }, 
     phase: { type: String, enum: ['group', 'knockout', 'mata-mata'], default: 'group', index: true },
 
-    // Definido automaticamente pelo middleware para mata-mata
     qualifiedSide: { type: String, enum: ['A', 'B', null], default: null },
     stadium: { type: String, default: '', trim: true },
 
@@ -51,17 +33,8 @@ const MatchSchema = new Schema(
     status: {
       type: String,
       enum: [
-        'scheduled',    // Agendado (NS)
-        '1_tempo',      // 1º Tempo (1H)
-        'intervalo',    // Intervalo (HT)
-        '2_tempo',      // 2º Tempo (2H)
-        'prorrogacao',  // Prorrogação Geral (ET)
-        '1_tet',        // 1º Tempo da Prorrogação (ET1)
-        '2_tet',        // 2º Tempo da Prorrogação (ET2)
-        'penaltis',     // Disputa de Pênaltis (P)
-        'finished',     // Finalizado (FT, AET, PEN)
-        'cancelled',    // Cancelado
-        'postponed'     // Adiado
+        'scheduled', '1_tempo', 'intervalo', '2_tempo', 'prorrogacao', 
+        '1_tet', '2_tet', 'penaltis', 'finished', 'cancelled', 'postponed'
       ],
       default: 'scheduled',
       index: true,
@@ -70,52 +43,61 @@ const MatchSchema = new Schema(
     scoreA: { type: Number, default: null, min: 0 },
     scoreB: { type: Number, default: null, min: 0 },
 
-    // Placar específico para disputa de pênaltis (Mata-mata)
     penaltiesA: { type: Number, default: null },
     penaltiesB: { type: Number, default: null },
 
-    // --- ABA 1: EVENTOS COMPLETOS (CRONOLOGIA) ---
+    // --- 🚀 NOVOS CAMPOS ALINHADOS AO UPDATER (SPATIAL=TRUE) ---
+    xg: {
+      home: { type: Number, default: 0 },
+      away: { type: Number, default: 0 }
+    },
+    odds: {
+      home: { type: Number, default: null },
+      draw: { type: Number, default: null },
+      away: { type: Number, default: null }
+    },
+    unavailable: { type: Array, default: [] }, // Desfalques
+    ai_analysis: { type: String, default: '' }, // Preview de IA
+    video_url: { type: String, default: '' },   // Highlights
+    // -----------------------------------------------------------
+
+    // EVENTOS COMPLETOS (Gols, VAR, Substituições)
     goalsDetail: [
       {
-        type: { type: String },         // goal, card, substitution, var
-        name: { type: String },         // Nome do jogador
-        min: { type: Number },          // Minuto
-        extra: { type: Number },        // Acréscimo (ex: 45+2)
+        type: { type: String },         
+        name: { type: String },         
+        min: { type: Number },          
+        extra: { type: Number },        
         side: { type: String, enum: ['home', 'away'] },
-        description: { type: String },  // Ex: "Yellow Card", "Penalty"
-        playerIn: { type: String },     // Para trocas
-        playerOut: { type: String }     // Para trocas
+        description: { type: String },  
+        playerIn: { type: String },     
+        playerOut: { type: String }     
       }
     ],
 
-    // --- ABA 1: POSSE DE BOLA ---
     possession: {
       home: { type: Number, default: 0 },
       away: { type: Number, default: 0 }
     },
 
-    // --- ABA 2: ESTATÍSTICAS DETALHADAS ---
-    statistics: { type: Array, default: [] },
+    statistics: { type: Array, default: [] }, // live_stats
 
-    // --- ABA 3: ESCALAÇÕES ---
     lineups: {
       home: { type: Object, default: {} },
       away: { type: Object, default: {} }
     },
 
-    // Dados de tempo real da API
     apiStatus: { type: String, default: 'NS' }, 
     minute: { type: String, default: '' },      
     
-    // Controle para não processar pontos repetidos no bolão
     processed: { type: Boolean, default: false }, 
 
     betsCount: { type: Number, default: 0 },
     apiId: {
       type: Number,
-      required: true,  // Agora ele é obrigatório para o robô funcionar bem
-      unique: true,    // Garante que não existam jogos repetidos
-      index: true      // Velocidade máxima na busca do Updater
+      required: true, 
+      unique: true,   
+      index: true     
     },
   },
   { 
@@ -125,24 +107,22 @@ const MatchSchema = new Schema(
   }
 );
 
-// ---------- Middlewares (A Lógica Automática) ----------
+// ---------- Middlewares ----------
 
 MatchSchema.pre('save', function (next) {
-  // Garante que arrays e objetos complexos sejam marcados como modificados para o ChangeStream
-  if (this.isModified('goalsDetail')) this.markModified('goalsDetail');
-  if (this.isModified('statistics')) this.markModified('statistics');
-  if (this.isModified('lineups')) this.markModified('lineups');
-  if (this.isModified('possession')) this.markModified('possession');
+  // Monitoramento de campos complexos para o ChangeStream
+  const fields = ['goalsDetail', 'statistics', 'lineups', 'possession', 'xg', 'odds', 'unavailable'];
+  fields.forEach(f => {
+    if (this.isModified(f)) this.markModified(f);
+  });
 
   const isKnockout = this.phase === 'knockout' || this.phase === 'mata-mata';
   
   if (this.status === 'finished' && isKnockout) {
-    // 1. Prioridade: Pênaltis
     if (this.penaltiesA !== null && this.penaltiesB !== null) {
       if (this.penaltiesA > this.penaltiesB) this.qualifiedSide = 'A';
       else if (this.penaltiesB > this.penaltiesA) this.qualifiedSide = 'B';
     } 
-    // 2. Prioridade: Gols
     else if (this.scoreA !== null && this.scoreB !== null) {
       if (this.scoreA > this.scoreB) this.qualifiedSide = 'A';
       else if (this.scoreB > this.scoreA) this.qualifiedSide = 'B';
@@ -153,9 +133,7 @@ MatchSchema.pre('save', function (next) {
 
 // ---------- Virtuals ----------
 
-MatchSchema.virtual('isFinished').get(function () {
-  return this.status === 'finished';
-});
+MatchSchema.virtual('isFinished').get(function () { return this.status === 'finished'; });
 
 MatchSchema.virtual('isLive').get(function () {
   const liveStatus = ['1_tempo', 'intervalo', '2_tempo', 'prorrogacao', '1_tet', '2_tet', 'penaltis'];
@@ -164,23 +142,20 @@ MatchSchema.virtual('isLive').get(function () {
 
 MatchSchema.virtual('winner').get(function () {
   if (this.status !== 'finished') return null;
-  
-  const a = typeof this.scoreA === 'number' ? this.scoreA : null;
-  const b = typeof this.scoreB === 'number' ? this.scoreB : null;
-  
+  const a = this.scoreA;
+  const b = this.scoreB;
   if (a === null || b === null) return null;
   
   if (this.penaltiesA !== null && this.penaltiesB !== null) {
       if (this.penaltiesA === this.penaltiesB) return 'D';
       return this.penaltiesA > this.penaltiesB ? 'A' : 'B';
   }
-
   if (a > b) return 'A';
   if (b > a) return 'B';
-  return 'D'; // Empate
+  return 'D'; 
 });
 
-// ---------- Métodos Estáticos ----------
+// ---------- Métodos Estáticos (Originais Mantidos) ----------
 
 MatchSchema.statics.getByLeague = function (leagueId) {
   return this.find({ leagueId: Number(leagueId) }).sort({ date: 1, time: 1 });
@@ -189,14 +164,12 @@ MatchSchema.statics.getByLeague = function (leagueId) {
 MatchSchema.statics.finishMatch = async function (matchId, scoreA, scoreB, penA = null, penB = null) {
   const match = await this.findOne({ matchId: Number(matchId) });
   if (!match) throw new Error(`Partida ${matchId} não encontrada`);
-
   match.scoreA = Number(scoreA);
   match.scoreB = Number(scoreB);
   match.penaltiesA = penA !== null ? Number(penA) : null;
   match.penaltiesB = penB !== null ? Number(penB) : null;
   match.status = 'finished';
   match.minute = "Fim";
-
   await match.save();
   return match;
 };
@@ -204,7 +177,6 @@ MatchSchema.statics.finishMatch = async function (matchId, scoreA, scoreB, penA 
 MatchSchema.statics.unfinishMatch = async function (matchId, statusBack = 'scheduled') {
   const match = await this.findOne({ matchId: Number(matchId) });
   if (!match) throw new Error(`Partida ${matchId} não encontrada`);
-
   match.status = statusBack; 
   match.scoreA = null;
   match.scoreB = null;
@@ -216,7 +188,6 @@ MatchSchema.statics.unfinishMatch = async function (matchId, statusBack = 'sched
   match.goalsDetail = [];
   match.statistics = [];
   match.lineups = { home: {}, away: {} };
-
   await match.save();
   return match;
 };
