@@ -63,7 +63,7 @@ app.options('*', cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// IMPLEMENTAÇÃO SSE
+// IMPLEMENTAÇÃO SSE (Server-Sent Events)
 let sseClients = [];
 
 setInterval(() => {
@@ -109,7 +109,9 @@ app.use((req, res, next) => {
   
   res.on('finish', () => {
     const duration = Date.now() - start;
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} - ${res.statusCode} (${duration}ms)`);
+    if (res.statusCode >= 400) {
+        console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} - ${res.statusCode} (${duration}ms)`);
+    }
   });
   next();
 });
@@ -117,18 +119,11 @@ app.use((req, res, next) => {
 // BANCO DE DADOS E CHANGESTREAM
 const MONGODB_URI = process.env.MONGODB_URI;
 
-mongoose.connect(MONGODB_URI) // Versões modernas do Mongoose não precisam mais das opções depreciadas
+mongoose.connect(MONGODB_URI)
   .then(async () => {
     console.log('✅ [DATABASE] MongoDB conectado com sucesso!');
 
-    try {
-      const settingsColl = mongoose.connection.collection('settings');
-      await settingsColl.dropIndex('key_1').catch(() => {});
-      await settingsColl.dropIndex('key_1_leagueId_1').catch(() => {});
-      console.log('🧹 [DATABASE] Limpeza de índices antigos executada.');
-    } catch (e) {}
-
-    // REAL-TIME CHANGESTREAM
+    // REAL-TIME CHANGESTREAM SINCRONIZADO
     try {
       const matchCollection = mongoose.connection.collection('matches');
       const changeStream = matchCollection.watch([], { fullDocument: 'updateLookup' });
@@ -138,9 +133,10 @@ mongoose.connect(MONGODB_URI) // Versões modernas do Mongoose não precisam mai
           const { operationType, updateDescription, fullDocument: doc } = change;
           if (!['update', 'replace', 'insert'].includes(operationType) || !doc) return;
 
+          // Payload base alinhado com MatchSchema
           const payload = {
             type: 'MATCH_UPDATE',
-            matchId: doc.matchId || doc._id,
+            matchId: doc.matchId,
             apiId: doc.apiId,
             status: doc.status,
             minute: doc.minute,
@@ -151,25 +147,32 @@ mongoose.connect(MONGODB_URI) // Versões modernas do Mongoose não precisam mai
             timestamp: new Date().toISOString()
           };
 
+          // Se for update, enviamos apenas o que mudou para economizar banda SSE
           if (operationType === 'update' && updateDescription) {
             const updatedFields = updateDescription.updatedFields || {};
-            const keys = Object.keys(updatedFields);
-
-            console.log(`🔍 [STREAM] Update: ${doc.teamA} x ${doc.teamB} | Alterações: ${keys.join(', ')}`);
-
-            if (updatedFields.goalsDetail !== undefined) payload.goalsDetail = doc.goalsDetail;
-            if (updatedFields.possession !== undefined) payload.possession = doc.possession;
-            if (updatedFields.statistics !== undefined) payload.statistics = doc.statistics;
-            if (updatedFields.lineups !== undefined) payload.lineups = doc.lineups;
+            
+            // Repassamos campos técnicos/complexos se eles estiverem na atualização
+            if (updatedFields.goalsDetail) payload.goalsDetail = doc.goalsDetail;
+            if (updatedFields.possession) payload.possession = doc.possession;
+            if (updatedFields.statistics) payload.statistics = doc.statistics;
+            if (updatedFields.lineups) payload.lineups = doc.lineups;
+            
+            // --- ALINHAMENTO COM SPATIAL UPDATER ---
+            if (updatedFields.xg) payload.xg = doc.xg;
+            if (updatedFields.odds) payload.odds = doc.odds;
+            if (updatedFields.ai_analysis) payload.aiAnalysis = doc.ai_analysis;
+            // ---------------------------------------
 
             if (updatedFields.scoreA !== undefined || updatedFields.scoreB !== undefined) {
               console.log(`⚽ [GOL]: ${doc.teamA} ${doc.scoreA}x${doc.scoreB} ${doc.teamB}`);
             }
           } else {
+            // Em insert ou replace, enviamos o objeto técnico completo
             payload.goalsDetail = doc.goalsDetail || [];
             payload.possession = doc.possession || { home: 0, away: 0 };
             payload.statistics = doc.statistics || [];
             payload.lineups = doc.lineups || { home: {}, away: {} };
+            payload.xg = doc.xg || { home: 0, away: 0 };
           }
 
           broadcastUpdate(payload);
@@ -178,8 +181,12 @@ mongoose.connect(MONGODB_URI) // Versões modernas do Mongoose não precisam mai
         }
       });
 
-      changeStream.on('error', (err) => console.error('❌ [STREAM CRITICAL]:', err.message));
-      console.log('👀 [STREAM] Monitoramento ativo.');
+      changeStream.on('error', (err) => {
+        console.error('❌ [STREAM CRITICAL]:', err.message);
+        // Opcional: Implementar lógica de reconexão aqui se necessário
+      });
+
+      console.log('👀 [STREAM] Monitoramento em tempo real ativo.');
 
     } catch (streamError) {
       console.error('⚠️ [STREAM] Falha ao iniciar ChangeStream:', streamError.message);
@@ -189,7 +196,7 @@ mongoose.connect(MONGODB_URI) // Versões modernas do Mongoose não precisam mai
 
 // ROTAS
 app.get('/', (req, res) => {
-  res.json({ status: 'online', version: '1.0.1', timestamp: new Date().toISOString() });
+  res.json({ status: 'online', version: '1.0.2', timestamp: new Date().toISOString() });
 });
 
 app.use('/api/groups', groupRoutes); 
@@ -220,7 +227,7 @@ app.use((error, req, res, next) => {
 cron.schedule('*/1 * * * *', async () => {
   try { 
     await updateMatches(); 
-    console.log('✅ [CRON] Sincronização concluída.');
+    console.log('✅ [CRON] Sincronização de partidas executada.');
   } catch (err) { 
     console.error('❌ [CRON] Erro:', err.message); 
   }
@@ -228,7 +235,7 @@ cron.schedule('*/1 * * * *', async () => {
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(`🎯 Servidor na porta ${PORT} - ${new Date().toLocaleString()}`);
+  console.log(`🎯 Servidor rodando na porta ${PORT} - ${new Date().toLocaleString()}`);
 });
 
 module.exports = app;
