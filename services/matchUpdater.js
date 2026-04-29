@@ -57,9 +57,6 @@ function mapLineupTeam(team) {
   };
 }
 
-/**
- * CORE
- */
 async function updateMatches() {
   try {
     const robotSettings = await Settings.findById('league_1');
@@ -74,7 +71,11 @@ async function updateMatches() {
 
     // LIVE
     try {
-      const liveRes = await axios.get(`https://sports.bzzoiro.com/api/live/?tz=America/Fortaleza&spatial=true`, { headers, timeout: 10000 });
+      const liveRes = await axios.get(
+        `https://sports.bzzoiro.com/api/live/?tz=America/Fortaleza&spatial=true`,
+        { headers, timeout: 10000 }
+      );
+
       if (liveRes.data?.results) {
         await processGameList(liveRes.data.results, allowedLeagues, robotSettings, true);
       }
@@ -89,9 +90,11 @@ async function updateMatches() {
     while (nextUrl) {
       try {
         const response = await axios.get(nextUrl, { headers, timeout: 15000 });
+
         if (response.data?.results) {
           await processGameList(response.data.results, allowedLeagues, robotSettings, false);
         }
+
         nextUrl = response.data.next;
       } catch (e) {
         console.error(`❌ [Erro API EVENTS]: ${e.message}`);
@@ -106,7 +109,7 @@ async function updateMatches() {
   }
 }
 
-async function processGameList(games, allowedLeagues, robotSettings, isFastLive = false) {
+async function processGameList(games, allowedLeagues, robotSettings) {
   if (!games || !Array.isArray(games)) return;
 
   for (let game of games) {
@@ -123,49 +126,63 @@ async function processGameList(games, allowedLeagues, robotSettings, isFastLive 
       if (match.status === 'scheduled' && !['scheduled', 'cancelled', 'postponed'].includes(newStatus)) {
         const configId = `league_${match.leagueId || 1}`;
         const lockIdentifier = match.phaseName || match.group;
-        const isAlreadyLocked = robotSettings.lockedPhases?.includes(lockIdentifier);
 
-        if (!isAlreadyLocked) {
+        if (!robotSettings.lockedPhases?.includes(lockIdentifier)) {
           await Settings.findByIdAndUpdate(configId, {
             $addToSet: { 
               lockedPhases: lockIdentifier,
-              unlockedPhases: { $each: [lockIdentifier, 'podium'] } 
+              unlockedPhases: { $each: [lockIdentifier, 'podium'] }
             },
-            $set: { statsLocked: false, blockSaveBets: true, blockSaveKnockout: true } 
+            $set: { statsLocked: false, blockSaveBets: true, blockSaveKnockout: true }
           });
 
-          auditService.generateAuditCSV(match.leagueId || 1, lockIdentifier).then(async (csvFile) => {
-            if (csvFile) {
+          auditService.generateAuditCSV(match.leagueId || 1, lockIdentifier)
+            .then(async (csvFile) => {
+              if (!csvFile) return;
+
               const users = await User.find({ leagues: Number(match.leagueId || 1) }, 'email');
-              const emails = users.map(u => u.email).filter(e => !!e);
+              const emails = users.map(u => u.email).filter(Boolean);
+
               if (emails.length > 0) {
-                await emailService.sendBroadcastEmail(emails, `🔒 Auditoria: ${lockIdentifier}`, "Segue auditoria.", csvFile);
+                await emailService.sendBroadcastEmail(
+                  emails,
+                  `🔒 Auditoria: ${lockIdentifier}`,
+                  "Segue auditoria.",
+                  csvFile
+                );
               }
-            }
-          });
+            });
 
           robotSettings.lockedPhases = robotSettings.lockedPhases || [];
           robotSettings.lockedPhases.push(lockIdentifier);
         }
       }
 
-      // 🚀 ENRIQUECIMENTO CORRIGIDO
+      // 🚀 ENRIQUECIMENTO INTELIGENTE + ANTI-SPAM
       const needsDetails =
         !game.live_stats ||
         !game.lineups?.home?.players?.length ||
         !game.lineups?.away?.players?.length;
 
-      if (newStatus !== 'scheduled' && needsDetails) {
+      const recentlyFetched =
+        match.lastDetailFetch &&
+        Date.now() - match.lastDetailFetch < 30000;
+
+      if (newStatus !== 'scheduled' && needsDetails && !recentlyFetched) {
         try {
           const detailRes = await axios.get(
             `https://sports.bzzoiro.com/api/events/${game.id}/?spatial=true`,
             { headers, timeout: 8000 }
           );
-          if (detailRes.data) game = detailRes.data;
+
+          if (detailRes.data) {
+            game = detailRes.data;
+            match.lastDetailFetch = Date.now();
+          }
         } catch {}
       }
 
-      // SCORE / STATUS
+      // SCORE
       match.scoreA = game.home_score;
       match.scoreB = game.away_score;
       match.status = newStatus;
@@ -186,15 +203,15 @@ async function processGameList(games, allowedLeagues, robotSettings, isFastLive 
         away: game.odds_away || null
       };
 
-      // LINEUPS
+      // 🔥 LINEUPS (AGORA NÃO PERDE PARCIAL)
       if (
-        game.lineups?.home?.players?.length > 0 &&
+        game.lineups?.home?.players?.length > 0 ||
         game.lineups?.away?.players?.length > 0
       ) {
         match.lineups = {
-          home: mapLineupTeam(game.lineups.home),
-          away: mapLineupTeam(game.lineups.away),
-          confirmed: game.lineups.confirmed || false
+          home: mapLineupTeam(game.lineups?.home),
+          away: mapLineupTeam(game.lineups?.away),
+          confirmed: game.lineups?.confirmed || false
         };
 
         match.markModified('lineups');
@@ -207,6 +224,7 @@ async function processGameList(games, allowedLeagues, robotSettings, isFastLive 
           home: parseInt(game.live_stats.home?.ball_possession) || 0,
           away: parseInt(game.live_stats.away?.ball_possession) || 0
         };
+
         match.markModified('statistics');
         match.markModified('possession');
       }
