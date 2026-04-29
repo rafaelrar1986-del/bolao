@@ -46,12 +46,16 @@ function sortByPosition(players) {
   return players.sort((a, b) => (ordem[a.posicao] ?? 9) - (ordem[b.posicao] ?? 9));
 }
 
+/**
+ * Mapeia o time garantindo que as chaves batam com o Match Model (players/substitutes)
+ */
 function mapLineupTeam(team) {
-  if (!team) return { formation: "", titulares: [], reservas: [] };
+  if (!team) return { formation: "", players: [], substitutes: [] };
   return {
     formation: team.formation || "",
-    titulares: sortByPosition((team.players || []).map(mapPlayer)),
-    reservas: (team.substitutes || []).map(mapPlayer)
+    // Ajustado para 'players' e 'substitutes' conforme seu Match Model
+    players: sortByPosition((team.players || []).map(mapPlayer)),
+    substitutes: (team.substitutes || []).map(mapPlayer)
   };
 }
 
@@ -68,7 +72,7 @@ async function updateMatches() {
     const yesterday = new Date(now - 86400000).toISOString().split('T')[0];
     const tomorrow = new Date(now + 86400000).toISOString().split('T')[0];
 
-    // LIVE
+    // 1. LIVE MATCHES
     try {
       const liveRes = await axios.get(
         `https://sports.bzzoiro.com/api/live/?tz=America/Fortaleza&spatial=true`,
@@ -81,7 +85,7 @@ async function updateMatches() {
       console.error(`❌ [Erro API LIVE]: ${e.message}`);
     }
 
-    // EVENTS
+    // 2. EVENTS (Yesterday to Tomorrow)
     const leaguesFilter = allowedLeagues.join(',');
     let nextUrl = `https://sports.bzzoiro.com/api/events/?date_from=${yesterday}&date_to=${tomorrow}&league=${leaguesFilter}&tz=America/Fortaleza&spatial=true`;
 
@@ -111,15 +115,13 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
       const match = await Match.findOne({ apiId: gameData.id });
       if (!match) continue;
 
-      // Criamos uma cópia de trabalho para não perder a referência original do loop
       let gameDetail = { ...gameData };
-
       console.log(`\n⚽ GAME ${gameDetail.id} (${source})`);
 
       const newStatus = statusMap[gameDetail.status] || 'scheduled';
       const statusChanged = match.status !== newStatus;
 
-      // Auditoria (mantida sua lógica)
+      // Lógica de Auditoria e Travamento de Rodada
       if (match.status === 'scheduled' && !['scheduled', 'cancelled', 'postponed'].includes(newStatus)) {
         const lockIdentifier = match.phaseName || match.group;
         if (!robotSettings.lockedPhases?.includes(lockIdentifier)) {
@@ -127,14 +129,13 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
             $addToSet: { lockedPhases: lockIdentifier, unlockedPhases: { $each: [lockIdentifier, 'podium'] } },
             $set: { statsLocked: false, blockSaveBets: true, blockSaveKnockout: true }
           });
-          // ... (email audit logic mantida)
           robotSettings.lockedPhases = robotSettings.lockedPhases || [];
           robotSettings.lockedPhases.push(lockIdentifier);
         }
       }
 
-      // Verificação de Lineup
-      const currentHasPlayers = match.lineups?.home?.titulares?.length > 0;
+      // Verificação de Lineup Local: Se não tem, busca no detalhe
+      const currentHasPlayers = match.lineups?.home?.players?.length > 0;
 
       if (!currentHasPlayers) {
         try {
@@ -144,14 +145,14 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
             { headers, timeout: 8000 }
           );
           if (detailRes.data && detailRes.data.lineups) {
-            gameDetail = detailRes.data; // Atualiza apenas se houver dados
+            gameDetail = detailRes.data; 
           }
         } catch (err) {
           console.error(`❌ DETAIL ERROR ${gameDetail.id}:`, err.message);
         }
       }
 
-      // Preparação do Update
+      // Preparação do Objeto de Update
       const updateData = {
         scoreA: gameDetail.home_score,
         scoreB: gameDetail.away_score,
@@ -170,7 +171,7 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
         }
       };
 
-      // Só atualiza estatísticas se existirem no objeto atualizado
+      // Estatísticas
       if (gameDetail.live_stats) {
         updateData.statistics = gameDetail.live_stats;
         updateData.possession = {
@@ -179,7 +180,8 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
         };
       }
 
-      // Só atualiza escalação se a API retornou algo nesta rodada
+      // --- LOGICA DE ESCALAÇÃO CORRIGIDA ---
+      // Verificamos se a API trouxe jogadores nesta requisição
       const apiHasPlayers = gameDetail.lineups?.home?.players?.length > 0 || gameDetail.lineups?.away?.players?.length > 0;
 
       if (apiHasPlayers) {
@@ -190,10 +192,12 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
           confirmed: gameDetail.lineups?.confirmed || false
         };
       } else {
+        // Se a API não mandou jogadores, o campo 'lineups' não entra no updateData, 
+        // logo o MongoDB preserva o que já estava lá através do $set.
         console.log(`🛡️ PRESERVANDO DADOS EXISTENTES PARA ${gameDetail.id}`);
       }
 
-      // Incidentes
+      // Incidentes (Gols, Cartões, Subs)
       if (Array.isArray(gameDetail.incidents)) {
         updateData.goalsDetail = gameDetail.incidents.map(i => ({
           type: i.type,
@@ -207,10 +211,11 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
         }));
       }
 
-      // Executa o Update Único
+      // Execução do Update
       await Match.updateOne({ _id: match._id }, { $set: updateData });
       console.log(`💾 SAVED ${gameDetail.id}`);
 
+      // Recalcular pontos se o jogo acabou
       if (statusChanged && newStatus === 'finished') {
         recalculateAllPoints(match.leagueId || '1')
           .then(() => trySaveDailyPoints(gameDetail.event_date))
