@@ -204,22 +204,25 @@ async function processGameList(games, allowedLeagues, robotSettings) {
       };
 
       // 🔥 LINEUPS (COM PROTEÇÃO)
-      const hasLineup =
-        game.lineups?.home?.players?.length > 0 ||
-        game.lineups?.away?.players?.length > 0;
+     const hasLineup =
+  game.lineups?.home?.players?.length > 0 ||
+  game.lineups?.away?.players?.length > 0;
 
-      const isConfirmed = game.lineups?.confirmed;
+const isConfirmed = game.lineups?.confirmed;
 
-      if (hasLineup && (isConfirmed || !match.lineups?.confirmed)) {
-        match.lineups = {
-          home: mapLineupTeam(game.lineups?.home),
-          away: mapLineupTeam(game.lineups?.away),
-          confirmed: isConfirmed || false
-        };
+// 🔥 NOVO: verifica se já tem jogadores salvos
+const currentHasPlayers =
+  match.lineups?.home?.titulares?.length > 0 ||
+  match.lineups?.away?.titulares?.length > 0;
 
-        match.markModified('lineups');
-      }
-
+// 🔥 REGRA CORRETA
+if (hasLineup && (!currentHasPlayers || isConfirmed)) {
+  match.lineups = {
+    home: mapLineupTeam(game.lineups?.home),
+    away: mapLineupTeam(game.lineups?.away),
+    confirmed: isConfirmed || false
+  };
+}
       // STATS
       if (game.live_stats) {
         match.statistics = game.live_stats;
