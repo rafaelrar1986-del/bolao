@@ -8,6 +8,7 @@ const { recalculateAllPoints } = require('./pointsService');
 const { trySaveDailyPoints } = require('./dailyHistoryService');
 
 const API_KEY = process.env.API_FOOTBALL_KEY;
+const headers = { Authorization: `Token ${API_KEY}` };
 
 const statusMap = {
   notstarted: 'scheduled',
@@ -24,70 +25,12 @@ const statusMap = {
   cancelled: 'cancelled'
 };
 
-// --- FUNÇÕES AUXILIARES DE EXTRAÇÃO ---
-
-function extractIncidents(incidents) {
-  if (!incidents || !Array.isArray(incidents)) return [];
-  try {
-    return incidents.map(i => ({
-      type: i.type, // goal, card, subst
-      name: i.player_name || i.player || 'Jogador',
-      min: i.minute,
-      extra: i.extra_minute || null,
-      side: i.is_home ? 'home' : 'away',
-      description: i.subtype_name || i.subtype || i.card_color || '', 
-      playerIn: i.player_in_name || null,
-      playerOut: i.player_out_name || null
-    }));
-  } catch (err) {
-    console.error(`❌ [extractIncidents]:`, err.message);
-    return [];
-  }
-}
-
-function extractStats(game) {
-  const result = { possession: { home: 0, away: 0 }, detailed: [] };
-  // spatial=true geralmente retorna em 'statistics'
-  const rawStats = game.statistics || game.stats;
-  
-  if (!rawStats || !Array.isArray(rawStats)) return result;
-
-  result.detailed = rawStats;
-  
-  const poss = rawStats.find(s => 
-    (s.type && s.type.toLowerCase().includes('possession')) || 
-    (s.name && s.name.toLowerCase().includes('possession'))
-  );
-
-  if (poss) {
-    result.possession.home = parseInt(poss.home || poss.home_value) || 0;
-    result.possession.away = parseInt(poss.away || poss.away_value) || 0;
-  }
-  return result;
-}
-
-function determineQualifier(game) {
-  const h = game.home_score ?? 0;
-  const a = game.away_score ?? 0;
-  if (h > a) return 'A';
-  if (a > h) return 'B';
-  
-  const penHome = game.penalty_shootout?.home || 0;
-  const penAway = game.penalty_shootout?.away || 0;
-  if (penHome > penAway) return 'A';
-  if (penAway > penHome) return 'B';
-  return null;
-}
-
 // --- CORE DO UPDATER ---
 
 async function updateMatches() {
   try {
     const robotSettings = await Settings.findById('league_1');
-    if (!robotSettings) {
-      console.error('❌ [Critical]: Settings "league_1" não encontrada.');
-      return;
-    }
+    if (!robotSettings) return;
 
     const allowedLeagues = robotSettings.api_leagues || [];
     if (allowedLeagues.length === 0) return;
@@ -95,26 +38,23 @@ async function updateMatches() {
     const now = Date.now();
     const yesterday = new Date(now - 86400000).toISOString().split('T')[0];
     const tomorrow = new Date(now + 86400000).toISOString().split('T')[0];
-    const headers = { Authorization: `Token ${API_KEY}` };
 
-    // 1️⃣ BUSCA LIVE
+    // 1️⃣ BUSCA LIVE (Rápida)
     try {
-      const liveRes = await axios.get(`https://sports.bzzoiro.com/api/live/?tz=America/Fortaleza&spatial=true`, {
-        headers, timeout: 10000
-      });
-      await processGameList(liveRes.data.results, allowedLeagues, "LIVE", robotSettings);
+      const liveRes = await axios.get(`https://sports.bzzoiro.com/api/live/?tz=America/Fortaleza&spatial=true`, { headers, timeout: 10000 });
+      await processGameList(liveRes.data.results, allowedLeagues, robotSettings, true);
     } catch (e) {
       console.error(`❌ [Erro API LIVE]: ${e.message}`);
     }
 
-    // 2️⃣ BUSCA EVENTS (Yesterday/Today/Tomorrow)
+    // 2️⃣ BUSCA EVENTS (Sincronização Completa)
     const leaguesFilter = allowedLeagues.join(',');
     let nextUrl = `https://sports.bzzoiro.com/api/events/?date_from=${yesterday}&date_to=${tomorrow}&league=${leaguesFilter}&tz=America/Fortaleza&spatial=true`;
 
     while (nextUrl) {
       try {
         const response = await axios.get(nextUrl, { headers, timeout: 15000 });
-        await processGameList(response.data.results, allowedLeagues, "EVENTS", robotSettings);
+        await processGameList(response.data.results, allowedLeagues, robotSettings, false);
         nextUrl = response.data.next;
       } catch (e) {
         console.error(`❌ [Erro API EVENTS]: ${e.message}`);
@@ -123,16 +63,15 @@ async function updateMatches() {
     }
 
     await Settings.findByIdAndUpdate('league_1', { $set: { last_api_run: now } });
-
   } catch (err) {
     console.error('❌ [Erro Global Updater]:', err);
   }
 }
 
-async function processGameList(games, allowedLeagues, source, robotSettings) {
+async function processGameList(games, allowedLeagues, robotSettings, isFastLive = false) {
   if (!games || !Array.isArray(games)) return;
 
-  for (const game of games) {
+  for (let game of games) {
     try {
       if (!allowedLeagues.includes(game.league?.id)) continue;
 
@@ -140,16 +79,18 @@ async function processGameList(games, allowedLeagues, source, robotSettings) {
       if (!match) continue;
 
       const newStatus = statusMap[game.status] || 'scheduled';
-      const newMinute = game.current_minute ? `${game.current_minute}'` : '';
-      
-      // --- LÓGICA DE AUDITORIA (TRAVA DE GRADE) ---
+      const statusChanged = match.status !== newStatus;
+      const scoreChanged = match.scoreA !== game.home_score || match.scoreB !== game.away_score;
+
+      // --- 🛡️ LÓGICA DE AUDITORIA E BLOQUEIO DE GRADE ---
+      // Se o jogo começou (saiu de scheduled), tranca a fase e gera o CSV de auditoria
       if (match.status === 'scheduled' && !['scheduled', 'cancelled', 'postponed'].includes(newStatus)) {
         const configId = `league_${match.leagueId || 1}`;
         const lockIdentifier = match.phaseName || match.group;
         const isAlreadyLocked = robotSettings.lockedPhases?.includes(lockIdentifier);
 
         if (!isAlreadyLocked) {
-          console.log(`🛡️ [Bloqueio]: Trancando ${lockIdentifier}`);
+          console.log(`🛡️ [Audit]: Trancando Grade ${lockIdentifier} e Gerando CSV...`);
           await Settings.findByIdAndUpdate(configId, {
             $addToSet: { 
               lockedPhases: lockIdentifier,
@@ -158,81 +99,95 @@ async function processGameList(games, allowedLeagues, source, robotSettings) {
             $set: { statsLocked: false, blockSaveBets: true, blockSaveKnockout: true } 
           });
 
-          // Auditoria Assíncrona para não travar o loop
+          // Disparo da Auditoria CSV e Email
           auditService.generateAuditCSV(match.leagueId || 1, lockIdentifier).then(async (csvFile) => {
             if (csvFile) {
               const users = await User.find({ leagues: Number(match.leagueId || 1) }, 'email');
               const emails = users.map(u => u.email).filter(e => !!e);
               if (emails.length > 0) {
-                await emailService.sendBroadcastEmail(emails, `🔒 Auditoria: Grade ${lockIdentifier} Trancada`, "Palpites trancados.", csvFile);
+                await emailService.sendBroadcastEmail(emails, `🔒 Auditoria: Grade ${lockIdentifier} Trancada`, "Segue em anexo a auditoria dos palpites antes do início da rodada.", csvFile);
               }
             }
-          }).catch(e => console.error("Audit error:", e.message));
+          }).catch(e => console.error("❌ [Audit CSV Error]:", e.message));
 
           robotSettings.lockedPhases.push(lockIdentifier);
         }
       }
 
-      // --- ATUALIZAÇÃO DE DADOS ---
-      const currentIncidents = extractIncidents(game.incidents);
-      const isLive = ['1_tempo', 'intervalo', '2_tempo', 'prorrogacao', '1_tet', '2_tet', 'penaltis'].includes(newStatus);
-      const scoreChanged = match.scoreA !== game.home_score || match.scoreB !== game.away_score;
-      const statusChanged = match.status !== newStatus;
-      const incidentsChanged = JSON.stringify(match.goalsDetail) !== JSON.stringify(currentIncidents);
-      
-      if (scoreChanged || statusChanged || incidentsChanged || isLive || newStatus === 'finished') {
-        const oldStatus = match.status;
-        
-        match.scoreA = game.home_score;
-        match.scoreB = game.away_score;
-        match.status = newStatus;
-        match.minute = newMinute; 
-        match.penaltiesA = game.penalty_shootout?.home ?? null;
-        match.penaltiesB = game.penalty_shootout?.away ?? null;
-        match.apiStatus = game.status_short || 'NS';
-
-        // Atualiza Objetos Complexos
-        match.goalsDetail = currentIncidents;
-        const statsData = extractStats(game);
-        match.possession = statsData.possession;
-        match.statistics = statsData.detailed;
-
-        if (game.lineups) {
-          match.lineups = {
-            home: game.lineups.home || {},
-            away: game.lineups.away || {}
-          };
-        }
-
-        // Forçar Mongoose a detectar mudanças para o ChangeStream (SSE)
-        match.markModified('goalsDetail');
-        match.markModified('statistics');
-        match.markModified('lineups');
-        match.markModified('possession');
-
-        // Qualificação automática para Mata-mata
-        if ((match.phase === 'knockout' || match.phase === 'mata-mata') && 
-             newStatus === 'finished' && !match.qualifiedSide) {
-          match.qualifiedSide = determineQualifier(game);
-        }
-
-        await match.save();
-
-        if (scoreChanged) console.log(`⚽ GOL: ${match.teamA} ${game.home_score}x${game.away_score} ${match.teamB}`);
-
-        // --- FINALIZAÇÃO E PONTOS ---
-        if (oldStatus !== 'finished' && newStatus === 'finished') {
-          console.log(`🏁 Finalizado: ${match.teamA} x ${match.teamB}`);
-          const targetLeagueId = match.leagueId || '1';
-          recalculateAllPoints(targetLeagueId)
-            .then(() => trySaveDailyPoints(game.event_date))
-            .catch(err => console.error(`❌ [Erro Pontos]:`, err.message));
-        }
+      // --- 🚀 ENRIQUECIMENTO DE DADOS (SPATIAL) ---
+      // Se não for live rápida e o jogo tiver dados, atualizamos o objeto game
+      if (!isFastLive && newStatus !== 'scheduled' && !game.live_stats) {
+        try {
+          const detailRes = await axios.get(`https://sports.bzzoiro.com/api/events/${game.id}/?spatial=true`, { headers, timeout: 8000 });
+          if (detailRes.data) game = detailRes.data;
+        } catch (err) { console.error(`⚠️ [Detail Error ${game.id}]: ${err.message}`); }
       }
+
+      // --- 📝 ATUALIZAÇÃO DOS CAMPOS DO MODELO ---
+      match.scoreA = game.home_score;
+      match.scoreB = game.away_score;
+      match.status = newStatus;
+      match.minute = game.current_minute ? `${game.current_minute}'` : '';
+      match.penaltiesA = game.penalty_shootout?.home ?? null;
+      match.penaltiesB = game.penalty_shootout?.away ?? null;
+
+      // Dados Avançados (xG, Odds, Lineups)
+      match.xg = {
+        home: parseFloat(game.actual_home_xg || game.home_xg_live || game.live_stats?.home?.expected_goals) || 0,
+        away: parseFloat(game.actual_away_xg || game.away_xg_live || game.live_stats?.away?.expected_goals) || 0
+      };
+      
+      match.odds = {
+        home: game.odds_home || null,
+        draw: game.odds_draw || null,
+        away: game.odds_away || null
+      };
+
+      if (game.lineups) { match.lineups = game.lineups; match.markModified('lineups'); }
+      if (game.unavailable_players) { match.unavailable = game.unavailable_players; match.markModified('unavailable'); }
+      
+      if (game.live_stats) {
+        match.statistics = game.live_stats;
+        match.possession = {
+          home: parseInt(game.live_stats.home?.ball_possession) || 0,
+          away: parseInt(game.live_stats.away?.ball_possession) || 0
+        };
+        match.markModified('statistics');
+      }
+
+      // Incidentes (Gols e Cartões)
+      if (game.incidents) {
+        match.goalsDetail = game.incidents.map(i => ({
+          type: i.type,
+          name: i.player_name || i.player || 'Jogador',
+          min: i.minute,
+          side: i.is_home ? 'home' : 'away',
+          description: i.goal_type || i.card_type || i.subtype || ''
+        }));
+        match.markModified('goalsDetail');
+      }
+
+      await match.save();
+
+      // --- 🏆 FINALIZAÇÃO E PONTOS ---
+      if (statusChanged && newStatus === 'finished') {
+        // Log de Auditoria de Finalização no Banco
+        await auditService.createLog(null, 'MATCH_FINISHED', {
+          matchId: match._id,
+          teams: `${match.teamA} x ${match.teamB}`,
+          score: `${match.scoreA}-${match.scoreB}`
+        });
+
+        console.log(`🏁 Finalizado: ${match.teamA} x ${match.teamB}. Calculando pontos...`);
+        recalculateAllPoints(match.leagueId || '1')
+          .then(() => trySaveDailyPoints(game.event_date))
+          .catch(e => console.error("❌ [Erro Pontos]:", e.message));
+      }
+
     } catch (gameErr) {
-      console.error(`❌ [Erro Jogo ${game.id}]:`, gameErr.message);
+      console.error(`❌ [Erro Crítico Jogo ${game.id}]:`, gameErr.message);
     }
   }
 }
 
-module.exports = updateMatches;
+module.exports = { updateMatches };
