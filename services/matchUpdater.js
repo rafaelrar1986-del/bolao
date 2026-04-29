@@ -248,8 +248,30 @@ async function processGameList(games, allowedLeagues, robotSettings) {
         match.markModified('goalsDetail');
       }
 
-      await match.save();
-
+try {
+  await Match.updateOne(
+    { _id: match._id },
+    {
+      $set: {
+        scoreA: match.scoreA,
+        scoreB: match.scoreB,
+        status: match.status,
+        minute: match.minute,
+        penaltiesA: match.penaltiesA,
+        penaltiesB: match.penaltiesB,
+        xg: match.xg,
+        odds: match.odds,
+        lineups: match.lineups,
+        statistics: match.statistics,
+        possession: match.possession,
+        goalsDetail: match.goalsDetail,
+...(match.lastDetailFetch && { lastDetailFetch: match.lastDetailFetch })
+      }
+    }
+  );
+} catch (err) {
+  console.error(`❌ [Erro updateOne ${game.id}]:`, err.message);
+}
       // FINALIZAÇÃO
       if (statusChanged && newStatus === 'finished') {
         recalculateAllPoints(match.leagueId || '1')
