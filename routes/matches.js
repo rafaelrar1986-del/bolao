@@ -80,6 +80,7 @@ router.get('/match-technical/:matchId', async (req, res) => {
     const { matchId } = req.params;
     const { leagueId } = req.query;
 
+    // .lean() para performance (retorna objeto JS puro)
     const match = await Match.findOne({
       matchId: Number(matchId),
       leagueId: Number(leagueId)
@@ -92,25 +93,16 @@ router.get('/match-technical/:matchId', async (req, res) => {
       });
     }
 
-    // 🕒 Timeline ordenada
+    // 🕒 Timeline ordenada por minuto (incluindo tempo extra)
     const timeline = (match.goalsDetail || []).sort((a, b) => {
       const minA = (a.min || 0) + (a.extra || 0);
       const minB = (b.min || 0) + (b.extra || 0);
       return minA - minB;
     });
 
-    // 🔥 LINEUPS PADRONIZADO (ALINHADO COM UPDATER)
-    const lineupHome = match.lineups?.home || {
-      formation: "",
-      titulares: [],
-      reservas: []
-    };
-
-    const lineupAway = match.lineups?.away || {
-      formation: "",
-      titulares: [],
-      reservas: []
-    };
+    // 🔥 MAPEAMENTO DE ESCALAÇÕES (Sincroniza Banco -> Front-end)
+    const lineupHome = match.lineups?.home || {};
+    const lineupAway = match.lineups?.away || {};
 
     res.json({
       success: true,
@@ -120,7 +112,7 @@ router.get('/match-technical/:matchId', async (req, res) => {
         apiStatus: match.apiStatus,
         currentTime: match.minute || "0",
 
-        // 🔢 PLACAR
+        // 🔢 PLACAR E DECISÕES
         score: {
           teamA: match.scoreA ?? 0,
           teamB: match.scoreB ?? 0,
@@ -129,7 +121,7 @@ router.get('/match-technical/:matchId', async (req, res) => {
           qualifiedSide: match.qualifiedSide ?? null
         },
 
-        // 📈 DADOS AVANÇADOS
+        // 📈 DADOS AVANÇADOS (SPATIAL API)
         advanced: {
           xg: match.xg || { home: 0, away: 0 },
           odds: match.odds || { home: null, draw: null, away: null },
@@ -137,50 +129,49 @@ router.get('/match-technical/:matchId', async (req, res) => {
           videoUrl: match.video_url || ''
         },
 
-        // ⏱️ TIMELINE
+        // ⏱️ EVENTOS DA PARTIDA
         timeline,
 
-        // 📋 ESCALAÇÕES
+        // 📋 ESCALAÇÕES (Trata a mudança de 'players' para 'titulares' no JSON)
         lineups: {
           teamA: {
-            formation: lineupHome.formation,
-            titulares: lineupHome.titulares || [],
-            reservas: lineupHome.reservas || []
+            formation: lineupHome.formation || "",
+            titulares: lineupHome.players || [],       // Vem de 'players' no banco
+            reservas: lineupHome.substitutes || []     // Vem de 'substitutes' no banco
           },
           teamB: {
-            formation: lineupAway.formation,
-            titulares: lineupAway.titulares || [],
-            reservas: lineupAway.reservas || []
+            formation: lineupAway.formation || "",
+            titulares: lineupAway.players || [],       // Vem de 'players' no banco
+            reservas: lineupAway.substitutes || []     // Vem de 'substitutes' no banco
           },
           confirmed: match.lineups?.confirmed || false,
           unavailable: match.unavailable || []
         },
 
-        // 📊 RESUMO
+        // 📊 RESUMO DE ESTATÍSTICAS
         summary: {
           possession: {
             teamA: match.possession?.home ?? 50,
             teamB: match.possession?.away ?? 50
           },
-
-          // 🔥 AGORA SUPORTA OBJETO (NOVA API)
+          // STATISTICS agora é o objeto live_stats completo
           stats: match.statistics || {}
         },
 
-        // 📍 LOCAL
+        // 📍 INFORMAÇÕES ADICIONAIS
         venue: match.stadium || 'Não informado'
       }
     });
 
   } catch (e) {
     console.error('Match Technical Error:', e);
-
     res.status(500).json({
       success: false,
       message: 'Erro ao carregar detalhes técnicos'
     });
   }
 });
+
 // ======================
 // 3. GET /api/matches/admin/all (Admin)
 // ======================
