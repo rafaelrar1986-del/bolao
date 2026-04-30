@@ -248,17 +248,23 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
         console.log(`🛡️ PRESERVANDO DADOS EXISTENTES PARA ${gameDetail.id}`);
       }
 
-      // Incidentes (Gols, Cartões, Subs)
-      if (Array.isArray(gameDetail.incidents)) {
-        updateData.goalsDetail = gameDetail.incidents.map(i => ({
-          type: i.type,
-          name: i.player_name || i.player || 'Jogador',
-          min: i.minute,
-          extra: i.extra_minute || null,
-          side: i.is_home ? 'home' : 'away',
-          description: i.goal_type || i.card_type || i.subtype || '',
-          playerIn: i.player_in_name || null,
-          playerOut: i.player_out_name || null
+      
+      // Incidentes (Gols, Cartões, Subs, VAR) - VERSÃO COMPLETA
+if (Array.isArray(gameDetail.incidents)) {
+    updateData.goalsDetail = gameDetail.incidents.map(i => {
+        // Fallback robusto para o nome do jogador
+        const playerName = i.player_name || i.player || i.player_out || (i.type === 'injuryTime' ? 'Acréscimos' : 'Lance');
+
+        return {
+            type: i.type,
+            name: playerName,
+            min: i.minute,
+            extra: i.extra_minute || i.length || null, // Captura 'length' se for injuryTime
+            side: i.is_home ? 'home' : 'away',
+            // Normaliza o subtipo (card_type para cartões, decision para VAR)
+            description: i.card_type || i.goal_type || i.decision || i.subtype || '',
+            playerIn: i.player_in || null,
+            playerOut: i.player_out || null
         }));
       }
 
