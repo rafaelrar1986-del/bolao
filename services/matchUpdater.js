@@ -249,13 +249,13 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
       }
 
       
-      // Incidentes (Gols, Cartões, Subs, VAR) - VERSÃO COMPLETA
-if (Array.isArray(gameDetail.incidents)) {
-    updateData.goalsDetail = gameDetail.incidents.map(i => {
-        // Fallback robusto para o nome do jogador
-        const playerName = i.player_name || i.player || i.player_out || (i.type === 'injuryTime' ? 'Acréscimos' : 'Lance');
+      // Incidentes (Gols, Cartões, Subs, VAR) - VERSÃO COMPLETA CORRIGIDA
+      if (Array.isArray(gameDetail.incidents)) {
+        updateData.goalsDetail = gameDetail.incidents.map(i => {
+          // Fallback robusto para o nome do jogador
+          const playerName = i.player_name || i.player || i.player_out || (i.type === 'injuryTime' ? 'Acréscimos' : 'Lance');
 
-        return {
+          return {
             type: i.type,
             name: playerName,
             min: i.minute,
@@ -265,7 +265,8 @@ if (Array.isArray(gameDetail.incidents)) {
             description: i.card_type || i.goal_type || i.decision || i.subtype || '',
             playerIn: i.player_in || null,
             playerOut: i.player_out || null
-        }));
+          };
+        });
       }
 
       // Execução do Update
