@@ -231,22 +231,49 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
         };
       }
 
-      // --- LOGICA DE ESCALAÇÃO CORRIGIDA ---
-      // Verificamos se a API trouxe jogadores nesta requisição
-      const apiHasPlayers = gameDetail.lineups?.home?.players?.length > 0 || gameDetail.lineups?.away?.players?.length > 0;
+      // 1. Verificamos se a API trouxe dados de escalação nesta rodada
+const apiHasPlayers = gameDetail.lineups?.home?.players?.length > 0;
+const isLive = ['1_tempo', 'intervalo', '2_tempo', 'prorrogacao'].includes(newStatus);
 
-      if (apiHasPlayers) {
-        console.log(`🔥 SAVING LINEUP ${gameDetail.id} (Home: ${gameDetail.lineups.home.players.length})`);
-        updateData.lineups = {
-          home: mapLineupTeam(gameDetail.lineups.home),
-          away: mapLineupTeam(gameDetail.lineups.away),
-          confirmed: gameDetail.lineups?.confirmed || false
-        };
-      } else {
-        // Se a API não mandou jogadores, o campo 'lineups' não entra no updateData, 
-        // logo o MongoDB preserva o que já estava lá através do $set.
-        console.log(`🛡️ PRESERVANDO DADOS EXISTENTES PARA ${gameDetail.id}`);
+if (apiHasPlayers) {
+  // SE NÃO TEM JOGADORES: Cria a estrutura inicial (Trava os nomes)
+  if (!currentHasPlayers) {
+    console.log(`🔥 CRIANDO ESTRUTURA INICIAL DE ESCALAÇÃO: ${gameDetail.id}`);
+    updateData.lineups = {
+      home: mapLineupTeam(gameDetail.lineups.home),
+      away: mapLineupTeam(gameDetail.lineups.away),
+      confirmed: gameDetail.lineups?.confirmed || false
+    };
+  } 
+  // SE JÁ TEM JOGADORES E O JOGO ESTÁ ROLANDO: Atualiza apenas o que mudou (minutos/stats)
+  else if (isLive) {
+    console.log(`🔄 ATUALIZANDO DINAMICA DE JOGO (SUB/GOLS): ${gameDetail.id}`);
+    
+    // Função auxiliar interna para não repetir código para Home e Away
+    const updateStats = async (side) => {
+      for (const p of gameDetail.lineups[side].players) {
+        // Só dispara o update se houver algo relevante para atualizar
+        if (p.sub_out || p.sub_in || p.goals > 0 || p.yellow_card) {
+          await Match.updateOne(
+            { _id: match._id, [`lineups.${side}.players.player_id`]: p.player_id },
+            { 
+              $set: { 
+                [`lineups.${side}.players.$.saiu`]: p.sub_out,
+                [`lineups.${side}.players.$.entrou`]: p.sub_in,
+                [`lineups.${side}.players.$.amarelo`]: p.yellow_card,
+                [`lineups.${side}.players.$.gols`]: p.goals,
+                [`lineups.${side}.players.$.rating`]: p.rating 
+              } 
+            }
+          );
+        }
       }
+    };
+
+    await updateStats('home');
+    await updateStats('away');
+  }
+}
 
       
       // Incidentes (Gols, Cartões, Subs, VAR) - VERSÃO COMPLETA CORRIGIDA
