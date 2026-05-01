@@ -69,13 +69,13 @@ async function updateMatches() {
     if (allowedLeagues.length === 0) return;
 
     const now = Date.now();
-    const yesterday = new Date(now - 86400000).toISOString().split('T')[0];
+    const yesterday = new Date(now - 286400000).toISOString().split('T')[0];
     const tomorrow = new Date(now + 86400000).toISOString().split('T')[0];
 
     // 1. LIVE MATCHES
     try {
       const liveRes = await axios.get(
-        `https://sports.bzzoiro.com/api/live/?tz=America/Fortaleza&spatial=true`,
+        `https://sports.bzzoiro.com/api/live/?tz=America/Fortaleza`,
         { headers, timeout: 10000 }
       );
       if (liveRes.data?.results) {
@@ -87,7 +87,7 @@ async function updateMatches() {
 
     // 2. EVENTS (Yesterday to Tomorrow)
     const leaguesFilter = allowedLeagues.join(',');
-    let nextUrl = `https://sports.bzzoiro.com/api/events/?date_from=${yesterday}&date_to=${tomorrow}&league=${leaguesFilter}&tz=America/Fortaleza&spatial=true`;
+    let nextUrl = `https://sports.bzzoiro.com/api/events/?date_from=${yesterday}&date_to=${tomorrow}&league=${leaguesFilter}&tz=America/Fortaleza&full=true`;
 
     while (nextUrl) {
       try {
