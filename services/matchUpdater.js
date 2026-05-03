@@ -240,7 +240,7 @@ const dbHomePlayers = match.lineups?.home?.players?.length || 0;
 const dbHomeSubs = match.lineups?.home?.substitutes?.length || 0;
 const totalDbPlayers = dbHomePlayers + dbHomeSubs;
 
-const isLive = ['1_tempo', 'intervalo', '2_tempo', '1_tet', '2_tet', 'prorrogacao', 'finished'].includes(newStatus);
+const isLive = ['1_tempo', 'intervalo', '2_tempo', '1_tet', '2_tet', 'prorrogacao'].includes(newStatus);
 
 if (totalApiPlayers > 0) {
   
