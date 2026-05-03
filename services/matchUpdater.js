@@ -233,7 +233,7 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
 
       // 1. Verificamos se a API trouxe dados de escalação nesta rodada
 const apiHasPlayers = gameDetail.lineups?.home?.players?.length > 0;
-const isLive = ['1_tempo', 'intervalo', '2_tempo', 'prorrogacao'].includes(newStatus);
+const isLive = ['1_tempo', 'intervalo', '2_tempo', '1_tet', '2_tet', 'prorrogacao', 'finished'].includes(newStatus);
 
 if (apiHasPlayers) {
   // SE NÃO TEM JOGADORES: Cria a estrutura inicial (Trava os nomes)
