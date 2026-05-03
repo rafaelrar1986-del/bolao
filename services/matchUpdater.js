@@ -255,7 +255,7 @@ if (apiHasPlayers) {
         // Só dispara o update se houver algo relevante para atualizar
         if (p.sub_out || p.sub_in || p.goals > 0 || p.yellow_card) {
           await Match.updateOne(
-            { _id: match._id, [`lineups.${side}.players.player_id`]: p.player_id },
+            { _id: match._id, [`lineups.${side}.players.id`]: p.player_id },
             { 
               $set: { 
                 [`lineups.${side}.players.$.saiu`]: p.sub_out,
