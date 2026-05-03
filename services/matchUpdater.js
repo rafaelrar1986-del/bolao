@@ -232,40 +232,73 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
       }
 
       // 1. Verificamos se a API trouxe dados de escalação nesta rodada
-const apiHasPlayers = gameDetail.lineups?.home?.players?.length > 0;
+const apiHomePlayers = gameDetail.lineups?.home?.players?.length || 0;
+const apiHomeSubs = gameDetail.lineups?.home?.substitutes?.length || 0;
+const totalApiPlayers = apiHomePlayers + apiHomeSubs;
+
+const dbHomePlayers = match.lineups?.home?.players?.length || 0;
+const dbHomeSubs = match.lineups?.home?.substitutes?.length || 0;
+const totalDbPlayers = dbHomePlayers + dbHomeSubs;
+
 const isLive = ['1_tempo', 'intervalo', '2_tempo', '1_tet', '2_tet', 'prorrogacao', 'finished'].includes(newStatus);
 
-if (apiHasPlayers) {
-  // SE NÃO TEM JOGADORES: Cria a estrutura inicial (Trava os nomes)
-  if (!currentHasPlayers) {
-    console.log(`🔥 CRIANDO ESTRUTURA INICIAL DE ESCALAÇÃO: ${gameDetail.id}`);
+if (totalApiPlayers > 0) {
+  
+  // MUNDO 1: Se o banco está vazio OU a API trouxe MAIS jogadores (novos reservas detectados)
+  if (!currentHasPlayers || totalApiPlayers > totalDbPlayers) {
+    console.log(`🔥 ATUALIZANDO ESTRUTURA COMPLETA (Inclusão de Reservas): ${gameDetail.id}`);
     updateData.lineups = {
       home: mapLineupTeam(gameDetail.lineups.home),
       away: mapLineupTeam(gameDetail.lineups.away),
       confirmed: gameDetail.lineups?.confirmed || false
     };
   } 
-  // SE JÁ TEM JOGADORES E O JOGO ESTÁ ROLANDO: Atualiza apenas o que mudou (minutos/stats)
+  
+  // MUNDO 2: Se já temos a estrutura e o jogo está rolando, atualizamos apenas as estatísticas
   else if (isLive) {
-    console.log(`🔄 ATUALIZANDO DINAMICA DE JOGO (SUB/GOLS): ${gameDetail.id}`);
+    console.log(`🔄 ATUALIZANDO STATS CIRÚRGICOS (Titulares e Reservas): ${gameDetail.id}`);
     
-    // Função auxiliar interna para não repetir código para Home e Away
     const updateStats = async (side) => {
-      for (const p of gameDetail.lineups[side].players) {
-        // Só dispara o update se houver algo relevante para atualizar
-        if (p.sub_out || p.sub_in || p.goals > 0 || p.yellow_card) {
-          await Match.updateOne(
+      // Une titulares e reservas da API para não ignorar ninguém que entrou no decorrer do jogo
+      const allApiPlayers = [
+        ...(gameDetail.lineups[side].players || []),
+        ...(gameDetail.lineups[side].substitutes || [])
+      ];
+
+      for (const p of allApiPlayers) {
+        if (p.sub_out || p.sub_in || p.goals > 0 || p.yellow_card || p.red_card) {
+          
+          // Tenta atualizar primeiro no array de titulares
+          const res = await Match.updateOne(
             { _id: match._id, [`lineups.${side}.players.id`]: p.player_id },
             { 
               $set: { 
                 [`lineups.${side}.players.$.saiu`]: p.sub_out,
                 [`lineups.${side}.players.$.entrou`]: p.sub_in,
                 [`lineups.${side}.players.$.amarelo`]: p.yellow_card,
+                [`lineups.${side}.players.$.vermelho`]: p.red_card,
                 [`lineups.${side}.players.$.gols`]: p.goals,
                 [`lineups.${side}.players.$.rating`]: p.rating 
               } 
             }
           );
+
+          // Se não encontrou nos titulares (modifiedCount === 0), tenta no array de reservas
+          if (res.modifiedCount === 0) {
+            await Match.updateOne(
+              { _id: match._id, [`lineups.${side}.substitutes.id`]: p.player_id },
+              { 
+                $set: { 
+                  [`lineups.${side}.substitutes.$.saiu`]: p.sub_out,
+                  [`lineups.${side}.substitutes.$.entrou`]: p.sub_in,
+                  [`lineups.${side}.substitutes.$.amarelo`]: p.yellow_card,
+                  [`lineups.${side}.substitutes.$.vermelho`]: p.red_card,
+                  [`lineups.${side}.substitutes.$.gols`]: p.goals,
+                  [`lineups.${side}.substitutes.$.rating`]: p.rating 
+                } 
+              }
+            );
+          }
         }
       }
     };
@@ -274,7 +307,6 @@ if (apiHasPlayers) {
     await updateStats('away');
   }
 }
-
       
       // Incidentes (Gols, Cartões, Subs, VAR) - VERSÃO COMPLETA CORRIGIDA
       if (Array.isArray(gameDetail.incidents)) {
