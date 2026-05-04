@@ -32,20 +32,55 @@ router.get('/leagues', async (req, res) => {
   try {
     const leagues = await Match.aggregate([
       {
+        // 1. Filtramos apenas partidas que ainda não terminaram
+        $match: { status: { $ne: 'finished' } }
+      },
+      {
+        // 2. Agrupamos por Liga e guardamos os detalhes das partidas
         $group: {
           _id: "$leagueId",
           name: { $first: "$leagueName" },
-          totalMatches: { $sum: 1 }
+          totalMatches: { $sum: 1 },
+          // Criamos uma lista com os dados necessários para identificar o próximo jogo
+          allMatches: {
+            $push: {
+              date: "$date",
+              time: "$time",
+              teamA: "$teamA",
+              teamB: "$teamB"
+            }
+          }
         }
       },
       { $sort: { name: 1 } }
     ]);
 
-    const data = leagues.map(l => ({
-      id: l._id,
-      name: l.name || `Liga ${l._id}`,
-      count: l.totalMatches
-    })).filter(l => l.id !== null);
+    const data = leagues.map(l => {
+      // Ordenamos as partidas da liga para garantir que a primeira seja a mais próxima
+      // Como date é "DD/MM/AAAA", transformamos em timestamp para comparar
+      const sortedMatches = l.allMatches.sort((a, b) => {
+        const [da, ma, ya] = a.date.split('/');
+        const [db, mb, yb] = b.date.split('/');
+        return new Date(`${ya}-${ma}-${da}T${a.time}`) - new Date(`${yb}-${mb}-${db}T${b.time}`);
+      });
+
+      const next = sortedMatches[0]; // A partida mais próxima
+      let isoDate = null;
+
+      if (next) {
+        const [d, m, y] = next.date.split('/');
+        isoDate = `${y}-${m}-${d}T${next.time}:00`;
+      }
+
+      return {
+        id: l._id,
+        name: l.name || `Liga ${l._id}`,
+        count: l.totalMatches,
+        // Novos campos para o design moderno
+        nextMatchDate: isoDate,
+        nextMatchTeams: next ? `${next.teamA} x ${next.teamB}` : "Rodada aberta"
+      };
+    }).filter(l => l.id !== null);
 
     res.json({ success: true, data });
   } catch (err) {
@@ -53,7 +88,6 @@ router.get('/leagues', async (req, res) => {
     res.status(500).json({ success: false, message: 'Erro ao buscar ligas' });
   }
 });
-
 // ======================
 // 2. GET /api/matches (Público - com filtro de liga)
 // ======================
