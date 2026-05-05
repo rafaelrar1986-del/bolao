@@ -134,13 +134,20 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     });
 
     // 6. Cálculo da Probabilidade Estatística e Teto
-    // AJUSTE LIVE: Líder atual também depende do modo selecionado
+    // AJUSTE LIVE: Pontuação baseada no estado atual (Real vs Parcial)
     const currentScores = bets.map(b => (mode === 'live' ? (b.liveTotalPoints || b.totalPoints || 0) : (b.totalPoints || 0)));
     const leaderPoints = Math.max(...currentScores, 0);
     const myCurrentPoints = (mode === 'live') ? (targetBet.liveTotalPoints || targetBet.totalPoints || 0) : (targetBet.totalPoints || 0);
 
+    // No modo LIVE, "matchPointsLeft" deve focar no que ainda NÃO foi processado no liveTotalPoints
+    // Portanto, usamos apenas partidas que NÃO estão encerradas (diferente de 'finished')
+    // mas se o modo for LIVE, ignoramos o que já está 'in_progress' para evitar duplicidade
     let matchPointsLeft = 0;
     futureMatches.forEach(m => {
+      // Se estamos no modo LIVE, o 'liveTotalPoints' já tem os pontos de partidas 'in_progress'.
+      // Então, para o cálculo de probabilidade, só contamos o que ainda é 'scheduled'.
+      if (mode === 'live' && m.status !== 'scheduled') return;
+      
       matchPointsLeft += 1;
       if (m.phase === 'knockout') matchPointsLeft += 1;
     });
@@ -152,14 +159,19 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     let probability = 0;
     if (myMaxTotal >= leaderPoints) {
       if (gap <= 0) {
+        // Sou líder ou estou empatado
         const advantage = Math.abs(gap);
+        // Probabilidade baseada na vantagem e no volume de pontos restantes
         probability = Math.min(99, 75 + (advantage * 5)); 
       } else {
+        // Estou atrás: a probabilidade é a razão entre o que preciso e o que ainda existe
         const reachability = totalPotentialDisputed > 0 ? (totalPotentialDisputed - gap) / totalPotentialDisputed : 0;
         probability = Math.max(1, Math.round(reachability * 70));
       }
+    } else {
+      // Matematicamente impossível alcançar o líder
+      probability = 0;
     }
-
     // 7. Mapeamento de Impacto (Secagem)
     const matchesAnalysis = futureMatches.map(m => {
       let isLocked = !isAdmin;
