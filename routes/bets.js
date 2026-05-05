@@ -30,13 +30,12 @@ function toWinnerLabel(choice, teamA, teamB) {
  */
 router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
   try {
-    const { leagueId, userId: targetUserId, mode } = req.query; // 'mode' pode ser 'official' ou 'live'
+    const { leagueId, userId: targetUserId, mode } = req.query; // 'mode': 'official' ou 'live'
     if (!leagueId) return res.status(400).json({ success: false, message: 'ID da liga obrigatório' });
 
     const lIdNum = Number(leagueId);
     const lIdStr = String(leagueId);
     
-    // Suporte para ver estratégia de outros (ou a própria)
     const activeUserId = targetUserId || req.user._id.toString();
     const isAdmin = req.user?.isAdmin === true;
 
@@ -64,19 +63,15 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         }
 
         const loser = winnerSide === 'A' ? m.teamB : (winnerSide === 'B' ? m.teamA : null);
-        // Perdedores de semifinal não estão eliminados do pódio (disputam 3º)
         if (loser && m.group !== 'semifinal') eliminatedTeams.add(loser);
       }
     });
 
     // --- AJUSTE LIVE: Filtro de partidas baseado no Modo ---
+    // No modo LIVE, queremos analisar o impacto de tudo que não terminou.
     const futureMatches = matches
       .filter(m => {
-        if (mode === 'live') {
-          // No modo parcial, mantemos tudo que ainda não foi encerrado (scheduled + in_progress)
-          return m.status !== 'finished';
-        }
-        // No modo oficial, apenas partidas que ainda não começaram
+        if (mode === 'live') return m.status !== 'finished';
         return m.status === 'scheduled';
       })
       .sort((a, b) => a.matchId - b.matchId);
@@ -95,22 +90,25 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     }
 
     // 4. Projeção de Ranking (Cenário de Ouro)
+    const myCurrentPoints = (mode === 'live') ? (targetBet.liveTotalPoints || targetBet.totalPoints || 0) : (targetBet.totalPoints || 0);
+
     const projectedRanking = bets.map(b => {
-      // AJUSTE LIVE: Base de pontos inicial muda conforme o modo
+      // Começa com a pontuação atual do usuário analisado
       let projectedPoints = (mode === 'live') ? (b.liveTotalPoints || b.totalPoints || 0) : (b.totalPoints || 0);
-      
       const isTarget = b.user._id.toString() === activeUserId;
 
       futureMatches.forEach(m => {
+        // CORREÇÃO: No modo LIVE, partidas 'in_progress' já estão computadas no liveTotalPoints.
+        // Só somamos ao teto o que ainda está para acontecer (scheduled).
+        if (mode === 'live' && m.status !== 'scheduled') return;
+
         const targetPick = targetBet.groupMatches.find(gm => gm.matchId === m.matchId);
         const rivalPick = b.groupMatches.find(gm => gm.matchId === m.matchId);
 
         if (isTarget) {
-          // Usuário alvo ganha tudo no cenário de ouro
           projectedPoints += 1; // Resultado
           if (m.phase === 'knockout') projectedPoints += 1; // Classificação
         } else if (targetPick && rivalPick) {
-          // Rivais só pontuam o que for idêntico ao usuário alvo
           if (targetPick.winner === rivalPick.winner) projectedPoints += 1;
           if (m.phase === 'knockout' && targetPick.qualifier === rivalPick.qualifier) projectedPoints += 1;
         }
@@ -133,19 +131,13 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
       if (item.userId === activeUserId) myMaxPosition = position;
     });
 
-    // 6. Cálculo da Probabilidade Estatística e Teto
-    // AJUSTE LIVE: Pontuação baseada no estado atual (Real vs Parcial)
+    // 6. Probabilidade Estatística e Teto
     const currentScores = bets.map(b => (mode === 'live' ? (b.liveTotalPoints || b.totalPoints || 0) : (b.totalPoints || 0)));
     const leaderPoints = Math.max(...currentScores, 0);
-    const myCurrentPoints = (mode === 'live') ? (targetBet.liveTotalPoints || targetBet.totalPoints || 0) : (targetBet.totalPoints || 0);
 
-    // No modo LIVE, "matchPointsLeft" deve focar no que ainda NÃO foi processado no liveTotalPoints
-    // Portanto, usamos apenas partidas que NÃO estão encerradas (diferente de 'finished')
-    // mas se o modo for LIVE, ignoramos o que já está 'in_progress' para evitar duplicidade
     let matchPointsLeft = 0;
     futureMatches.forEach(m => {
-      // Se estamos no modo LIVE, o 'liveTotalPoints' já tem os pontos de partidas 'in_progress'.
-      // Então, para o cálculo de probabilidade, só contamos o que ainda é 'scheduled'.
+      // No LIVE, só conta o que é futuro (scheduled), pois o 'in_progress' já entrou no score atual.
       if (mode === 'live' && m.status !== 'scheduled') return;
       
       matchPointsLeft += 1;
@@ -159,20 +151,19 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     let probability = 0;
     if (myMaxTotal >= leaderPoints) {
       if (gap <= 0) {
-        // Sou líder ou estou empatado
+        // Líder ou empatado
         const advantage = Math.abs(gap);
-        // Probabilidade baseada na vantagem e no volume de pontos restantes
         probability = Math.min(99, 75 + (advantage * 5)); 
       } else {
-        // Estou atrás: a probabilidade é a razão entre o que preciso e o que ainda existe
+        // Atrás: razão entre o necessário e o existente
         const reachability = totalPotentialDisputed > 0 ? (totalPotentialDisputed - gap) / totalPotentialDisputed : 0;
         probability = Math.max(1, Math.round(reachability * 70));
       }
     } else {
-      // Matematicamente impossível alcançar o líder
       probability = 0;
     }
-   // 7. Mapeamento de Impacto (Secagem)
+
+    // 7. Mapeamento de Impacto (Secagem)
     const matchesAnalysis = futureMatches.map(m => {
       let isLocked = !isAdmin;
       if (m.phase === 'group') {
@@ -183,7 +174,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
 
       const myPick = targetBet.groupMatches.find(gm => gm.matchId === m.matchId);
       
-      // Filtra rivais que estão acima de você baseado no modo (Oficial ou Live)
       const rivalsAbove = bets.filter(b => {
           const bPoints = (mode === 'live' ? (b.liveTotalPoints || b.totalPoints || 0) : (b.totalPoints || 0));
           return bPoints > myCurrentPoints;
@@ -199,7 +189,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
             return diffWin || diffQualy;
           }).map(rb => rb.user?.name);
 
-      // Função auxiliar interna para converter 'A' ou 'B' no nome real do time
       const getQualifierName = (qualifier, teamA, teamB) => {
         if (qualifier === 'A') return teamA;
         if (qualifier === 'B') return teamB;
@@ -209,14 +198,13 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
       return {
         matchId: m.matchId,
         teams: `${m.teamA} x ${m.teamB}`,
-        status: m.status, // Essencial para o badge "AO VIVO"
+        status: m.status,
         hasImpact: opponentsToWatch.length > 0,
         isLocked,
         myChoice: { 
           winner: myPick?.winner, 
-          label: toWinnerLabel(myPick?.winner, m.teamA, m.teamB),
+          label: typeof toWinnerLabel === 'function' ? toWinnerLabel(myPick?.winner, m.teamA, m.teamB) : (myPick?.winner || 'N/A'),
           qualifier: myPick?.qualifier,
-          // Novo campo para evitar o "Passa: A" no front
           qualifierName: getQualifierName(myPick?.qualifier, m.teamA, m.teamB)
         },
         opponentsToWatch
