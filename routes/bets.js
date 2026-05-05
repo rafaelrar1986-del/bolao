@@ -172,7 +172,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
       // Matematicamente impossível alcançar o líder
       probability = 0;
     }
-    // 7. Mapeamento de Impacto (Secagem)
+   // 7. Mapeamento de Impacto (Secagem)
     const matchesAnalysis = futureMatches.map(m => {
       let isLocked = !isAdmin;
       if (m.phase === 'group') {
@@ -182,6 +182,8 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
       }
 
       const myPick = targetBet.groupMatches.find(gm => gm.matchId === m.matchId);
+      
+      // Filtra rivais que estão acima de você baseado no modo (Oficial ou Live)
       const rivalsAbove = bets.filter(b => {
           const bPoints = (mode === 'live' ? (b.liveTotalPoints || b.totalPoints || 0) : (b.totalPoints || 0));
           return bPoints > myCurrentPoints;
@@ -197,16 +199,25 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
             return diffWin || diffQualy;
           }).map(rb => rb.user?.name);
 
+      // Função auxiliar interna para converter 'A' ou 'B' no nome real do time
+      const getQualifierName = (qualifier, teamA, teamB) => {
+        if (qualifier === 'A') return teamA;
+        if (qualifier === 'B') return teamB;
+        return null;
+      };
+
       return {
         matchId: m.matchId,
         teams: `${m.teamA} x ${m.teamB}`,
-        status: m.status, // Fundamental para o badge "AO VIVO" no front
+        status: m.status, // Essencial para o badge "AO VIVO"
         hasImpact: opponentsToWatch.length > 0,
         isLocked,
         myChoice: { 
           winner: myPick?.winner, 
           label: toWinnerLabel(myPick?.winner, m.teamA, m.teamB),
-          qualifier: myPick?.qualifier 
+          qualifier: myPick?.qualifier,
+          // Novo campo para evitar o "Passa: A" no front
+          qualifierName: getQualifierName(myPick?.qualifier, m.teamA, m.teamB)
         },
         opponentsToWatch
       };
