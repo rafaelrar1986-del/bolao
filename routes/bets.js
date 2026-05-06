@@ -25,26 +25,25 @@ function toWinnerLabel(choice, teamA, teamB) {
 }
 
 /**
- * 🧠 ESTRATÉGIA: Caminho da Liderança (Versão Final Refatorada)
- * Inclui: Probabilidade Real, Verificação de Times Vivos e Teto de Pontos.
+ * 🧠 ESTRATÉGIA: Caminho da Liderança (Versão Sincronizada com Leaderboard)
+ * Usa o cálculo dinâmico em tempo real para garantir precisão 100%.
  */
 router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
   try {
-    // Adicionado "mode" para suporte ao toggle Live/Official do frontend
-    const { leagueId, userId: targetUserId, mode } = req.query;
+    const { leagueId, userId: targetUserId, mode } = req.query; // 'mode': 'official' ou 'live'
     if (!leagueId) return res.status(400).json({ success: false, message: 'ID da liga obrigatório' });
 
     const lIdNum = Number(leagueId);
     const lIdStr = String(leagueId);
-    
     const activeUserId = targetUserId || req.user._id.toString();
     const isAdmin = req.user?.isAdmin === true;
+    const isLive = mode === 'live';
 
-    // 1. Carga de Dados
+    // 1. Carga de Dados (Mesma estrutura do leaderboard)
     const configId = `league_${leagueId}`;
     const [settings, matches, bets] = await Promise.all([
       Settings.findById(configId).lean(),
-      Match.find({ leagueId: lIdNum }).lean(),
+      Match.find({ leagueId: lIdNum }).select('matchId status scoreA scoreB phase teamA teamB group qualifiedSide').lean(),
       Bet.find({ hasSubmitted: true, leagueId: lIdStr }).populate('user', 'name').lean()
     ]);
 
@@ -52,163 +51,141 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     const targetBet = bets.find(b => b.user._id.toString() === activeUserId);
     if (!targetBet) return res.status(404).json({ success: false, message: 'Aposta não encontrada' });
 
-    // 2. Lógica de Times Vivos
+    // Helper de Vencedor (Idêntico ao seu leaderboard)
+    const getWinner = (a, b) => {
+      if (a === undefined || b === undefined || a === null || b === null) return null;
+      if (a > b) return 'A';
+      if (b > a) return 'B';
+      return 'draw';
+    };
+
+    // 2. Lógica de Times Vivos e Cálculo de Pontos Atuais (Dinâmico)
     const eliminatedTeams = new Set();
-    matches.forEach(m => {
-      if (m.status === 'finished' && m.phase === 'knockout') {
-        let winnerSide;
-        if (m.penaltiesA !== null && m.penaltiesB !== null) {
-          winnerSide = m.penaltiesA > m.penaltiesB ? 'A' : 'B';
+    const matchMap = new Map(matches.map(m => [Number(m.matchId), m]));
+
+    // Calculamos o ranking atual "on-the-fly" para saber o Gap real
+    const currentRanking = bets.map(b => {
+      let pts = 0;
+      (b.groupMatches || []).forEach(gm => {
+        const m = matchMap.get(Number(gm.matchId));
+        if (!m) return;
+
+        // Filtro de status idêntico ao seu ranking.js
+        if (isLive) {
+          if (m.status === 'scheduled') return;
         } else {
-          winnerSide = m.scoreA > m.scoreB ? 'A' : (m.scoreA < m.scoreB ? 'B' : null);
+          if (m.status !== 'finished') return;
         }
-        const loser = winnerSide === 'A' ? m.teamB : (winnerSide === 'B' ? m.teamA : null);
-        if (loser && m.group !== 'semifinal') eliminatedTeams.add(loser);
-      }
-    });
 
-    // Se o modo for 'live', consideramos apenas o que é 'scheduled' (futuro)
-    // Se for 'official', consideramos 'scheduled' + 'in_progress' como futuro
-    const futureMatches = matches
-      .filter(m => mode === 'live' ? m.status === 'scheduled' : m.status !== 'finished')
-      .sort((a, b) => a.matchId - b.matchId);
+        const realWinner = getWinner(m.scoreA, m.scoreB);
+        if (realWinner && gm.winner === realWinner) pts += 1;
+        
+        const realQual = m.qualifiedSide || (realWinner !== 'draw' ? realWinner : null);
+        if (gm.qualifier && realQual && gm.qualifier === realQual) pts += 1;
 
-    // 3. Cálculo do Potencial de Pódio
-    const leaguePodium = settings?.podium || {};
-    const podiumWeights = { first: 7, second: 4, third: 2, fourth: 2 };
-    let myPodiumPotential = 0;
-
-    if (!leaguePodium.first && targetBet.podium) {
-        const p = targetBet.podium;
-        if (p.first && !eliminatedTeams.has(p.first)) myPodiumPotential += podiumWeights.first;
-        if (p.second && !eliminatedTeams.has(p.second)) myPodiumPotential += podiumWeights.second;
-        if (p.third && !eliminatedTeams.has(p.third)) myPodiumPotential += podiumWeights.third;
-        if (p.fourth && !eliminatedTeams.has(p.fourth)) myPodiumPotential += podiumWeights.fourth;
-    }
-
-    // 4. Projeção de Ranking (Cenário de Ouro)
-    const projectedRanking = bets.map(b => {
-      let projectedPoints = b.totalPoints || 0;
-      const isTarget = b.user._id.toString() === activeUserId;
-
-      futureMatches.forEach(m => {
-        const targetPick = targetBet.groupMatches.find(gm => gm.matchId === m.matchId);
-        const rivalPick = b.groupMatches.find(gm => gm.matchId === m.matchId);
-
-        if (isTarget) {
-          projectedPoints += 1;
-          if (m.phase === 'knockout') projectedPoints += 1;
-        } else if (targetPick && rivalPick) {
-          if (targetPick.winner === rivalPick.winner) projectedPoints += 1;
-          if (m.phase === 'knockout' && targetPick.qualifier === rivalPick.qualifier) projectedPoints += 1;
+        // Aproveitamos o loop para marcar eliminados (apenas no finalizado)
+        if (m.status === 'finished' && m.phase === 'knockout' && m.group !== 'semifinal') {
+          const loser = realWinner === 'A' ? m.teamB : (realWinner === 'B' ? m.teamA : null);
+          if (loser) eliminatedTeams.add(loser);
         }
       });
 
-      if (isTarget) projectedPoints += myPodiumPotential;
-      return { userId: b.user?._id.toString(), name: b.user?.name, totalPoints: projectedPoints };
+      return { userId: b.user._id.toString(), points: pts + (b.podiumPoints || 0) };
     });
 
-    // 5. Ordenação e Posição Máxima
-    projectedRanking.sort((a, b) => b.totalPoints - a.totalPoints || a.name.localeCompare(b.name));
-    
-    let lastPoints = null, position = 0, myMaxPosition = 0;
-    projectedRanking.forEach((item, index) => {
-      if (lastPoints === null || item.totalPoints !== lastPoints) {
-        position = index + 1;
-        lastPoints = item.totalPoints;
-      }
-      if (item.userId === activeUserId) myMaxPosition = position;
+    const myCurrentPoints = currentRanking.find(r => r.userId === activeUserId)?.points || 0;
+    const leaderPoints = Math.max(...currentRanking.map(r => r.points), 0);
+
+    // 3. Projeção de Futuro (O que ainda pode ser ganho)
+    const futureMatches = matches
+      .filter(m => isLive ? m.status === 'scheduled' : m.status !== 'finished')
+      .sort((a, b) => a.matchId - b.matchId);
+
+    const podiumWeights = { first: 7, second: 4, third: 2, fourth: 2 };
+    let myPodiumPotential = 0;
+    if (!settings?.podium?.first && targetBet.podium) {
+      const p = targetBet.podium;
+      if (p.first && !eliminatedTeams.has(p.first)) myPodiumPotential += podiumWeights.first;
+      if (p.second && !eliminatedTeams.has(p.second)) myPodiumPotential += podiumWeights.second;
+      if (p.third && !eliminatedTeams.has(p.third)) myPodiumPotential += podiumWeights.third;
+      if (p.fourth && !eliminatedTeams.has(p.fourth)) myPodiumPotential += podiumWeights.fourth;
+    }
+
+    // 4. Posição Máxima (Cenário de Ouro)
+    const projectedRanking = currentRanking.map(r => {
+      let projPts = r.points;
+      const isTarget = r.userId === activeUserId;
+      const bRef = bets.find(bet => bet.user._id.toString() === r.userId);
+
+      futureMatches.forEach(m => {
+        const targetPick = targetBet.groupMatches.find(gm => gm.matchId === m.matchId);
+        const rivalPick = bRef?.groupMatches.find(gm => gm.matchId === m.matchId);
+
+        if (isTarget) {
+          projPts += (m.phase === 'knockout' ? 2 : 1);
+        } else if (targetPick && rivalPick) {
+          if (targetPick.winner === rivalPick.winner) projPts += 1;
+          if (m.phase === 'knockout' && targetPick.qualifier === rivalPick.qualifier) projPts += 1;
+        }
+      });
+
+      if (isTarget) projPts += myPodiumPotential;
+      return { userId: r.userId, totalPoints: projPts };
     });
 
-    // 6. Cálculo da Probabilidade e Teto
-    const leaderPoints = Math.max(...bets.map(b => b.totalPoints || 0), 0);
-    let matchPointsLeft = 0;
-    futureMatches.forEach(m => {
-      matchPointsLeft += 1;
-      if (m.phase === 'knockout') matchPointsLeft += 1;
-    });
+    projectedRanking.sort((a, b) => b.totalPoints - a.totalPoints);
+    const myMaxPosition = projectedRanking.findIndex(r => r.userId === activeUserId) + 1;
 
-    const totalPotentialDisputed = matchPointsLeft + myPodiumPotential;
-    const myMaxTotal = (targetBet.totalPoints || 0) + totalPotentialDisputed;
-    const gap = leaderPoints - (targetBet.totalPoints || 0);
+    // 5. Probabilidade (Baseada no Gap real calculado)
+    const matchPointsLeft = futureMatches.reduce((acc, m) => acc + (m.phase === 'knockout' ? 2 : 1), 0);
+    const totalPotential = matchPointsLeft + myPodiumPotential;
+    const gap = leaderPoints - myCurrentPoints;
+    const myMaxTotal = myCurrentPoints + totalPotential;
 
     let probability = 0;
     if (myMaxTotal >= leaderPoints) {
       if (gap <= 0) {
-        const advantage = Math.abs(gap);
-        probability = Math.min(99, 75 + (advantage * 5)); 
+        probability = Math.min(99, 75 + (Math.abs(gap) * 5));
       } else {
-        const reachability = totalPotentialDisputed > 0 ? (totalPotentialDisputed - gap) / totalPotentialDisputed : 0;
+        const reachability = totalPotential > 0 ? (totalPotential - gap) / totalPotential : 0;
         probability = Math.max(1, Math.round(reachability * 70));
       }
     }
 
-    // 7. Mapeamento de Impacto (Secagem)
+    // 6. Análise de Secagem (Impacto)
     const matchesAnalysis = futureMatches.map(m => {
-      let isLocked = !isAdmin;
-      if (m.phase === 'group') {
-        isLocked = !unlockedPhases.includes('group');
-      } else {
-        isLocked = !unlockedPhases.includes(m.group);
-      }
-
+      const isLocked = !isAdmin && (m.phase === 'group' ? !unlockedPhases.includes('group') : !unlockedPhases.includes(m.group));
       const myPick = targetBet.groupMatches.find(gm => gm.matchId === m.matchId);
-      const rivalsAbove = bets.filter(b => (b.totalPoints || 0) > (targetBet.totalPoints || 0));
-      
-      const opponentsToWatch = isLocked 
-        ? ["Conteúdo Bloqueado 🔒"] 
-        : rivalsAbove.filter(rb => {
-            const rp = rb.groupMatches.find(gm => gm.matchId === m.matchId);
-            if (!rp) return false;
-            const diffWin = rp.winner !== myPick?.winner;
-            const diffQualy = m.phase === 'knockout' && rp.qualifier !== myPick?.qualifier;
-            return diffWin || diffQualy;
-          }).map(rb => rb.user?.name);
+      const rivalsAbove = currentRanking.filter(r => r.points > myCurrentPoints);
+
+      const opponentsToWatch = isLocked ? ["Conteúdo Bloqueado 🔒"] : rivalsAbove.filter(ra => {
+        const rb = bets.find(b => b.user._id.toString() === ra.userId);
+        const rp = rb?.groupMatches.find(gm => gm.matchId === m.matchId);
+        return rp && (rp.winner !== myPick?.winner || (m.phase === 'knockout' && rp.qualifier !== myPick?.qualifier));
+      }).map(ra => bets.find(b => b.user._id.toString() === ra.userId)?.user.name);
 
       return {
         matchId: m.matchId,
         teams: `${m.teamA} x ${m.teamB}`,
-        status: m.status, // Adicionado status para o badge "AO VIVO"
+        status: m.status,
         hasImpact: opponentsToWatch.length > 0,
-        isLocked,
-        myChoice: { 
-          winner: myPick?.winner, 
-          label: toWinnerLabel(myPick?.winner, m.teamA, m.teamB),
-          qualifier: myPick?.qualifier,
-          // Adicionado qualifierName para exibir quem o usuário classificou no card
-          qualifierName: myPick?.qualifier === 'A' ? m.teamA : (myPick?.qualifier === 'B' ? m.teamB : null)
-        },
+        myChoice: { winner: myPick?.winner, qualifier: myPick?.qualifier },
         opponentsToWatch
       };
     });
 
-    // Formatação da resposta conforme js/ranking.js (removido o wrapper data: { success: true })
-    // O seu front faz const { summary, matches } = res.data;
     res.json({
-      summary: { 
-        maxPosition: myMaxPosition, 
-        canReachFirst: myMaxPosition === 1, 
-        probability: probability,
-        totalMatches: futureMatches.length,
-        currentPoints: targetBet.totalPoints || 0,
-        podiumPotential: myPodiumPotential,
-        maxPoints: myMaxTotal
-      },
-      matches: matchesAnalysis
+      success: true,
+      data: {
+        summary: { maxPosition: myMaxPosition, probability, currentPoints: myCurrentPoints, maxPoints: myMaxTotal },
+        matches: matchesAnalysis
+      }
     });
-
   } catch (e) {
-    console.error('Leadership Path Error:', e);
-    res.status(500).json({ success: false, message: 'Erro ao calcular estratégia' });
+    console.error('Leadership Error:', e);
+    res.status(500).json({ success: false });
   }
 });
-
-function toWinnerLabel(winner, teamA, teamB) {
-  if (winner === 'A') return teamA;
-  if (winner === 'B') return teamB;
-  if (winner === 'draw') return 'Empate';
-  return 'N/D';
-}
 
 //🎯 Meus palpites (Filtrado por Liga)
  
