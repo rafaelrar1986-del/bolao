@@ -188,7 +188,8 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         myChoice: { 
           winner: myPick?.winner || null, 
           label: toWinnerLabel(myPick?.winner, m.teamA, m.teamB), // Resolve o 'undefined' no palpite
-          qualifier: myPick?.qualifier || null 
+          qualifier: myPick?.qualifier || null,
+          qualifierName: myPick?.qualifier === 'A' ? m.teamA : (myPick?.qualifier === 'B' ? m.teamB : null)        
         },
         opponentsToWatch
       };
