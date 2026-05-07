@@ -27,6 +27,7 @@ function toWinnerLabel(choice, teamA, teamB) {
 /**
  * 🧠 ESTRATÉGIA: Caminho da Liderança (Versão 2026 - Ultra Precision)
  * Sincronizada 100% com a lógica de pontos do leaderboard.js
+ * Corrigida para análise dinâmica de terceiros e tratamento de palpites vazios.
  */
 router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
   try {
@@ -35,6 +36,8 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
 
     const lIdNum = Number(leagueId);
     const lIdStr = String(leagueId);
+    
+    // Define quem é o alvo da análise (Logado ou selecionado no Dropdown)
     const activeUserId = targetUserId || req.user._id.toString();
     const isAdmin = req.user?.isAdmin === true;
     const isLive = mode === 'live';
@@ -48,6 +51,8 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     ]);
 
     const unlockedPhases = settings?.unlockedPhases || [];
+    
+    // Localiza a aposta do usuário alvo da análise
     const targetBet = bets.find(b => b.user._id.toString() === activeUserId);
     if (!targetBet) return res.status(404).json({ success: false, message: 'Aposta não encontrada' });
 
@@ -59,12 +64,12 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
       return 'draw';
     };
 
-    // Helper para converter Winner em Nome do Time (Evita 'undefined' no palpite)
+    // Helper para converter Winner em Nome do Time (Corrigido para "Sem Palpite")
     const toWinnerLabel = (winner, teamA, teamB) => {
       if (winner === 'A') return teamA;
       if (winner === 'B') return teamB;
       if (winner === 'draw') return 'Empate';
-      return 'N/D';
+      return 'Sem Palpite'; 
     };
 
     // 2. Lógica de Times Vivos e Cálculo de Pontos Atuais (Dinâmico)
@@ -77,7 +82,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         const m = matchMap.get(Number(gm.matchId));
         if (!m) return;
 
-        // Filtro de status idêntico ao seu ranking.js para evitar "limbo"
         if (isLive) {
           if (m.status === 'scheduled') return;
         } else {
@@ -90,7 +94,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         const realQual = m.qualifiedSide || (realWinner !== 'draw' ? realWinner : null);
         if (gm.qualifier && realQual && gm.qualifier === realQual) pts += 1;
 
-        // Regra de Eliminação: Perdedores de mata-mata saem (exceto semi, que disputam 3º)
         if (m.status === 'finished' && m.phase === 'knockout' && m.group !== 'semifinal') {
           const loser = realWinner === 'A' ? m.teamB : (realWinner === 'B' ? m.teamA : null);
           if (loser) eliminatedTeams.add(loser);
@@ -100,27 +103,26 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
       return { userId: b.user._id.toString(), points: pts + (b.podiumPoints || 0) };
     });
 
-    const myCurrentPoints = currentRanking.find(r => r.userId === activeUserId)?.points || 0;
+    const targetCurrentPoints = currentRanking.find(r => r.userId === activeUserId)?.points || 0;
     const leaderPoints = Math.max(...currentRanking.map(r => r.points), 0);
 
-    // 3. Projeção de Futuro (O que ainda pode ser ganho)
+    // 3. Projeção de Futuro
     const futureMatches = matches
       .filter(m => isLive ? m.status === 'scheduled' : m.status !== 'finished')
       .sort((a, b) => a.matchId - b.matchId);
 
     const podiumWeights = { first: 7, second: 4, third: 2, fourth: 2 };
-    let myPodiumPotential = 0;
+    let targetPodiumPotential = 0;
     
-    // Calcula potencial de pódio APENAS se os pontos ainda não foram distribuídos pelo ADM
     if (!settings?.podium?.first && targetBet.podium) {
       const p = targetBet.podium;
-      if (p.first && !eliminatedTeams.has(p.first)) myPodiumPotential += podiumWeights.first;
-      if (p.second && !eliminatedTeams.has(p.second)) myPodiumPotential += podiumWeights.second;
-      if (p.third && !eliminatedTeams.has(p.third)) myPodiumPotential += podiumWeights.third;
-      if (p.fourth && !eliminatedTeams.has(p.fourth)) myPodiumPotential += podiumWeights.fourth;
+      if (p.first && !eliminatedTeams.has(p.first)) targetPodiumPotential += podiumWeights.first;
+      if (p.second && !eliminatedTeams.has(p.second)) targetPodiumPotential += podiumWeights.second;
+      if (p.third && !eliminatedTeams.has(p.third)) targetPodiumPotential += podiumWeights.third;
+      if (p.fourth && !eliminatedTeams.has(p.fourth)) targetPodiumPotential += podiumWeights.fourth;
     }
 
-    // 4. Posição Máxima (Cenário de Ouro)
+    // 4. Posição Máxima (Cenário de Ouro para o Alvo)
     const projectedRanking = currentRanking.map(r => {
       let projPts = r.points;
       const isTarget = r.userId === activeUserId;
@@ -131,52 +133,51 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         const rivalPick = bRef?.groupMatches.find(gm => gm.matchId === m.matchId);
 
         if (isTarget) {
-          // No seu cenário de ouro, você acerta tudo
+          // No cenário de ouro do alvo, ele acerta tudo
           projPts += (m.phase === 'knockout' ? 2 : 1);
         } else if (targetPick && rivalPick) {
-          // Rivais só pontuam se "copiaram" você no jogo futuro
-          if (targetPick.winner === rivalPick.winner) projPts += 1;
-          if (m.phase === 'knockout' && targetPick.qualifier === rivalPick.qualifier) projPts += 1;
+          // Os outros só pontuam se o palpite deles for IGUAL ao do alvo (Secagem reversa)
+          if (targetPick.winner && targetPick.winner === rivalPick.winner) projPts += 1;
+          if (m.phase === 'knockout' && targetPick.qualifier && targetPick.qualifier === rivalPick.qualifier) projPts += 1;
         }
       });
 
-      if (isTarget) projPts += myPodiumPotential;
+      if (isTarget) projPts += targetPodiumPotential;
       return { userId: r.userId, totalPoints: projPts, name: bRef?.user?.name || "" };
     });
 
-    // Ordenação com critério de desempate por nome (Idêntico ao ranking)
     projectedRanking.sort((a, b) => b.totalPoints - a.totalPoints || a.name.localeCompare(b.name));
-    const myMaxPosition = projectedRanking.findIndex(r => r.userId === activeUserId) + 1;
+    const targetMaxPosition = projectedRanking.findIndex(r => r.userId === activeUserId) + 1;
 
     // 5. Probabilidade Estatística
     const matchPointsLeft = futureMatches.reduce((acc, m) => acc + (m.phase === 'knockout' ? 2 : 1), 0);
-    const totalPotential = matchPointsLeft + myPodiumPotential;
-    const gap = leaderPoints - myCurrentPoints;
-    const myMaxTotal = myCurrentPoints + totalPotential;
+    const totalPotential = matchPointsLeft + targetPodiumPotential;
+    const gap = leaderPoints - targetCurrentPoints;
+    const targetMaxTotal = targetCurrentPoints + totalPotential;
 
     let probability = 0;
-    if (myMaxTotal >= leaderPoints) {
+    if (targetMaxTotal >= leaderPoints) {
       if (gap <= 0) {
-        // Se já é líder, probabilidade alta que cresce com a vantagem
         probability = Math.min(99, 75 + (Math.abs(gap) * 5));
       } else {
-        // Se é desafiante, a probabilidade cai conforme o gap aumenta em relação ao potencial
         const reachability = totalPotential > 0 ? (totalPotential - gap) / totalPotential : 0;
         probability = Math.max(1, Math.round(reachability * 70));
       }
     }
 
-    // 6. Análise de Secagem (Tabela de Impacto)
+    // 6. Análise de Secagem (Dinâmica para o Alvo)
     const matchesAnalysis = futureMatches.map(m => {
       const isLocked = !isAdmin && (m.phase === 'group' ? !unlockedPhases.includes('group') : !unlockedPhases.includes(m.group));
-      const myPick = targetBet.groupMatches.find(gm => gm.matchId === m.matchId);
-      const rivalsAbove = currentRanking.filter(r => r.points > myCurrentPoints);
+      const targetPick = targetBet.groupMatches.find(gm => gm.matchId === m.matchId);
+      
+      // Define rivais: quem está acima do alvo da análise
+      const rivalsAboveTarget = currentRanking.filter(r => r.points > targetCurrentPoints);
 
-      const opponentsToWatch = isLocked ? ["Conteúdo Bloqueado 🔒"] : rivalsAbove.filter(ra => {
+      const opponentsToWatch = isLocked ? ["Conteúdo Bloqueado 🔒"] : rivalsAboveTarget.filter(ra => {
         const rb = bets.find(b => b.user._id.toString() === ra.userId);
         const rp = rb?.groupMatches.find(gm => gm.matchId === m.matchId);
-        // Secagem: Rivais que apostaram DIFERENTE de você
-        return rp && (rp.winner !== myPick?.winner || (m.phase === 'knockout' && rp.qualifier !== myPick?.qualifier));
+        // Secagem: Quem apostou diferente do Alvo
+        return rp && (rp.winner !== targetPick?.winner || (m.phase === 'knockout' && rp.qualifier !== targetPick?.qualifier));
       }).map(ra => bets.find(b => b.user._id.toString() === ra.userId)?.user.name);
 
       return {
@@ -186,10 +187,10 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         hasImpact: opponentsToWatch.length > 0,
         isLocked,
         myChoice: { 
-          winner: myPick?.winner || null, 
-          label: toWinnerLabel(myPick?.winner, m.teamA, m.teamB), // Resolve o 'undefined' no palpite
-          qualifier: myPick?.qualifier || null,
-          qualifierName: myPick?.qualifier === 'A' ? m.teamA : (myPick?.qualifier === 'B' ? m.teamB : null)        
+          winner: targetPick?.winner || null, 
+          label: toWinnerLabel(targetPick?.winner, m.teamA, m.teamB),
+          qualifier: targetPick?.qualifier || null,
+          qualifierName: targetPick?.qualifier === 'A' ? m.teamA : (targetPick?.qualifier === 'B' ? m.teamB : (m.phase === 'knockout' ? 'Sem Palpite' : null))        
         },
         opponentsToWatch
       };
@@ -200,11 +201,11 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
       success: true,
       data: {
         summary: { 
-          maxPosition: myMaxPosition, 
+          maxPosition: targetMaxPosition, 
           probability, 
-          currentPoints: myCurrentPoints, 
-          maxPoints: myMaxTotal,
-          podiumPotential: myPodiumPotential || 0, // Resolve o '+undefined pts' no card
+          currentPoints: targetCurrentPoints, 
+          maxPoints: targetMaxTotal,
+          podiumPotential: targetPodiumPotential || 0,
           totalMatches: futureMatches.length
         },
         matches: matchesAnalysis
