@@ -39,7 +39,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     const isAdmin = req.user?.isAdmin === true;
     const isLive = mode === 'live';
 
-    // 1. Carga de Dados (Idêntico ao my-bets)
+    // 1. Carga de Dados
     const configId = `league_${leagueId}`;
     const [settings, matches, bets] = await Promise.all([
       Settings.findById(configId).lean(),
@@ -50,20 +50,24 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     const unlockedPhases = settings?.unlockedPhases || [];
     
     // Busca a aposta bruta do alvo
-    const rawTargetBet = bets.find(b => b.user?._id?.toString() === activeUserId || b.user === activeUserId);
+    const rawTargetBet = bets.find(b => b.user?._id?.toString() === activeUserId || b.user?.toString() === activeUserId);
     if (!rawTargetBet) return res.status(404).json({ success: false, message: 'Aposta não encontrada' });
 
-    // 🔑 A MÁGICA: Filtramos os palpites que pertencem APENAS a esta liga (como no seu my-bets)
+    // 🔑 FILTRAGEM SEGURA: Criamos um Map para busca instantânea de palpites por ID
     const matchIdsDaLiga = new Set(matches.map(m => Number(m.matchId)));
-    const targetGroupMatches = (rawTargetBet.groupMatches || [])
-      .filter(b => matchIdsDaLiga.has(Number(b.matchId)));
+    const targetPicksMap = new Map();
+    
+    (rawTargetBet.groupMatches || []).forEach(gm => {
+      const mid = Number(gm.matchId);
+      if (matchIdsDaLiga.has(mid)) {
+        targetPicksMap.set(mid, gm);
+      }
+    });
 
-    // Se após filtrar não sobrou nada, o usuário não tem palpites NESTA liga
-    if (targetGroupMatches.length === 0) {
+    if (targetPicksMap.size === 0) {
        return res.json({ success: true, data: { summary: { maxPosition: '-', probability: 0, currentPoints: 0, maxPoints: 0, totalMatches: 0 }, matches: [] } });
     }
 
-    // Helper de Vencedor
     const getWinner = (a, b) => {
       if (a === undefined || b === undefined || a === null || b === null) return null;
       if (a > b) return 'A';
@@ -81,14 +85,14 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     const eliminatedTeams = new Set();
     const matchMap = new Map(matches.map(m => [Number(m.matchId), m]));
 
-    // 2. Cálculo do Ranking Atual (Considerando apenas jogos da liga)
+    // 2. Cálculo do Ranking Atual
     const currentRanking = bets.map(b => {
       let pts = 0;
-      // Filtramos os palpites de cada usuário do ranking também para ser justo
-      const filteredGms = (b.groupMatches || []).filter(gm => matchIdsDaLiga.has(Number(gm.matchId)));
-      
-      filteredGms.forEach(gm => {
-        const m = matchMap.get(Number(gm.matchId));
+      (b.groupMatches || []).forEach(gm => {
+        const mid = Number(gm.matchId);
+        if (!matchIdsDaLiga.has(mid)) return;
+        
+        const m = matchMap.get(mid);
         if (!m) return;
         if (isLive) { if (m.status === 'scheduled') return; } 
         else { if (m.status !== 'finished') return; }
@@ -130,8 +134,9 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
       const bRef = bets.find(bet => bet.user._id.toString() === r.userId);
 
       futureMatches.forEach(m => {
-        const targetPick = targetGroupMatches.find(gm => Number(gm.matchId) === Number(m.matchId));
-        const rivalPick = (bRef?.groupMatches || []).find(gm => Number(gm.matchId) === Number(m.matchId));
+        const mid = Number(m.matchId);
+        const targetPick = targetPicksMap.get(mid);
+        const rivalPick = (bRef?.groupMatches || []).find(gm => Number(gm.matchId) === mid);
 
         if (isTarget) {
           projPts += (m.phase === 'knockout' ? 2 : 1);
@@ -161,21 +166,24 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
       }
     }
 
-    // 6. Análise de Secagem
+    // 6. Análise de Secagem (Corrigido para usar o Map)
     const matchesAnalysis = futureMatches.map(m => {
+      const mid = Number(m.matchId);
       const isLocked = !isAdmin && (m.phase === 'group' ? !unlockedPhases.includes('group') : !unlockedPhases.includes(m.group));
-      const targetPick = targetGroupMatches.find(gm => Number(gm.matchId) === Number(m.matchId));
+      
+      // 🔑 BUSCA NO MAP: Garantia de que o palpite será encontrado se existir
+      const targetPick = targetPicksMap.get(mid);
       
       const rivalsAboveTarget = currentRanking.filter(r => r.points > targetPoints);
 
       const opponentsToWatch = isLocked ? ["Conteúdo Bloqueado 🔒"] : rivalsAboveTarget.filter(ra => {
         const rb = bets.find(b => b.user._id.toString() === ra.userId);
-        const rp = (rb?.groupMatches || []).find(gm => Number(gm.matchId) === Number(m.matchId));
+        const rp = (rb?.groupMatches || []).find(gm => Number(gm.matchId) === mid);
         return rp && (rp.winner !== targetPick?.winner || (m.phase === 'knockout' && rp.qualifier !== targetPick?.qualifier));
       }).map(ra => bets.find(b => b.user._id.toString() === ra.userId)?.user?.name);
 
       return {
-        matchId: m.matchId,
+        matchId: mid,
         teams: `${m.teamA} x ${m.teamB}`,
         status: m.status,
         hasImpact: opponentsToWatch.length > 0,
@@ -209,7 +217,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     res.status(500).json({ success: false });
   }
 });
-
 //🎯 Meus palpites (Filtrado por Liga)
  
 router.get('/my-bets', protect, checkPaid, async (req, res) => {
