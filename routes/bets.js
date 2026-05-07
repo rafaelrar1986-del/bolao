@@ -168,17 +168,29 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     // 6. Análise de Secagem (Dinâmica para o Alvo)
     const matchesAnalysis = futureMatches.map(m => {
       const isLocked = !isAdmin && (m.phase === 'group' ? !unlockedPhases.includes('group') : !unlockedPhases.includes(m.group));
-      const targetPick = targetBet.groupMatches.find(gm => gm.matchId === m.matchId);
       
-      // Define rivais: quem está acima do alvo da análise
+      // Ajuste de Precisão: Garantindo que o matchId seja comparado como Number
+      const targetPick = targetBet.groupMatches.find(gm => Number(gm.matchId) === Number(m.matchId));
+      
+      // Define rivais: quem está acima do alvo da análise no ranking atual
       const rivalsAboveTarget = currentRanking.filter(r => r.points > targetCurrentPoints);
 
       const opponentsToWatch = isLocked ? ["Conteúdo Bloqueado 🔒"] : rivalsAboveTarget.filter(ra => {
         const rb = bets.find(b => b.user._id.toString() === ra.userId);
-        const rp = rb?.groupMatches.find(gm => gm.matchId === m.matchId);
-        // Secagem: Quem apostou diferente do Alvo
+        const rp = rb?.groupMatches.find(gm => Number(gm.matchId) === Number(m.matchId));
+        
+        // Secagem: Quem apostou diferente do Alvo (ou quem já palpitou enquanto o alvo não)
+        if (!targetPick && rp) return true; // Se o alvo não palpitou e o rival sim, é um risco
         return rp && (rp.winner !== targetPick?.winner || (m.phase === 'knockout' && rp.qualifier !== targetPick?.qualifier));
       }).map(ra => bets.find(b => b.user._id.toString() === ra.userId)?.user.name);
+
+      // RESOLUÇÃO DE LABEL: Se houver palpite mas o label for N/D, forçamos a resolução aqui
+      let displayLabel = toWinnerLabel(targetPick?.winner, m.teamA, m.teamB);
+      let displayQualifier = targetPick?.qualifier === 'A' ? m.teamA : (targetPick?.qualifier === 'B' ? m.teamB : null);
+
+      // Se o back-end retornar label N/D por algum motivo, tratamos aqui
+      if (!displayLabel || displayLabel === 'N/D') displayLabel = 'Sem Palpite';
+      if (m.phase === 'knockout' && !displayQualifier) displayQualifier = 'Sem Palpite';
 
       return {
         matchId: m.matchId,
@@ -188,14 +200,13 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         isLocked,
         myChoice: { 
           winner: targetPick?.winner || null, 
-          label: toWinnerLabel(targetPick?.winner, m.teamA, m.teamB),
+          label: displayLabel,
           qualifier: targetPick?.qualifier || null,
-          qualifierName: targetPick?.qualifier === 'A' ? m.teamA : (targetPick?.qualifier === 'B' ? m.teamB : (m.phase === 'knockout' ? 'Sem Palpite' : null))        
+          qualifierName: displayQualifier
         },
         opponentsToWatch
       };
     });
-
     // 7. Resposta Final
     res.json({
       success: true,
