@@ -25,8 +25,8 @@ function toWinnerLabel(choice, teamA, teamB) {
 }
 
 /**
- * 🧠 ESTRATÉGIA: Caminho da Liderança (Versão 2026 - Ultra Precision)
- * Sincronizada 100% com a lógica de filtragem do seu my-bets
+ * 🧠 ESTRATÉGIA: Caminho da Liderança (Versão 2026 - Final Precision)
+ * Normalização agressiva de tipos para evitar falhas de busca de palpites.
  */
 router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
   try {
@@ -49,25 +49,22 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
 
     const unlockedPhases = settings?.unlockedPhases || [];
     
-    // Busca a aposta bruta do alvo
+    // Busca a aposta do alvo
     const rawTargetBet = bets.find(b => b.user?._id?.toString() === activeUserId || b.user?.toString() === activeUserId);
     if (!rawTargetBet) return res.status(404).json({ success: false, message: 'Aposta não encontrada' });
 
-    // 🔑 FILTRAGEM SEGURA: Criamos um Map para busca instantânea de palpites por ID
-    const matchIdsDaLiga = new Set(matches.map(m => Number(m.matchId)));
+    // 🔑 NORMALIZAÇÃO: Criamos um Map usando STRING como chave para evitar erro de tipo Number vs String
+    const matchIdsDaLiga = new Set(matches.map(m => String(m.matchId)));
     const targetPicksMap = new Map();
     
     (rawTargetBet.groupMatches || []).forEach(gm => {
-      const mid = Number(gm.matchId);
-      if (matchIdsDaLiga.has(mid)) {
-        targetPicksMap.set(mid, gm);
+      const midStr = String(gm.matchId);
+      if (matchIdsDaLiga.has(midStr)) {
+        targetPicksMap.set(midStr, gm);
       }
     });
 
-    if (targetPicksMap.size === 0) {
-       return res.json({ success: true, data: { summary: { maxPosition: '-', probability: 0, currentPoints: 0, maxPoints: 0, totalMatches: 0 }, matches: [] } });
-    }
-
+    // Helper de Vencedor
     const getWinner = (a, b) => {
       if (a === undefined || b === undefined || a === null || b === null) return null;
       if (a > b) return 'A';
@@ -83,16 +80,16 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     };
 
     const eliminatedTeams = new Set();
-    const matchMap = new Map(matches.map(m => [Number(m.matchId), m]));
+    const matchMap = new Map(matches.map(m => [String(m.matchId), m]));
 
     // 2. Cálculo do Ranking Atual
     const currentRanking = bets.map(b => {
       let pts = 0;
       (b.groupMatches || []).forEach(gm => {
-        const mid = Number(gm.matchId);
-        if (!matchIdsDaLiga.has(mid)) return;
+        const midStr = String(gm.matchId);
+        if (!matchIdsDaLiga.has(midStr)) return;
         
-        const m = matchMap.get(mid);
+        const m = matchMap.get(midStr);
         if (!m) return;
         if (isLive) { if (m.status === 'scheduled') return; } 
         else { if (m.status !== 'finished') return; }
@@ -115,7 +112,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
 
     const futureMatches = matches
       .filter(m => isLive ? m.status === 'scheduled' : m.status !== 'finished')
-      .sort((a, b) => a.matchId - b.matchId);
+      .sort((a, b) => Number(a.matchId) - Number(b.matchId));
 
     const podiumWeights = { first: 7, second: 4, third: 2, fourth: 2 };
     let targetPodiumPotential = 0;
@@ -134,9 +131,9 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
       const bRef = bets.find(bet => bet.user._id.toString() === r.userId);
 
       futureMatches.forEach(m => {
-        const mid = Number(m.matchId);
-        const targetPick = targetPicksMap.get(mid);
-        const rivalPick = (bRef?.groupMatches || []).find(gm => Number(gm.matchId) === mid);
+        const midStr = String(m.matchId);
+        const targetPick = targetPicksMap.get(midStr);
+        const rivalPick = (bRef?.groupMatches || []).find(gm => String(gm.matchId) === midStr);
 
         if (isTarget) {
           projPts += (m.phase === 'knockout' ? 2 : 1);
@@ -166,24 +163,23 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
       }
     }
 
-    // 6. Análise de Secagem (Corrigido para usar o Map)
+    // 6. Análise de Secagem (Garantindo busca por String no Map)
     const matchesAnalysis = futureMatches.map(m => {
-      const mid = Number(m.matchId);
+      const midStr = String(m.matchId);
       const isLocked = !isAdmin && (m.phase === 'group' ? !unlockedPhases.includes('group') : !unlockedPhases.includes(m.group));
       
-      // 🔑 BUSCA NO MAP: Garantia de que o palpite será encontrado se existir
-      const targetPick = targetPicksMap.get(mid);
+      const targetPick = targetPicksMap.get(midStr);
       
       const rivalsAboveTarget = currentRanking.filter(r => r.points > targetPoints);
 
       const opponentsToWatch = isLocked ? ["Conteúdo Bloqueado 🔒"] : rivalsAboveTarget.filter(ra => {
         const rb = bets.find(b => b.user._id.toString() === ra.userId);
-        const rp = (rb?.groupMatches || []).find(gm => Number(gm.matchId) === mid);
+        const rp = (rb?.groupMatches || []).find(gm => String(gm.matchId) === midStr);
         return rp && (rp.winner !== targetPick?.winner || (m.phase === 'knockout' && rp.qualifier !== targetPick?.qualifier));
       }).map(ra => bets.find(b => b.user._id.toString() === ra.userId)?.user?.name);
 
       return {
-        matchId: mid,
+        matchId: m.matchId,
         teams: `${m.teamA} x ${m.teamB}`,
         status: m.status,
         hasImpact: opponentsToWatch.length > 0,
@@ -217,6 +213,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     res.status(500).json({ success: false });
   }
 });
+
 //🎯 Meus palpites (Filtrado por Liga)
  
 router.get('/my-bets', protect, checkPaid, async (req, res) => {
