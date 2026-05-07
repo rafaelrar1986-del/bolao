@@ -37,7 +37,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     const lIdNum = Number(leagueId);
     const lIdStr = String(leagueId);
     
-    // Define quem é o alvo da análise (Logado ou selecionado no Dropdown)
+    // Define quem é o alvo da análise (O próprio usuário logado ou o selecionado no Dropdown)
     const activeUserId = targetUserId || req.user._id.toString();
     const isAdmin = req.user?.isAdmin === true;
     const isLive = mode === 'live';
@@ -53,7 +53,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     const unlockedPhases = settings?.unlockedPhases || [];
     
     // Localiza a aposta do usuário alvo da análise
-    const targetBet = bets.find(b => b.user._id.toString() === activeUserId);
+    const targetBet = bets.find(b => b.user?._id?.toString() === activeUserId || b.user === activeUserId);
     if (!targetBet) return res.status(404).json({ success: false, message: 'Aposta não encontrada' });
 
     // Helper de Vencedor (Idêntico ao seu leaderboard)
@@ -64,7 +64,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
       return 'draw';
     };
 
-    // Helper para converter Winner em Nome do Time (Corrigido para "Sem Palpite")
+    // Helper para converter Winner em Nome do Time (Corrigido para evitar "N/D" genérico)
     const toWinnerLabel = (winner, teamA, teamB) => {
       if (winner === 'A') return teamA;
       if (winner === 'B') return teamB;
@@ -106,7 +106,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     const targetCurrentPoints = currentRanking.find(r => r.userId === activeUserId)?.points || 0;
     const leaderPoints = Math.max(...currentRanking.map(r => r.points), 0);
 
-    // 3. Projeção de Futuro
+    // 3. Projeção de Futuro (O que ainda pode ser ganho)
     const futureMatches = matches
       .filter(m => isLive ? m.status === 'scheduled' : m.status !== 'finished')
       .sort((a, b) => a.matchId - b.matchId);
@@ -129,16 +129,17 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
       const bRef = bets.find(bet => bet.user._id.toString() === r.userId);
 
       futureMatches.forEach(m => {
-        const targetPick = targetBet.groupMatches.find(gm => gm.matchId === m.matchId);
-        const rivalPick = bRef?.groupMatches.find(gm => gm.matchId === m.matchId);
+        // Busca palpites garantindo que o matchId seja Number
+        const personTargetPick = targetBet.groupMatches.find(gm => Number(gm.matchId) === Number(m.matchId));
+        const rivalInLoopPick = bRef?.groupMatches.find(gm => Number(gm.matchId) === Number(m.matchId));
 
         if (isTarget) {
           // No cenário de ouro do alvo, ele acerta tudo
           projPts += (m.phase === 'knockout' ? 2 : 1);
-        } else if (targetPick && rivalPick) {
-          // Os outros só pontuam se o palpite deles for IGUAL ao do alvo (Secagem reversa)
-          if (targetPick.winner && targetPick.winner === rivalPick.winner) projPts += 1;
-          if (m.phase === 'knockout' && targetPick.qualifier && targetPick.qualifier === rivalPick.qualifier) projPts += 1;
+        } else if (personTargetPick && rivalInLoopPick) {
+          // Os rivais só pontuam se "copiaram" o palpite do alvo no jogo futuro
+          if (personTargetPick.winner && personTargetPick.winner === rivalInLoopPick.winner) projPts += 1;
+          if (m.phase === 'knockout' && personTargetPick.qualifier && personTargetPick.qualifier === rivalInLoopPick.qualifier) projPts += 1;
         }
       });
 
@@ -165,32 +166,24 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
       }
     }
 
-    // 6. Análise de Secagem (Dinâmica para o Alvo)
+    // 6. Análise de Secagem (Tabela de Impacto relativa ao Alvo)
     const matchesAnalysis = futureMatches.map(m => {
       const isLocked = !isAdmin && (m.phase === 'group' ? !unlockedPhases.includes('group') : !unlockedPhases.includes(m.group));
+      const targetPick = (targetBet.groupMatches || []).find(gm => Number(gm.matchId) === Number(m.matchId));
       
-      // Ajuste de Precisão: Garantindo que o matchId seja comparado como Number
-      const targetPick = targetBet.groupMatches.find(gm => Number(gm.matchId) === Number(m.matchId));
-      
-      // Define rivais: quem está acima do alvo da análise no ranking atual
+      // Rivais: quem está ACIMA do usuário que estamos analisando
       const rivalsAboveTarget = currentRanking.filter(r => r.points > targetCurrentPoints);
 
       const opponentsToWatch = isLocked ? ["Conteúdo Bloqueado 🔒"] : rivalsAboveTarget.filter(ra => {
         const rb = bets.find(b => b.user._id.toString() === ra.userId);
-        const rp = rb?.groupMatches.find(gm => Number(gm.matchId) === Number(m.matchId));
-        
-        // Secagem: Quem apostou diferente do Alvo (ou quem já palpitou enquanto o alvo não)
-        if (!targetPick && rp) return true; // Se o alvo não palpitou e o rival sim, é um risco
+        const rp = (rb?.groupMatches || []).find(gm => Number(gm.matchId) === Number(m.matchId));
+        // Secagem: Rivais que apostaram DIFERENTE do Alvo da análise
         return rp && (rp.winner !== targetPick?.winner || (m.phase === 'knockout' && rp.qualifier !== targetPick?.qualifier));
-      }).map(ra => bets.find(b => b.user._id.toString() === ra.userId)?.user.name);
+      }).map(ra => bets.find(b => b.user._id.toString() === ra.userId)?.user?.name);
 
-      // RESOLUÇÃO DE LABEL: Se houver palpite mas o label for N/D, forçamos a resolução aqui
+      // Resolução de Labels para evitar N/D ou undefined no card
       let displayLabel = toWinnerLabel(targetPick?.winner, m.teamA, m.teamB);
-      let displayQualifier = targetPick?.qualifier === 'A' ? m.teamA : (targetPick?.qualifier === 'B' ? m.teamB : null);
-
-      // Se o back-end retornar label N/D por algum motivo, tratamos aqui
-      if (!displayLabel || displayLabel === 'N/D') displayLabel = 'Sem Palpite';
-      if (m.phase === 'knockout' && !displayQualifier) displayQualifier = 'Sem Palpite';
+      let displayQualifier = targetPick?.qualifier === 'A' ? m.teamA : (targetPick?.qualifier === 'B' ? m.teamB : (m.phase === 'knockout' ? 'Sem Palpite' : null));
 
       return {
         matchId: m.matchId,
@@ -207,6 +200,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         opponentsToWatch
       };
     });
+
     // 7. Resposta Final
     res.json({
       success: true,
@@ -227,6 +221,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     res.status(500).json({ success: false });
   }
 });
+
 //🎯 Meus palpites (Filtrado por Liga)
  
 router.get('/my-bets', protect, checkPaid, async (req, res) => {
