@@ -231,6 +231,28 @@ if (match.status === 'scheduled' && (newStatus !== 'scheduled' && newStatus !== 
         }
       };
 
+      // ============================================================
+      // 🏆 COLOQUE O CÓDIGO EXATAMENTE AQUI (ANTES DAS ESTATÍSTICAS)
+      // ============================================================
+      const isKnockout = match.phase === 'knockout' || match.phase === 'mata-mata';
+      if (isKnockout) {
+        const sA = updateData.scoreA;
+        const sB = updateData.scoreB;
+        const pA = updateData.penaltiesA;
+        const pB = updateData.penaltiesB;
+
+        if (pA !== null && pB !== null && pA !== pB) {
+          updateData.qualifiedSide = pA > pB ? 'A' : 'B';
+        } 
+        else if (sA !== null && sB !== null && sA !== sB) {
+          updateData.qualifiedSide = sA > sB ? 'A' : 'B';
+        } 
+        else {
+          updateData.qualifiedSide = null;
+        }
+      }
+      // ============================================================
+
       // Estatísticas
       if (gameDetail.live_stats) {
         updateData.statistics = gameDetail.live_stats;
