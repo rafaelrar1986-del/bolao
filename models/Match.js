@@ -126,22 +126,36 @@ MatchSchema.pre('save', function (next) {
 
   const isKnockout = this.phase === 'knockout' || this.phase === 'mata-mata';
   
-  if (this.status === 'finished' && isKnockout) {
-    if (this.penaltiesA !== null && this.penaltiesB !== null) {
-      if (this.penaltiesA > this.penaltiesB) this.qualifiedSide = 'A';
-      else if (this.penaltiesB > this.penaltiesA) this.qualifiedSide = 'B';
+  // CÁLCULO AUTOMÁTICO DE CLASSIFICADO (QUALIFIEDSIDE)
+  // Removida a trava de 'finished' para funcionar em tempo real (Live)
+  if (isKnockout) {
+    const sA = this.scoreA;
+    const sB = this.scoreB;
+    const pA = this.penaltiesA;
+    const pB = this.penaltiesB;
+
+    // 1. Critério de desempate final: Pênaltis
+    if (pA !== null && pB !== null && pA !== pB) {
+      this.qualifiedSide = pA > pB ? 'A' : 'B';
     } 
-    else if (this.scoreA !== null && this.scoreB !== null) {
-      if (this.scoreA > this.scoreB) this.qualifiedSide = 'A';
-      else if (this.scoreB > this.scoreA) this.qualifiedSide = 'B';
+    // 2. Se não houve pênaltis ou estão empatados, checa Gols
+    else if (sA !== null && sB !== null && sA !== sB) {
+      this.qualifiedSide = sA > sB ? 'A' : 'B';
+    } 
+    // 3. Empate real ou jogo recém iniciado: limpa o classificado
+    else {
+      this.qualifiedSide = null;
     }
   }
+
   next();
 });
 
 // ---------- Virtuals ----------
 
-MatchSchema.virtual('isFinished').get(function () { return this.status === 'finished'; });
+MatchSchema.virtual('isFinished').get(function () { 
+  return this.status === 'finished'; 
+});
 
 MatchSchema.virtual('isLive').get(function () {
   const liveStatus = ['1_tempo', 'intervalo', '2_tempo', 'prorrogacao', '1_tet', '2_tet', 'penaltis'];
@@ -149,20 +163,23 @@ MatchSchema.virtual('isLive').get(function () {
 });
 
 MatchSchema.virtual('winner').get(function () {
+  // Mantemos a lógica de vencedor (Winner) atrelada ao fim do jogo para ranking/pontos
   if (this.status !== 'finished') return null;
+  
   const a = this.scoreA;
   const b = this.scoreB;
   if (a === null || b === null) return null;
   
+  // Se teve pênaltis, o vencedor do jogo (para fins de aposta/resultado) é quem venceu nos penais
   if (this.penaltiesA !== null && this.penaltiesB !== null) {
       if (this.penaltiesA === this.penaltiesB) return 'D';
       return this.penaltiesA > this.penaltiesB ? 'A' : 'B';
   }
+
   if (a > b) return 'A';
   if (b > a) return 'B';
   return 'D'; 
 });
-
 // ---------- Métodos Estáticos (Originais Mantidos) ----------
 
 MatchSchema.statics.getByLeague = function (leagueId) {
