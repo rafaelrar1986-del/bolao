@@ -25,6 +25,8 @@ const statusMap = {
   cancelled: 'cancelled'
 };
 
+// --- FUNÇÕES AUXILIARES ---
+
 function mapPlayer(p) {
   return {
     id: p.player_id || null,
@@ -46,25 +48,37 @@ function sortByPosition(players) {
   return players.sort((a, b) => (ordem[a.posicao] ?? 9) - (ordem[b.posicao] ?? 9));
 }
 
-/**
- * Mapeia o time garantindo que as chaves batam com o Match Model (players/substitutes)
- */
 function mapLineupTeam(team) {
   if (!team) return { formation: "", players: [], substitutes: [] };
   return {
     formation: team.formation || "",
-    // Ajustado para 'players' e 'substitutes' conforme seu Match Model
     players: sortByPosition((team.players || []).map(mapPlayer)),
     substitutes: (team.substitutes || []).map(mapPlayer)
   };
 }
 
+/**
+ * 🎯 Extrai o placar e a sequência detalhada (gol, defesa, erro) do shotmap
+ */
+function extractPenaltyDetailed(shotmap) {
+  if (!shotmap || !Array.isArray(shotmap)) return { home: null, away: null, sequence: [] };
+  const shootoutShots = shotmap.filter(s => s.sit === 'shootout').sort((a, b) => a.min - b.min);
+  if (shootoutShots.length === 0) return { home: null, away: null, sequence: [] };
+
+  let hPen = 0, aPen = 0;
+  const sequence = shootoutShots.map(s => {
+    if (s.type === 'goal') { s.home ? hPen++ : aPen++; }
+    return { home: s.home, type: s.type, player_id: s.pid, min: s.min };
+  });
+  return { home: hPen, away: aPen, sequence };
+}
+
+// --- CORE UPDATER ---
+
 async function updateMatches() {
   try {
-    console.log('🚀 UPDATER START');
     const robotSettings = await Settings.findById('league_1');
     if (!robotSettings) return;
-
     const allowedLeagues = robotSettings.api_leagues || [];
     if (allowedLeagues.length === 0) return;
 
@@ -72,186 +86,103 @@ async function updateMatches() {
     const yesterday = new Date(now - 286400000).toISOString().split('T')[0];
     const tomorrow = new Date(now + 86400000).toISOString().split('T')[0];
 
-    // 1. LIVE MATCHES
+    // 1. LIVE (Com spatial=true para pegar shotmap de pênaltis)
     try {
-      const liveRes = await axios.get(
-        `https://sports.bzzoiro.com/api/live/?tz=America/Fortaleza`,
-        { headers, timeout: 10000 }
-      );
-      if (liveRes.data?.results) {
-        await processGameList(liveRes.data.results, allowedLeagues, robotSettings, 'LIVE');
-      }
-    } catch (e) {
-      console.error(`❌ [Erro API LIVE]: ${e.message}`);
-    }
+      const liveRes = await axios.get(`https://sports.bzzoiro.com/api/live/?tz=America/Fortaleza&spatial=true`, { headers, timeout: 10000 });
+      if (liveRes.data?.results) await processGameList(liveRes.data.results, allowedLeagues, robotSettings, 'LIVE');
+    } catch (e) { console.error(`❌ [LIVE]: ${e.message}`); }
 
-    // 2. EVENTS (Yesterday to Tomorrow)
+    // 2. EVENTS (Com spatial=true)
     const leaguesFilter = allowedLeagues.join(',');
-    let nextUrl = `https://sports.bzzoiro.com/api/events/?date_from=${yesterday}&date_to=${tomorrow}&league=${leaguesFilter}&tz=America/Fortaleza&full=true`;
+    let nextUrl = `https://sports.bzzoiro.com/api/events/?date_from=${yesterday}&date_to=${tomorrow}&league=${leaguesFilter}&tz=America/Fortaleza&full=true&spatial=true`;
 
     while (nextUrl) {
       try {
         const response = await axios.get(nextUrl, { headers, timeout: 15000 });
-        if (response.data?.results) {
-          await processGameList(response.data.results, allowedLeagues, robotSettings, 'EVENTS');
-        }
+        if (response.data?.results) await processGameList(response.data.results, allowedLeagues, robotSettings, 'EVENTS');
         nextUrl = response.data.next;
-      } catch (e) {
-        console.error(`❌ [Erro API EVENTS]: ${e.message}`);
-        nextUrl = null;
-      }
+      } catch (e) { console.error(`❌ [EVENTS]: ${e.message}`); nextUrl = null; }
     }
     await Settings.findByIdAndUpdate('league_1', { $set: { last_api_run: now } });
-  } catch (err) {
-    console.error('❌ [Erro Global]:', err);
-  }
+  } catch (err) { console.error('❌ [Global]:', err); }
 }
 
 async function processGameList(games, allowedLeagues, robotSettings, source) {
   for (const gameData of games) {
     try {
       if (!gameData.league?.id || !allowedLeagues.includes(gameData.league.id)) continue;
-
       const match = await Match.findOne({ apiId: gameData.id });
       if (!match) continue;
 
       let gameDetail = { ...gameData };
-      console.log(`\n⚽ GAME ${gameDetail.id} (${source})`);
-
       const newStatus = statusMap[gameDetail.status] || 'scheduled';
       const statusChanged = match.status !== newStatus;
-      
 
-     // ============================================================
-// 🛡️ DETECÇÃO DE INÍCIO DE JOGO (TRAVA ATÔMICA E AUDITORIA)
-// ============================================================
-if (match.status === 'scheduled' && (newStatus !== 'scheduled' && newStatus !== 'cancelled')) {
-  
-  const configId = `league_${match.leagueId || 1}`;
-  
-  // Identificador da fase (ex: "Rodada 1" ou "Grupo A")
-  const lockIdentifier = match.phaseName || match.group;
-
-  console.log(`[SISTEMA] 🔒 Início detectado: ${match.teamA} x ${match.teamB}`);
-
-  /**
-   * 💡 A MÁGICA ESTÁ AQUI:
-   * Tentamos atualizar o documento APENAS se o lockIdentifier NÃO estiver no array lockedPhases.
-   * Se o MongoDB encontrar e atualizar, o 'settingsUpdated' terá o documento.
-   * Se outro processo já tiver trancado, o MongoDB não encontrará o registro (pelo filtro $ne)
-   * e o 'settingsUpdated' será null, impedindo o re-envio do e-mail.
-   */
-  const settingsUpdated = await Settings.findOneAndUpdate(
-    { 
-      _id: configId, 
-      lockedPhases: { $ne: lockIdentifier } 
-    },
-    {
-      $addToSet: { 
-        lockedPhases: lockIdentifier,
-        unlockedPhases: { $each: [lockIdentifier, 'podium'] } 
-      },
-      $set: { 
-        statsLocked: false,          // Abre visualização geral
-        blockSaveBets: true,         // Bloqueia salvamento pontos corridos
-        blockSaveKnockout: true      // Bloqueia salvamento mata-mata
-      } 
-    },
-    { new: true }
-  );
-
-  if (settingsUpdated) {
-    console.log(`[SISTEMA] 🛡️ Bloqueando Salvamento e Liberando Visibilidade para: ${lockIdentifier}`);
-
-    // 2. Processo de Auditoria (CSV + E-mail Broadcast)
-    // Só entra aqui UMA VEZ por fase, independente de quantos jogos comecem depois
-    try {
-      console.log(`[SISTEMA] 📑 Gerando auditoria oficial para ${lockIdentifier}...`);
-      const csvFile = await auditService.generateAuditCSV(match.leagueId || 1, lockIdentifier);
-      
-      if (csvFile) {
-        const users = await User.find({ leagues: Number(match.leagueId || 1) }, 'email');
-        const emails = users.map(u => u.email).filter(e => !!e);
-
-        if (emails.length > 0) {
-          const subject = `🔒 Auditoria Oficial: Grade ${lockIdentifier} Trancada`;
-          const message = `A bola rolou para a fase: ${lockIdentifier}!\n\nConforme as regras, os palpites para esta grade e as escolhas do Pódio foram trancados. A visualização de todos os palpites já está liberada no site.\n\nSegue em anexo o arquivo de auditoria com a cópia de segurança dos dados de todos os participantes.`;
-
-          await emailService.sendBroadcastEmail(emails, subject, message, csvFile);
-          console.log(`[SISTEMA] 📧 Auditoria enviada com sucesso para ${emails.length} participantes.`);
+      // --- TRAVA DE GRADE E AUDITORIA ---
+      if (match.status === 'scheduled' && !['scheduled', 'cancelled'].includes(newStatus)) {
+        const configId = `league_${match.leagueId || 1}`;
+        const lockIdentifier = match.phaseName || match.group;
+        const settingsUpdated = await Settings.findOneAndUpdate(
+          { _id: configId, lockedPhases: { $ne: lockIdentifier } },
+          {
+            $addToSet: { lockedPhases: lockIdentifier, unlockedPhases: { $each: [lockIdentifier, 'podium'] } },
+            $set: { statsLocked: false, blockSaveBets: true, blockSaveKnockout: true }
+          }, { new: true }
+        );
+        if (settingsUpdated) {
+          auditService.generateAuditCSV(match.leagueId || 1, lockIdentifier).then(async (csv) => {
+            if (!csv) return;
+            const users = await User.find({ leagues: Number(match.leagueId || 1) }, 'email');
+            const emails = users.map(u => u.email).filter(e => !!e);
+            if (emails.length > 0) await emailService.sendBroadcastEmail(emails, `🔒 Auditoria: ${lockIdentifier}`, "Trancado.", csv);
+          }).catch(e => console.error("Audit Err:", e.message));
         }
       }
-    } catch (auditErr) {
-      console.error("❌ Erro no processo de auditoria:", auditErr.message);
-    }
 
-    // Atualiza o objeto local para o restante do loop atual, por boa prática
-    if (!robotSettings.lockedPhases) robotSettings.lockedPhases = [];
-    robotSettings.lockedPhases.push(lockIdentifier);
-
-  } else {
-    console.log(`[SISTEMA] ℹ️ Grade ${lockIdentifier} já estava trancada no banco. Ignorando duplicata.`);
-  }
-}
-
-      // Verificação de Lineup Local: Se não tem, busca no detalhe
-      const currentHasPlayers = match.lineups?.home?.players?.length > 0;
-
-      if (!currentHasPlayers) {
+      // --- BUSCA DETALHE SE NÃO TEM ESCALAÇÃO ---
+      if (!(match.lineups?.home?.players?.length > 0)) {
         try {
-          console.log(`🔎 FETCH DETAIL ${gameDetail.id}`);
-          const detailRes = await axios.get(
-            `https://sports.bzzoiro.com/api/events/${gameDetail.id}/?spatial=true`,
-            { headers, timeout: 8000 }
-          );
-          if (detailRes.data && detailRes.data.lineups) {
-            gameDetail = detailRes.data; 
-          }
-        } catch (err) {
-          console.error(`❌ DETAIL ERROR ${gameDetail.id}:`, err.message);
+          const detailRes = await axios.get(`https://sports.bzzoiro.com/api/events/${gameDetail.id}/?spatial=true`, { headers, timeout: 8000 });
+          if (detailRes.data?.lineups) gameDetail = detailRes.data;
+        } catch (err) { console.error(`❌ DETAIL ERROR ${gameDetail.id}`); }
+      }
+
+      // --- LÓGICA DE PÊNALTIS (REDUNDÂNCIA) ---
+      let penA = gameDetail.penalty_shootout?.home ?? null;
+      let penB = gameDetail.penalty_shootout?.away ?? null;
+      let shootoutSequence = [];
+
+      if (gameDetail.shotmap) {
+        const detailed = extractPenaltyDetailed(gameDetail.shotmap);
+        if (detailed.home !== null) {
+          if (penA === null) { penA = detailed.home; penB = detailed.away; }
+          shootoutSequence = detailed.sequence;
         }
       }
 
-      // Preparação do Objeto de Update
       const updateData = {
         scoreA: gameDetail.home_score,
         scoreB: gameDetail.away_score,
         status: newStatus,
         minute: gameDetail.current_minute ? `${gameDetail.current_minute}'` : match.minute,
-        penaltiesA: gameDetail.penalty_shootout?.home ?? null,
-        penaltiesB: gameDetail.penalty_shootout?.away ?? null,
+        penaltiesA: penA,
+        penaltiesB: penB,
+        shootoutDetail: shootoutSequence,
         xg: {
-          home: parseFloat(gameDetail.actual_home_xg || gameDetail.home_xg_live || gameDetail.live_stats?.home?.expected_goals) || 0,
-          away: parseFloat(gameDetail.actual_away_xg || gameDetail.away_xg_live || gameDetail.live_stats?.away?.expected_goals) || 0
-        },
-        odds: {
-          home: gameDetail.odds_home || null,
-          draw: gameDetail.odds_draw || null,
-          away: gameDetail.odds_away || null
+          home: parseFloat(gameDetail.actual_home_xg || gameDetail.home_xg_live || 0),
+          away: parseFloat(gameDetail.actual_away_xg || gameDetail.away_xg_live || 0)
         }
       };
 
-      // ============================================================
-      // 🏆 COLOQUE O CÓDIGO EXATAMENTE AQUI (ANTES DAS ESTATÍSTICAS)
-      // ============================================================
+      // --- CLASSIFICAÇÃO (PRIORIDADE PÊNALTIS) ---
       const isKnockout = match.phase === 'knockout' || match.phase === 'mata-mata';
       if (isKnockout) {
-        const sA = updateData.scoreA;
-        const sB = updateData.scoreB;
-        const pA = updateData.penaltiesA;
-        const pB = updateData.penaltiesB;
-
-        if (pA !== null && pB !== null && pA !== pB) {
-          updateData.qualifiedSide = pA > pB ? 'A' : 'B';
-        } 
-        else if (sA !== null && sB !== null && sA !== sB) {
-          updateData.qualifiedSide = sA > sB ? 'A' : 'B';
-        } 
-        else {
-          updateData.qualifiedSide = null;
+        if (penA !== null && penB !== null && penA !== penB) {
+          updateData.qualifiedSide = penA > penB ? 'A' : 'B';
+        } else if (updateData.scoreA !== updateData.scoreB) {
+          updateData.qualifiedSide = updateData.scoreA > updateData.scoreB ? 'A' : 'B';
         }
       }
-      // ============================================================
 
       // Estatísticas
       if (gameDetail.live_stats) {
@@ -262,117 +193,43 @@ if (match.status === 'scheduled' && (newStatus !== 'scheduled' && newStatus !== 
         };
       }
 
-      // 1. Verificamos se a API trouxe dados de escalação nesta rodada
-const apiHomePlayers = gameDetail.lineups?.home?.players?.length || 0;
-const apiHomeSubs = gameDetail.lineups?.home?.substitutes?.length || 0;
-const totalApiPlayers = apiHomePlayers + apiHomeSubs;
-
-const dbHomePlayers = match.lineups?.home?.players?.length || 0;
-const dbHomeSubs = match.lineups?.home?.substitutes?.length || 0;
-const totalDbPlayers = dbHomePlayers + dbHomeSubs;
-
-const isLive = ['1_tempo', 'intervalo', '2_tempo', '1_tet', '2_tet', 'prorrogacao', 'finished'].includes(newStatus);
-
-if (totalApiPlayers > 0) {
-  
-  // MUNDO 1: Se o banco está vazio OU a API trouxe MAIS jogadores (novos reservas detectados)
-  if (!currentHasPlayers || totalApiPlayers > totalDbPlayers) {
-    console.log(`🔥 ATUALIZANDO ESTRUTURA COMPLETA (Inclusão de Reservas): ${gameDetail.id}`);
-    updateData.lineups = {
-      home: mapLineupTeam(gameDetail.lineups.home),
-      away: mapLineupTeam(gameDetail.lineups.away),
-      confirmed: gameDetail.lineups?.confirmed || false
-    };
-  } 
-  
-  // MUNDO 2: Se já temos a estrutura e o jogo está rolando, atualizamos apenas as estatísticas
-  else if (isLive) {
-    console.log(`🔄 ATUALIZANDO STATS CIRÚRGICOS (Titulares e Reservas): ${gameDetail.id}`);
-    
-    const updateStats = async (side) => {
-      // Une titulares e reservas da API para não ignorar ninguém que entrou no decorrer do jogo
-      const allApiPlayers = [
-        ...(gameDetail.lineups[side].players || []),
-        ...(gameDetail.lineups[side].substitutes || [])
-      ];
-
-      for (const p of allApiPlayers) {
-        if (p.sub_out || p.sub_in || p.goals > 0 || p.yellow_card || p.red_card) {
-          
-          // Tenta atualizar primeiro no array de titulares
-          const res = await Match.updateOne(
-            { _id: match._id, [`lineups.${side}.players.id`]: p.player_id },
-            { 
-              $set: { 
-                [`lineups.${side}.players.$.saiu`]: p.sub_out,
-                [`lineups.${side}.players.$.entrou`]: p.sub_in,
-                [`lineups.${side}.players.$.amarelo`]: p.yellow_card,
-                [`lineups.${side}.players.$.vermelho`]: p.red_card,
-                [`lineups.${side}.players.$.gols`]: p.goals,
-                [`lineups.${side}.players.$.rating`]: p.rating 
-              } 
-            }
-          );
-
-          // Se não encontrou nos titulares (modifiedCount === 0), tenta no array de reservas
-          if (res.modifiedCount === 0) {
-            await Match.updateOne(
-              { _id: match._id, [`lineups.${side}.substitutes.id`]: p.player_id },
-              { 
-                $set: { 
-                  [`lineups.${side}.substitutes.$.saiu`]: p.sub_out,
-                  [`lineups.${side}.substitutes.$.entrou`]: p.sub_in,
-                  [`lineups.${side}.substitutes.$.amarelo`]: p.yellow_card,
-                  [`lineups.${side}.substitutes.$.vermelho`]: p.red_card,
-                  [`lineups.${side}.substitutes.$.gols`]: p.goals,
-                  [`lineups.${side}.substitutes.$.rating`]: p.rating 
-                } 
+      // --- ESCALAÇÕES ---
+      const apiTotal = (gameDetail.lineups?.home?.players?.length || 0) + (gameDetail.lineups?.home?.substitutes?.length || 0);
+      if (apiTotal > 0) {
+        const dbTotal = (match.lineups?.home?.players?.length || 0) + (match.lineups?.home?.substitutes?.length || 0);
+        if (!(match.lineups?.home?.players?.length > 0) || apiTotal > dbTotal) {
+          updateData.lineups = { home: mapLineupTeam(gameDetail.lineups.home), away: mapLineupTeam(gameDetail.lineups.away), confirmed: gameDetail.lineups?.confirmed || false };
+        } else if (['1_tempo', 'intervalo', '2_tempo', '1_tet', '2_tet', 'prorrogacao', 'finished'].includes(newStatus)) {
+          const updateSide = async (side) => {
+            const all = [...(gameDetail.lineups[side].players || []), ...(gameDetail.lineups[side].substitutes || [])];
+            for (const p of all) {
+              if (p.sub_out || p.sub_in || p.goals > 0 || p.yellow_card || p.red_card) {
+                const r = await Match.updateOne({ _id: match._id, [`lineups.${side}.players.id`]: p.player_id }, { $set: { [`lineups.${side}.players.$.saiu`]: p.sub_out, [`lineups.${side}.players.$.entrou`]: p.sub_in, [`lineups.${side}.players.$.amarelo`]: p.yellow_card, [`lineups.${side}.players.$.vermelho`]: p.red_card, [`lineups.${side}.players.$.gols`]: p.goals, [`lineups.${side}.players.$.rating`]: p.rating } });
+                if (r.modifiedCount === 0) await Match.updateOne({ _id: match._id, [`lineups.${side}.substitutes.id`]: p.player_id }, { $set: { [`lineups.${side}.substitutes.$.saiu`]: p.sub_out, [`lineups.${side}.substitutes.$.entrou`]: p.sub_in, [`lineups.${side}.substitutes.$.amarelo`]: p.yellow_card, [`lineups.${side}.substitutes.$.vermelho`]: p.red_card, [`lineups.${side}.substitutes.$.gols`]: p.goals, [`lineups.${side}.substitutes.$.rating`]: p.rating } });
               }
-            );
-          }
+            }
+          };
+          await updateSide('home'); await updateSide('away');
         }
       }
-    };
 
-    await updateStats('home');
-    await updateStats('away');
-  }
-}
-      
-      // Incidentes (Gols, Cartões, Subs, VAR) - VERSÃO COMPLETA CORRIGIDA
+      // --- INCIDENTES ---
       if (Array.isArray(gameDetail.incidents)) {
-        updateData.goalsDetail = gameDetail.incidents.map(i => {
-          // Fallback robusto para o nome do jogador
-          const playerName = i.player_name || i.player || i.player_out || (i.type === 'injuryTime' ? 'Acréscimos' : 'Lance');
-
-          return {
-            type: i.type,
-            name: playerName,
-            min: i.minute,
-            extra: i.extra_minute || i.length || null, // Captura 'length' se for injuryTime
-            side: i.is_home ? 'home' : 'away',
-            // Normaliza o subtipo (card_type para cartões, decision para VAR)
-            description: i.card_type || i.goal_type || i.decision || i.subtype || '',
-            playerIn: i.player_in || null,
-            playerOut: i.player_out || null
-          };
-        });
+        updateData.goalsDetail = gameDetail.incidents.map(i => ({
+          type: i.type, name: i.player_name || i.player || i.player_out || 'Lance',
+          min: i.minute, extra: i.extra_minute || i.length || null,
+          side: i.is_home ? 'home' : 'away',
+          description: i.card_type || i.goal_type || i.decision || i.subtype || '',
+          playerIn: i.player_in || null, playerOut: i.player_out || null
+        }));
       }
 
-      // Execução do Update
       await Match.updateOne({ _id: match._id }, { $set: updateData });
-      console.log(`💾 SAVED ${gameDetail.id}`);
-
-      // Recalcular pontos se o jogo acabou
       if (statusChanged && newStatus === 'finished') {
-        recalculateAllPoints(match.leagueId || '1')
-          .then(() => trySaveDailyPoints(gameDetail.event_date))
-          .catch(() => {});
+        const tid = match.leagueId || '1';
+        recalculateAllPoints(tid).then(() => trySaveDailyPoints(gameDetail.event_date, tid)).catch(() => {});
       }
-
-    } catch (err) {
-      console.error(`❌ [Erro jogo ${gameData.id}]:`, err.message);
-    }
+    } catch (err) { console.error(`❌ [Erro jogo ${gameData.id}]:`, err.message); }
   }
 }
 
