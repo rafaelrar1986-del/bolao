@@ -1,22 +1,36 @@
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
 
+/**
+ * Status Detalhado: Sincronizado com statusMap do Updater
+ */
 const MatchSchema = new Schema(
   {
+    // ID Único da partida
     matchId: { type: Number, required: true, index: true },
+
+    // IDENTIFICAÇÃO DA LIGA
     leagueId: { type: Number, required: false, index: true }, 
     leagueName: { type: String, default: '' },
+
     phaseName: { type: String, required: false, trim: true },
+
     teamA: { type: String, required: true, trim: true },
     teamB: { type: String, required: true, trim: true },
+
     logoA: { type: String, default: '' },
     logoB: { type: String, default: '' },
+
     group: { type: String, required: true, trim: true }, 
     phase: { type: String, enum: ['group', 'knockout', 'mata-mata'], default: 'group', index: true },
+
+    // 🏆 QUEM PASSOU DE FASE (Definido prioritariamente pelos Pênaltis)
     qualifiedSide: { type: String, enum: ['A', 'B', null], default: null },
+    
     stadium: { type: String, default: '', trim: true },
-    date: { type: String, required: true, trim: true }, 
-    time: { type: String, required: true, trim: true },
+
+    date: { type: String, required: true, trim: true }, // "DD/MM/AAAA"
+    time: { type: String, required: true, trim: true }, // "HH:MM"
 
     status: {
       type: String,
@@ -30,12 +44,14 @@ const MatchSchema = new Schema(
     
     scoreA: { type: Number, default: null, min: 0 },
     scoreB: { type: Number, default: null, min: 0 },
+
     penaltiesA: { type: Number, default: null },
     penaltiesB: { type: Number, default: null },
 
-    // --- 🚀 NOVO: DETALHAMENTO DE PÊNALTIS PARA O FRONT ---
+    // --- 🚀 DETALHAMENTO DE PÊNALTIS PARA O FRONT-END ---
     shootoutDetail: { type: Array, default: [] }, 
 
+    // --- CAMPOS ALINHADOS AO UPDATER (SPATIAL=TRUE) ---
     xg: {
       home: { type: Number, default: 0 },
       away: { type: Number, default: 0 }
@@ -45,10 +61,12 @@ const MatchSchema = new Schema(
       draw: { type: Number, default: null },
       away: { type: Number, default: null }
     },
-    unavailable: { type: Array, default: [] },
-    ai_analysis: { type: String, default: '' },
-    video_url: { type: String, default: '' },
+    unavailable: { type: Array, default: [] }, // Desfalques
+    ai_analysis: { type: String, default: '' }, // Preview de IA
+    video_url: { type: String, default: '' },   // Highlights
+    // -----------------------------------------------------------
 
+    // EVENTOS COMPLETOS (Gols, VAR, Substituições)
     goalsDetail: [
       {
         type: { type: String },          
@@ -67,7 +85,7 @@ const MatchSchema = new Schema(
       away: { type: Number, default: 0 }
     },
 
-    statistics: { type: Array, default: [] },
+    statistics: { type: Array, default: [] }, // live_stats
 
     lineups: {
       home: {
@@ -84,9 +102,16 @@ const MatchSchema = new Schema(
     },
     apiStatus: { type: String, default: 'NS' }, 
     minute: { type: String, default: '' },      
+    
     processed: { type: Boolean, default: false }, 
+
     betsCount: { type: Number, default: 0 },
-    apiId: { type: Number, required: true, unique: true, index: true },
+    apiId: {
+      type: Number,
+      required: true, 
+      unique: true,   
+      index: true      
+    },
   },
   { 
     timestamps: true, 
@@ -98,7 +123,7 @@ const MatchSchema = new Schema(
 // ---------- Middlewares ----------
 
 MatchSchema.pre('save', function (next) {
-  // Monitoramento expandido
+  // Monitoramento de campos complexos para o ChangeStream (SSE)
   const fields = ['goalsDetail', 'statistics', 'lineups', 'possession', 'xg', 'odds', 'unavailable', 'shootoutDetail'];
   fields.forEach(f => {
     if (this.isModified(f)) this.markModified(f);
@@ -112,15 +137,21 @@ MatchSchema.pre('save', function (next) {
     const pA = this.penaltiesA;
     const pB = this.penaltiesB;
 
-    // PRIORIDADE DE CLASSIFICAÇÃO: Pênaltis primeiro
+    // 1. Prioridade Máxima: Pênaltis (Cálculo automático se houver disputa)
     if (pA !== null && pB !== null && pA !== pB) {
       this.qualifiedSide = pA > pB ? 'A' : 'B';
     } 
+    // 2. Segunda Prioridade: Gols (Se não houve pênaltis ou não terminou em empate)
     else if (sA !== null && sB !== null && sA !== sB) {
       this.qualifiedSide = sA > sB ? 'A' : 'B';
     } 
+    // 3. Caso de Empate Real (Ex: 1x1 sem penais)
     else {
-      this.qualifiedSide = null;
+      // 💡 TRAVA MANUAL: Se você definiu o qualificado no painel, o robô não limpa o campo.
+      // Ele só limpa se o campo estiver vazio, evitando apagar sua decisão manual.
+      if (!this.qualifiedSide) {
+        this.qualifiedSide = null;
+      }
     }
   }
 
@@ -138,6 +169,10 @@ MatchSchema.virtual('isLive').get(function () {
   return liveStatus.includes(this.status);
 });
 
+/**
+ * 🎯 VENCEDOR PARA O BOLÃO (Winner): Totalmente independente dos Pênaltis.
+ * Só considera scoreA e scoreB (Tempo normal + prorrogação).
+ */
 MatchSchema.virtual('winner').get(function () {
   if (this.status !== 'finished') return null;
   
@@ -145,10 +180,9 @@ MatchSchema.virtual('winner').get(function () {
   const b = this.scoreB;
   if (a === null || b === null) return null;
   
-  // REGRA SOLICITADA: Jogo independente dos pênaltis
   if (a > b) return 'A';
   if (b > a) return 'B';
-  return 'D'; 
+  return 'D'; // Empate
 });
 
 // ---------- Métodos Estáticos ----------
@@ -183,7 +217,7 @@ MatchSchema.statics.unfinishMatch = async function (matchId, statusBack = 'sched
   match.processed = false;
   match.goalsDetail = [];
   match.statistics = [];
-  match.shootoutDetail = []; // Limpa também o detalhe
+  match.shootoutDetail = []; 
   match.lineups = { home: {}, away: {} };
   await match.save();
   return match;
