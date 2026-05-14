@@ -17,6 +17,7 @@ function normalizeToUTCDate(input) {
     ));
   }
 
+  // Trata formato DD/MM/YYYY
   if (typeof input === 'string' && input.includes('/')) {
     const [day, month, year] = input.split('/').map(Number);
     if (!day || !month || !year) return null;
@@ -51,43 +52,49 @@ async function trySaveDailyPoints(matchDateInput, leagueId) {
       return;
     }
 
+    // Formata para o padrão string do seu Match Model (DD/MM/YYYY)
     const day   = String(historyDate.getUTCDate()).padStart(2, '0');
     const month = String(historyDate.getUTCMonth() + 1).padStart(2, '0');
     const year  = historyDate.getUTCFullYear();
     const matchDateStr = `${day}/${month}/${year}`;
 
-    // 2️⃣ Buscar partidas do dia filtrando por LIGA (Conversão de tipo para segurança)
+    // 2️⃣ Buscar partidas do dia filtrando por LIGA
+    // Usamos Number(leagueId) para bater com o Schema
     const matches = await Match.find({ 
       date: matchDateStr, 
-      leagueId: String(leagueId) 
+      leagueId: Number(leagueId) 
     });
 
     if (!matches.length) {
-      console.log(`⛔ [dailyHistory] [Liga: ${leagueId}] Nenhum jogo em ${matchDateStr}`);
+      console.log(`⛔ [dailyHistory] [Liga: ${leagueId}] Nenhum jogo encontrado em ${matchDateStr}`);
       return;
     }
 
-    // 3️⃣ Verificar se todas desta liga estão finalizadas
-    const allFinished = matches.every(m => m.status === 'finished');
-    if (!allFinished) {
-      console.log(`⛔ [dailyHistory] [${leagueId}] Ainda existem jogos pendentes hoje.`);
+    // 3️⃣ Verificar status terminais (Aceita finished, cancelled e postponed como "encerrados")
+    const terminalStatus = ['finished', 'cancelled', 'postponed'];
+    const pendingMatches = matches.filter(m => !terminalStatus.includes(m.status));
+
+    if (pendingMatches.length > 0) {
+      console.log(`⛔ [dailyHistory] [${leagueId}] Existem ${pendingMatches.length} jogos pendentes em ${matchDateStr}:`);
+      pendingMatches.forEach(m => {
+        console.log(`   - ID: ${m.matchId} | ${m.teamA} x ${m.teamB} | Status: ${m.status}`);
+      });
       return;
     }
 
     // 4️⃣ Evitar duplicação por DIA e por LIGA
     const alreadySaved = await PointsHistory.findOne({
       date: historyDate,
-      leagueId: String(leagueId)
+      leagueId: Number(leagueId)
     });
 
     if (alreadySaved) {
-      console.log(`⛔ [dailyHistory] Histórico da liga ${leagueId} já existe para esta data.`);
+      console.log(`⛔ [dailyHistory] Histórico da liga ${leagueId} já existe para ${matchDateStr}.`);
       return;
     }
 
-    // 5️⃣ Buscar apostas DESTA LIGA
-    // Usamos populate('user') para garantir que temos o ID do usuário
-    const bets = await Bet.find({ leagueId: String(leagueId) }).populate('user');
+    // 5️⃣ Buscar apostas DESTA LIGA e popular usuários
+    const bets = await Bet.find({ leagueId: Number(leagueId) }).populate('user');
 
     if (!bets || bets.length === 0) {
       console.log(`⚠️ [dailyHistory] [${leagueId}] Nenhuma aposta encontrada.`);
@@ -101,10 +108,10 @@ async function trySaveDailyPoints(matchDateInput, leagueId) {
       if (bet.user && bet.user._id) {
         const userId = bet.user._id.toString();
         
-        // Garantimos que pegamos o totalPoints atualizado do documento Bet
+        // Salvamos o estado atual de pontos da aposta (acumulado)
         snapshotsMap.set(userId, {
           user: bet.user._id,
-          leagueId: String(leagueId), // 🔑 CRUCIAL: Agora gravando explicitamente
+          leagueId: Number(leagueId),
           date: historyDate,
           points: bet.totalPoints || 0
         });
