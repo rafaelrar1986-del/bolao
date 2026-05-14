@@ -1,34 +1,22 @@
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
 
-/**
- * Status Detalhado: Sincronizado com statusMap do Updater
- */
 const MatchSchema = new Schema(
   {
-    // ID Único da partida
     matchId: { type: Number, required: true, index: true },
-
-    // IDENTIFICAÇÃO DA LIGA
     leagueId: { type: Number, required: false, index: true }, 
     leagueName: { type: String, default: '' },
-
     phaseName: { type: String, required: false, trim: true },
-
     teamA: { type: String, required: true, trim: true },
     teamB: { type: String, required: true, trim: true },
-
     logoA: { type: String, default: '' },
     logoB: { type: String, default: '' },
-
     group: { type: String, required: true, trim: true }, 
     phase: { type: String, enum: ['group', 'knockout', 'mata-mata'], default: 'group', index: true },
-
     qualifiedSide: { type: String, enum: ['A', 'B', null], default: null },
     stadium: { type: String, default: '', trim: true },
-
-    date: { type: String, required: true, trim: true }, // "DD/MM/AAAA"
-    time: { type: String, required: true, trim: true }, // "HH:MM"
+    date: { type: String, required: true, trim: true }, 
+    time: { type: String, required: true, trim: true },
 
     status: {
       type: String,
@@ -42,11 +30,12 @@ const MatchSchema = new Schema(
     
     scoreA: { type: Number, default: null, min: 0 },
     scoreB: { type: Number, default: null, min: 0 },
-
     penaltiesA: { type: Number, default: null },
     penaltiesB: { type: Number, default: null },
 
-    // --- 🚀 NOVOS CAMPOS ALINHADOS AO UPDATER (SPATIAL=TRUE) ---
+    // --- 🚀 NOVO: DETALHAMENTO DE PÊNALTIS PARA O FRONT ---
+    shootoutDetail: { type: Array, default: [] }, 
+
     xg: {
       home: { type: Number, default: 0 },
       away: { type: Number, default: 0 }
@@ -56,17 +45,15 @@ const MatchSchema = new Schema(
       draw: { type: Number, default: null },
       away: { type: Number, default: null }
     },
-    unavailable: { type: Array, default: [] }, // Desfalques
-    ai_analysis: { type: String, default: '' }, // Preview de IA
-    video_url: { type: String, default: '' },   // Highlights
-    // -----------------------------------------------------------
+    unavailable: { type: Array, default: [] },
+    ai_analysis: { type: String, default: '' },
+    video_url: { type: String, default: '' },
 
-    // EVENTOS COMPLETOS (Gols, VAR, Substituições)
     goalsDetail: [
       {
-        type: { type: String },         
-        name: { type: String },         
-        min: { type: Number },          
+        type: { type: String },          
+        name: { type: String },          
+        min: { type: Number },           
         extra: { type: Number },        
         side: { type: String, enum: ['home', 'away'] },
         description: { type: String },  
@@ -80,33 +67,26 @@ const MatchSchema = new Schema(
       away: { type: Number, default: 0 }
     },
 
-    statistics: { type: Array, default: [] }, // live_stats
+    statistics: { type: Array, default: [] },
 
-lineups: {
-  home: {
-    formation: { type: String, default: "" },
-    players: { type: Array, default: [] },
-    substitutes: { type: Array, default: [] }
-  },
-  away: {
-    formation: { type: String, default: "" },
-    players: { type: Array, default: [] },
-    substitutes: { type: Array, default: [] }
-  },
-  confirmed: { type: Boolean, default: false }
-},
+    lineups: {
+      home: {
+        formation: { type: String, default: "" },
+        players: { type: Array, default: [] },
+        substitutes: { type: Array, default: [] }
+      },
+      away: {
+        formation: { type: String, default: "" },
+        players: { type: Array, default: [] },
+        substitutes: { type: Array, default: [] }
+      },
+      confirmed: { type: Boolean, default: false }
+    },
     apiStatus: { type: String, default: 'NS' }, 
     minute: { type: String, default: '' },      
-    
     processed: { type: Boolean, default: false }, 
-
     betsCount: { type: Number, default: 0 },
-    apiId: {
-      type: Number,
-      required: true, 
-      unique: true,   
-      index: true     
-    },
+    apiId: { type: Number, required: true, unique: true, index: true },
   },
   { 
     timestamps: true, 
@@ -118,31 +98,27 @@ lineups: {
 // ---------- Middlewares ----------
 
 MatchSchema.pre('save', function (next) {
-  // Monitoramento de campos complexos para o ChangeStream
-  const fields = ['goalsDetail', 'statistics', 'lineups', 'possession', 'xg', 'odds', 'unavailable'];
+  // Monitoramento expandido
+  const fields = ['goalsDetail', 'statistics', 'lineups', 'possession', 'xg', 'odds', 'unavailable', 'shootoutDetail'];
   fields.forEach(f => {
     if (this.isModified(f)) this.markModified(f);
   });
 
   const isKnockout = this.phase === 'knockout' || this.phase === 'mata-mata';
   
-  // CÁLCULO AUTOMÁTICO DE CLASSIFICADO (QUALIFIEDSIDE)
-  // Removida a trava de 'finished' para funcionar em tempo real (Live)
   if (isKnockout) {
     const sA = this.scoreA;
     const sB = this.scoreB;
     const pA = this.penaltiesA;
     const pB = this.penaltiesB;
 
-    // 1. Critério de desempate final: Pênaltis
+    // PRIORIDADE DE CLASSIFICAÇÃO: Pênaltis primeiro
     if (pA !== null && pB !== null && pA !== pB) {
       this.qualifiedSide = pA > pB ? 'A' : 'B';
     } 
-    // 2. Se não houve pênaltis ou estão empatados, checa Gols
     else if (sA !== null && sB !== null && sA !== sB) {
       this.qualifiedSide = sA > sB ? 'A' : 'B';
     } 
-    // 3. Empate real ou jogo recém iniciado: limpa o classificado
     else {
       this.qualifiedSide = null;
     }
@@ -163,24 +139,19 @@ MatchSchema.virtual('isLive').get(function () {
 });
 
 MatchSchema.virtual('winner').get(function () {
-  // Mantemos a lógica de vencedor (Winner) atrelada ao fim do jogo para ranking/pontos
   if (this.status !== 'finished') return null;
   
   const a = this.scoreA;
   const b = this.scoreB;
   if (a === null || b === null) return null;
   
-  // Se teve pênaltis, o vencedor do jogo (para fins de aposta/resultado) é quem venceu nos penais
-  if (this.penaltiesA !== null && this.penaltiesB !== null) {
-      if (this.penaltiesA === this.penaltiesB) return 'D';
-      return this.penaltiesA > this.penaltiesB ? 'A' : 'B';
-  }
-
+  // REGRA SOLICITADA: Jogo independente dos pênaltis
   if (a > b) return 'A';
   if (b > a) return 'B';
   return 'D'; 
 });
-// ---------- Métodos Estáticos (Originais Mantidos) ----------
+
+// ---------- Métodos Estáticos ----------
 
 MatchSchema.statics.getByLeague = function (leagueId) {
   return this.find({ leagueId: Number(leagueId) }).sort({ date: 1, time: 1 });
@@ -212,6 +183,7 @@ MatchSchema.statics.unfinishMatch = async function (matchId, statusBack = 'sched
   match.processed = false;
   match.goalsDetail = [];
   match.statistics = [];
+  match.shootoutDetail = []; // Limpa também o detalhe
   match.lineups = { home: {}, away: {} };
   await match.save();
   return match;
