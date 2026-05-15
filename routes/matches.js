@@ -28,26 +28,32 @@ function parseMatchDate(dateStr) {
 // ==========================================
 // 1. GET /api/matches/leagues (Ligas Disponíveis)
 // ==========================================
+// ==========================================
+// 1. GET /api/matches/leagues (Ligas Disponíveis)
+// ==========================================
 router.get('/leagues', async (req, res) => {
   try {
     const leagues = await Match.aggregate([
       {
-        // 1. Filtramos apenas partidas que ainda não terminaram
-        $match: { status: { $ne: 'finished' } }
+        // 1. Removemos o filtro de status para que a liga não suma quando tudo terminar
+        $match: { leagueId: { $ne: null } }
       },
       {
         // 2. Agrupamos por Liga e guardamos os detalhes das partidas
         $group: {
           _id: "$leagueId",
           name: { $first: "$leagueName" },
-          totalMatches: { $sum: 1 },
-          // Criamos uma lista com os dados necessários para identificar o próximo jogo
+          // Contamos apenas partidas 'scheduled' para o 'count' de apostas disponíveis
+          totalMatches: { 
+            $sum: { $cond: [{ $eq: ["$status", "scheduled"] }, 1, 0] } 
+          },
           allMatches: {
             $push: {
               date: "$date",
               time: "$time",
               teamA: "$teamA",
-              teamB: "$teamB"
+              teamB: "$teamB",
+              status: "$status" // Adicionado para filtrar o próximo jogo abaixo
             }
           }
         }
@@ -56,15 +62,17 @@ router.get('/leagues', async (req, res) => {
     ]);
 
     const data = leagues.map(l => {
-      // Ordenamos as partidas da liga para garantir que a primeira seja a mais próxima
-      // Como date é "DD/MM/AAAA", transformamos em timestamp para comparar
-      const sortedMatches = l.allMatches.sort((a, b) => {
+      // Filtramos apenas as partidas que ainda vão acontecer para definir o 'nextMatchDate'
+      const scheduledMatches = l.allMatches.filter(m => m.status === 'scheduled');
+
+      // Ordenamos as partidas agendadas da liga para garantir que a primeira seja a mais próxima
+      const sortedMatches = scheduledMatches.sort((a, b) => {
         const [da, ma, ya] = a.date.split('/');
         const [db, mb, yb] = b.date.split('/');
         return new Date(`${ya}-${ma}-${da}T${a.time}`) - new Date(`${yb}-${mb}-${db}T${b.time}`);
       });
 
-      const next = sortedMatches[0]; // A partida mais próxima
+      const next = sortedMatches[0]; // A partida agendada mais próxima
       let isoDate = null;
 
       if (next) {
@@ -75,10 +83,11 @@ router.get('/leagues', async (req, res) => {
       return {
         id: l._id,
         name: l.name || `Liga ${l._id}`,
+        // count agora reflete apenas jogos abertos (0 se a rodada acabou)
         count: l.totalMatches,
-        // Novos campos para o design moderno
         nextMatchDate: isoDate,
-        nextMatchTeams: next ? `${next.teamA} x ${next.teamB}` : "Rodada aberta"
+        // Se não houver próximo jogo, o ternário mantém o seu padrão de string
+        nextMatchTeams: next ? `${next.teamA} x ${next.teamB}` : "Rodada encerrada"
       };
     }).filter(l => l.id !== null);
 
