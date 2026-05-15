@@ -109,9 +109,9 @@ async function recalculateAllPoints() {
 
     if (leaguePodium && bet.podium) {
       if (bet.podium.first && bet.podium.first === leaguePodium.first) podiumPoints += 7;
-      if (bet.podium.second && bet.podium.second === leaguePodium.second) podiumPoints += 4;
-      if (bet.podium.third && bet.podium.third === leaguePodium.third) podiumPoints += 2;
-      if (bet.podium.fourth && bet.podium.fourth === leaguePodium.fourth) podiumPoints += 2;
+      if (bet.podium.second && bet.podium.second === leaguePodium.second) podiumPoints += 5;
+      if (bet.podium.third && bet.podium.third === leaguePodium.third) podiumPoints += 4;
+      if (bet.podium.fourth && bet.podium.fourth === leaguePodium.fourth) podiumPoints += 3;
     }
 
     // --- Persistência dos Resultados ---
