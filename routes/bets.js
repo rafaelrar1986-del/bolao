@@ -128,7 +128,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
       .sort((a, b) => Number(a.matchId) - Number(b.matchId));
 
     // 3. Potencial de Pódio (Lógica Original)
-    const podiumWeights = { first: 7, second: 4, third: 2, fourth: 2 };
+    const podiumWeights = { first: 7, second: 5, third: 4, fourth: 3 };
     let targetPodiumPotential = 0;
     if (!settings?.podium?.first && targetBet.podium) {
       const p = targetBet.podium;
