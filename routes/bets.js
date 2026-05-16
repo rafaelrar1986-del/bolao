@@ -282,8 +282,9 @@ router.get('/my-bets', protect, checkPaid, async (req, res) => {
     res.status(500).json({ success: false, message: 'Erro ao carregar palpites' });
   }
 });/**
- * 💾 Salvar palpites (ATUALIZADO COM TRAVA DE GRADE AUTOMÁTICA E SUPORTE A RODADAS)
- */
+/* =========================================================================
+   💾 Salvar palpites (ATUALIZADO COM TRAVA DE GRADE AUTOMÁTICA, RODADAS E COMPROVANTE POR EMAIL)
+   ========================================================================= */
 router.post('/save', protect, checkPaid, async (req, res) => {
   try {
     const { groupMatches, podium, knockoutQualifiers, leagueId } = req.body;
@@ -298,17 +299,19 @@ router.post('/save', protect, checkPaid, async (req, res) => {
     const Match = require('../models/Match');
     const Bet = require('../models/Bet');
     const User = require('../models/User');
+    // Importa o serviço de e-mail (ajuste o caminho relativo conforme sua estrutura de pastas)
+    const { sendBetsConfirmationEmail } = require('../services/emailService');
 
     const settings = await Settings.findById(configId).lean();
 
     const matchIdsEnviados = Object.keys(groupMatches || {}).map(Number);
     
-    // 2. Valida se as partidas pertencem à liga e busca identificadores de fase/rodada
-    // 🛡️ CORREÇÃO: Adicionado 'phaseName' no select para que o bloqueio de rodadas funcione
+    // 2. Valida se as partidas pertencem à liga e busca identificadores de fase/rodada e dados dos times
+    // 🛡️ CORREÇÃO: Adicionado 'phaseName' e os nomes/escudos dos times para compor o e-mail depois
     const dbMatches = await Match.find({ 
       matchId: { $in: matchIdsEnviados }, 
       leagueId: Number(leagueId) 
-    }).select('matchId group phaseName').lean();
+    }).select('matchId group phaseName homeTeam awayTeam logoHome logoAway').lean();
 
     const validMatchIds = new Set(dbMatches.map(m => m.matchId));
 
@@ -398,6 +401,80 @@ router.post('/save', protect, checkPaid, async (req, res) => {
       $addToSet: { leagues: Number(leagueId) }
     });
 
+    // ============================================================
+    // 📧 GERAÇÃO E ENVIO DO COMPROVANTE POR E-MAIL (BREVO API)
+    // ============================================================
+    try {
+      const userEmail = req.user.email;
+      const userName = req.user.name || 'Participante';
+      const leagueName = settings?.title || `Liga #${leagueId}`;
+
+      // Monta a tabela visual dos palpites
+      let betsHtml = `
+        <table style="width: 100%; border-collapse: collapse; font-family: sans-serif; margin-top: 15px;">
+          <thead>
+            <tr style="background-color: #f4f6f7; border-bottom: 2px solid #bdc3c7;">
+              <th style="padding: 12px; text-align: left; color: #34495e;">Confronto</th>
+              <th style="padding: 12px; text-align: center; color: #34495e; width: 120px;">Seu Palpite</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      // Varre os palpites atualizados para criar as linhas da tabela com os nomes reais dos times
+      payload.groupMatches.forEach((userBet) => {
+        const matchInfo = dbMatches.find(m => m.matchId === userBet.matchId);
+        if (matchInfo) {
+          let traducaoPalpite = '';
+          if (userBet.winner === 'A') traducaoPalpite = `Vitória ${matchInfo.homeTeam}`;
+          if (userBet.winner === 'B') traducaoPalpite = `Vitória ${matchInfo.awayTeam}`;
+          if (userBet.winner === 'draw') traducaoPalpite = 'Empate';
+
+          // Adiciona marcador de classificação se for mata-mata
+          if (userBet.qualifier) {
+            const timeClassificado = userBet.qualifier === 'A' ? matchInfo.homeTeam : matchInfo.awayTeam;
+            traducaoPalpite += ` <br><span style="font-size: 11px; color: #e67e22;">(Classifica: ${timeClassificado})</span>`;
+          }
+
+          betsHtml += `
+            <tr style="border-bottom: 1px solid #ecf0f1;">
+              <td style="padding: 12px; color: #2c3e50;">
+                <strong>${matchInfo.homeTeam}</strong> vs <strong>${matchInfo.awayTeam}</strong>
+                <br><span style="font-size: 11px; color: #7f8c8d;">${matchInfo.phaseName || matchInfo.group || ''}</span>
+              </td>
+              <td style="padding: 12px; text-align: center; font-weight: bold; color: #27ae60; background-color: #fafdfb;">
+                ${traducaoPalpite}
+              </td>
+            </tr>
+          `;
+        }
+      });
+
+      betsHtml += `</tbody></table>`;
+
+      // Adiciona informações do pódio no e-mail caso existam no payload
+      if (payload.podium && payload.podium.first) {
+        betsHtml += `
+          <div style="margin-top: 25px; padding: 15px; background-color: #fcf8e3; border: 1px solid #faebcc; border-radius: 4px;">
+            <h4 style="margin: 0 0 10px 0; color: #8a6d3b;">🏆 Seus Palpites de Pódio:</h4>
+            <p style="margin: 4px 0;"><strong>1º Lugar:</strong> ${payload.podium.first}</p>
+            <p style="margin: 4px 0;"><strong>2º Lugar:</strong> ${payload.podium.second}</p>
+            <p style="margin: 4px 0;"><strong>3º Lugar:</strong> ${payload.podium.third}</p>
+            ${payload.podium.fourth ? `<p style="margin: 4px 0;"><strong>4º Lugar:</strong> ${payload.podium.fourth}</p>` : ''}
+          </div>
+        `;
+      }
+
+      // Executa a função de envio sem dar 'await', deixando em segundo plano para não atrasar a resposta HTTP do usuário
+      sendBetsConfirmationEmail(userEmail, userName, leagueName, betsHtml)
+        .catch(err => console.error('❌ Falha assíncrona ao enviar e-mail de palpites:', err.message));
+
+    } catch (emailSetupError) {
+      // Evita que falhas na geração da string do e-mail derrubem o salvamento das apostas
+      console.error('❌ Erro na preparação do e-mail de palpites:', emailSetupError);
+    }
+    // ============================================================
+
     return res.json({ 
       success: true, 
       message: 'Palpites salvos e participação confirmada!', 
@@ -409,7 +486,6 @@ router.post('/save', protect, checkPaid, async (req, res) => {
     return res.status(500).json({ success: false, message: 'Erro ao salvar palpites' });
   }
 });
-
 /**
  * 🏆 Leaderboard (Filtrado por LIGA)
  * Totalmente alinhado com ranking.js
