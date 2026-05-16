@@ -407,49 +407,70 @@ const recalculateBetPoints = (bet) => {
 };
 
 // ============================================================
-// 7. REABRIR (UNFINISH) - ÚNICA, GRUPO OU LIGA
+// 7. REABRIR (UNFINISH) - ÚNICA, GRUPO OU LIGA (ATUALIZADO)
 // ============================================================
 router.post('/admin/unfinish-bulk', protect, admin, async (req, res) => {
   try {
     const { matchId, leagueName, groupName } = req.body;
     let filter = {};
 
-    // Define o escopo da reabertura
+    // Define o escopo da reabertura (Mantido original)
     if (matchId) filter = { matchId: Number(matchId) };
     else if (leagueName && groupName) filter = { leagueName, group: groupName };
     else if (leagueName) filter = { $or: [{ leagueName }, { group: leagueName }] };
     else return res.status(400).json({ success: false, message: 'Parâmetros insuficientes' });
 
+    // Busca as partidas afetadas pelo filtro
     const matches = await Match.find(filter).select('matchId');
     const ids = matches.map(m => m.matchId);
 
-    if (ids.length === 0) return res.status(404).json({ success: false, message: 'Nenhuma partida encontrada' });
+    if (ids.length === 0) {
+      return res.status(404).json({ success: false, message: 'Nenhuma partida encontrada' });
+    }
 
-    // 1. Resetar Partidas
-    await Match.updateMany(filter, {
-      $set: { status: 'scheduled', scoreA: null, scoreB: null, penaltiesA: null, penaltiesB: null },
-      $unset: { qualifiedSide: 1 }
-    });
+    // 1. Resetar Partidas uma a uma usando o método estático atualizado do seu Model
+    // Isso garante que os minutos, cronômetros, xg e lineups sejam limpos e dispara o SSE/ChangeStream
+    for (const id of ids) {
+      await Match.unfinishMatch(id, 'scheduled');
+    }
 
-    // 2. Resetar Pontos nos Palpites
+    console.log(`[🔄 UNFINISH BULK] ${ids.length} partida(s) limpa(s) e reaberta(s) para 'scheduled'. IDs:`, ids);
+
+    // 2. Resetar Pontos nos Palpites (Atualizado para garantir compatibilidade de tipos)
     const cursor = Bet.find({ 'groupMatches.matchId': { $in: ids } }).cursor();
+    
     for await (const bet of cursor) {
+      let betAlterada = false;
+
       bet.groupMatches = (bet.groupMatches || []).map(gm => {
-        if (ids.includes(gm.matchId)) {
+        // Força a comparação segura convertendo ambos para Number
+        if (ids.includes(Number(gm.matchId))) {
           gm.points = 0;
           gm.qualifierPoints = 0;
+          betAlterada = true;
         }
         return gm;
       });
-      await recalculateBetPoints(bet).save();
+
+      // Só salva e recalcula se a aposta realmente possuía algum dos jogos afetados
+      if (betAlterada) {
+        if (typeof recalculateBetPoints === 'function') {
+          await recalculateBetPoints(bet);
+        }
+        await bet.save();
+      }
     }
 
-    res.json({ success: true, message: `${ids.length} partida(s) reaberta(s).` });
+    res.json({ 
+      success: true, 
+      message: `${ids.length} partida(s) reaberta(s). Placar, cronômetros e pontos dos usuários foram expurgados.` 
+    });
+
   } catch (err) {
+    console.error('❌ Erro no unfinish-bulk:', err);
     res.status(500).json({ success: false, message: 'Erro ao reabrir partidas' });
   }
 });
-
 // ============================================================
 // 8. EXCLUIR (DELETE) - ÚNICA, GRUPO OU LIGA
 // ============================================================
