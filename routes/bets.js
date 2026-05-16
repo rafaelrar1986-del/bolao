@@ -283,7 +283,7 @@ router.get('/my-bets', protect, checkPaid, async (req, res) => {
   }
 });/**
 /* =========================================================================
-   💾 Salvar palpites (ATUALIZADO COM TRAVA DE GRADE AUTOMÁTICA, RODADAS E COMPROVANTE POR EMAIL)
+   💾 Salvar palpites (ATUALIZADO, CORRIGIDO E ORDENADO POR GRUPO NO EMAIL)
    ========================================================================= */
 router.post('/save', protect, checkPaid, async (req, res) => {
   try {
@@ -299,32 +299,28 @@ router.post('/save', protect, checkPaid, async (req, res) => {
     const Match = require('../models/Match');
     const Bet = require('../models/Bet');
     const User = require('../models/User');
-    // Importa o serviço de e-mail (ajuste o caminho relativo conforme sua estrutura de pastas)
     const { sendBetsConfirmationEmail } = require('../services/emailService');
 
     const settings = await Settings.findById(configId).lean();
 
     const matchIdsEnviados = Object.keys(groupMatches || {}).map(Number);
     
-    // 2. Valida se as partidas pertencem à liga e busca identificadores de fase/rodada e dados dos times
-    // 🛡️ CORREÇÃO: Adicionado 'phaseName' e os nomes/escudos dos times para compor o e-mail depois
+    // 2. Busca as partidas no banco de dados
     const dbMatches = await Match.find({ 
       matchId: { $in: matchIdsEnviados }, 
       leagueId: Number(leagueId) 
-    }).select('matchId group phaseName homeTeam awayTeam logoHome logoAway').lean();
+    }).select('matchId group phaseName teamA teamB logoA logoB').lean();
 
     const validMatchIds = new Set(dbMatches.map(m => m.matchId));
 
     // ============================================================
-    // 🛡️ VALIDAÇÃO DE GRADE TRANCADA (Suporte a Rodadas e Grupos)
+    // 🛡️ VALIDAÇÃO DE GRADE TRANCADA
     // ============================================================
     if (settings && settings.lockedPhases && settings.lockedPhases.length > 0) {
       for (const matchId of matchIdsEnviados) {
         const matchData = dbMatches.find(m => m.matchId === matchId);
         
         if (matchData) {
-          // 💡 EXPLICAÇÃO: Se for pontos corridos, a trava usa phaseName (ex: Rodada 6).
-          // Se for Copa, usa o group (ex: Grupo A).
           const gradeDaPartida = matchData.phaseName || matchData.group;
           
           if (settings.lockedPhases.includes(gradeDaPartida)) {
@@ -346,7 +342,7 @@ router.post('/save', protect, checkPaid, async (req, res) => {
       existing.groupMatches.forEach((b) => gmMap.set(b.matchId, b));
     }
 
-    // 4. Atualiza apenas palpites que pertencem à liga atual e não estão trancados
+    // 4. Atualiza apenas palpites válidos
     Object.entries(groupMatches || {}).forEach(([matchId, choice]) => {
       const idNum = Number(matchId);
       if (!validMatchIds.has(idNum)) return; 
@@ -368,16 +364,18 @@ router.post('/save', protect, checkPaid, async (req, res) => {
     });
 
     const now = new Date();
+    const listaFinalGrupoMatches = Array.from(gmMap.values());
+
     const payload = {
       user: req.user._id,
       leagueId: String(leagueId), 
-      groupMatches: Array.from(gmMap.values()),
+      groupMatches: listaFinalGrupoMatches,
       hasSubmitted: true,
       lastUpdate: now,
       firstSubmission: existing?.firstSubmission || now,
     };
 
-    // 5. Trata o pódio se enviado
+    // 5. Trata o pódio
     if (podium && podium.first) {
       payload.podium = {
         first: String(podium.first).trim(),
@@ -394,9 +392,7 @@ router.post('/save', protect, checkPaid, async (req, res) => {
       { new: true, upsert: true, setDefaultsOnInsert: true, runValidators: true }
     );
 
-    // ============================================================
-    // 🔥 O CARIMBO: VÍNCULO DO USUÁRIO COM A LIGA
-    // ============================================================
+    // Vínculo do usuário com a liga
     await User.findByIdAndUpdate(req.user._id, {
       $addToSet: { leagues: Number(leagueId) }
     });
@@ -409,53 +405,86 @@ router.post('/save', protect, checkPaid, async (req, res) => {
       const userName = req.user.name || 'Participante';
       const leagueName = settings?.title || `Liga #${leagueId}`;
 
-      // Monta a tabela visual dos palpites
+      // 🌟 NOVA LÓGICA DE ORDENAÇÃO:
+      // Vamos criar uma lista nova que junta o palpite do usuário com os dados reais do jogo.
+      // Isso nos permite ordenar por "phaseName" ou por "group" antes de desenhar a tabela.
+      const palpitesCompletos = [];
+
+      listaFinalGrupoMatches.forEach((userBet) => {
+        const matchInfo = dbMatches.find(m => Number(m.matchId) === Number(userBet.matchId));
+        if (matchInfo && matchInfo.teamA && matchInfo.teamB) {
+          palpitesCompletos.push({
+            ...userBet,
+            gameData: matchInfo
+          });
+        }
+      });
+
+      // Ordena por fase/rodada e depois por grupo alfabeticamente
+      palpitesCompletos.sort((a, b) => {
+        const gradeA = a.gameData.phaseName || a.gameData.group || '';
+        const gradeB = b.gameData.phaseName || b.gameData.group || '';
+        return gradeA.localeCompare(gradeB, undefined, { numeric: true, sensitivity: 'base' });
+      });
+
       let betsHtml = `
         <table style="width: 100%; border-collapse: collapse; font-family: sans-serif; margin-top: 15px;">
           <thead>
             <tr style="background-color: #f4f6f7; border-bottom: 2px solid #bdc3c7;">
-              <th style="padding: 12px; text-align: left; color: #34495e;">Confronto</th>
-              <th style="padding: 12px; text-align: center; color: #34495e; width: 120px;">Seu Palpite</th>
+              <th style="padding: 12px; text-align: left; color: #34495e;">Confronto / Grupo</th>
+              <th style="padding: 12px; text-align: center; color: #34495e; width: 160px;">Seu Palpite</th>
             </tr>
           </thead>
           <tbody>
       `;
 
-      // Varre os palpites atualizados para criar as linhas da tabela com os nomes reais dos times
-      payload.groupMatches.forEach((userBet) => {
-        const matchInfo = dbMatches.find(m => m.matchId === userBet.matchId);
-        if (matchInfo) {
-          let traducaoPalpite = '';
-          if (userBet.winner === 'A') traducaoPalpite = `Vitória ${matchInfo.homeTeam}`;
-          if (userBet.winner === 'B') traducaoPalpite = `Vitória ${matchInfo.awayTeam}`;
-          if (userBet.winner === 'draw') traducaoPalpite = 'Empate';
+      let ultimaGrade = '';
 
-          // Adiciona marcador de classificação se for mata-mata
-          if (userBet.qualifier) {
-            const timeClassificado = userBet.qualifier === 'A' ? matchInfo.homeTeam : matchInfo.awayTeam;
-            traducaoPalpite += ` <br><span style="font-size: 11px; color: #e67e22;">(Classifica: ${timeClassificado})</span>`;
-          }
+      // Varre a lista que já está perfeitamente ordenada por grupo/rodada
+      palpitesCompletos.forEach((item) => {
+        const matchInfo = item.gameData;
+        const gradeAtual = matchInfo.phaseName || matchInfo.group || 'Geral';
 
+        // Cria uma linha divisória visual cinza toda vez que mudar de grupo/rodada
+        if (gradeAtual !== ultimaGrade) {
           betsHtml += `
-            <tr style="border-bottom: 1px solid #ecf0f1;">
-              <td style="padding: 12px; color: #2c3e50;">
-                <strong>${matchInfo.homeTeam}</strong> vs <strong>${matchInfo.awayTeam}</strong>
-                <br><span style="font-size: 11px; color: #7f8c8d;">${matchInfo.phaseName || matchInfo.group || ''}</span>
-              </td>
-              <td style="padding: 12px; text-align: center; font-weight: bold; color: #27ae60; background-color: #fafdfb;">
-                ${traducaoPalpite}
+            <tr style="background-color: #eaeded;">
+              <td colspan="2" style="padding: 8px 12px; font-weight: bold; color: #2c3e50; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">
+                📂 ${gradeAtual}
               </td>
             </tr>
           `;
+          ultimaGrade = gradeAtual;
         }
+
+        let traducaoPalpite = '';
+        if (item.winner === 'A') traducaoPalpite = `Vitória: ${matchInfo.teamA}`;
+        if (item.winner === 'B') traducaoPalpite = `Vitória: ${matchInfo.teamB}`;
+        if (item.winner === 'draw') traducaoPalpite = 'Empate';
+
+        if (item.qualifier) {
+          const timeClassificado = item.qualifier === 'A' ? matchInfo.teamA : matchInfo.teamB;
+          traducaoPalpite += ` <br><span style="font-size: 11px; color: #e67e22; font-weight: normal;">(Classifica: ${timeClassificado})</span>`;
+        }
+
+        betsHtml += `
+          <tr style="border-bottom: 1px solid #ecf0f1;">
+            <td style="padding: 12px; color: #2c3e50;">
+              <strong>${matchInfo.teamA}</strong> vs <strong>${matchInfo.teamB}</strong>
+            </td>
+            <td style="padding: 12px; text-align: center; font-weight: bold; color: #27ae60; background-color: #fafdfb;">
+              ${traducaoPalpite}
+            </td>
+          </tr>
+        `;
       });
 
       betsHtml += `</tbody></table>`;
 
-      // Adiciona informações do pódio no e-mail caso existam no payload
+      // Bloco do pódio
       if (payload.podium && payload.podium.first) {
         betsHtml += `
-          <div style="margin-top: 25px; padding: 15px; background-color: #fcf8e3; border: 1px solid #faebcc; border-radius: 4px;">
+          <div style="margin-top: 25px; padding: 15px; background-color: #fcf8e3; border: 1px solid #faebcc; border-radius: 4px; font-family: sans-serif;">
             <h4 style="margin: 0 0 10px 0; color: #8a6d3b;">🏆 Seus Palpites de Pódio:</h4>
             <p style="margin: 4px 0;"><strong>1º Lugar:</strong> ${payload.podium.first}</p>
             <p style="margin: 4px 0;"><strong>2º Lugar:</strong> ${payload.podium.second}</p>
@@ -465,12 +494,10 @@ router.post('/save', protect, checkPaid, async (req, res) => {
         `;
       }
 
-      // Executa a função de envio sem dar 'await', deixando em segundo plano para não atrasar a resposta HTTP do usuário
       sendBetsConfirmationEmail(userEmail, userName, leagueName, betsHtml)
         .catch(err => console.error('❌ Falha assíncrona ao enviar e-mail de palpites:', err.message));
 
     } catch (emailSetupError) {
-      // Evita que falhas na geração da string do e-mail derrubem o salvamento das apostas
       console.error('❌ Erro na preparação do e-mail de palpites:', emailSetupError);
     }
     // ============================================================
