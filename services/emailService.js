@@ -92,7 +92,60 @@ async function sendBroadcastEmail(emails, subject, message, attachment = null) {
   }
 }
 
+/**
+ * 🚀 NOVA: Envia os palpites salvos para o e-mail do usuário logado
+ */
+async function sendBetsConfirmationEmail(to, userName, leagueName, betsHtml) {
+  const url = 'https://api.brevo.com/v3/smtp/email';
+
+  try {
+    await axios.post(
+      url,
+      {
+        sender: { name: 'Bolão Copa 2026', email: 'bolaokb@gmail.com' },
+        to: [{ email: to }],
+        subject: `Meus Palpites Salvos - ${leagueName}`,
+        htmlContent: `
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333; line-height: 1.6;">
+            <div style="background-color: #2c3e50; padding: 20px; text-align: center; color: #fff;">
+              <h2 style="margin: 0;">Bolão Copa 2026</h2>
+              <p style="margin: 5px 0 0 0; opacity: 0.8;">Confirmação de Palpites</p>
+            </div>
+            
+            <div style="padding: 20px; border: 1px solid #eee; border-top: none;">
+              <p>Olá, <strong>${userName}</strong>!</p>
+              <p>Seus palpites para o torneio <strong>${leagueName}</strong> foram salvos com sucesso no sistema. Veja abaixo o seu comprovante:</p>
+              
+              <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+              
+              <!-- Tabela ou lista gerada dinamicamente pelo controller -->
+              ${betsHtml}
+              
+              <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+              
+              <p style="font-size: 13px; color: #7f8c8d; text-align: center;">
+                Boa sorte! Acompanhe as atualizações e o ranking em tempo real direto na nossa plataforma.
+              </p>
+            </div>
+          </div>
+        `
+      },
+      {
+        headers: {
+          'api-key': process.env.BREVO_API_KEY,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    console.log('📧 E-mail de palpites enviado via Brevo com sucesso para:', to);
+  } catch (error) {
+    console.error('❌ Erro ao enviar e-mail de palpites:', error.response ? error.response.data : error.message);
+    throw error;
+  }
+}
+
 module.exports = { 
   sendRecoveryEmail, 
-  sendBroadcastEmail 
+  sendBroadcastEmail,
+  sendBetsConfirmationEmail // <-- Exportando a nova função
 };
