@@ -112,6 +112,10 @@ const MatchSchema = new Schema(
       unique: true,   
       index: true      
     },
+
+    // 🚨 NOVOS CAMPOS DE CONTROLE PARA SUPORTE À V2 E IGNORAR SE SLEEP NO RENDER
+    scoutsConsolidated: { type: Boolean, default: false, index: true }, 
+    apiLastUpdated: { type: String, default: null } 
   },
   { 
     timestamps: true, 
@@ -200,6 +204,7 @@ MatchSchema.statics.finishMatch = async function (matchId, scoreA, scoreB, penA 
   match.penaltiesB = penB !== null ? Number(penB) : null;
   match.status = 'finished';
   match.minute = "Fim";
+  match.scoutsConsolidated = true; // Força como consolidado se finalizado manualmente via static
   await match.save();
   return match;
 };
@@ -215,6 +220,8 @@ MatchSchema.statics.unfinishMatch = async function (matchId, statusBack = 'sched
   match.qualifiedSide = null;
   match.minute = "";
   match.processed = false;
+  match.scoutsConsolidated = false; // Libera novamente para processamento do robô
+  match.apiLastUpdated = null;
   match.goalsDetail = [];
   match.statistics = [];
   match.shootoutDetail = []; 
