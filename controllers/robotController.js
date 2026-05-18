@@ -30,7 +30,7 @@ exports.getAvailableLeagues = async (req, res) => {
         // Puxa a chave do .env para garantir que a API aceite a chamada
         const API_KEY = process.env.API_FOOTBALL_KEY; 
         
-        const response = await axios.get('https://sports.bzzoiro.com/api/leagues/', {
+        const response = await axios.get('https://sports.bzzoiro.com/api/v2/leagues/', {
             headers: { 'Authorization': `Token ${API_KEY}` }
         });
 
