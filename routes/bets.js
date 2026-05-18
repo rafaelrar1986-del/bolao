@@ -313,17 +313,45 @@ router.post('/save', protect, checkPaid, async (req, res) => {
 
     const validMatchIds = new Set(dbMatches.map(m => m.matchId));
 
-    // ============================================================
-    // 🛡️ VALIDAÇÃO DE GRADE TRANCADA
+   // ============================================================
+    // 🛡️ VALIDAÇÃO DE GRADE TRANCADA (Suporte Inteligente a Grupos e Mata-Mata)
     // ============================================================
     if (settings && settings.lockedPhases && settings.lockedPhases.length > 0) {
+      // 1. Puxa os palpites antigos que o usuário já tinha guardados no banco de dados antes
+      const existing = await Bet.findOne({ user: req.user._id, leagueId: String(leagueId) }).lean();
+      const palpitesAntigosMap = new Map();
+      if (existing && Array.isArray(existing.groupMatches)) {
+        existing.groupMatches.forEach(b => palpitesAntigosMap.set(Number(b.matchId), b));
+      }
+
       for (const matchId of matchIdsEnviados) {
-        const matchData = dbMatches.find(m => m.matchId === matchId);
+        const idNum = Number(matchId); // Garante a chave comparativa sempre como Number
+        const matchData = dbMatches.find(m => Number(m.matchId) === idNum);
         
         if (matchData) {
           const gradeDaPartida = matchData.phaseName || matchData.group;
           
           if (settings.lockedPhases.includes(gradeDaPartida)) {
+            // Palpites extraídos do payload vindo do Front-end nesta requisição
+            const palpiteEnviado = groupMatches[matchId] || groupMatches[String(matchId)];
+            const classificadoEnviado = knockoutQualifiers ? (knockoutQualifiers[matchId] || knockoutQualifiers[String(matchId)]) : null;
+
+            // Dados correspondentes recuperados do histórico do banco
+            const dadosAntigos = palpitesAntigosMap.get(idNum);
+            const palpiteJaSalvo = dadosAntigos ? dadosAntigos.winner : null;
+            const classificadoJaSalvo = dadosAntigos ? dadosAntigos.qualifier : null;
+
+            // 💡 CRITÉRIO DE LIBERAÇÃO (BYPASS):
+            // Se o palpite do jogo E a escolha de classificação forem EXATAMENTE idênticos
+            // ao que já estava na base de dados, ignoramos o bloqueio porque não houve alteração.
+            const naoAlterouVencedor = palpiteEnviado === palpiteJaSalvo;
+            const naoAlterouClassificado = String(classificadoEnviado || '') === String(classificadoJaSalvo || '');
+
+            if (naoAlterouVencedor && naoAlterouClassificado) {
+              continue; // Pula esta iteração com segurança, o usuário não mexeu neste jogo trancado!
+            }
+
+            // Se o fluxo chegar aqui, significa que o usuário tentou de fato modificar um jogo trancado
             return res.status(403).json({ 
               success: false, 
               message: `As apostas para a grade "${gradeDaPartida}" já foram encerradas!` 
@@ -333,7 +361,6 @@ router.post('/save', protect, checkPaid, async (req, res) => {
       }
     }
     // ============================================================
-
     // 3. Busca a aposta ESPECÍFICA desta liga para manter o histórico
     const existing = await Bet.findOne({ user: req.user._id, leagueId: String(leagueId) });
     const gmMap = new Map();
