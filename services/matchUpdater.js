@@ -84,7 +84,7 @@ async function updateMatches() {
 
     const now = Date.now();
     const yesterday = new Date(now - 286400000).toISOString().split('T')[0];
-    const tomorrow = new Date(now - 86400000).toISOString().split('T')[0];
+    const tomorrow = new Date(now + 86400000).toISOString().split('T')[0];
 
     // 1. LIVE (Com spatial=true para pegar shotmap de pênaltis)
     try {
