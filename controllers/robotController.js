@@ -256,7 +256,7 @@ exports.fetchAndSyncMatches = async (req, res) => {
                 apiId: item.id,
 
                 leagueId: currentLeagueId,
-                leagueName: currentLeagueName,
+                //leagueName: currentLeagueName,
 
                 // =========================================
                 // TRADUÇÃO DOS TIMES
