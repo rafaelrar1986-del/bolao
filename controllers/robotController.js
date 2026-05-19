@@ -314,18 +314,26 @@ exports.fetchAndSyncMatches = async (req, res) => {
                 });
 
                 await match.save();
-
                 createdCount++;
 
             } else {
 
-                // Só atualiza se ainda não foi processada
+                // Só atualiza se a partida ainda não foi processada (calculada no ranking)
                 if (!match.processed) {
 
+                    // 🛡️ TRAVA DE SEGURANÇA CONTRA SOBRESCRITA DE FASES
+                    // Se o jogo já possui uma fase/grupo definida e você está rodando uma nova sincronização,
+                    // nós impedimos que o Admin mude o grupo e a fase antigos por acidente.
+                    if (match.phaseName) {
+                        delete updateData.group;
+                        delete updateData.phase;
+                        delete updateData.phaseName;
+                    }
+
+                    // Mescla os dados restantes de forma segura (placar, status, minutos, data)
                     Object.assign(match, updateData);
 
                     await match.save();
-
                     updatedCount++;
                 }
             }
