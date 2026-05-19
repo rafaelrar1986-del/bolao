@@ -24,26 +24,34 @@ const mapStatus = (apiStatus) => {
 /**
  * BUSCA DE LIGAS (DINÂMICA)
  * Usa o process.env.API_FOOTBALL_KEY para autorização
+ * Garante a padronização do campo "name" para o atributo data-name do Frontend
  */
 exports.getAvailableLeagues = async (req, res) => {
     try {
-        // Puxa a chave do .env para garantir que a API aceite a chamada
         const API_KEY = process.env.API_FOOTBALL_KEY; 
         
         const response = await axios.get('https://sports.bzzoiro.com/api/v2/leagues/', {
             headers: { 'Authorization': `Token ${API_KEY}` }
         });
 
-        // Retorna a lista de ligas (results) para o Frontend
+        const leagues = (response.data?.results || []).map(league => {
+            return {
+                ...league,
+                name: league.name || league.league?.name || `Liga Comercial ${league.id}`
+            };
+        });
+
         res.json({
             success: true,
-            results: response.data.results 
+            results: leagues 
         });
+
     } catch (error) {
-        console.error('Erro ao buscar ligas na API:', error.message);
+        console.error('❌ Erro ao buscar ligas na API externa:', error.message);
         res.status(500).json({ 
             success: false, 
-            message: 'Erro ao carregar lista de ligas da API externa.' 
+            message: 'Erro ao carregar lista de ligas da API externa.',
+            error: error.message
         });
     }
 };
@@ -53,7 +61,6 @@ exports.getAvailableLeagues = async (req, res) => {
 // =============================
 
 const teamTranslations = {
-
     // Américas
     'Argentina': 'Argentina',
     'Brazil': 'Brasil',
@@ -141,8 +148,8 @@ function translateTeamName(name) {
 
 exports.fetchAndSyncMatches = async (req, res) => {
     try {
-        // Recebemos os parâmetros do admin.js
-        const { leagueId, dateFrom, dateTo, phaseType, knockoutPhase, unifyGroups } = req.body;
+        // 🔥 CORRIGIDO: Captura o leagueName do Frontend para não ser perdido
+        const { leagueId, leagueName, dateFrom, dateTo, phaseType, knockoutPhase, unifyGroups } = req.body;
         const API_KEY = process.env.API_FOOTBALL_KEY;
 
         if (!leagueId || !dateFrom || !dateTo) {
@@ -197,9 +204,11 @@ exports.fetchAndSyncMatches = async (req, res) => {
                 ? Number(item.league.id) 
                 : Number(leagueId);
 
-            const currentLeagueName = item.league 
-                ? item.league.name 
-                : "";
+            // 🔥 CORRIGIDO: Buscamos o Match mais cedo para usar o nome existente caso a API venha em branco
+            let match = await Match.findOne({ apiId: item.id });
+
+            // 🔥 CORRIGIDO: Fallback em cascata impedindo strings vazias no MongoDB
+            const currentLeagueName = leagueName || match?.leagueName || item.league?.name || `Liga ${currentLeagueId}`;
 
             // =========================================
             // LÓGICA DE AGRUPAMENTO E RODADAS
@@ -209,87 +218,52 @@ exports.fetchAndSyncMatches = async (req, res) => {
             let phaseNameValue = null;
 
             if (phaseType === 'knockout') {
-
                 groupValue = knockoutPhase;
                 phaseNameValue = knockoutPhase;
-
             } else if (unifyGroups) {
-
                 // Pontos corridos
                 groupValue = knockoutPhase || currentLeagueName || 'Classificação Geral';
-
-                phaseNameValue = item.round_number
-                    ? `Rodada ${item.round_number}`
-                    : null;
-
+                phaseNameValue = item.round_number ? `Rodada ${item.round_number}` : null;
             } else {
-
                 // Fase de grupos
                 let apiGroup = item.group_name || `Rodada ${item.round_number}`;
-
-                // Traduz "Group X" -> "Grupo X"
                 groupValue = apiGroup.replace(/^Group\s+/i, 'Grupo ');
 
-                // =========================================
-                // SE EXISTIR GROUP_NAME => phaseName = Grupos
-                // SENÃO => Rodada X
-                // =========================================
                 if (item.group_name) {
                     phaseNameValue = 'Grupos';
                 } else {
-                    phaseNameValue = item.round_number
-                        ? `Rodada ${item.round_number}`
-                        : null;
+                    phaseNameValue = item.round_number ? `Rodada ${item.round_number}` : null;
                 }
-            } // 👈 Chave corrigida aqui! Fechando o bloco 'else' principal do agrupamento.
+            }
 
-           // =========================================
+            // =========================================
             // CAPTURA DOS IDS DOS TIMES (ATUALIZADO)
             // =========================================
             const teamA_ID = item.home_team_obj?.id || item.home_team_id || item.home_id;
             const teamB_ID = item.away_team_obj?.id || item.away_team_id || item.away_id;
 
-            let match = await Match.findOne({ apiId: item.id });
-
             const updateData = {
-
                 apiId: item.id,
-
                 leagueId: currentLeagueId,
-                //leagueName: currentLeagueName,
-
-                // =========================================
-                // TRADUÇÃO DOS TIMES
-                // =========================================
+                
+                // 🔥 CORRIGIDO: O campo agora recebe a variável higienizada!
+                leagueName: currentLeagueName,
 
                 teamA: translateTeamName(item.home_team),
                 teamB: translateTeamName(item.away_team),
-
                 group: groupValue,
-
                 phase: phaseType || 'group',
-
-                // suporte para bloqueio por rodada unificada
                 phaseName: phaseNameValue,
-
                 date: dateStr,
                 time: timeStr,
-
                 status: mapStatus(item.status),
-
                 scoreA: item.home_score,
                 scoreB: item.away_score,
-
                 penaltiesA: item.penalty_shootout?.home ?? null,
                 penaltiesB: item.penalty_shootout?.away ?? null,
-
                 apiStatus: item.period || 'NS',
+                minute: item.current_minute ? `${item.current_minute}'` : "",
 
-                minute: item.current_minute
-                    ? `${item.current_minute}'`
-                    : "",
-
-                // Mantém logos existentes se API falhar
                 logoA: teamA_ID
                     ? `https://sports.bzzoiro.com/img/team/${teamA_ID}/?token=${API_KEY}`
                     : (match?.logoA || ''),
@@ -300,13 +274,8 @@ exports.fetchAndSyncMatches = async (req, res) => {
             };
 
             if (!match) {
-
-                const lastMatch = await Match.findOne()
-                    .sort({ matchId: -1 });
-
-                const nextId = lastMatch && lastMatch.matchId
-                    ? lastMatch.matchId + 1
-                    : 1;
+                const lastMatch = await Match.findOne().sort({ matchId: -1 });
+                const nextId = lastMatch && lastMatch.matchId ? lastMatch.matchId + 1 : 1;
 
                 match = new Match({
                     ...updateData,
@@ -317,20 +286,16 @@ exports.fetchAndSyncMatches = async (req, res) => {
                 createdCount++;
 
             } else {
-
                 // Só atualiza se a partida ainda não foi processada (calculada no ranking)
                 if (!match.processed) {
-
                     // 🛡️ TRAVA DE SEGURANÇA CONTRA SOBRESCRITA DE FASES
-                    // Se o jogo já possui uma fase/grupo definida e você está rodando uma nova sincronização,
-                    // nós impedimos que o Admin mude o grupo e a fase antigos por acidente.
                     if (match.phaseName) {
                         delete updateData.group;
                         delete updateData.phase;
                         delete updateData.phaseName;
                     }
 
-                    // Mescla os dados restantes de forma segura (placar, status, minutos, data)
+                    // Mescla os dados restantes de forma segura
                     Object.assign(match, updateData);
 
                     await match.save();
@@ -349,9 +314,7 @@ exports.fetchAndSyncMatches = async (req, res) => {
         });
 
     } catch (error) {
-
         console.error('Erro no RobotController:', error.message);
-
         res.status(500).json({
             success: false,
             message: 'Erro ao processar a sincronização da API.',
