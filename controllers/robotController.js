@@ -227,10 +227,18 @@ exports.fetchAndSyncMatches = async (req, res) => {
                 // Traduz "Group X" -> "Grupo X"
                 groupValue = apiGroup.replace(/^Group\s+/i, 'Grupo ');
 
-                phaseNameValue = item.round_number
-                    ? `Rodada ${item.round_number}`
-                    : null;
-            }
+                // =========================================
+                // SE EXISTIR GROUP_NAME => phaseName = Grupos
+                // SENÃO => Rodada X
+                // =========================================
+                if (item.group_name) {
+                    phaseNameValue = 'Grupos';
+                } else {
+                    phaseNameValue = item.round_number
+                        ? `Rodada ${item.round_number}`
+                        : null;
+                }
+            } // 👈 Chave corrigida aqui! Fechando o bloco 'else' principal do agrupamento.
 
             const teamA_ID = item.home_team_obj?.id || item.home_id;
             const teamB_ID = item.away_team_obj?.id || item.away_id;
@@ -255,7 +263,7 @@ exports.fetchAndSyncMatches = async (req, res) => {
 
                 phase: phaseType || 'group',
 
-                // suporte para bloqueio por rodada
+                // suporte para bloqueio por rodada unificada
                 phaseName: phaseNameValue,
 
                 date: dateStr,
