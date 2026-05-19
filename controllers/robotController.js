@@ -152,7 +152,7 @@ exports.fetchAndSyncMatches = async (req, res) => {
             });
         }
 
-        let nextUrl = `https://sports.bzzoiro.com/api/events/?date_from=${dateFrom}&date_to=${dateTo}&league=${leagueId}`;
+        let nextUrl = `https://sports.bzzoiro.com/api/v2/events/?date_from=${dateFrom}&date_to=${dateTo}&league_id=${leagueId}`;
         let allResults = [];
 
         // Paginação da API
@@ -243,8 +243,11 @@ exports.fetchAndSyncMatches = async (req, res) => {
                 }
             } // 👈 Chave corrigida aqui! Fechando o bloco 'else' principal do agrupamento.
 
-            const teamA_ID = item.home_team_obj?.id || item.home_id;
-            const teamB_ID = item.away_team_obj?.id || item.away_id;
+           // =========================================
+            // CAPTURA DOS IDS DOS TIMES (ATUALIZADO)
+            // =========================================
+            const teamA_ID = item.home_team_obj?.id || item.home_team_id || item.home_id;
+            const teamB_ID = item.away_team_obj?.id || item.away_team_id || item.away_id;
 
             let match = await Match.findOne({ apiId: item.id });
 
