@@ -48,6 +48,94 @@ exports.getAvailableLeagues = async (req, res) => {
     }
 };
 
+// =============================
+// DICIONÁRIO DE TRADUÇÃO
+// =============================
+
+const teamTranslations = {
+
+    // Américas
+    'Argentina': 'Argentina',
+    'Brazil': 'Brasil',
+    'Canada': 'Canadá',
+    'Chile': 'Chile',
+    'Colombia': 'Colômbia',
+    'Costa Rica': 'Costa Rica',
+    'Ecuador': 'Equador',
+    'Mexico': 'México',
+    'Panama': 'Panamá',
+    'Peru': 'Peru',
+    'Paraguay': 'Paraguai',
+    'Uruguay': 'Uruguai',
+    'United States': 'Estados Unidos',
+
+    // Europa
+    'Austria': 'Áustria',
+    'Belgium': 'Bélgica',
+    'Croatia': 'Croácia',
+    'Czech Republic': 'Chéquia',
+    'Denmark': 'Dinamarca',
+    'England': 'Inglaterra',
+    'France': 'França',
+    'Germany': 'Alemanha',
+    'Greece': 'Grécia',
+    'Hungary': 'Hungria',
+    'Iceland': 'Islândia',
+    'Italy': 'Itália',
+    'Netherlands': 'Países Baixos',
+    'Northern Ireland': 'Irlanda do Norte',
+    'Norway': 'Noruega',
+    'Poland': 'Polônia',
+    'Portugal': 'Portugal',
+    'Republic of Ireland': 'Irlanda',
+    'Romania': 'Romênia',
+    'Russia': 'Rússia',
+    'Scotland': 'Escócia',
+    'Serbia': 'Sérvia',
+    'Slovakia': 'Eslováquia',
+    'Slovenia': 'Eslovênia',
+    'Spain': 'Espanha',
+    'Sweden': 'Suécia',
+    'Switzerland': 'Suíça',
+    'Turkey': 'Turquia',
+    'Ukraine': 'Ucrânia',
+    'Wales': 'País de Gales',
+
+    // África
+    'Algeria': 'Argélia',
+    'Angola': 'Angola',
+    'Cameroon': 'Camarões',
+    'DR Congo': 'RD do Congo',
+    'Egypt': 'Egito',
+    'Ghana': 'Gana',
+    'Ivory Coast': 'Costa do Marfim',
+    'Morocco': 'Marrocos',
+    'Nigeria': 'Nigéria',
+    'Senegal': 'Senegal',
+    'South Africa': 'África do Sul',
+    'Tunisia': 'Tunísia',
+
+    // Ásia e Oceania
+    'Australia': 'Austrália',
+    'China': 'China',
+    'Iran': 'Irã',
+    'Japan': 'Japão',
+    'New Zealand': 'Nova Zelândia',
+    'North Korea': 'Coreia do Norte',
+    'Saudi Arabia': 'Arábia Saudita',
+    'South Korea': 'Coreia do Sul',
+    'Qatar': 'Catar',
+    'United Arab Emirates': 'Emirados Árabes Unidos'
+};
+
+// =============================
+// FUNÇÃO DE TRADUÇÃO
+// =============================
+
+function translateTeamName(name) {
+    return teamTranslations[name] || name;
+}
+
 exports.fetchAndSyncMatches = async (req, res) => {
     try {
         // Recebemos os parâmetros do admin.js
@@ -73,6 +161,7 @@ exports.fetchAndSyncMatches = async (req, res) => {
             if (response.data && response.data.results) {
                 allResults = allResults.concat(response.data.results);
             }
+
             nextUrl = response.data.next; 
         }
 
@@ -88,35 +177,59 @@ exports.fetchAndSyncMatches = async (req, res) => {
         let createdCount = 0;
 
         for (const item of allResults) {
+
             const eventDate = new Date(item.event_date);
-            const dateStr = eventDate.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-            const timeStr = eventDate.toLocaleTimeString('pt-BR', { 
-                timeZone: 'America/Sao_Paulo', 
-                hour: '2-digit', 
-                minute: '2-digit' 
+
+            const dateStr = eventDate.toLocaleDateString('pt-BR', { 
+                timeZone: 'America/Sao_Paulo' 
             });
 
-            const currentLeagueId = item.league ? Number(item.league.id) : Number(leagueId);
-            const currentLeagueName = item.league ? item.league.name : "";
+            const timeStr = eventDate.toLocaleTimeString('pt-BR', { 
+                timeZone: 'America/Sao_Paulo',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
 
-            // --- LÓGICA DE AGRUPAMENTO E RODADAS (PONTOS CORRIDOS) ---
+            const currentLeagueId = item.league 
+                ? Number(item.league.id) 
+                : Number(leagueId);
+
+            const currentLeagueName = item.league 
+                ? item.league.name 
+                : "";
+
+            // =========================================
+            // LÓGICA DE AGRUPAMENTO E RODADAS
+            // =========================================
+
             let groupValue;
             let phaseNameValue = null;
 
             if (phaseType === 'knockout') {
-                groupValue = knockoutPhase; // Ex: "Oitavas de Final"
+
+                groupValue = knockoutPhase;
                 phaseNameValue = knockoutPhase;
+
             } else if (unifyGroups) {
-                // Se for pontos corridos (Ex: Brasileirão)
-                // group: Nome da Liga (para agrupar todos na mesma tabela/estatística)
+
+                // Pontos corridos
                 groupValue = knockoutPhase || currentLeagueName || 'Classificação Geral';
-                
-                // phaseName: Identificador da Rodada (para o bloqueio individual no frontend)
-                phaseNameValue = item.round_number ? `Rodada ${item.round_number}` : null;
+
+                phaseNameValue = item.round_number
+                    ? `Rodada ${item.round_number}`
+                    : null;
+
             } else {
-                // Comportamento padrão/antigo (ex: Grupos da Copa)
-                groupValue = `Rodada ${item.round_number}`;
-                phaseNameValue = `Rodada ${item.round_number}`;
+
+                // Fase de grupos
+                let apiGroup = item.group_name || `Rodada ${item.round_number}`;
+
+                // Traduz "Group X" -> "Grupo X"
+                groupValue = apiGroup.replace(/^Group\s+/i, 'Grupo ');
+
+                phaseNameValue = item.round_number
+                    ? `Rodada ${item.round_number}`
+                    : null;
             }
 
             const teamA_ID = item.home_team_obj?.id || item.home_id;
@@ -125,44 +238,80 @@ exports.fetchAndSyncMatches = async (req, res) => {
             let match = await Match.findOne({ apiId: item.id });
 
             const updateData = {
+
                 apiId: item.id,
+
                 leagueId: currentLeagueId,
                 leagueName: currentLeagueName,
-                teamA: item.home_team,
-                teamB: item.away_team,
-                group: groupValue, 
-                phase: phaseType || 'group', 
-                phaseName: phaseNameValue, // ✨ Adicionado para suportar bloqueio por rodada
+
+                // =========================================
+                // TRADUÇÃO DOS TIMES
+                // =========================================
+
+                teamA: translateTeamName(item.home_team),
+                teamB: translateTeamName(item.away_team),
+
+                group: groupValue,
+
+                phase: phaseType || 'group',
+
+                // suporte para bloqueio por rodada
+                phaseName: phaseNameValue,
+
                 date: dateStr,
                 time: timeStr,
+
                 status: mapStatus(item.status),
+
                 scoreA: item.home_score,
                 scoreB: item.away_score,
+
                 penaltiesA: item.penalty_shootout?.home ?? null,
                 penaltiesB: item.penalty_shootout?.away ?? null,
+
                 apiStatus: item.period || 'NS',
-                minute: item.current_minute ? `${item.current_minute}'` : "",
-                // Mantém logos existentes se a API falhar em prover IDs
-                logoA: teamA_ID ? `https://sports.bzzoiro.com/img/team/${teamA_ID}/?token=${API_KEY}` : (match?.logoA || ''),
-                logoB: teamB_ID ? `https://sports.bzzoiro.com/img/team/${teamB_ID}/?token=${API_KEY}` : (match?.logoB || '')
+
+                minute: item.current_minute
+                    ? `${item.current_minute}'`
+                    : "",
+
+                // Mantém logos existentes se API falhar
+                logoA: teamA_ID
+                    ? `https://sports.bzzoiro.com/img/team/${teamA_ID}/?token=${API_KEY}`
+                    : (match?.logoA || ''),
+
+                logoB: teamB_ID
+                    ? `https://sports.bzzoiro.com/img/team/${teamB_ID}/?token=${API_KEY}`
+                    : (match?.logoB || '')
             };
 
             if (!match) {
-                const lastMatch = await Match.findOne().sort({ matchId: -1 });
-                const nextId = lastMatch && lastMatch.matchId ? lastMatch.matchId + 1 : 1;
-                
+
+                const lastMatch = await Match.findOne()
+                    .sort({ matchId: -1 });
+
+                const nextId = lastMatch && lastMatch.matchId
+                    ? lastMatch.matchId + 1
+                    : 1;
+
                 match = new Match({
                     ...updateData,
                     matchId: nextId
                 });
-                
+
                 await match.save();
+
                 createdCount++;
+
             } else {
-                // Proteção: só atualiza se a partida não foi finalizada/processada pelo sistema de pontos
+
+                // Só atualiza se ainda não foi processada
                 if (!match.processed) {
+
                     Object.assign(match, updateData);
+
                     await match.save();
+
                     updatedCount++;
                 }
             }
@@ -171,16 +320,20 @@ exports.fetchAndSyncMatches = async (req, res) => {
         res.json({
             success: true,
             message: `Sincronização concluída! ${allResults.length} jogos processados.`,
-            details: { criados: createdCount, atualizados: updatedCount }
+            details: {
+                criados: createdCount,
+                atualizados: updatedCount
+            }
         });
 
     } catch (error) {
+
         console.error('Erro no RobotController:', error.message);
-        res.status(500).json({ 
-            success: false, 
+
+        res.status(500).json({
+            success: false,
             message: 'Erro ao processar a sincronização da API.',
-            error: error.message 
+            error: error.message
         });
     }
 };
-
