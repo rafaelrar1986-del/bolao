@@ -227,10 +227,10 @@ exports.fetchAndSyncMatches = async (req, res) => {
             } else {
                 // Fase de grupos
                 let apiGroup = item.group_name || `Rodada ${item.round_number}`;
-                groupValue = apiGroup.replace(/^Group\s+/i, 'Grupo ');
+                groupValue = apiGroup.replace(/^Group\s+/i, 'GRUPO');
 
                 if (item.group_name) {
-                    phaseNameValue = 'Grupos';
+                    phaseNameValue = 'FASE DE GRUPOS';
                 } else {
                     phaseNameValue = item.round_number ? `Rodada ${item.round_number}` : null;
                 }
