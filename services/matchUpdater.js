@@ -114,13 +114,23 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
       const match = await Match.findOne({ apiId: gameData.id });
       if (!match) continue;
 
-      // 🚨 TRAVA DE SEGURANÇA: Se o jogo já está como finalizado no seu banco,
-      // ele ignora as próximas linhas e pula para o próximo jogo da lista, zerando o tráfego.
-      if (match.status === 'finished') continue;
+      // 🚨 TRAVA INTELIGENTE COM JANELA DE TOLERÂNCIA
+      // Se o jogo já está finalizado no seu banco há mais de 10 minutos, corta o tráfego.
+      // Esses 10 minutos garantem que o robô faça os últimos updates para coletar
+      // todos os lances da timeline (gols nos acréscimos, cartões, checagens de VAR).
+      if (match.status === 'finished') {
+        const JANELA_TOLERANCIA = 10 * 60 * 1000; // 10 minutos em milissegundos
+        const tempoDesdeUltimoUpdate = Date.now() - new Date(match.updatedAt).getTime();
+        
+        if (tempoDesdeUltimoUpdate > JANELA_TOLERANCIA) {
+          continue; // Ignora a partida e poupa processamento/tráfego
+        }
+      }
 
       let gameDetail = { ...gameData };
       const newStatus = statusMap[gameDetail.status] || 'scheduled';
       const statusChanged = match.status !== newStatus;
+      
       // --- TRAVA DE GRADE E AUDITORIA ---
       if (match.status === 'scheduled' && !['scheduled', 'cancelled'].includes(newStatus)) {
         const configId = `league_${match.leagueId || 1}`;
