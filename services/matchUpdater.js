@@ -119,7 +119,7 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
       // Esses 10 minutos garantem que o robô faça os últimos updates para coletar
       // todos os lances da timeline (gols nos acréscimos, cartões, checagens de VAR).
       if (match.status === 'finished') {
-        const JANELA_TOLERANCIA = 1100; // 10 minutos em milissegundos
+        const JANELA_TOLERANCIA = 60*1100; // 10 minutos em milissegundos
         const tempoDesdeUltimoUpdate = Date.now() - new Date(match.updatedAt).getTime();
         
         if (tempoDesdeUltimoUpdate > JANELA_TOLERANCIA) {
