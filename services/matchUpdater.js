@@ -114,10 +114,13 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
       const match = await Match.findOne({ apiId: gameData.id });
       if (!match) continue;
 
+      // 🚨 TRAVA DE SEGURANÇA: Se o jogo já está como finalizado no seu banco,
+      // ele ignora as próximas linhas e pula para o próximo jogo da lista, zerando o tráfego.
+      if (match.status === 'finished') continue;
+
       let gameDetail = { ...gameData };
       const newStatus = statusMap[gameDetail.status] || 'scheduled';
       const statusChanged = match.status !== newStatus;
-
       // --- TRAVA DE GRADE E AUDITORIA ---
       if (match.status === 'scheduled' && !['scheduled', 'cancelled'].includes(newStatus)) {
         const configId = `league_${match.leagueId || 1}`;
