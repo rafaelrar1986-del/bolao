@@ -32,10 +32,6 @@ function safeStr(value, fallback = '') {
   return value === null || value === undefined ? fallback : String(value);
 }
 
-function isEmptyObject(value) {
-  return !value || (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0);
-}
-
 function firstDefined(...values) {
   for (const value of values) {
     if (value !== null && value !== undefined && value !== '') return value;
@@ -470,21 +466,6 @@ function applyIncidentsToLineups(lineups, incidents, useIncidentGoals = true) {
   };
 }
 
-function buildStatisticsArray(stats) {
-  if (!stats || (!stats.home && !stats.away)) return [];
-
-  return [
-    { section: 'home', data: stats.home || {} },
-    { section: 'away', data: stats.away || {} },
-    ...(stats.first_half ? [{ section: 'first_half', data: stats.first_half }] : []),
-    ...(stats.second_half ? [{ section: 'second_half', data: stats.second_half }] : []),
-    ...(stats.shotmap?.length ? [{ section: 'shotmap', data: stats.shotmap }] : []),
-    ...(stats.momentum?.length ? [{ section: 'momentum', data: stats.momentum }] : []),
-    ...(!isEmptyObject(stats.average_positions) ? [{ section: 'average_positions', data: stats.average_positions }] : []),
-    ...(stats.xg_per_minute?.length ? [{ section: 'xg_per_minute', data: stats.xg_per_minute }] : [])
-  ];
-}
-
 async function fetchJson(path, { timeout = 15000, params = {} } = {}) {
   const response = await axiosClient.get(path, { timeout, params });
   return response.data;
@@ -557,12 +538,18 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
       if (!match) continue;
 
       // If it's already truly finished and already has score, keep traffic low.
-      if (match.status === 'finished' && match.scoreA !== null && match.scoreA !== undefined && match.scoreB !== null && match.scoreB !== undefined) {
+      if (
+        match.status === 'finished' &&
+        match.scoreA !== null &&
+        match.scoreA !== undefined &&
+        match.scoreB !== null &&
+        match.scoreB !== undefined
+      ) {
         continue;
       }
 
-      const rawStatus = firstDefined(gameData.status, core.status, core.status);
-      const rawPeriod = firstDefined(gameData.period, core.period, null);
+      const rawStatus = firstDefined(gameData.status, core.status);
+      const rawPeriod = firstDefined(gameData.period, core.period);
       const newStatus = mapStatus(rawStatus, rawPeriod);
       const statusChanged = match.status !== newStatus;
 
@@ -627,15 +614,19 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
 
       const resolvedHomeScore = liveHomeScore !== null
         ? Number(liveHomeScore)
-        : (detailHomeScore !== null
-            ? Number(detailHomeScore)
-            : (match.scoreA !== null && match.scoreA !== undefined ? Number(match.scoreA) : 0));
+        : (
+            detailHomeScore !== null
+              ? Number(detailHomeScore)
+              : (match.scoreA !== null && match.scoreA !== undefined ? Number(match.scoreA) : 0)
+          );
 
       const resolvedAwayScore = liveAwayScore !== null
         ? Number(liveAwayScore)
-        : (detailAwayScore !== null
-            ? Number(detailAwayScore)
-            : (match.scoreB !== null && match.scoreB !== undefined ? Number(match.scoreB) : 0));
+        : (
+            detailAwayScore !== null
+              ? Number(detailAwayScore)
+              : (match.scoreB !== null && match.scoreB !== undefined ? Number(match.scoreB) : 0)
+          );
 
       // Penalties can come from event detail or shootout shots.
       let penA = firstDefined(eventDetail.penaltyShootout?.home, match.penaltiesA);
@@ -666,9 +657,11 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
         minute:
           (firstDefined(gameData.current_minute, gameData.currentMinute) !== null
             ? `${firstDefined(gameData.current_minute, gameData.currentMinute)}'`
-            : (firstDefined(eventDetail.currentMinute, eventDetail.current_minute) !== null
-                ? `${firstDefined(eventDetail.currentMinute, eventDetail.current_minute)}'`
-                : match.minute)),
+            : (
+                firstDefined(eventDetail.currentMinute, eventDetail.current_minute) !== null
+                  ? `${firstDefined(eventDetail.currentMinute, eventDetail.current_minute)}'`
+                  : match.minute
+              )),
         penaltiesA: penA,
         penaltiesB: penB,
         shootoutDetail: shootoutSequence,
@@ -753,16 +746,37 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
         }
       }
 
-      if (statsPayload) {
-        const stats = normalizeStatsV2(statsPayload);
-        updateData.statistics = buildStatisticsArray(stats);
+      if (statsPayload?.stats) {
+        const homeStats = { ...(statsPayload.stats.home || {}) };
+        const awayStats = { ...(statsPayload.stats.away || {}) };
+
+        const incidentsList = Array.isArray(incidentsPayload?.incidents) ? incidentsPayload.incidents : [];
+
+        const redCardsHome = incidentsList.filter(
+          (i) => i?.type === 'card' && i?.is_home === true && (i?.card_type === 'red' || i?.card_type === 'yellowRed')
+        ).length;
+        const redCardsAway = incidentsList.filter(
+          (i) => i?.type === 'card' && i?.is_home === false && (i?.card_type === 'red' || i?.card_type === 'yellowRed')
+        ).length;
+
+        homeStats.red_cards = redCardsHome;
+        awayStats.red_cards = redCardsAway;
+
+        updateData.statistics = [
+          {
+            home: homeStats,
+            away: awayStats
+          }
+        ];
+
         updateData.possession = {
-          home: safeNum(stats.home?.ball_possession, 0),
-          away: safeNum(stats.away?.ball_possession, 0)
+          home: safeNum(homeStats.ball_possession, 0),
+          away: safeNum(awayStats.ball_possession, 0)
         };
+
         updateData.xg = {
-          home: safeNullableNum(stats.home?.xg?.actual ?? stats.home?.expected_goals) ?? 0,
-          away: safeNullableNum(stats.away?.xg?.actual ?? stats.away?.expected_goals) ?? 0
+          home: safeNullableNum(homeStats.xg?.actual ?? homeStats.expected_goals) ?? 0,
+          away: safeNullableNum(awayStats.xg?.actual ?? awayStats.expected_goals) ?? 0
         };
       }
 
@@ -810,7 +824,6 @@ async function updateMatches() {
     const yesterday = new Date(now - 86_400_000).toISOString().split('T')[0];
     const tomorrow = new Date(now + 86_400_000).toISOString().split('T')[0];
 
-    // LIVE first: ensures score and status are as fresh as possible.
     try {
       const liveRes = await fetchJson('/events/live/', { timeout: 10000 });
       const liveGames = Array.isArray(liveRes?.events) ? liveRes.events : [];
@@ -819,7 +832,6 @@ async function updateMatches() {
       console.error(`❌ [LIVE]: ${e.message}`);
     }
 
-    // Wider window for scheduled / recently finished matches.
     try {
       let nextUrl = `/events/?date_from=${yesterday}&date_to=${tomorrow}&limit=200&offset=0`;
       while (nextUrl) {
