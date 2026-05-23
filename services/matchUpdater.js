@@ -39,6 +39,48 @@ function firstDefined(...values) {
   return null;
 }
 
+function parseMinuteValue(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  const match = raw.match(/(\d+(?:\.\d+)?)/);
+  if (!match) return null;
+
+  const n = Number(match[1]);
+  return Number.isFinite(n) ? n : null;
+}
+
+function shouldIgnoreStatusRegression(currentStatus, nextStatus) {
+  const order = {
+    scheduled: 0,
+    ao_vivo: 1,
+    '1_tempo': 2,
+    intervalo: 3,
+    '2_tempo': 4,
+    prorrogacao: 5,
+    penaltis: 6,
+    finished: 7,
+    postponed: 8,
+    cancelled: 9
+  };
+
+  const current = order[currentStatus] ?? 0;
+  const next = order[nextStatus] ?? 0;
+  return next < current;
+}
+
+function shouldIgnoreMinuteRegression(currentMinute, nextMinute) {
+  const current = parseMinuteValue(currentMinute);
+  const next = parseMinuteValue(nextMinute);
+
+  if (next === null) return true;
+  if (current === null) return false;
+  return next < current;
+}
+
 function mapApiStatus(status, period) {
   const s = safeStr(status).toLowerCase();
   const p = safeStr(period).toLowerCase();
@@ -550,11 +592,14 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
 
       const rawStatus = firstDefined(gameData.status, core.status);
       const rawPeriod = firstDefined(gameData.period, core.period);
-      const newStatus = mapStatus(rawStatus, rawPeriod);
-      const statusChanged = match.status !== newStatus;
+      const proposedStatus = mapStatus(rawStatus, rawPeriod);
+      const status = shouldIgnoreStatusRegression(match.status, proposedStatus)
+        ? match.status
+        : proposedStatus;
+      const statusChanged = match.status !== status;
 
       // --- TRAVA DE GRADE E AUDITORIA ---
-      if (match.status === 'scheduled' && !['scheduled', 'cancelled'].includes(newStatus)) {
+      if (match.status === 'scheduled' && !['scheduled', 'cancelled'].includes(status)) {
         const configId = `league_${match.leagueId || core.leagueId || 1}`;
         const lockIdentifier = match.phaseName || match.group;
         const settingsUpdated = await Settings.findOneAndUpdate(
@@ -582,7 +627,7 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
 
       const shouldFetchBundle =
         source === 'LIVE' ||
-        newStatus !== 'scheduled' ||
+        status !== 'scheduled' ||
         !match.lineups?.home?.players?.length ||
         !match.lineups?.away?.players?.length ||
         !match.statistics?.length;
@@ -603,7 +648,9 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
       }
 
       const eventDetail = normalizeEventCore(detail);
-      const effectiveStatus = mapStatus(firstDefined(gameData.status, eventDetail.status), firstDefined(gameData.period, eventDetail.period));
+      const effectiveStatus = shouldIgnoreStatusRegression(match.status, mapStatus(firstDefined(gameData.status, eventDetail.status), firstDefined(gameData.period, eventDetail.period)))
+        ? match.status
+        : mapStatus(firstDefined(gameData.status, eventDetail.status), firstDefined(gameData.period, eventDetail.period));
       const effectiveStatusChanged = match.status !== effectiveStatus;
 
       // Scores: prioritize live payload first, then detail, then persisted values.
@@ -649,19 +696,18 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
       }
       lineups = applyIncidentsToLineups(lineups, incidents, !playerStatsPayload?.player_stats?.length);
 
+      const liveMinute = firstDefined(gameData.current_minute, gameData.currentMinute);
+      const detailMinute = firstDefined(eventDetail.currentMinute, eventDetail.current_minute);
+      const resolvedMinute = shouldIgnoreMinuteRegression(match.minute, liveMinute)
+        ? (shouldIgnoreMinuteRegression(match.minute, detailMinute) ? match.minute : `${detailMinute}'`)
+        : `${liveMinute}'`;
+
       const updateData = {
         scoreA: resolvedHomeScore,
         scoreB: resolvedAwayScore,
         status: effectiveStatus,
         apiStatus: mapApiStatus(firstDefined(gameData.status, eventDetail.status), firstDefined(gameData.period, eventDetail.period)),
-        minute:
-          (firstDefined(gameData.current_minute, gameData.currentMinute) !== null
-            ? `${firstDefined(gameData.current_minute, gameData.currentMinute)}'`
-            : (
-                firstDefined(eventDetail.currentMinute, eventDetail.current_minute) !== null
-                  ? `${firstDefined(eventDetail.currentMinute, eventDetail.current_minute)}'`
-                  : match.minute
-              )),
+        minute: effectiveStatus === 'finished' ? 'Fim' : resolvedMinute,
         penaltiesA: penA,
         penaltiesB: penB,
         shootoutDetail: shootoutSequence,
@@ -729,7 +775,7 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
         updateData.extraTimeScore = eventDetail.extraTimeScore;
       }
 
-      if (eventDetail.status === 'finished' || effectiveStatus === 'finished') {
+      if (effectiveStatus === 'finished') {
         if (penA !== null && penB !== null && penA !== penB) {
           updateData.qualifiedSide = penA > penB ? 'A' : 'B';
         } else if (resolvedHomeScore !== resolvedAwayScore) {
