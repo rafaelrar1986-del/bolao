@@ -632,8 +632,27 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
       lineups = applyIncidentsToLineups(lineups, incidents, !playerStatsPayload?.player_stats?.length);
 
       const updateData = {
-        scoreA: safeNullableNum(eventDetail.homeScore),
-        scoreB: safeNullableNum(eventDetail.awayScore),
+        scoreA:
+  eventDetail.homeScore !== null &&
+  eventDetail.homeScore !== undefined
+    ? Number(eventDetail.homeScore)
+    : (
+        match.scoreA !== null &&
+        match.scoreA !== undefined
+          ? match.scoreA
+          : 0
+      ),
+
+scoreB:
+  eventDetail.awayScore !== null &&
+  eventDetail.awayScore !== undefined
+    ? Number(eventDetail.awayScore)
+    : (
+        match.scoreB !== null &&
+        match.scoreB !== undefined
+          ? match.scoreB
+          : 0
+      ),
         status: effectiveStatus,
         apiStatus: mapApiStatus(eventDetail.status, eventDetail.period),
         minute:
