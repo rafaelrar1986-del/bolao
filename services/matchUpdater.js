@@ -36,6 +36,13 @@ function isEmptyObject(value) {
   return !value || (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0);
 }
 
+function firstDefined(...values) {
+  for (const value of values) {
+    if (value !== null && value !== undefined && value !== '') return value;
+  }
+  return null;
+}
+
 function mapApiStatus(status, period) {
   const s = safeStr(status).toLowerCase();
   const p = safeStr(period).toLowerCase();
@@ -98,16 +105,15 @@ function sortByPosition(players) {
 
 function mapUnavailablePlayers(list, side) {
   if (!Array.isArray(list)) return [];
-  return list
-    .filter(Boolean)
-    .map((p) => ({
-      id: p.id ?? null,
-      nome: p.short_name || p.name || 'Desconhecido',
-      short_name: p.short_name || p.name || 'Desconhecido',
-      status: p.status || null,
-      reason: p.reason || null,
-      side
-    }));
+
+  return list.filter(Boolean).map((p) => ({
+    id: p.id ?? null,
+    nome: p.short_name || p.name || 'Desconhecido',
+    short_name: p.short_name || p.name || 'Desconhecido',
+    status: p.status || null,
+    reason: p.reason || null,
+    side
+  }));
 }
 
 function mapLineupSide(side) {
@@ -430,12 +436,11 @@ function applyIncidentsToLineups(lineups, incidents, useIncidentGoals = true) {
     const updatePlayer = (player) => {
       if (!player) return player;
 
-      const keyByName = `${sideName}:${player.nome}`;
-      const keyByShort = `${sideName}:${player.nome}`;
-      const gCount = goalCountByPlayer.get(keyByName) || goalCountByPlayer.get(keyByShort) || 0;
-      const cType = cardTypeByPlayer.get(keyByName) || cardTypeByPlayer.get(keyByShort) || null;
-      const subIn = subInByPlayer.get(keyByName) || subInByPlayer.get(keyByShort) || null;
-      const subOut = subOutByPlayer.get(keyByName) || subOutByPlayer.get(keyByShort) || null;
+      const key = `${sideName}:${player.nome}`;
+      const gCount = goalCountByPlayer.get(key) || 0;
+      const cType = cardTypeByPlayer.get(key) || null;
+      const subIn = subInByPlayer.get(key) || null;
+      const subOut = subOutByPlayer.get(key) || null;
 
       const updatedGoals = useIncidentGoals && (player.gols === null || player.gols === undefined || player.gols === 0)
         ? gCount
@@ -463,6 +468,21 @@ function applyIncidentsToLineups(lineups, incidents, useIncidentGoals = true) {
     home: patchSide(lineups.home || {}, true),
     away: patchSide(lineups.away || {}, false)
   };
+}
+
+function buildStatisticsArray(stats) {
+  if (!stats || (!stats.home && !stats.away)) return [];
+
+  return [
+    { section: 'home', data: stats.home || {} },
+    { section: 'away', data: stats.away || {} },
+    ...(stats.first_half ? [{ section: 'first_half', data: stats.first_half }] : []),
+    ...(stats.second_half ? [{ section: 'second_half', data: stats.second_half }] : []),
+    ...(stats.shotmap?.length ? [{ section: 'shotmap', data: stats.shotmap }] : []),
+    ...(stats.momentum?.length ? [{ section: 'momentum', data: stats.momentum }] : []),
+    ...(!isEmptyObject(stats.average_positions) ? [{ section: 'average_positions', data: stats.average_positions }] : []),
+    ...(stats.xg_per_minute?.length ? [{ section: 'xg_per_minute', data: stats.xg_per_minute }] : [])
+  ];
 }
 
 async function fetchJson(path, { timeout = 15000, params = {} } = {}) {
@@ -524,21 +544,6 @@ function normalizeEventCore(event) {
   };
 }
 
-function buildStatisticsArray(stats) {
-  if (!stats || (!stats.home && !stats.away)) return [];
-
-  return [
-    { section: 'home', data: stats.home || {} },
-    { section: 'away', data: stats.away || {} },
-    ...(stats.first_half ? [{ section: 'first_half', data: stats.first_half }] : []),
-    ...(stats.second_half ? [{ section: 'second_half', data: stats.second_half }] : []),
-    ...(stats.shotmap?.length ? [{ section: 'shotmap', data: stats.shotmap }] : []),
-    ...(stats.momentum?.length ? [{ section: 'momentum', data: stats.momentum }] : []),
-    ...(!isEmptyObject(stats.average_positions) ? [{ section: 'average_positions', data: stats.average_positions }] : []),
-    ...(stats.xg_per_minute?.length ? [{ section: 'xg_per_minute', data: stats.xg_per_minute }] : [])
-  ];
-}
-
 async function processGameList(games, allowedLeagues, robotSettings, source) {
   if (!Array.isArray(games) || games.length === 0) return;
 
@@ -550,15 +555,21 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
 
       const match = await Match.findOne({ apiId: core.id });
       if (!match) continue;
-      if (match.status === 'finished') continue;
 
-      const newStatus = mapStatus(core.status, core.period);
+      // If it's already truly finished and already has score, keep traffic low.
+      if (match.status === 'finished' && match.scoreA !== null && match.scoreA !== undefined && match.scoreB !== null && match.scoreB !== undefined) {
+        continue;
+      }
+
+      const rawStatus = firstDefined(gameData.status, core.status, core.status);
+      const rawPeriod = firstDefined(gameData.period, core.period, null);
+      const newStatus = mapStatus(rawStatus, rawPeriod);
       const statusChanged = match.status !== newStatus;
 
+      // --- TRAVA DE GRADE E AUDITORIA ---
       if (match.status === 'scheduled' && !['scheduled', 'cancelled'].includes(newStatus)) {
         const configId = `league_${match.leagueId || core.leagueId || 1}`;
         const lockIdentifier = match.phaseName || match.group;
-
         const settingsUpdated = await Settings.findOneAndUpdate(
           { _id: configId, lockedPhases: { $ne: lockIdentifier } },
           {
@@ -569,8 +580,7 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
         );
 
         if (settingsUpdated) {
-          auditService
-            .generateAuditCSV(match.leagueId || 1, lockIdentifier)
+          auditService.generateAuditCSV(match.leagueId || 1, lockIdentifier)
             .then(async (csv) => {
               if (!csv) return;
               const users = await User.find({ leagues: Number(match.leagueId || 1) }, 'email');
@@ -606,20 +616,37 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
       }
 
       const eventDetail = normalizeEventCore(detail);
-      const effectiveStatus = mapStatus(eventDetail.status, eventDetail.period);
+      const effectiveStatus = mapStatus(firstDefined(gameData.status, eventDetail.status), firstDefined(gameData.period, eventDetail.period));
       const effectiveStatusChanged = match.status !== effectiveStatus;
 
-      let penA = eventDetail.penaltyShootout?.home ?? null;
-      let penB = eventDetail.penaltyShootout?.away ?? null;
-      let shootoutSequence = [];
+      // Scores: prioritize live payload first, then detail, then persisted values.
+      const liveHomeScore = firstDefined(gameData.home_score, gameData.homeScore);
+      const liveAwayScore = firstDefined(gameData.away_score, gameData.awayScore);
+      const detailHomeScore = firstDefined(eventDetail.homeScore, eventDetail.home_score);
+      const detailAwayScore = firstDefined(eventDetail.awayScore, eventDetail.away_score);
+
+      const resolvedHomeScore = liveHomeScore !== null
+        ? Number(liveHomeScore)
+        : (detailHomeScore !== null
+            ? Number(detailHomeScore)
+            : (match.scoreA !== null && match.scoreA !== undefined ? Number(match.scoreA) : 0));
+
+      const resolvedAwayScore = liveAwayScore !== null
+        ? Number(liveAwayScore)
+        : (detailAwayScore !== null
+            ? Number(detailAwayScore)
+            : (match.scoreB !== null && match.scoreB !== undefined ? Number(match.scoreB) : 0));
+
+      // Penalties can come from event detail or shootout shots.
+      let penA = firstDefined(eventDetail.penaltyShootout?.home, match.penaltiesA);
+      let penB = firstDefined(eventDetail.penaltyShootout?.away, match.penaltiesB);
+      let shootoutSequence = Array.isArray(match.shootoutDetail) ? match.shootoutDetail : [];
 
       if (statsPayload?.shotmap?.length) {
         const detailed = extractPenaltyDetailed(statsPayload.shotmap);
         if (detailed.home !== null) {
-          if (penA === null) {
-            penA = detailed.home;
-            penB = detailed.away;
-          }
+          penA = detailed.home;
+          penB = detailed.away;
           shootoutSequence = detailed.sequence;
         }
       }
@@ -632,42 +659,23 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
       lineups = applyIncidentsToLineups(lineups, incidents, !playerStatsPayload?.player_stats?.length);
 
       const updateData = {
-        scoreA:
-  eventDetail.homeScore !== null &&
-  eventDetail.homeScore !== undefined
-    ? Number(eventDetail.homeScore)
-    : (
-        match.scoreA !== null &&
-        match.scoreA !== undefined
-          ? match.scoreA
-          : 0
-      ),
-
-scoreB:
-  eventDetail.awayScore !== null &&
-  eventDetail.awayScore !== undefined
-    ? Number(eventDetail.awayScore)
-    : (
-        match.scoreB !== null &&
-        match.scoreB !== undefined
-          ? match.scoreB
-          : 0
-      ),
+        scoreA: resolvedHomeScore,
+        scoreB: resolvedAwayScore,
         status: effectiveStatus,
-        apiStatus: mapApiStatus(eventDetail.status, eventDetail.period),
+        apiStatus: mapApiStatus(firstDefined(gameData.status, eventDetail.status), firstDefined(gameData.period, eventDetail.period)),
         minute:
-          effectiveStatus === 'finished'
-            ? 'Fim'
-            : eventDetail.currentMinute !== null && eventDetail.currentMinute !== undefined
-              ? `${eventDetail.currentMinute}'`
-              : match.minute,
+          (firstDefined(gameData.current_minute, gameData.currentMinute) !== null
+            ? `${firstDefined(gameData.current_minute, gameData.currentMinute)}'`
+            : (firstDefined(eventDetail.currentMinute, eventDetail.current_minute) !== null
+                ? `${firstDefined(eventDetail.currentMinute, eventDetail.current_minute)}'`
+                : match.minute)),
         penaltiesA: penA,
         penaltiesB: penB,
         shootoutDetail: shootoutSequence,
-        apiLastUpdated: eventDetail.updatedAt || match.apiLastUpdated || null
+        apiLastUpdated: firstDefined(gameData.last_updated, eventDetail.updatedAt, match.apiLastUpdated)
       };
 
-      // Metadata that already exists in the Match schema.
+      // Existing schema fields.
       if (eventDetail.leagueId !== null && eventDetail.leagueId !== undefined) {
         updateData.leagueId = eventDetail.leagueId;
       }
@@ -683,6 +691,7 @@ scoreB:
       if (eventDetail.groupName || eventDetail.roundName) {
         updateData.phase = eventDetail.groupName ? 'group' : match.phase;
       }
+
       if (eventDetail.eventDate) {
         const d = new Date(eventDetail.eventDate);
         if (!Number.isNaN(d.getTime())) {
@@ -695,22 +704,51 @@ scoreB:
           updateData.time = `${hh}:${mm}`;
         }
       }
+
       if (eventDetail.homeTeam) updateData.teamA = eventDetail.homeTeam;
       if (eventDetail.awayTeam) updateData.teamB = eventDetail.awayTeam;
+
+      if (eventDetail.isNeutralGround !== null && eventDetail.isNeutralGround !== undefined) {
+        updateData.isNeutralGround = eventDetail.isNeutralGround;
+      }
+      if (eventDetail.isLocalDerby !== null && eventDetail.isLocalDerby !== undefined) {
+        updateData.isLocalDerby = eventDetail.isLocalDerby;
+      }
+      if (eventDetail.travelDistanceKm !== null && eventDetail.travelDistanceKm !== undefined) {
+        updateData.travelDistanceKm = eventDetail.travelDistanceKm;
+      }
+      if (eventDetail.weather !== null && eventDetail.weather !== undefined) {
+        updateData.weather = eventDetail.weather;
+      }
+      if (eventDetail.pitchCondition !== null && eventDetail.pitchCondition !== undefined) {
+        updateData.pitchCondition = eventDetail.pitchCondition;
+      }
+      if (eventDetail.attendance !== null && eventDetail.attendance !== undefined) {
+        updateData.attendance = eventDetail.attendance;
+      }
+      if (eventDetail.homeScoreHT !== null && eventDetail.homeScoreHT !== undefined) {
+        updateData.homeScoreHT = eventDetail.homeScoreHT;
+      }
+      if (eventDetail.awayScoreHT !== null && eventDetail.awayScoreHT !== undefined) {
+        updateData.awayScoreHT = eventDetail.awayScoreHT;
+      }
+      if (eventDetail.extraTimeScore !== null && eventDetail.extraTimeScore !== undefined) {
+        updateData.extraTimeScore = eventDetail.extraTimeScore;
+      }
 
       if (eventDetail.status === 'finished' || effectiveStatus === 'finished') {
         if (penA !== null && penB !== null && penA !== penB) {
           updateData.qualifiedSide = penA > penB ? 'A' : 'B';
-        } else if (safeNum(eventDetail.homeScore, 0) !== safeNum(eventDetail.awayScore, 0)) {
-          updateData.qualifiedSide = safeNum(eventDetail.homeScore, 0) > safeNum(eventDetail.awayScore, 0) ? 'A' : 'B';
+        } else if (resolvedHomeScore !== resolvedAwayScore) {
+          updateData.qualifiedSide = resolvedHomeScore > resolvedAwayScore ? 'A' : 'B';
         }
       } else {
         const isKnockout = match.phase === 'knockout' || match.phase === 'mata-mata' || (!!eventDetail.roundName && !eventDetail.groupName);
         if (isKnockout) {
           if (penA !== null && penB !== null && penA !== penB) {
             updateData.qualifiedSide = penA > penB ? 'A' : 'B';
-          } else if (safeNum(eventDetail.homeScore, 0) !== safeNum(eventDetail.awayScore, 0)) {
-            updateData.qualifiedSide = safeNum(eventDetail.homeScore, 0) > safeNum(eventDetail.awayScore, 0) ? 'A' : 'B';
+          } else if (resolvedHomeScore !== resolvedAwayScore) {
+            updateData.qualifiedSide = resolvedHomeScore > resolvedAwayScore ? 'A' : 'B';
           }
         }
       }
@@ -726,9 +764,6 @@ scoreB:
           home: safeNullableNum(stats.home?.xg?.actual ?? stats.home?.expected_goals) ?? 0,
           away: safeNullableNum(stats.away?.xg?.actual ?? stats.away?.expected_goals) ?? 0
         };
-        if (!isEmptyObject(stats.average_positions)) {
-          updateData.statistics = buildStatisticsArray(stats);
-        }
       }
 
       if (incidentsPayload) {
@@ -775,6 +810,7 @@ async function updateMatches() {
     const yesterday = new Date(now - 86_400_000).toISOString().split('T')[0];
     const tomorrow = new Date(now + 86_400_000).toISOString().split('T')[0];
 
+    // LIVE first: ensures score and status are as fresh as possible.
     try {
       const liveRes = await fetchJson('/events/live/', { timeout: 10000 });
       const liveGames = Array.isArray(liveRes?.events) ? liveRes.events : [];
@@ -783,6 +819,7 @@ async function updateMatches() {
       console.error(`❌ [LIVE]: ${e.message}`);
     }
 
+    // Wider window for scheduled / recently finished matches.
     try {
       let nextUrl = `/events/?date_from=${yesterday}&date_to=${tomorrow}&limit=200&offset=0`;
       while (nextUrl) {
