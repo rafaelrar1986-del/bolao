@@ -857,14 +857,20 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
     gameData.event_date ||
     null;
 
-  recalculateAllPoints(tid)
-    .then(() => {
-      if (snapshotDate) {
-        return trySaveDailyPoints(snapshotDate, tid);
-      }
-    })
-    .catch(() => {});
+try {
+  await recalculateAllPoints(tid);
+
+  // pequena espera para garantir persistência no Mongo
+  await new Promise(resolve => setTimeout(resolve, 3000));
+
+  if (snapshotDate) {
+    await trySaveDailyPoints(snapshotDate, tid);
+  }
+
+} catch (e) {
+  console.error('❌ [finish processing]', e.message);
 }
+     }
     } catch (err) {
       console.error(`❌ [Erro jogo ${gameData?.id ?? 'unknown'}]:`, err.message);
     }
