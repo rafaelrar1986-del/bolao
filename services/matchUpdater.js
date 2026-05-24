@@ -846,7 +846,10 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
 
       await Match.updateOne({ _id: match._id }, { $set: updateData });
 
-      if (effectiveStatusChanged && effectiveStatus === 'finished') {
+      if (
+  effectiveStatus === 'finished' &&
+  match.status !== 'finished'
+) {
         const tid = match.leagueId || eventDetail.leagueId || '1';
         recalculateAllPoints(tid)
           .then(() => trySaveDailyPoints(eventDetail.eventDate, tid))
