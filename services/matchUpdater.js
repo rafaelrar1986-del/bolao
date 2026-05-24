@@ -844,15 +844,24 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
         updateData.unavailable = lineups.unavailable || [];
       }
 
-      await Match.updateOne({ _id: match._id }, { $set: updateData });
+            await Match.updateOne({ _id: match._id }, { $set: updateData });
 
-      if (
-  effectiveStatus === 'finished' &&
-  match.status !== 'finished'
-) {
+      if (effectiveStatus === 'finished' && match.status !== 'finished') {
         const tid = match.leagueId || eventDetail.leagueId || '1';
+        const snapshotDate =
+          match.date ||
+          updateData.date ||
+          eventDetail.eventDate ||
+          core.eventDate ||
+          gameData.event_date ||
+          null;
+
         recalculateAllPoints(tid)
-          .then(() => trySaveDailyPoints(eventDetail.eventDate, tid))
+          .then(() => {
+            if (snapshotDate) {
+              return trySaveDailyPoints(snapshotDate, tid);
+            }
+          })
           .catch(() => {});
       }
     } catch (err) {
