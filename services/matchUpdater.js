@@ -846,24 +846,25 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
 
             await Match.updateOne({ _id: match._id }, { $set: updateData });
 
-      if (effectiveStatus === 'finished' && match.status !== 'finished') {
-        const tid = match.leagueId || eventDetail.leagueId || '1';
-        const snapshotDate =
-          match.date ||
-          updateData.date ||
-          eventDetail.eventDate ||
-          core.eventDate ||
-          gameData.event_date ||
-          null;
+     if (effectiveStatus === 'finished' && match.status !== 'finished') {
+  const tid = match.leagueId || eventDetail.leagueId || '1';
 
-        recalculateAllPoints(tid)
-          .then(() => {
-            if (snapshotDate) {
-              return trySaveDailyPoints(snapshotDate, tid);
-            }
-          })
-          .catch(() => {});
+  const snapshotDate =
+    match.date ||
+    updateData.date ||
+    eventDetail.eventDate ||
+    core.eventDate ||
+    gameData.event_date ||
+    null;
+
+  recalculateAllPoints(tid)
+    .then(() => {
+      if (snapshotDate) {
+        return trySaveDailyPoints(snapshotDate, tid);
       }
+    })
+    .catch(() => {});
+}
     } catch (err) {
       console.error(`❌ [Erro jogo ${gameData?.id ?? 'unknown'}]:`, err.message);
     }
