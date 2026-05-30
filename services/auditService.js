@@ -1,13 +1,14 @@
 const Bet = require('../models/Bet');
 const Match = require('../models/Match');
-const fs = require('fs');
+const fs = require('fs'); // Mantido para a validação de integridade do arquivo
 const path = require('path');
+const ExcelJS = require('exceljs'); // Nova biblioteca para gerar o Excel real
 
 exports.generateAuditCSV = async (leagueId, groupName) => {
     console.log(`\n[DEBUG AUDITORIA] 🚀 Iniciando geração para Liga: ${leagueId}, Identificador: "${groupName}"`);
 
     try {
-        // 1. Busca partidas - Filtra por Liga e por Grupo ou Fase
+        // 1. Busca partidas - Filtra por Liga e por Grupo ou Fase (Idêntico ao original)
         const matchQuery = { 
             leagueId: Number(leagueId), 
             $or: [
@@ -25,7 +26,7 @@ exports.generateAuditCSV = async (leagueId, groupName) => {
         }
         console.log(`[DEBUG AUDITORIA] ✅ ${matches.length} partidas encontradas.`);
 
-        // 2. Busca apostas da liga específica
+        // 2. Busca apostas da liga específica (Idêntico ao original)
         console.log(`[DEBUG AUDITORIA] 🔍 Buscando apostas para leagueId: "${leagueId}"`);
         const allBets = await Bet.find({ leagueId: String(leagueId) })
             .populate('user', 'name email')
@@ -33,25 +34,62 @@ exports.generateAuditCSV = async (leagueId, groupName) => {
 
         console.log(`[DEBUG AUDITORIA] 📊 Total de documentos de aposta: ${allBets.length}`);
 
-        // 3. Montagem do CSV com suporte a UTF-8 (acentuação correta no Excel)
-        let csv = "\ufeffParticipante;Email;"; 
-        csv += matches.map(m => `${m.teamA} x ${m.teamB}`).join(";") + "\n";
+        // 3. Inicialização e configuração da planilha Excel
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Auditoria');
 
+        // Mapeia e define as colunas iniciais e os cabeçalhos dinâmicos dos jogos
+        const columnsConfig = [
+            { header: 'Participante', key: 'user_name', width: 28 },
+            { header: 'Email', key: 'user_email', width: 32 }
+        ];
+
+        matches.forEach(m => {
+            columnsConfig.push({
+                header: `${m.teamA} x ${m.teamB}`,
+                key: `match_${m.matchId}`,
+                width: 25 // Largura ideal para não cortar os nomes dos times e o "Passa: ..."
+            });
+        });
+
+        worksheet.columns = columnsConfig;
+
+        // Estilização profissional do Cabeçalho (Linha 1)
+        const headerRow = worksheet.getRow(1);
+        headerRow.height = 25;
+        headerRow.eachCell((cell) => {
+            cell.font = { bold: true, color: { argb: 'FFFFFF' }, size: 11 };
+            cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: '1F4E78' } // Azul escuro corporativo
+            };
+            cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        });
+
+        // 4. Processamento das apostas dos usuários (Mantendo TODA a lógica interna original)
         let usersWithBetsCount = 0;
         allBets.forEach(bet => {
             if (!bet.user) return; // Ignora se não houver usuário vinculado
 
-            let row = `${bet.user.name};${bet.user.email};`;
+            // Objeto que guardará os valores desta linha na planilha
+            const rowData = {
+                user_name: bet.user.name,
+                user_email: bet.user.email
+            };
             
-            const linhaPalpites = matches.map(m => {
+            matches.forEach(m => {
                 // Localiza o palpite do usuário para esta partida específica
                 const p = (bet.groupMatches || []).find(gm => String(gm.matchId) === String(m.matchId));
                 
-                if (!p) return "---";
+                if (!p) {
+                    rowData[`match_${m.matchId}`] = "---";
+                    return;
+                }
 
                 let infoResultado = "";
 
-                // Converte 'A', 'B' ou 'draw' para o nome real do time ou "Empate"
+                // Converte 'A', 'B' ou 'draw' para o nome real do time ou "Empate" (Idêntico ao original)
                 if (p.winner === 'A') {
                     infoResultado = m.teamA;
                 } else if (p.winner === 'B') {
@@ -60,31 +98,50 @@ exports.generateAuditCSV = async (leagueId, groupName) => {
                     infoResultado = "Empate";
                 }
 
-                // Se houver informação de classificado (Mata-Mata), adicionamos ao texto
-                // Mesmo que o usuário tenha escolhido Time A vencer e Time B passar, o CSV mostrará ambos.
+                // Se houver informação de classificado (Mata-Mata), adicionamos ao texto (Idêntico ao original)
                 if (p.qualifier) {
                     const nomeClassificado = p.qualifier === 'A' ? m.teamA : m.teamB;
-                    return `${infoResultado} (Passa: ${nomeClassificado})`;
+                    rowData[`match_${m.matchId}`] = `${infoResultado} (Passa: ${nomeClassificado})`;
+                } else {
+                    rowData[`match_${m.matchId}`] = infoResultado || "---";
                 }
-
-                return infoResultado || "---";
             });
 
-            csv += row + linhaPalpites.join(";") + "\n";
+            // Insere a linha preenchida na planilha
+            const addedRow = worksheet.addRow(rowData);
+            addedRow.height = 20;
+
+            // Aplica alinhamento e bordas para simular o visual nativo do Excel
+            addedRow.eachCell((cell, colNumber) => {
+                if (colNumber > 2) {
+                    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                } else {
+                    cell.alignment = { horizontal: 'left', vertical: 'middle' };
+                }
+                cell.border = {
+                    top: { style: 'thin', color: { argb: 'E0E0E0' } },
+                    left: { style: 'thin', color: { argb: 'E0E0E0' } },
+                    bottom: { style: 'thin', color: { argb: 'E0E0E0' } },
+                    right: { style: 'thin', color: { argb: 'E0E0E0' } }
+                };
+            });
+
             usersWithBetsCount++;
         });
 
-        console.log(`[DEBUG AUDITORIA] 📝 CSV processado com ${usersWithBetsCount} participantes.`);
+        console.log(`[DEBUG AUDITORIA] 📝 Planilha processada com ${usersWithBetsCount} participantes.`);
 
-        // 4. Criação do arquivo físico no diretório temporário
+        // 5. Criação do arquivo físico no diretório temporário com a extensão .xlsx atualizada
         const safeName = groupName.replace(/\s/g, '_').replace(/[^\w]/gi, '');
-        const fileName = `Auditoria_${safeName}.csv`;
+        const fileName = `Auditoria_${safeName}.xlsx`; // Alterado de .csv para .xlsx
         const filePath = path.join('/tmp', fileName); 
         
         console.log(`[DEBUG AUDITORIA] 📂 Gravando arquivo em: ${filePath}`);
-        fs.writeFileSync(filePath, csv);
+        
+        // Grava o arquivo de forma assíncrona usando o exceljs
+        await workbook.xlsx.writeFile(filePath);
 
-        // Verificação de integridade
+        // Verificação de integridade (Mantido exatamente como o seu original)
         const stats = fs.statSync(filePath);
         console.log(`[DEBUG AUDITORIA] 📁 Arquivo criado. Tamanho: ${stats.size} bytes.`);
 
