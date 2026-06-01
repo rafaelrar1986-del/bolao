@@ -1,12 +1,23 @@
-// routes/matches.js
+/ routes/matches.js
 const express = require('express');
 const router = express.Router();
 
+// ==========================================
+// MODELS & MIDDLEWARES
+// ==========================================
 const Match = require('../models/Match');
-const Bet    = require('../models/Bet');
+const Bet = require('../models/Bet');
 const Settings = require('../models/Settings');
+const User = require('../models/User'); // Necessário para buscar e-mails na auditoria
 const { protect, admin } = require('../middleware/auth');
+
+// ==========================================
+// SERVICES
+// ==========================================
 const { trySaveDailyPoints } = require('../services/dailyHistoryService');
+const auditService = require('../services/auditService'); // Necessário para auditoria do Admin
+const emailService = require('../services/emailService'); // Necessário para envio de e-mails do Admin
+const { recalculateAllPoints } = require('../services/pointsService'); // Descomente e ajuste o caminho se a função for global
 
 // ---- helpers
 function calcWinner(a, b) {
@@ -311,19 +322,95 @@ router.put('/admin/edit/:matchId', protect, admin, async (req, res) => {
 
     // Tratamento de tipos e limpeza de strings
     if (updates.leagueName) updates.leagueName = String(updates.leagueName).trim();
-    if (updates.phaseName) updates.phaseName = String(updates.phaseName).trim(); // ✨ Atualizado
+    if (updates.phaseName) updates.phaseName = String(updates.phaseName).trim(); 
     if (updates.group) updates.group = String(updates.group).trim();
     if (updates.leagueId) updates.leagueId = Number(updates.leagueId);
 
-    const match = await Match.findOneAndUpdate(
+    // 1. BUSCA A PARTIDA ANTES DA ATUALIZAÇÃO (Essencial para saber o status antigo)
+    const oldMatch = await Match.findOne({ matchId });
+    if (!oldMatch) {
+      return res.status(404).json({ success: false, message: 'Partida não encontrada' });
+    }
+
+    // Ajuste inteligente do minuto baseado no novo status enviado pelo Admin
+    if (updates.status === 'finished') {
+      updates.minute = "Fim";
+    } else if (updates.status === 'ao_vivo' && !updates.minute) {
+      updates.minute = "0'";
+    }
+
+    // 2. ATUALIZA A PARTIDA NO BANCO
+    const updatedMatch = await Match.findOneAndUpdate(
       { matchId }, 
       { $set: updates }, 
       { new: true }
     );
 
-    if (!match) return res.status(404).json({ success: false, message: 'Partida não encontrada' });
+    // 3. GATILHO DAS TRAVAS, VISIBILIDADE E AUDITORIA
+    // Verifica se o status mudou de 'scheduled' para um status válido de jogo iniciado
+    if (updates.status && oldMatch.status === 'scheduled' && !['scheduled', 'cancelled'].includes(updates.status)) {
+      const configId = `league_${updatedMatch.leagueId || 1}`;
+      const lockIdentifier = updatedMatch.phaseName || updatedMatch.group;
 
-    res.json({ success: true, data: match });
+      // Executa a mesma trava do Settings que o robô faria
+      const settingsUpdated = await Settings.findOneAndUpdate(
+        { _id: configId, lockedPhases: { $ne: lockIdentifier } },
+        {
+          $addToSet: { 
+            lockedPhases: lockIdentifier, 
+            unlockedPhases: { $each: [lockIdentifier, 'podium'] } 
+          },
+          $set: { statsLocked: false, blockSaveBets: true, blockSaveKnockout: true }
+        },
+        { new: true }
+      );
+
+      // Se for a primeira partida da rodada a iniciar, gera o Excel e dispara os e-mails
+      if (settingsUpdated) {
+        try {
+          const csv = await auditService.generateAuditCSV(updatedMatch.leagueId || 1, lockIdentifier);
+          if (csv) {
+            const users = await User.find({ leagues: Number(updatedMatch.leagueId || 1) }, 'email');
+            const emails = users.map((u) => u.email).filter(Boolean);
+            
+            if (emails.length > 0) {
+              await emailService.sendBroadcastEmail(
+                emails, 
+                `🔒 Auditoria Manual (Painel Admin): ${lockIdentifier}`, 
+                `A rodada/fase foi trancada manualmente pelo administrador. Partida disparadora: ${updatedMatch.teamA} x ${updatedMatch.teamB}.`, 
+                csv
+              );
+            }
+          }
+        } catch (auditErr) {
+          console.error('❌ [ADMIN AUDIT]: Erro na auditoria manual:', auditErr.message);
+        }
+      }
+    }
+
+    // 4. GATILHO DE RECALCULO DE PONTOS E HISTÓRICO DIÁRIO (Se o admin encerrou o jogo manualmente)
+    if (updates.status === 'finished' && oldMatch.status !== 'finished') {
+      try {
+        // Executa a sua função/lógica padrão de pontuação do sistema
+        if (typeof recalculateAllPoints === 'function') {
+          await recalculateAllPoints(updatedMatch.leagueId || 1);
+        }
+
+        // 🌟 Injeção do mini-delay de 3s e chamada do Snapshot Diário
+        const normalizedDate = parseMatchDate(updatedMatch.date);
+        if (normalizedDate) {
+          console.log(`⏳ [ADMIN EDIT] Aguardando persistência dos dados no MongoDB (3s)...`);
+          await new Promise(resolve => setTimeout(resolve, 3000));
+
+          console.log(`🚀 [ADMIN EDIT] Iniciando checagem de snapshot diário para Liga: ${updatedMatch.leagueId || 1}`);
+          await trySaveDailyPoints(normalizedDate, updatedMatch.leagueId || 1); 
+        }
+      } catch (pointsErr) {
+        console.error('❌ [ADMIN POINTS/SNAPSHOT]: Erro ao processar pontos ou histórico diário:', pointsErr.message);
+      }
+    }
+
+    res.json({ success: true, data: updatedMatch });
   } catch (err) {
     console.error('Erro ao editar partida:', err);
     res.status(500).json({ success: false, message: 'Erro ao editar partida' });
@@ -386,7 +473,8 @@ router.post('/admin/finish/:matchId', protect, admin, async (req, res) => {
 
     // 🔥 GATILHO CORRIGIDO: Agora enviamos a data E o leagueId
     const normalizedDate = parseMatchDate(match.date);
-    if (normalizedDate) {
+    if (normalizedDate) { 
+      await new Promise(resolve => setTimeout(resolve, 3000));
       console.log(`🚀 Iniciando checagem de snapshot diário para Liga: ${match.leagueId}`);
       await trySaveDailyPoints(normalizedDate, match.leagueId); 
     }
