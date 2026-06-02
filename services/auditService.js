@@ -44,6 +44,7 @@ exports.generateAuditCSV = async (leagueId, groupName) => {
             { header: 'Email', key: 'user_email', width: 32 }
         ];
 
+        // Adiciona as colunas dos jogos dinamicamente
         matches.forEach(m => {
             columnsConfig.push({
                 header: `${m.teamA} x ${m.teamB}`,
@@ -51,6 +52,14 @@ exports.generateAuditCSV = async (leagueId, groupName) => {
                 width: 25 // Largura ideal para não cortar os nomes dos times e o "Passa: ..."
             });
         });
+
+        // Adiciona as colunas estruturadas para o Pódio (Baseado no seu PodiumSchema)
+        columnsConfig.push(
+            { header: '1º Lugar (Campeão)', key: 'podium_1st', width: 22 },
+            { header: '2º Lugar', key: 'podium_2nd', width: 22 },
+            { header: '3º Lugar', key: 'podium_3rd', width: 22 },
+            { header: '4º Lugar', key: 'podium_4th', width: 22 }
+        );
 
         worksheet.columns = columnsConfig;
 
@@ -78,6 +87,7 @@ exports.generateAuditCSV = async (leagueId, groupName) => {
                 user_email: bet.user.email
             };
             
+            // Processa os palpites de cada jogo do usuário
             matches.forEach(m => {
                 // Localiza o palpite do usuário para esta partida específica
                 const p = (bet.groupMatches || []).find(gm => String(gm.matchId) === String(m.matchId));
@@ -101,11 +111,18 @@ exports.generateAuditCSV = async (leagueId, groupName) => {
                 // Se houver informação de classificado (Mata-Mata), adicionamos ao texto (Idêntico ao original)
                 if (p.qualifier) {
                     const nomeClassificado = p.qualifier === 'A' ? m.teamA : m.teamB;
-                    rowData[`match_${m.matchId}`] = `${infoResultado} (Passa: ${nomeClassificado})`;
+                    rowData[`match_${m.matchId}`] = `${infoResultado} (Classificado: ${nomeClassificado})`;
                 } else {
                     rowData[`match_${m.matchId}`] = infoResultado || "---";
                 }
             });
+
+            // Processa e injeta os dados do pódio (Garante fallback seguro caso esteja vazio)
+            const podium = bet.podium || {};
+            rowData.podium_1st = podium.first || "---";
+            rowData.podium_2nd = podium.second || "---";
+            rowData.podium_3rd = podium.third || "---";
+            rowData.podium_4th = podium.fourth || "---";
 
             // Insere a linha preenchida na planilha
             const addedRow = worksheet.addRow(rowData);
