@@ -212,41 +212,43 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
 
     const targetPodiumPotential = userPodiumPotentialMap.get(activeUserId) || 0;
 
-    // 🌟 NOVO: DETALHAMENTO DO PÓDIO DO USUÁRIO ALVO PARA O FRONT-END
-    const podiumDetails = [];
-    if (targetBet.podium) {
-      const slots = [
+    // 🌟 NOVO: DETALHAMENTO DO PÓDIO DO USUÁRIO ALVO
+const podiumDetails = [];
+if (targetBet.podium) {
+    const slots = [
         { key: 'first', label: '1º', points: podiumWeights.first },
         { key: 'second', label: '2º', points: podiumWeights.second },
         { key: 'third', label: '3º', points: podiumWeights.third },
         { key: 'fourth', label: '4º', points: podiumWeights.fourth }
-      ];
+    ];
 
-      slots.forEach(slot => {
+    slots.forEach(slot => {
         const teamName = targetBet.podium[slot.key];
         if (teamName) {
-          let status = 'alive';
+            let status = 'alive';
+            
+            // BUSCA INTELIGENTE: Procura a URL do escudo em qualquer partida dessa liga
+            const matchRef = matches.find(m => m.teamA === teamName || m.teamB === teamName);
+            const foundLogo = matchRef 
+                ? (matchRef.teamA === teamName ? matchRef.logoA : matchRef.logoB) 
+                : null;
 
-          // 1. Se o pódio definitivo já foi salvo na configuração geral da liga
-          if (settings?.podium?.[slot.key]) {
-            status = settings.podium[slot.key] === teamName ? 'conquered' : 'dead';
-          } 
-          // 2. Caso contrário, valida dinamicamente se o time caiu ao longo das eliminatórias
-          else if (eliminatedTeams.has(teamName)) {
-            status = 'dead';
-          }
+            if (settings?.podium?.[slot.key]) {
+                status = settings.podium[slot.key] === teamName ? 'conquered' : 'dead';
+            } else if (eliminatedTeams.has(teamName)) {
+                status = 'dead';
+            }
 
-          podiumDetails.push({
-            team: teamName,
-            logoUrl: null, // O front resolve via renderTeamMedia usando o nome do time como fallback
-            position: slot.label,
-            points: slot.points,
-            status: status
-          });
+            podiumDetails.push({
+                team: teamName,
+                logoUrl: foundLogo, // <--- AQUI ESTÁ A MUDANÇA: Agora passamos a URL encontrada
+                position: slot.label,
+                points: slot.points,
+                status: status
+            });
         }
-      });
-    }
-
+    });
+}
     // 4. Posição Máxima (Cenário de Ouro Clássico)
     const projectedRanking = currentRanking.map(r => {
       let projPts = r.points;
