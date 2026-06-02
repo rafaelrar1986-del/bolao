@@ -18,7 +18,7 @@ exports.generateAuditCSV = async (leagueId, groupName) => {
         };
         console.log(`[DEBUG AUDITORIA] 🔍 Buscando jogos com query:`, JSON.stringify(matchQuery));
 
-        const matches = await Match.find(matchQuery).sort({ matchId: 1 }).lean();
+        const matches = await Match.find(matchQuery).sort({ matchId: -1 }).lean();
 
         if (matches.length === 0) {
             console.error(`[DEBUG AUDITORIA] ❌ ERRO: Nenhuma partida encontrada no banco para "${groupName}".`);
@@ -40,8 +40,7 @@ exports.generateAuditCSV = async (leagueId, groupName) => {
 
         // Mapeia e define as colunas iniciais e os cabeçalhos dinâmicos dos jogos
         const columnsConfig = [
-            { header: 'Participante', key: 'user_name', width: 28 },
-            { header: 'Email', key: 'user_email', width: 32 }
+            { header: 'Participante', key: 'user_name', width: 28 }
         ];
 
         // Adiciona as colunas dos jogos dinamicamente
