@@ -45,7 +45,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     const configId = `league_${leagueId}`;
     const [settings, matches, bets] = await Promise.all([
       Settings.findById(configId).lean(),
-      Match.find({ leagueId: lIdNum }).select('matchId status scoreA scoreB phase teamA teamB group qualifiedSide').lean(),
+      Match.find({ leagueId: lIdNum }).select('matchId status scoreA scoreB phase teamA teamB logoA logoB group qualifiedSide').lean(),
       Bet.find({ 
         hasSubmitted: true, 
         $or: [ { leagueId: lIdStr }, { leagueId: lIdNum } ] 
