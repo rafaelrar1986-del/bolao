@@ -25,8 +25,8 @@ function toWinnerLabel(choice, teamA, teamB) {
 }
 
 /**
- * 🧠 ESTRATÉGIA: Caminho da Liderança (VERSÃO DEFINITIVA - 2026)
- * Mantém 100% da lógica original (Mata-mata independente) + Pódio Live + Secagem Dinâmica (Cenário Ouro)
+ * 🧠 ESTRATÉGIA: Caminho da Liderança (VERSÃO DEFINITIVA SUPREMA - 2026)
+ * Inclui: Mata-mata independente, Pódio Live, Secagem Dinâmica + PROBABILIDADE POR CONTENÇÃO + Pênaltis
  */
 router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
   try {
@@ -41,11 +41,12 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     const isAdmin = req.user?.isAdmin === true;
     const isLive = mode === 'live';
 
-    // 1. Carga de Dados (Busca flexível)
+    // 1. Carga de Dados (Busca flexível e blindada para Pênaltis)
     const configId = `league_${leagueId}`;
     const [settings, matches, bets] = await Promise.all([
       Settings.findById(configId).lean(),
-      Match.find({ leagueId: lIdNum }).select('matchId status scoreA scoreB phase teamA teamB logoA logoB group qualifiedSide').lean(),
+      // 🚨 ATUALIZADO: Inclusão de penaltiesA e penaltiesB no select
+      Match.find({ leagueId: lIdNum }).select('matchId status scoreA scoreB penaltiesA penaltiesB phase teamA teamB logoA logoB group qualifiedSide').lean(),
       Bet.find({ 
         hasSubmitted: true, 
         $or: [ { leagueId: lIdStr }, { leagueId: lIdNum } ] 
@@ -77,8 +78,12 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
       }
     });
 
-    // Helpers Originais
-    const getWinner = (a, b) => {
+    // 🚨 ATUALIZADO: Helper blindado para reconhecer Pênaltis com dados .lean()
+    const getWinner = (a, b, penA, penB) => {
+      if (penA != null && penB != null) {
+        if (penA > penB) return 'A';
+        if (penB > penA) return 'B';
+      }
       if (a === undefined || b === undefined || a === null || b === null) return null;
       if (a > b) return 'A';
       if (b > a) return 'B';
@@ -126,7 +131,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         return isKnockoutPhase && m.group === initialKnockoutGroup;
       });
 
-      // Só executa o corte geral dos grupos quando você terminar de inserir todas as partidas da fase inicial
       if (initialMatches.length === requiredMatchCount) {
         const teamsInKnockout = new Set();
         
@@ -146,7 +150,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
           }
         });
 
-        // Os times que disputaram os grupos mas não foram distribuídos no mata-mata estão fora do pódio
         allGroupTeams.forEach(team => {
           if (!teamsInKnockout.has(team)) {
             eliminatedTeams.add(team);
@@ -156,7 +159,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     }
     // =========================================================================
 
-    // 2. Ranking Atual (Com Nova Lógica de Pódio Live)
+    // 2. Ranking Atual (Com Nova Lógica de Pódio Live e Pênaltis)
     const currentRanking = bets.map(b => {
       let pts = 0;
       (b.groupMatches || []).forEach(gm => {
@@ -167,15 +170,18 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         if (isLive) { if (m.status === 'scheduled') return; } 
         else { if (m.status !== 'finished') return; }
 
-        const realWinner = getWinner(m.scoreA, m.scoreB);
+        // 🚨 ATUALIZADO: Agora usa os pênaltis vindos do banco
+        const realWinner = getWinner(m.scoreA, m.scoreB, m.penaltiesA, m.penaltiesB);
+        
         if (realWinner && gm.winner === realWinner) pts += 1;
         const realQual = m.qualifiedSide || (realWinner !== 'draw' ? realWinner : null);
         if (gm.qualifier && realQual && gm.qualifier === realQual) pts += 1;
 
-        // Atualização dinâmica do Pódio Live e Eliminações ao longo do mata-mata em andamento
+        // Atualização dinâmica do Pódio Live e Eliminações
         const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
         if (isKnockoutPhase && m.group !== 'semifinal') {
           if (m.status === 'finished') {
+            // Como o getWinner já cuidou dos pênaltis, podemos identificar o perdedor direto
             const loser = realWinner === 'A' ? m.teamB : (realWinner === 'B' ? m.teamA : null);
             if (loser) eliminatedTeams.add(loser);
           } else if (isLive && (m.status === 'live' || m.status === 'in_progress')) {
@@ -212,43 +218,43 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
 
     const targetPodiumPotential = userPodiumPotentialMap.get(activeUserId) || 0;
 
-    // 🌟 NOVO: DETALHAMENTO DO PÓDIO DO USUÁRIO ALVO
-const podiumDetails = [];
-if (targetBet.podium) {
-    const slots = [
-        { key: 'first', label: '1º', points: podiumWeights.first },
-        { key: 'second', label: '2º', points: podiumWeights.second },
-        { key: 'third', label: '3º', points: podiumWeights.third },
-        { key: 'fourth', label: '4º', points: podiumWeights.fourth }
-    ];
+    // 🌟 DETALHAMENTO DO PÓDIO DO USUÁRIO ALVO
+    const podiumDetails = [];
+    if (targetBet.podium) {
+      const slots = [
+          { key: 'first', label: '1º', points: podiumWeights.first },
+          { key: 'second', label: '2º', points: podiumWeights.second },
+          { key: 'third', label: '3º', points: podiumWeights.third },
+          { key: 'fourth', label: '4º', points: podiumWeights.fourth }
+      ];
 
-    slots.forEach(slot => {
-        const teamName = targetBet.podium[slot.key];
-        if (teamName) {
-            let status = 'alive';
-            
-            // BUSCA INTELIGENTE: Procura a URL do escudo em qualquer partida dessa liga
-            const matchRef = matches.find(m => m.teamA === teamName || m.teamB === teamName);
-            const foundLogo = matchRef 
-                ? (matchRef.teamA === teamName ? matchRef.logoA : matchRef.logoB) 
-                : null;
+      slots.forEach(slot => {
+          const teamName = targetBet.podium[slot.key];
+          if (teamName) {
+              let status = 'alive';
+              
+              const matchRef = matches.find(m => m.teamA === teamName || m.teamB === teamName);
+              const foundLogo = matchRef 
+                  ? (matchRef.teamA === teamName ? matchRef.logoA : matchRef.logoB) 
+                  : null;
 
-            if (settings?.podium?.[slot.key]) {
-                status = settings.podium[slot.key] === teamName ? 'conquered' : 'dead';
-            } else if (eliminatedTeams.has(teamName)) {
-                status = 'dead';
-            }
+              if (settings?.podium?.[slot.key]) {
+                  status = settings.podium[slot.key] === teamName ? 'conquered' : 'dead';
+              } else if (eliminatedTeams.has(teamName)) {
+                  status = 'dead';
+              }
 
-            podiumDetails.push({
-                team: teamName,
-                logoUrl: foundLogo, // <--- AQUI ESTÁ A MUDANÇA: Agora passamos a URL encontrada
-                position: slot.label,
-                points: slot.points,
-                status: status
-            });
-        }
-    });
-}
+              podiumDetails.push({
+                  team: teamName,
+                  logoUrl: foundLogo,
+                  position: slot.label,
+                  points: slot.points,
+                  status: status
+              });
+          }
+      });
+    }
+
     // 4. Posição Máxima (Cenário de Ouro Clássico)
     const projectedRanking = currentRanking.map(r => {
       let projPts = r.points;
@@ -275,23 +281,79 @@ if (targetBet.podium) {
     projectedRanking.sort((a, b) => b.totalPoints - a.totalPoints || a.name.localeCompare(b.name));
     const targetMaxPosition = projectedRanking.findIndex(r => r.userId === activeUserId) + 1;
 
-    // 5. Probabilidade
+    // Calculando totais para o Frontend (Variáveis originais mantidas)
     const matchPointsLeft = futureMatches.reduce((acc, m) => {
       const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
       return acc + (isKnockoutPhase ? 2 : 1);
     }, 0);
     const totalPotential = matchPointsLeft + targetPodiumPotential;
-    const gap = leaderPoints - targetPoints;
     const targetMaxTotal = targetPoints + totalPotential;
+
+    // =========================================================================
+    // 5. PROBABILIDADE AVANÇADA (Motor de Contenção)
+    // =========================================================================
     let probability = 0;
-    
-    if (targetMaxTotal >= leaderPoints) {
-      if (gap <= 0) probability = Math.min(99, 75 + (Math.abs(gap) * 5));
-      else {
-        const reachability = totalPotential > 0 ? (totalPotential - gap) / totalPotential : 0;
-        probability = Math.max(1, Math.round(reachability * 70));
+
+    if (targetMaxPosition === 1) {
+      if (targetPoints > leaderPoints) {
+        // Usuário alvo já é líder isolado
+        const margem = targetPoints - leaderPoints;
+        probability = Math.min(99, 80 + (margem * 2));
+      } else {
+        // Encontra líderes atuais a serem batidos
+        const leaders = currentRanking.filter(r => r.points === leaderPoints && r.userId !== activeUserId);
+        
+        if (leaders.length === 0) {
+          // O usuário está empatado na liderança com mais ninguém na frente
+          probability = 80;
+        } else {
+          let minChanceAgainstLeaders = 100;
+
+          leaders.forEach(leader => {
+            const leaderBet = bets.find(b => b.user._id.toString() === leader.userId);
+            let contestedPoints = 0;
+
+            // Analisa Contenção nos Jogos Futuros
+            futureMatches.forEach(m => {
+              const midStr = String(m.matchId);
+              const isKnockout = m.phase === 'knockout' || m.phase === 'mata-mata';
+              const targetPick = targetPicksMap.get(midStr);
+              const leaderPick = (leaderBet?.groupMatches || []).find(gm => String(gm.matchId) === midStr);
+
+              if (targetPick) {
+                const diffWin = targetPick.winner !== leaderPick?.winner;
+                const diffQual = isKnockout && targetPick.qualifier !== leaderPick?.qualifier;
+                if (diffWin || diffQual) contestedPoints += (isKnockout ? 2 : 1);
+              }
+            });
+
+            // Analisa Contenção no Pódio
+            if (targetBet.podium) {
+              ['first', 'second', 'third', 'fourth'].forEach(pos => {
+                const myTeam = targetBet.podium[pos];
+                const leaderTeam = leaderBet?.podium?.[pos];
+                if (myTeam && !eliminatedTeams.has(myTeam) && myTeam !== leaderTeam) {
+                  contestedPoints += podiumWeights[pos];
+                }
+              });
+            }
+
+            // Cálculo Final
+            const gap = leader.points - targetPoints;
+            if (contestedPoints >= gap) {
+              const margin = contestedPoints - gap; 
+              const reachabilityChance = 5 + ((margin / contestedPoints) * 70);
+              minChanceAgainstLeaders = Math.min(minChanceAgainstLeaders, reachabilityChance);
+            } else {
+              minChanceAgainstLeaders = 0; 
+            }
+          });
+
+          probability = Math.max(1, Math.round(minChanceAgainstLeaders));
+        }
       }
     }
+    // =========================================================================
 
     // 6. Análise de Secagem Dinâmica (Cenário Ouro vs Cenário Ouro para o Líder)
     const matchesAnalysis = futureMatches.map((m, index) => {
@@ -302,13 +364,9 @@ if (targetBet.podium) {
 
       if (index < 2) console.log(`5. ANALISANDO JOGO ${midStr}:`, targetPick ? '✅ ENCONTRADO' : '❌ SEM PALPITE');
 
-      // Puxa quem está na frente em pontos reais
       let rivalsToWatch = currentRanking.filter(r => r.points > targetPoints);
 
-      // Se o usuário alvo é o líder isolado ou está empatado no topo
       if (rivalsToWatch.length === 0) {
-        
-        // Define a Margem de Perigo dinâmica baseada na fase
         let MARGEM_DE_PERIGO = 3; 
         if (m.phase === 'group') {
           MARGEM_DE_PERIGO = 4; 
@@ -323,22 +381,18 @@ if (targetBet.podium) {
           }
         }
 
-        // Cenário Ouro do Líder (Pontos Atuais + Pódio Vivo)
         const meuPotencialMaximo = targetPoints + targetPodiumPotential;
 
         rivalsToWatch = currentRanking.filter(r => {
-          if (r.userId === activeUserId) return false; // Ignora a si mesmo
+          if (r.userId === activeUserId) return false; 
           
-          // Cenário Ouro do Rival (Pontos Atuais do Rival + Pódio Vivo do Rival)
           const rivalPodium = userPodiumPotentialMap.get(r.userId) || 0;
           const rivalPotencialMaximo = r.points + rivalPodium;
 
-          // Rival só é perigoso se o teto dele invadir a sua margem de segurança
           return rivalPotencialMaximo >= (meuPotencialMaximo - MARGEM_DE_PERIGO);
         });
       }
 
-      // Constrói a lista final de quem secar neste jogo específico
       const opponentsToWatch = isLocked ? ["Conteúdo Bloqueado 🔒"] : rivalsToWatch.filter(ra => {
         const rb = bets.find(b => b.user._id.toString() === ra.userId);
         const rp = (rb?.groupMatches || []).find(gm => String(gm.matchId) === midStr);
@@ -373,7 +427,7 @@ if (targetBet.podium) {
           maxPoints: targetMaxTotal, 
           podiumPotential: targetPodiumPotential, 
           totalMatches: futureMatches.length,
-          podiumDetails // Injetado com sucesso aqui dentro do summary
+          podiumDetails
         },
         matches: matchesAnalysis
       }
@@ -383,7 +437,6 @@ if (targetBet.podium) {
     res.status(500).json({ success: false });
   }
 });
-
 //🎯 Meus palpites (Filtrado por Liga)
  
 router.get('/my-bets', protect, checkPaid, async (req, res) => {
