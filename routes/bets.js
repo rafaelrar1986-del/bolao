@@ -827,14 +827,19 @@ router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, r
         }
       });
 
-      return {
-        user: b.user,
-        totalPoints, // O frontend usa este campo para os pontos
-        groupPhasePoints,
-        knockoutPoints,
-        podiumPoints: b.podiumPoints || 0, // Mantido para o card de detalhes do mobile
-        lastUpdate: b.lastUpdate
-      };
+     const podiumPoints = b.podiumPoints || 0;
+const bonusPoints = b.bonusPoints || 0;
+const finalTotalPoints = totalPoints + podiumPoints + bonusPoints;
+
+return {
+  user: b.user,
+  totalPoints: finalTotalPoints, // O frontend usa este campo para os pontos
+  groupPhasePoints,
+  knockoutPoints,
+  podiumPoints, // Mantido para o card de detalhes do mobile
+  bonusPoints,
+  lastUpdate: b.lastUpdate
+};
     });
 
     // Ordenação: Pontos Descendente -> Nome Ascendente
