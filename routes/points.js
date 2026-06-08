@@ -28,13 +28,12 @@ router.post('/process-podium', protect, admin, async (req, res) => {
       });
     }
 
-    const result = await PointsService.setPodium({
-      first,
-      second,
-      third,
-      fourth,
-      leagueId
-    });
+    const result = await PointsService.setPodium(leagueId, {
+  first,
+  second,
+  third,
+  fourth
+});
 
     return res.json({
       success: true,
