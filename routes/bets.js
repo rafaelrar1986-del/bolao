@@ -271,7 +271,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
       });
     }
 
-    // 4. Posição Máxima (Cenário de Ouro Clássico)
+// 4. Posição Máxima (Cenário de Ouro Clássico)
     const projectedRanking = currentRanking.map(r => {
       let projPts = r.points;
       const isTarget = r.userId === activeUserId;
@@ -295,10 +295,19 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
       return { userId: r.userId, totalPoints: projPts, name: bRef?.user?.name || "" };
     });
 
+    // Ordenação necessária para garantir a consistência do ranking
     projectedRanking.sort((a, b) => b.totalPoints - a.totalPoints || a.name.localeCompare(b.name));
-    const targetMaxPosition = projectedRanking.findIndex(r => r.userId === activeUserId) + 1;
 
-    // Calculando totais para o Frontend (Variáveis originais mantidas)
+    // --- CORREÇÃO DO RANKING DE EMPATES ---
+    // Encontramos o objeto do usuário alvo
+    const targetUserProj = projectedRanking.find(r => r.userId === activeUserId);
+    
+    // Contamos quantos usuários têm estritamente MAIS pontos que ele
+    // Se 0 pessoas têm mais pontos, ele é 1º. Se 1 pessoa tem mais pontos, ele é 2º, etc.
+    const usersBetter = projectedRanking.filter(r => r.totalPoints > targetUserProj.totalPoints).length;
+    const targetMaxPosition = usersBetter + 1;
+
+    // Calculando totais para o Frontend
     const matchPointsLeft = futureMatches.reduce((acc, m) => {
       const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
       const targetPick = targetPicksMap.get(String(m.matchId));
