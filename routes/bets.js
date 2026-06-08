@@ -43,8 +43,9 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
 
     // 1. Carga de Dados (Busca flexível e blindada para Pênaltis)
     const configId = `league_${leagueId}`;
-    const [settings, matches, bets] = await Promise.all([
+    const [settings, officialPodiumDoc, matches, bets] = await Promise.all([
       Settings.findById(configId).lean(),
+      Settings.findOne({ key: 'podium', leagueId: lIdNum }).select('podium').lean(),
       // 🚨 ATUALIZADO: Inclusão de penaltiesA e penaltiesB no select
       Match.find({ leagueId: lIdNum }).select('matchId status scoreA scoreB penaltiesA penaltiesB phase teamA teamB logoA logoB group qualifiedSide').lean(),
       Bet.find({ 
@@ -56,9 +57,15 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     console.log('2. CARGA DB:', { partidas: matches.length, apostas: bets.length });
 
     const unlockedPhases = settings?.unlockedPhases || [];
+    const officialPodium = officialPodiumDoc?.podium || {};
+    const betsByUserMap = new Map(
+      bets
+        .filter(b => b.user?._id)
+        .map(b => [b.user._id.toString(), b])
+    );
     
     // Busca a aposta do alvo
-    const targetBet = bets.find(b => b.user?._id?.toString() === activeUserId || b.user === activeUserId);
+    const targetBet = betsByUserMap.get(activeUserId);
     if (!targetBet) {
         console.log('❌ ERRO: targetBet não encontrado para:', activeUserId);
         return res.status(404).json({ success: false, message: 'Aposta não encontrada' });
@@ -79,15 +86,20 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     });
 
     // 🚨 ATUALIZADO: Helper blindado para reconhecer Pênaltis com dados .lean()
-    const getWinner = (a, b, penA, penB) => {
-      if (penA != null && penB != null) {
-        if (penA > penB) return 'A';
-        if (penB > penA) return 'B';
-      }
+    const getMatchResult = (a, b) => {
       if (a === undefined || b === undefined || a === null || b === null) return null;
       if (a > b) return 'A';
       if (b > a) return 'B';
       return 'draw';
+    };
+
+    const getQualifiedSide = (match, matchResult) => {
+      if (match.qualifiedSide) return match.qualifiedSide;
+      if (match.penaltiesA != null && match.penaltiesB != null) {
+        if (match.penaltiesA > match.penaltiesB) return 'A';
+        if (match.penaltiesB > match.penaltiesA) return 'B';
+      }
+      return matchResult && matchResult !== 'draw' ? matchResult : null;
     };
 
     const toWinnerLabel = (winner, teamA, teamB) => {
@@ -160,6 +172,8 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     // =========================================================================
 
     // 2. Ranking Atual (Com Nova Lógica de Pódio Live e Pênaltis)
+    const liveStatuses = ['ao_vivo', '1_tempo', '2_tempo', 'intervalo', 'prorrogacao', '1_tet', '2_tet', 'penaltis', 'live', 'in_progress'];
+
     const currentRanking = bets.map(b => {
       let pts = 0;
       (b.groupMatches || []).forEach(gm => {
@@ -171,27 +185,27 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         else { if (m.status !== 'finished') return; }
 
         // 🚨 ATUALIZADO: Agora usa os pênaltis vindos do banco
-        const realWinner = getWinner(m.scoreA, m.scoreB, m.penaltiesA, m.penaltiesB);
+        const realWinner = getMatchResult(m.scoreA, m.scoreB);
+        const realQual = getQualifiedSide(m, realWinner);
         
         if (realWinner && gm.winner === realWinner) pts += 1;
-        const realQual = m.qualifiedSide || (realWinner !== 'draw' ? realWinner : null);
         if (gm.qualifier && realQual && gm.qualifier === realQual) pts += 1;
 
         // Atualização dinâmica do Pódio Live e Eliminações
         const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
-        if (isKnockoutPhase && m.group !== 'semifinal') {
+        if (isKnockoutPhase && m.group !== 'Semifinal') {
           if (m.status === 'finished') {
             // Como o getWinner já cuidou dos pênaltis, podemos identificar o perdedor direto
-            const loser = realWinner === 'A' ? m.teamB : (realWinner === 'B' ? m.teamA : null);
+            const loser = realQual === 'A' ? m.teamB : (realQual === 'B' ? m.teamA : null);
             if (loser) eliminatedTeams.add(loser);
-          } else if (isLive && (m.status === 'live' || m.status === 'in_progress')) {
+          } else if (isLive && liveStatuses.includes(m.status)) {
             if (m.scoreA > m.scoreB) eliminatedTeams.add(m.teamB);
             else if (m.scoreB > m.scoreA) eliminatedTeams.add(m.teamA);
           }
         }
       });
-      return { userId: b.user._id.toString(), points: pts + (b.podiumPoints || 0) };
-    });
+      return { userId: b.user?._id?.toString(), points: pts + (b.podiumPoints || 0) };
+    }).filter(r => r.userId);
 
     const targetPoints = currentRanking.find(r => r.userId === activeUserId)?.points || 0;
     const leaderPoints = Math.max(...currentRanking.map(r => r.points), 0);
@@ -205,15 +219,17 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     const userPodiumPotentialMap = new Map();
 
     bets.forEach(b => {
+      const betUserId = b.user?._id?.toString();
+      if (!betUserId) return;
       let pot = 0;
-      if (!settings?.podium?.first && b.podium) {
+      if (b.podium) {
         const p = b.podium;
-        if (p.first && !eliminatedTeams.has(p.first)) pot += podiumWeights.first;
-        if (p.second && !eliminatedTeams.has(p.second)) pot += podiumWeights.second;
-        if (p.third && !eliminatedTeams.has(p.third)) pot += podiumWeights.third;
-        if (p.fourth && !eliminatedTeams.has(p.fourth)) pot += podiumWeights.fourth;
+        if (!officialPodium.first && p.first && !eliminatedTeams.has(p.first)) pot += podiumWeights.first;
+        if (!officialPodium.second && p.second && !eliminatedTeams.has(p.second)) pot += podiumWeights.second;
+        if (!officialPodium.third && p.third && !eliminatedTeams.has(p.third)) pot += podiumWeights.third;
+        if (!officialPodium.fourth && p.fourth && !eliminatedTeams.has(p.fourth)) pot += podiumWeights.fourth;
       }
-      userPodiumPotentialMap.set(b.user._id.toString(), pot);
+      userPodiumPotentialMap.set(betUserId, pot);
     });
 
     const targetPodiumPotential = userPodiumPotentialMap.get(activeUserId) || 0;
@@ -238,8 +254,8 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                   ? (matchRef.teamA === teamName ? matchRef.logoA : matchRef.logoB) 
                   : null;
 
-              if (settings?.podium?.[slot.key]) {
-                  status = settings.podium[slot.key] === teamName ? 'conquered' : 'dead';
+              if (officialPodium[slot.key]) {
+                  status = officialPodium[slot.key] === teamName ? 'conquered' : 'dead';
               } else if (eliminatedTeams.has(teamName)) {
                   status = 'dead';
               }
@@ -259,7 +275,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     const projectedRanking = currentRanking.map(r => {
       let projPts = r.points;
       const isTarget = r.userId === activeUserId;
-      const bRef = bets.find(bet => bet.user._id.toString() === r.userId);
+      const bRef = betsByUserMap.get(r.userId);
 
       futureMatches.forEach(m => {
         const midStr = String(m.matchId);
@@ -268,7 +284,8 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
 
         if (isTarget) {
-          projPts += (isKnockoutPhase ? 2 : 1);
+          if (targetPick?.winner) projPts += 1;
+          if (isKnockoutPhase && targetPick?.qualifier) projPts += 1;
         } else if (targetPick && rivalPick) {
           if (targetPick.winner && targetPick.winner === rivalPick.winner) projPts += 1;
           if (isKnockoutPhase && targetPick.qualifier && targetPick.qualifier === rivalPick.qualifier) projPts += 1;
@@ -284,7 +301,11 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     // Calculando totais para o Frontend (Variáveis originais mantidas)
     const matchPointsLeft = futureMatches.reduce((acc, m) => {
       const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
-      return acc + (isKnockoutPhase ? 2 : 1);
+      const targetPick = targetPicksMap.get(String(m.matchId));
+      let pts = 0;
+      if (targetPick?.winner) pts += 1;
+      if (isKnockoutPhase && targetPick?.qualifier) pts += 1;
+      return acc + pts;
     }, 0);
     const totalPotential = matchPointsLeft + targetPodiumPotential;
     const targetMaxTotal = targetPoints + totalPotential;
@@ -310,7 +331,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
           let minChanceAgainstLeaders = 100;
 
           leaders.forEach(leader => {
-            const leaderBet = bets.find(b => b.user._id.toString() === leader.userId);
+            const leaderBet = betsByUserMap.get(leader.userId);
             let contestedPoints = 0;
 
             // Analisa Contenção nos Jogos Futuros
@@ -321,9 +342,12 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
               const leaderPick = (leaderBet?.groupMatches || []).find(gm => String(gm.matchId) === midStr);
 
               if (targetPick) {
-                const diffWin = targetPick.winner !== leaderPick?.winner;
-                const diffQual = isKnockout && targetPick.qualifier !== leaderPick?.qualifier;
-                if (diffWin || diffQual) contestedPoints += (isKnockout ? 2 : 1);
+                if (targetPick.winner !== leaderPick?.winner) {
+                  contestedPoints += 1;
+                }
+                if (isKnockout && targetPick.qualifier !== leaderPick?.qualifier) {
+                  contestedPoints += 1;
+                }
               }
             });
 
@@ -341,9 +365,13 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
             // Cálculo Final
             const gap = leader.points - targetPoints;
             if (contestedPoints >= gap) {
-              const margin = contestedPoints - gap; 
-              const reachabilityChance = 5 + ((margin / contestedPoints) * 70);
-              minChanceAgainstLeaders = Math.min(minChanceAgainstLeaders, reachabilityChance);
+              if (contestedPoints === 0 && gap === 0) {
+                minChanceAgainstLeaders = Math.min(minChanceAgainstLeaders, 50);
+              } else {
+                const margin = contestedPoints - gap; 
+                const reachabilityChance = 5 + ((margin / contestedPoints) * 70);
+                minChanceAgainstLeaders = Math.min(minChanceAgainstLeaders, reachabilityChance);
+              }
             } else {
               minChanceAgainstLeaders = 0; 
             }
@@ -394,10 +422,10 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
       }
 
       const opponentsToWatch = isLocked ? ["Conteúdo Bloqueado 🔒"] : rivalsToWatch.filter(ra => {
-        const rb = bets.find(b => b.user._id.toString() === ra.userId);
+        const rb = betsByUserMap.get(ra.userId);
         const rp = (rb?.groupMatches || []).find(gm => String(gm.matchId) === midStr);
         return rp && (rp.winner !== targetPick?.winner || (isKnockoutPhase && rp.qualifier !== targetPick?.qualifier));
-      }).map(ra => bets.find(b => b.user._id.toString() === ra.userId)?.user.name);
+      }).map(ra => betsByUserMap.get(ra.userId)?.user?.name).filter(Boolean);
 
       return {
         matchId: m.matchId,
@@ -437,66 +465,8 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     res.status(500).json({ success: false });
   }
 });
-//🎯 Meus palpites (Filtrado por Liga)
- 
-router.get('/my-bets', protect, checkPaid, async (req, res) => {
-  try {
-    const { leagueId } = req.query;
-    if (!leagueId) {
-      return res.status(400).json({ success: false, message: 'ID da liga é obrigatório' });
-    }
 
-    // Convertemos para Number e String para garantir compatibilidade
-    const lIdNum = Number(leagueId);
-    const lIdStr = String(leagueId);
-
-    const [bet, matches] = await Promise.all([
-      // AQUI ESTAVA O ERRO: Adicionamos o leagueId na busca da aposta
-      Bet.findOne({ 
-        user: req.user._id, 
-        leagueId: lIdStr 
-      }).lean(),
-      
-      Match.find({ leagueId: lIdNum }).lean()
-    ]);
-
-    // Se não encontrou aposta para ESTA LIGA específica
-    if (!bet) {
-      return res.json({ success: true, data: null, hasSubmitted: false });
-    }
-
-    // Criamos um Set de IDs de partidas da liga atual (para performance e comparação segura)
-    const matchIdsDaLiga = new Set(matches.map(m => Number(m.matchId)));
-
-    // Filtramos os palpites que pertencem APENAS a esta liga
-    const gm = (bet.groupMatches || [])
-      .filter(b => matchIdsDaLiga.has(Number(b.matchId))) // Comparação Number vs Number
-      .map((b) => {
-        const m = matches.find(x => Number(x.matchId) === Number(b.matchId));
-        const teamA = m?.teamA || 'Time A';
-        const teamB = m?.teamB || 'Time B';
-        return {
-          ...b,
-          matchName: m ? `${m.teamA} vs ${m.teamB}` : `Jogo ${b.matchId}`,
-          teamA,
-          teamB,
-          status: m?.status || 'scheduled',
-          choiceLabel: toWinnerLabel(b.winner, teamA, teamB)
-        };
-      });
-
-    // O status de submissão agora é real por liga
-    return res.json({
-      success: true,
-      data: { ...bet, groupMatches: gm },
-      hasSubmitted: gm.length > 0
-    });
-
-  } catch (e) {
-    console.error('GET /my-bets error:', e);
-    res.status(500).json({ success: false, message: 'Erro ao carregar palpites' });
-  }
-});/**
+/**
 /* =========================================================================
    💾 Salvar palpites (ATUALIZADO, CORRIGIDO E ORDENADO POR GRUPO NO EMAIL)
    ========================================================================= */
