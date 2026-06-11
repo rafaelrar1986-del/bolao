@@ -625,13 +625,19 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
         }
       }
 
-      const shouldFetchBundle =
-        source === 'LIVE' ||
-        status !== 'scheduled' ||
-        !match.lineups?.home?.players?.length ||
-        !match.lineups?.away?.players?.length ||
-        !match.statistics?.length;
+      // 1. Captura o timestamp de atualização atual enviado pela API
+const currentApiTimestamp = gameData.last_updated || gameData.updated_at || core.updatedAt;
 
+// 2. Verifica se esse timestamp é diferente do que já temos guardado no banco
+const apiTimestampChanged = currentApiTimestamp && String(currentApiTimestamp) !== String(match.apiLastUpdated);
+
+const shouldFetchBundle =
+  source === 'LIVE' ||
+  status !== 'scheduled' ||
+  apiTimestampChanged || // <--- SE HOUVER MUDANÇA NA API, ATUALIZA A ESCALAÇÃO (Mesmo Agendado)
+  !match.lineups?.home?.players?.length ||
+  !match.lineups?.away?.players?.length ||
+  !match.statistics?.length;
       let detail = core;
       let statsPayload = null;
       let incidentsPayload = null;
