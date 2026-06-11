@@ -89,9 +89,15 @@ function mapApiStatus(status, period) {
   if (s === 'postponed') return 'PST';
   if (s === 'cancelled') return 'CXL';
   if (s === 'penalties' || p === 'pen') return 'PEN';
-  if (s === '1st_half' || p === '1t') return '1H';
+  
+  // Mudei aqui: Agora lê '1h' da API e retorna '1T' para o Painel
+  if (s === '1st_half' || p === '1t' || p === '1h') return '1T';
+  
   if (s === 'halftime' || p === 'ht') return 'HT';
-  if (s === '2nd_half' || p === '2t') return '2H';
+  
+  // Mudei aqui: Agora lê '2h' da API e retorna '2T' para o Painel
+  if (s === '2nd_half' || p === '2t' || p === '2h') return '2T';
+  
   if (s === 'extra_time' || p === 'et') return 'ET';
   if (s === 'notstarted') return 'NS';
   if (s === 'inprogress') return 'LIVE';
@@ -106,15 +112,20 @@ function mapStatus(status, period) {
   if (s === 'postponed') return 'postponed';
   if (s === 'cancelled') return 'cancelled';
   if (s === 'penalties' || p === 'pen') return 'penaltis';
-  if (s === '1st_half' || p === '1t') return '1_tempo';
+  
+  // Mudei aqui: Agora lê '1h' da API e salva como '1_tempo' no banco
+  if (s === '1st_half' || p === '1t' || p === '1h') return '1_tempo';
+  
   if (s === 'halftime' || p === 'ht') return 'intervalo';
-  if (s === '2nd_half' || p === '2t') return '2_tempo';
+  
+  // Mudei aqui: Agora lê '2h' da API e salva como '2_tempo' no banco
+  if (s === '2nd_half' || p === '2t' || p === '2h') return '2_tempo';
+  
   if (s === 'extra_time' || p === 'et') return 'prorrogacao';
   if (s === 'notstarted') return 'scheduled';
   if (s === 'inprogress') return 'ao_vivo';
   return 'scheduled';
 }
-
 function mapPlayerV2(p) {
   if (!p) return null;
 
