@@ -18,7 +18,7 @@ router.get('/:userId', protect, async (req, res) => {
     }
 
     const isRequestingOwnProfile = req.user._id.toString() === userId.toString();
-    const isAdmin = req.user.isAdmin === true;
+    //const isAdmin = req.user.isAdmin === true;
 
     const configId = getConfigId(leagueId);
     
@@ -41,7 +41,7 @@ router.get('/:userId', protect, async (req, res) => {
     }
 
     // Se for o dono ou admin, libera tudo imediatamente
-    if (isRequestingOwnProfile || isAdmin) {
+    if (isRequestingOwnProfile) {
       return res.json({
         success: true,
         data: {
