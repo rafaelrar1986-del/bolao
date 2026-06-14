@@ -28,10 +28,12 @@ function toWinnerLabel(choice, teamA, teamB) {
 /**
  * 🧠 ESTRATÉGIA: Caminho da Liderança (VERSÃO DEFINITIVA SUPREMA - 2026)
  * Inclui: Mata-mata independente, Pódio Live, Secagem Dinâmica + PROBABILIDADE POR CONTENÇÃO + Pênaltis + Proteção Anti-Espião + Ordem Cronológica Invertida
+ * NOVO: 🎮 MODO SIMULAÇÃO INTERATIVO (Sandbox In-Memory)
  */
 router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
   try {
-    const { leagueId, userId: targetUserId, mode } = req.query;
+    // 🎮 NOVO: Parâmetro 'simulations' extraído da query
+    const { leagueId, userId: targetUserId, mode, simulations } = req.query;
     
     console.log('\n--- 🚀 [INÍCIO DEBUG LEADERSHIP-PATH] ---');
     console.log('1. PARÂMETROS:', { leagueId, targetUserId, mode });
@@ -60,6 +62,41 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     ]);
 
     console.log('2. CARGA DB:', { partidas: matches.length, apostas: bets.length });
+
+    // =========================================================================
+    // 🎮 [INJEÇÃO] MODO SIMULAÇÃO: Aplicação das escolhas do usuário na memória
+    // =========================================================================
+    if (mode === 'simulacao' && simulations) {
+        try {
+            const parsedSimulations = JSON.parse(simulations);
+            matches.forEach(m => {
+                const midStr = String(m.matchId);
+                const simData = parsedSimulations[midStr];
+                
+                if (simData) {
+                    m.isSimulated = true; // Flag essencial para o motor matemático
+
+                    // Forjamos os gols para enganar o getMatchResult()
+                    const winner = simData.winner?.toLowerCase();
+                    if (winner === 'a') {
+                        m.scoreA = 2; m.scoreB = 0;
+                    } else if (winner === 'b') {
+                        m.scoreA = 0; m.scoreB = 2;
+                    } else if (winner === 'draw') {
+                        m.scoreA = 1; m.scoreB = 1;
+                    }
+
+                    // Forjamos o classificado para enganar o getQualifiedSide() no mata-mata
+                    if (simData.qualifier === 'A') m.qualifiedSide = 'A';
+                    if (simData.qualifier === 'B') m.qualifiedSide = 'B';
+                }
+            });
+            console.log(`🎮 [SIMULAÇÃO] ${Object.keys(parsedSimulations).length} resultados virtuais injetados.`);
+        } catch (err) {
+            console.error('❌ Erro ao parsear o JSON de Simulação:', err);
+        }
+    }
+    // =========================================================================
 
     const unlockedPhases = settings?.unlockedPhases || [];
     const officialPodium = officialPodiumDoc?.podium || {};
@@ -176,7 +213,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     }
     // =========================================================================
 
-    // 2. Ranking Atual (Com Nova Lógica de Pódio Live e Pênaltis)
+    // 2. Ranking Atual (Com Nova Lógica de Pódio Live, Pênaltis e MODO SIMULAÇÃO)
     const liveStatuses = ['ao_vivo', '1_tempo', '2_tempo', 'intervalo', 'prorrogacao', '1_tet', '2_tet', 'penaltis', 'live', 'in_progress'];
 
     const currentRanking = bets.map(b => {
@@ -186,8 +223,13 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         if (!matchIdsDaLiga.has(midStr)) return;
         const m = matchMap.get(midStr);
         if (!m) return;
-        if (isLive) { if (m.status === 'scheduled') return; } 
-        else { if (m.status !== 'finished') return; }
+        
+        // 🚨 Regra ajustada: Permite passar se o jogo estiver marcado como simulado
+        if (isLive) { 
+            if (m.status === 'scheduled' && !m.isSimulated) return; 
+        } else { 
+            if (m.status !== 'finished' && !m.isSimulated) return; 
+        }
 
         const realWinner = getMatchResult(m.scoreA, m.scoreB);
         const realQual = getQualifiedSide(m, realWinner);
@@ -195,10 +237,10 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         if (realWinner && gm.winner === realWinner) pts += 1;
         if (gm.qualifier && realQual && gm.qualifier === realQual) pts += 1;
 
-        // Atualização dinâmica do Pódio Live e Eliminações
+        // Atualização dinâmica do Pódio Live e Eliminações (Agora suporta a Simulação)
         const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
         if (isKnockoutPhase && m.group !== 'Semifinal') {
-          if (m.status === 'finished') {
+          if (m.status === 'finished' || m.isSimulated) {
             const loser = realQual === 'A' ? m.teamB : (realQual === 'B' ? m.teamA : null);
             if (loser) eliminatedTeams.add(loser);
           } else if (isLive && liveStatuses.includes(m.status)) {
@@ -213,7 +255,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     const targetPoints = currentRanking.find(r => r.userId === activeUserId)?.points || 0;
     const leaderPoints = Math.max(...currentRanking.map(r => r.points), 0);
 
-   // --- NOVO: Cálculo da Posição Atual (Respeitando Empates do /leaderboard) ---
+   // --- Cálculo da Posição Atual (Respeitando Empates do /leaderboard) ---
     const sortedCurrentRanking = [...currentRanking].sort((a, b) => {
       const nameA = betsByUserMap.get(a.userId)?.user?.name || "";
       const nameB = betsByUserMap.get(b.userId)?.user?.name || "";
@@ -226,30 +268,32 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
 
     for (let i = 0; i < sortedCurrentRanking.length; i++) {
       const item = sortedCurrentRanking[i];
-      
-      // Se a pontuação mudou, atualiza a posição a ser atribuída para o índice atual + 1
       if (lastPoints === null || item.points !== lastPoints) {
         posToAssign = i + 1;
         lastPoints = item.points;
       }
-      
-      // Se achamos o nosso usuário alvo, salva a posição dele e para o loop
       if (item.userId === activeUserId) {
         currentPosition = posToAssign;
         break;
       }
     }
     // ----------------------------------------------------------------------------
-    // --- 🚨 ATUALIZADO: Ordenação robusta DECRESCENTE (72 para 1) ---
-    const futureMatches = matches
-      .filter(m => isLive ? m.status === 'scheduled' : m.status !== 'finished')
+
+    // =========================================================================
+    // 🔀 DIVISÃO DE JOGOS FUTUROS (A mágica do Display vs Teto Máximo)
+    // =========================================================================
+    // 1. Array de visualização (Mantém os jogos que o usuário simulou na tela para ele poder alterar)
+    const displayFutureMatches = matches
+      .filter(m => (isLive ? m.status === 'scheduled' : m.status !== 'finished') || m.isSimulated)
       .sort((a, b) => {
-        // Extrai apenas os dígitos para forçar o número
         const idA = parseInt(String(a.matchId).replace(/\D/g, ''), 10) || 0;
         const idB = parseInt(String(b.matchId).replace(/\D/g, ''), 10) || 0;
-        // Invertemos a ordem (idB - idA) para que 72 venha antes de 1
         return idB - idA; 
       });
+
+    // 2. Array para a matemática (Remove os jogos simulados para não dar ponto dobrado no Teto)
+    const mathFutureMatches = displayFutureMatches.filter(m => !m.isSimulated);
+    // =========================================================================
 
     // 3. MAPA DE POTENCIAL DE PÓDIO
     const podiumWeights = { first: 7, second: 5, third: 4, fourth: 3 };
@@ -324,13 +368,13 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
       });
     }
 
-    // 4. Posição Máxima (Cenário de Ouro Clássico)
+    // 4. Posição Máxima (Cenário de Ouro Clássico) - 🚨 Usa mathFutureMatches
     const projectedRanking = currentRanking.map(r => {
       let projPts = r.points;
       const isTarget = r.userId === activeUserId;
       const bRef = betsByUserMap.get(r.userId);
 
-      futureMatches.forEach(m => {
+      mathFutureMatches.forEach(m => {
         const midStr = String(m.matchId);
         const targetPick = targetPicksMap.get(midStr);
         const rivalPick = (bRef?.groupMatches || []).find(gm => String(gm.matchId) === midStr);
@@ -355,7 +399,8 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     const usersBetter = projectedRanking.filter(r => r.totalPoints > targetUserProj.totalPoints).length;
     const targetMaxPosition = usersBetter + 1;
 
-    const matchPointsLeft = futureMatches.reduce((acc, m) => {
+    // 🚨 Usa mathFutureMatches
+    const matchPointsLeft = mathFutureMatches.reduce((acc, m) => {
       const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
       const targetPick = targetPicksMap.get(String(m.matchId));
       let pts = 0;
@@ -363,11 +408,12 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
       if (isKnockoutPhase && targetPick?.qualifier) pts += 1;
       return acc + pts;
     }, 0);
+    
     const totalPotential = matchPointsLeft + targetPodiumPotential;
     const targetMaxTotal = targetPoints + totalPotential;
 
     // =========================================================================
-    // 5. PROBABILIDADE AVANÇADA (Motor de Contenção)
+    // 5. PROBABILIDADE AVANÇADA (Motor de Contenção) - 🚨 Usa mathFutureMatches
     // =========================================================================
     let probability = 0;
 
@@ -387,7 +433,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
             const leaderBet = betsByUserMap.get(leader.userId);
             let contestedPoints = 0;
 
-            futureMatches.forEach(m => {
+            mathFutureMatches.forEach(m => {
               const midStr = String(m.matchId);
               const isKnockout = m.phase === 'knockout' || m.phase === 'mata-mata';
               const targetPick = targetPicksMap.get(midStr);
@@ -433,8 +479,8 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     }
     // =========================================================================
 
-    // 6. Análise de Secagem Dinâmica
-    const matchesAnalysis = futureMatches.map((m, index) => {
+    // 6. Análise de Secagem Dinâmica - 🚨 Usa displayFutureMatches (para exibir no Card)
+    const matchesAnalysis = displayFutureMatches.map((m, index) => {
       const midStr = String(m.matchId);
       const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
       const isLocked = !isAdmin && (m.phase === 'group' ? !unlockedPhases.includes('group') : !unlockedPhases.includes(m.group));
@@ -477,13 +523,11 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         return rp && (rp.winner !== targetPick?.winner || (isKnockoutPhase && rp.qualifier !== targetPick?.qualifier));
       }).map(ra => betsByUserMap.get(ra.userId)?.user?.name).filter(Boolean);
 
-      // Ocultar palpite no Frontend (Proteção Anti-Espião)
       const hideTargetPick = isLocked && !isViewingSelf;
 
       return {
         matchId: m.matchId,
         teams: `${m.teamA} x ${m.teamB}`,
-        status: m.status,
         status: m.status,
         phase: m.phase,
         hasImpact: opponentsToWatch.length > 0,
@@ -515,7 +559,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
           currentPoints: targetPoints, 
           maxPoints: targetMaxTotal, 
           podiumPotential: targetPodiumPotential, 
-          totalMatches: futureMatches.length,
+          totalMatches: displayFutureMatches.length, // 🚨 Mantém a contagem de todos os cards
           podiumDetails
         },
         matches: matchesAnalysis
