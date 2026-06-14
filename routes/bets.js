@@ -212,6 +212,33 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     const targetPoints = currentRanking.find(r => r.userId === activeUserId)?.points || 0;
     const leaderPoints = Math.max(...currentRanking.map(r => r.points), 0);
 
+   // --- NOVO: Cálculo da Posição Atual (Respeitando Empates do /leaderboard) ---
+    const sortedCurrentRanking = [...currentRanking].sort((a, b) => {
+      const nameA = betsByUserMap.get(a.userId)?.user?.name || "";
+      const nameB = betsByUserMap.get(b.userId)?.user?.name || "";
+      return b.points - a.points || nameA.localeCompare(nameB);
+    });
+    
+    let currentPosition = 1;
+    let lastPoints = null;
+    let posToAssign = 0;
+
+    for (let i = 0; i < sortedCurrentRanking.length; i++) {
+      const item = sortedCurrentRanking[i];
+      
+      // Se a pontuação mudou, atualiza a posição a ser atribuída para o índice atual + 1
+      if (lastPoints === null || item.points !== lastPoints) {
+        posToAssign = i + 1;
+        lastPoints = item.points;
+      }
+      
+      // Se achamos o nosso usuário alvo, salva a posição dele e para o loop
+      if (item.userId === activeUserId) {
+        currentPosition = posToAssign;
+        break;
+      }
+    }
+    // ----------------------------------------------------------------------------
     // --- 🚨 ATUALIZADO: Ordenação robusta DECRESCENTE (72 para 1) ---
     const futureMatches = matches
       .filter(m => isLive ? m.status === 'scheduled' : m.status !== 'finished')
@@ -478,7 +505,8 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     res.json({
       success: true,
       data: {
-        summary: { 
+        summary: {
+          currentPosition,
           maxPosition: targetMaxPosition, 
           probability, 
           currentPoints: targetPoints, 
