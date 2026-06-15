@@ -530,7 +530,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         teams: `${m.teamA} x ${m.teamB}`,
         status: m.status,
         phase: m.phase,
-        hasImpact: opponentsToWatch.length > 0,
+        hasImpact: m.isSimulated === true || opponentsToWatch.length > 0,
         isLocked,
         myChoice: hideTargetPick ? { 
           winner: null, 
