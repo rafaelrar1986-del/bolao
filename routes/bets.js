@@ -33,7 +33,7 @@ function toWinnerLabel(choice, teamA, teamB) {
  */
 router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
   try {
-    // 🎮 Parâmetros 'simulations' e 'miracle' extraídos da query
+    // 🎮 NOVO: Parâmetro 'simulations' e 'miracle' extraídos da query
     const { leagueId, userId: targetUserId, mode, simulations, miracle } = req.query;
     
     console.log('\n--- 🚀 [INÍCIO DEBUG LEADERSHIP-PATH] ---');
@@ -52,6 +52,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     const isLive = mode === 'live';
 
     // 1. Carga de Dados (Busca flexível e blindada para Pênaltis)
+    // 🚨 ATENÇÃO: 'date' adicionado ao select para o milagre cronológico funcionar!
     const configId = `league_${leagueId}`;
     const [settings, officialPodiumDoc, matches, bets] = await Promise.all([
       Settings.findById(configId).lean(),
@@ -66,7 +67,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     console.log('2. CARGA DB:', { partidas: matches.length, apostas: bets.length });
 
     // =========================================================================
-    // 🎮 [INJEÇÃO] MODO SIMULAÇÃO: Aplicação das escolhas do usuário na memória
+    // 🎮 [INJEÇÃO] MODO SIMULAÇÃO: Versão Blindada e Normalizada
     // =========================================================================
     if (mode === 'simulacao' && simulations) {
         try {
@@ -75,25 +76,30 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 const midStr = String(m.matchId);
                 const simData = parsedSimulations[midStr];
                 
-                if (simData) {
-                    m.isSimulated = true; // Flag essencial para o motor matemático
-
-                    // Forjamos os gols para o getMatchResult()
+                // Só processa se existir payload e o jogo não estiver de fato finalizado
+                if (simData && m.status !== 'finished') {
                     const winner = simData.winner?.toLowerCase();
-                    if (winner === 'a') {
-                        m.scoreA = 2; m.scoreB = 0;
-                    } else if (winner === 'b') {
-                        m.scoreA = 0; m.scoreB = 2;
-                    } else if (winner === 'draw') {
-                        m.scoreA = 1; m.scoreB = 1;
-                    }
+                    const qualifier = simData.qualifier?.toUpperCase(); // 🌟 Solução de Case Sensitivity
 
-                    // Forjamos o classificado para o getQualifiedSide() no mata-mata independente
-                    if (simData.qualifier === 'A') m.qualifiedSide = 'A';
-                    if (simData.qualifier === 'B') m.qualifiedSide = 'B';
+                    if (winner || qualifier) {
+                        m.isSimulated = true; // Flag essencial para o motor matemático
+
+                        // Forjamos os gols para enganar o getMatchResult()
+                        if (winner === 'a') {
+                            m.scoreA = 2; m.scoreB = 0;
+                        } else if (winner === 'b') {
+                            m.scoreA = 0; m.scoreB = 2;
+                        } else if (winner === 'draw') {
+                            m.scoreA = 1; m.scoreB = 1;
+                        }
+
+                        // Forjamos o classificado para enganar o getQualifiedSide() no mata-mata
+                        if (qualifier === 'A') m.qualifiedSide = 'A';
+                        if (qualifier === 'B') m.qualifiedSide = 'B';
+                    }
                 }
             });
-            console.log(`🎮 [SIMULAÇÃO] ${Object.keys(parsedSimulations).length} resultados virtuais injetados.`);
+            console.log(`🎮 [SIMULAÇÃO] Cenários virtuais injetados e normalizados.`);
         } catch (err) {
             console.error('❌ Erro ao parsear o JSON de Simulação:', err);
         }
@@ -129,7 +135,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
       }
     });
 
-    // Helpers auxiliares blindados
+    // Helper blindado para reconhecer Pênaltis
     const getMatchResult = (a, b) => {
       if (a === undefined || b === undefined || a === null || b === null) return null;
       if (a > b) return 'A';
@@ -226,6 +232,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         const m = matchMap.get(midStr);
         if (!m) return;
         
+        // 🚨 Regra ajustada: Permite passar se o jogo estiver marcado como simulado
         if (isLive) { 
             if (m.status === 'scheduled' && !m.isSimulated) return; 
         } else { 
@@ -238,7 +245,8 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         if (realWinner && gm.winner === realWinner) pts += 1;
         if (gm.qualifier && realQual && gm.qualifier === realQual) pts += 1;
 
-        // Proteção: Semifinal, Final e 3º lugar guardam potenciais vivos no pódio secundário
+        // Atualização dinâmica do Pódio Live e Eliminações
+        // 🚨 PROTEÇÃO APLICADA: Evita eliminar seleções na fase de Semifinal/Final do pódio.
         const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
         if (isKnockoutPhase && m.group !== 'Semifinal' && m.group !== 'Final' && m.group !== '3º lugar') {
           if (m.status === 'finished' || m.isSimulated) {
@@ -256,7 +264,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     const targetPoints = currentRanking.find(r => r.userId === activeUserId)?.points || 0;
     const leaderPoints = Math.max(...currentRanking.map(r => r.points), 0);
 
-    // --- Cálculo da Posição Atual (Respeitando Empates do /leaderboard) ---
+   // --- Cálculo da Posição Atual (Respeitando Empates do /leaderboard) ---
     const sortedCurrentRanking = [...currentRanking].sort((a, b) => {
       const nameA = betsByUserMap.get(a.userId)?.user?.name || "";
       const nameB = betsByUserMap.get(b.userId)?.user?.name || "";
@@ -278,11 +286,12 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         break;
       }
     }
+    // ----------------------------------------------------------------------------
 
     // =========================================================================
     // 🔀 DIVISÃO DE JOGOS FUTUROS (A mágica do Display vs Teto Máximo)
     // =========================================================================
-    // 1. Array de visualização (Ordem Cronológica Invertida no Feed)
+    // 1. Array de visualização (Mantém os jogos que o usuário simulou na tela para ele poder alterar)
     const displayFutureMatches = matches
       .filter(m => (isLive ? m.status === 'scheduled' : m.status !== 'finished') || m.isSimulated)
       .sort((a, b) => {
@@ -291,7 +300,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         return idB - idA; 
       });
 
-    // 2. Array para a matemática pura (Remove simulados para não duplicar o Teto)
+    // 2. Array para a matemática (Remove os jogos simulados para não dar ponto dobrado no Teto)
     const mathFutureMatches = displayFutureMatches.filter(m => !m.isSimulated);
     // =========================================================================
 
@@ -302,6 +311,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     let miracleAchieved = false;
 
     if (isMiracleMode && activeUserId) {
+      // 1. O Placar Dinâmico na memória (Snapshot do ranking atual)
       const placarDinamico = {};
       currentRanking.forEach(user => {
         placarDinamico[user.userId] = user.points; 
@@ -312,33 +322,36 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         return placarDinamico[activeUserId] >= pontuacaoMaxima;
       };
 
+      // Só roda se já não estiver em 1º lugar
       if (!checarSeEstouNoTopo()) {
-        // Ordenação cronológica direta para o algoritmo de simulação perfeita progressiva
+        // 2. Varrer os jogos não jogados ORDENADOS cronologicamente (Temporário)
         const jogosParaCalculo = [...mathFutureMatches].sort((a, b) => {
           return new Date(a.date) - new Date(b.date); 
         });
 
         for (const m of jogosParaCalculo) {
-          if (checarSeEstouNoTopo()) break;
+          if (checarSeEstouNoTopo()) break; // Chegou no topo! Para a simulação
 
           const midStr = String(m.matchId);
           const targetPick = targetPicksMap.get(midStr);
           const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
 
           if (targetPick && (targetPick.winner || targetPick.qualifier)) {
-            // 🛠️ FIX: Agora armazena o objeto completo para estruturação do Mata-mata independente
+            // 🌟 CORREÇÃO: Armazena o objeto de forma isolada para não amassar os dados
             miracleSimulations[midStr] = {
-              winner: targetPick.winner || null,
-              qualifier: targetPick.qualifier || null
+                winner: targetPick.winner || null,
+                qualifier: isKnockoutPhase ? (targetPick.qualifier || null) : null
             };
             
-            // 3. Efeito Carona: Atualiza placar de TODO MUNDO baseado neste resultado perfeito
+            // 3. Efeito Carona: Atualiza placar de TODO MUNDO baseado neste resultado "certo"
             Array.from(betsByUserMap.values()).forEach(bet => {
               const rivalPick = (bet.groupMatches || []).find(gm => String(gm.matchId) === midStr);
               if (rivalPick) {
+                // Pontuação por acertar Vencedor
                 if (targetPick.winner && rivalPick.winner === targetPick.winner) {
                   placarDinamico[bet.user._id.toString()] = (placarDinamico[bet.user._id.toString()] || 0) + 1;
                 }
+                // Pontuação extra no mata-mata
                 if (isKnockoutPhase && targetPick.qualifier && rivalPick.qualifier === targetPick.qualifier) {
                   placarDinamico[bet.user._id.toString()] = (placarDinamico[bet.user._id.toString()] || 0) + 1;
                 }
@@ -348,6 +361,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         }
       }
       
+      // Verifica se a simulação foi forte o suficiente para superar o gap
       const pontuacaoMaximaFinal = Math.max(...Object.values(placarDinamico));
       miracleAchieved = placarDinamico[activeUserId] >= pontuacaoMaximaFinal;
     }
@@ -375,6 +389,8 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
 
     // 🌟 DETALHAMENTO DO PÓDIO DO USUÁRIO ALVO
     const podiumDetails = [];
+    
+    // Regra de Visibilidade do Pódio (Proteção Anti-Espião)
     const isPodiumLocked = !isAdmin && !unlockedPhases.includes('podium') && !unlockedPhases.includes('Pódio');
     const hidePodium = !isViewingSelf && isPodiumLocked;
 
@@ -424,7 +440,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
       });
     }
 
-    // 4. Posição Máxima (Cenário de Ouro Clássico)
+    // 4. Posição Máxima (Cenário de Ouro Clássico) - 🚨 Usa mathFutureMatches
     const projectedRanking = currentRanking.map(r => {
       let projPts = r.points;
       const isTarget = r.userId === activeUserId;
@@ -448,14 +464,15 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
       return { userId: r.userId, totalPoints: projPts, name: bRef?.user?.name || "" };
     });
 
-    // 🛠️ FIX: Substituído 'nameB' indefinido por 'b.name' para evitar quebra em runtime
+    // 🌟 CORREÇÃO DE ORDENAÇÃO: Substituído `nameB` (undefined) por `b.name`
     projectedRanking.sort((a, b) => b.totalPoints - a.totalPoints || a.name.localeCompare(b.name));
 
-    // --- CORREÇÃO DO RANKING DE EMPATES EM PROJEÇÃO ---
+    // --- CORREÇÃO DO RANKING DE EMPATES ---
     const targetUserProj = projectedRanking.find(r => r.userId === activeUserId);
     const usersBetter = projectedRanking.filter(r => r.totalPoints > targetUserProj.totalPoints).length;
     const targetMaxPosition = usersBetter + 1;
 
+    // 🚨 Usa mathFutureMatches
     const matchPointsLeft = mathFutureMatches.reduce((acc, m) => {
       const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
       const targetPick = targetPicksMap.get(String(m.matchId));
@@ -469,7 +486,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     const targetMaxTotal = targetPoints + totalPotential;
 
     // =========================================================================
-    // 5. PROBABILIDADE AVANÇADA (Motor de Contenção)
+    // 5. PROBABILIDADE AVANÇADA (Motor de Contenção) - 🚨 Usa mathFutureMatches
     // =========================================================================
     let probability = 0;
 
@@ -535,7 +552,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     }
     // =========================================================================
 
-    // 6. Análise de Secagem Dinâmica (Cards de Saída)
+    // 6. Análise de Secagem Dinâmica - 🚨 Usa displayFutureMatches (para exibir no Card)
     const matchesAnalysis = displayFutureMatches.map((m, index) => {
       const midStr = String(m.matchId);
       const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
@@ -581,9 +598,11 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
 
       const hideTargetPick = isLocked && !isViewingSelf;
 
-      // 🏆 DADOS DO MILAGRE INJETADOS NO CARD
-      const miracleChoice = miracleSimulations[midStr] || null;
-      const isMiracleResult = !!miracleChoice;
+      // 🏆 DADOS DO MILAGRE INJETADOS NO CARD (ESTRUTURA CORRIGIDA)
+      const miracleData = miracleSimulations[midStr] || null;
+      const isMiracleResult = !!miracleData;
+      const miracleChoice = miracleData ? miracleData.winner : null;
+      const miracleQualifier = miracleData ? miracleData.qualifier : null;
 
       return {
         matchId: m.matchId,
@@ -591,9 +610,11 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         status: m.status,
         phase: m.phase,
         group: m.group,
+        // Mantém as regras antigas e ADICIONA o milagre como gatilho de impacto (Visibilidade)
         hasImpact: m.isSimulated === true || isMiracleResult === true || opponentsToWatch.length > 0,
         isMiracleResult: isMiracleResult,
-        miracleChoice: miracleChoice, // Formato estruturado: { winner, qualifier } ou null
+        miracleChoice: miracleChoice,       // Valor do vencedor (90 min)
+        miracleQualifier: miracleQualifier, // Valor do classificado independente
         isLocked,
         myChoice: hideTargetPick ? { 
           winner: null, 
@@ -622,9 +643,9 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
           currentPoints: targetPoints, 
           maxPoints: targetMaxTotal, 
           podiumPotential: targetPodiumPotential, 
-          totalMatches: displayFutureMatches.length, 
+          totalMatches: displayFutureMatches.length, // 🚨 Mantém a contagem de todos os cards
           podiumDetails,
-          miracleAchieved // Booleano retornado para avisar se o usuário alcançou o topo!
+          miracleAchieved // 🏆 Passa para o Front-end se a simulação perfeita roubou o 1º lugar!
         },
         matches: matchesAnalysis
       }
