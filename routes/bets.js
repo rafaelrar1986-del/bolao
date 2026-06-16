@@ -27,645 +27,491 @@ function toWinnerLabel(choice, teamA, teamB) {
 
 /**
  * 🧠 ESTRATÉGIA: Caminho da Liderança (VERSÃO DEFINITIVA SUPREMA - 2026)
- * Inclui: Mata-mata independente, Pódio Live, Secagem Dinâmica + PROBABILIDADE POR CONTENÇÃO + Pênaltis + Proteção Anti-Espião + Ordem Cronológica Invertida
- * NOVO: 🎮 MODO SIMULAÇÃO INTERATIVO (Sandbox In-Memory)
- * NOVO: 🏆 BOTÃO DO MILAGRE (Simulação Cronológica Dinâmica até o Topo)
+ * Inclui: Mata-mata independente, Pódio Live, Secagem Dinâmica, Pênaltis, Cronologia Invertida e Botão do Milagre.
+ * 🚀 NOVO: Otimização de Memória (Mongoose Select), Anti-ReDoS (Limite JSON) e Feature 'Nêmesis'.
  */
-router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
-  try {
-    // 🎮 NOVO: Parâmetro 'simulations' e 'miracle' extraídos da query
-    const { leagueId, userId: targetUserId, mode, simulations, miracle } = req.query;
-    
-    console.log('\n--- 🚀 [INÍCIO DEBUG LEADERSHIP-PATH] ---');
-    console.log('1. PARÂMETROS:', { leagueId, targetUserId, mode, miracle });
 
-    const lIdNum = Number(leagueId);
-    const lIdStr = String(leagueId);
-    const isMiracleMode = miracle === 'true'; // Flag do Botão do Milagre
-    
-    // --- Lógica de Identidade (Proteção Anti-Espião) ---
-    const loggedInUserId = req.user._id.toString();
-    const activeUserId = (targetUserId || loggedInUserId).toString();
-    const isViewingSelf = activeUserId === loggedInUserId;
-    
-    const isAdmin = req.user?.isAdmin === true;
-    const isLive = mode === 'live';
+// =========================================================================
+// 🛠️ FUNÇÕES AUXILIARES (HELPERS) - Podem ser extraídas para um arquivo de Service
+// =========================================================================
+const getMatchResult = (a, b) => {
+    if (a === undefined || b === undefined || a === null || b === null) return null;
+    if (a > b) return 'A';
+    if (b > a) return 'B';
+    return 'draw';
+};
 
-    // 1. Carga de Dados (Busca flexível e blindada para Pênaltis)
-    // 🚨 ATENÇÃO: 'date' adicionado ao select para o milagre cronológico funcionar!
-    const configId = `league_${leagueId}`;
-    const [settings, officialPodiumDoc, matches, bets] = await Promise.all([
-      Settings.findById(configId).lean(),
-      Settings.findOne({ key: 'podium', leagueId: lIdNum }).select('podium').lean(),
-      Match.find({ leagueId: lIdNum }).select('matchId date status scoreA scoreB penaltiesA penaltiesB phase teamA teamB logoA logoB group qualifiedSide').lean(),
-      Bet.find({ 
-        hasSubmitted: true, 
-        $or: [ { leagueId: lIdStr }, { leagueId: lIdNum } ] 
-      }).populate('user', 'name').lean()
-    ]);
-
-    console.log('2. CARGA DB:', { partidas: matches.length, apostas: bets.length });
-
-    // =========================================================================
-    // 🎮 [INJEÇÃO] MODO SIMULAÇÃO: Versão Blindada e Normalizada
-    // =========================================================================
-    if (mode === 'simulacao' && simulations) {
-        try {
-            const parsedSimulations = JSON.parse(simulations);
-            matches.forEach(m => {
-                const midStr = String(m.matchId);
-                const simData = parsedSimulations[midStr];
-                
-                // Só processa se existir payload e o jogo não estiver de fato finalizado
-                if (simData && m.status !== 'finished') {
-                    const winner = simData.winner?.toLowerCase();
-                    const qualifier = simData.qualifier?.toUpperCase(); // 🌟 Solução de Case Sensitivity
-
-                    if (winner || qualifier) {
-                        m.isSimulated = true; // Flag essencial para o motor matemático
-
-                        // Forjamos os gols para enganar o getMatchResult()
-                        if (winner === 'a') {
-                            m.scoreA = 2; m.scoreB = 0;
-                        } else if (winner === 'b') {
-                            m.scoreA = 0; m.scoreB = 2;
-                        } else if (winner === 'draw') {
-                            m.scoreA = 1; m.scoreB = 1;
-                        }
-
-                        // Forjamos o classificado para enganar o getQualifiedSide() no mata-mata
-                        if (qualifier === 'A') m.qualifiedSide = 'A';
-                        if (qualifier === 'B') m.qualifiedSide = 'B';
-                    }
-                }
-            });
-            console.log(`🎮 [SIMULAÇÃO] Cenários virtuais injetados e normalizados.`);
-        } catch (err) {
-            console.error('❌ Erro ao parsear o JSON de Simulação:', err);
-        }
-    }
-    // =========================================================================
-
-    const unlockedPhases = settings?.unlockedPhases || [];
-    const officialPodium = officialPodiumDoc?.podium || {};
-    const betsByUserMap = new Map(
-      bets
-        .filter(b => b.user?._id)
-        .map(b => [b.user._id.toString(), b])
-    );
-    
-    // Busca a aposta do alvo
-    const targetBet = betsByUserMap.get(activeUserId);
-    if (!targetBet) {
-        console.log('❌ ERRO: targetBet não encontrado para:', activeUserId);
-        return res.status(404).json({ success: false, message: 'Aposta não encontrada' });
-    }
-
-    console.log('3. ALVO LOCALIZADO:', { nome: targetBet.user?.name, totalPalpites: targetBet.groupMatches?.length });
-
-    // 🔑 MAP DE PALPITES COM LOG DE TIPO
-    const matchIdsDaLiga = new Set(matches.map(m => String(m.matchId)));
-    const targetPicksMap = new Map();
-    
-    (targetBet.groupMatches || []).forEach((gm, i) => {
-      const midStr = String(gm.matchId);
-      if (i === 0) console.log('4. DEBUG TIPO PALPITE:', { matchId: gm.matchId, tipo: typeof gm.matchId });
-      if (matchIdsDaLiga.has(midStr)) {
-        targetPicksMap.set(midStr, gm);
-      }
-    });
-
-    // Helper blindado para reconhecer Pênaltis
-    const getMatchResult = (a, b) => {
-      if (a === undefined || b === undefined || a === null || b === null) return null;
-      if (a > b) return 'A';
-      if (b > a) return 'B';
-      return 'draw';
-    };
-
-    const getQualifiedSide = (match, matchResult) => {
-      if (match.qualifiedSide) return match.qualifiedSide;
-      if (match.penaltiesA != null && match.penaltiesB != null) {
+const getQualifiedSide = (match, matchResult) => {
+    if (match.qualifiedSide) return match.qualifiedSide;
+    if (match.penaltiesA != null && match.penaltiesB != null) {
         if (match.penaltiesA > match.penaltiesB) return 'A';
         if (match.penaltiesB > match.penaltiesA) return 'B';
-      }
-      return matchResult && matchResult !== 'draw' ? matchResult : null;
-    };
-
-    const toWinnerLabel = (winner, teamA, teamB) => {
-      if (winner === 'A') return teamA;
-      if (winner === 'B') return teamB;
-      if (winner === 'draw') return 'Empate';
-      return 'Sem Palpite'; 
-    };
-
-    const eliminatedTeams = new Set();
-    const matchMap = new Map(matches.map(m => [String(m.matchId), m]));
-
-    // =========================================================================
-    // 🎯 GATILHO DE CORTE: DETECÇÃO DINÂMICA DE ELIMINAÇÃO DA FASE DE GRUPOS
-    // =========================================================================
-    const knockoutQuotas = {
-      '16-avos de final': 16,
-      'Oitavas de final': 8,
-      'Quartas de final': 4,
-      'Semifinal': 2,
-      '3º lugar': 1,
-      'Final': 1
-    };
-
-    let initialKnockoutGroup = null;
-    let requiredMatchCount = 0;
-
-    matches.forEach(m => {
-      const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
-      if (isKnockoutPhase && knockoutQuotas[m.group]) {
-        if (knockoutQuotas[m.group] > requiredMatchCount) {
-          requiredMatchCount = knockoutQuotas[m.group];
-          initialKnockoutGroup = m.group;
-        }
-      }
-    });
-
-    if (initialKnockoutGroup && requiredMatchCount > 0) {
-      const initialMatches = matches.filter(m => {
-        const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
-        return isKnockoutPhase && m.group === initialKnockoutGroup;
-      });
-
-      if (initialMatches.length === requiredMatchCount) {
-        const teamsInKnockout = new Set();
-        
-        matches.forEach(m => {
-          const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
-          if (isKnockoutPhase) {
-            if (m.teamA) teamsInKnockout.add(m.teamA);
-            if (m.teamB) teamsInKnockout.add(m.teamB);
-          }
-        });
-
-        const allGroupTeams = new Set();
-        matches.forEach(m => {
-          if (m.phase === 'group') {
-            if (m.teamA) allGroupTeams.add(m.teamA);
-            if (m.teamB) allGroupTeams.add(m.teamB);
-          }
-        });
-
-        allGroupTeams.forEach(team => {
-          if (!teamsInKnockout.has(team)) {
-            eliminatedTeams.add(team);
-          }
-        });
-      }
     }
-    // =========================================================================
+    return matchResult && matchResult !== 'draw' ? matchResult : null;
+};
 
-    // 2. Ranking Atual (Com Nova Lógica de Pódio Live, Pênaltis e MODO SIMULAÇÃO)
-    const liveStatuses = ['ao_vivo', '1_tempo', '2_tempo', 'intervalo', 'prorrogacao', '1_tet', '2_tet', 'penaltis', 'live', 'in_progress'];
+const toWinnerLabel = (winner, teamA, teamB) => {
+    if (winner === 'A') return teamA;
+    if (winner === 'B') return teamB;
+    if (winner === 'draw') return 'Empate';
+    return 'Sem Palpite'; 
+};
 
-    const currentRanking = bets.map(b => {
-      let pts = 0;
-      (b.groupMatches || []).forEach(gm => {
-        const midStr = String(gm.matchId);
-        if (!matchIdsDaLiga.has(midStr)) return;
-        const m = matchMap.get(midStr);
-        if (!m) return;
+// =========================================================================
+// 🚀 ROTA PRINCIPAL
+// =========================================================================
+router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
+    try {
+        const { leagueId, userId: targetUserId, mode, simulations, miracle } = req.query;
+
+        console.log('\n--- 🚀 [INÍCIO DEBUG LEADERSHIP-PATH] ---');
         
-        // 🚨 Regra ajustada: Permite passar se o jogo estiver marcado como simulado
-        if (isLive) { 
-            if (m.status === 'scheduled' && !m.isSimulated) return; 
-        } else { 
-            if (m.status !== 'finished' && !m.isSimulated) return; 
+        const lIdNum = Number(leagueId);
+        const lIdStr = String(leagueId);
+        const isMiracleMode = miracle === 'true';
+        const isLive = mode === 'live';
+        const loggedInUserId = req.user._id.toString();
+        const activeUserId = (targetUserId || loggedInUserId).toString();
+        const isViewingSelf = activeUserId === loggedInUserId;
+        const isAdmin = req.user?.isAdmin === true;
+
+        // 1. CARGA DE DADOS OTIMIZADA (O Calcanhar de Aquiles Resolvido)
+        // 🚨 Adicionado .select() massivo na tabela de Apostas para economizar RAM do servidor
+        const configId = `league_${leagueId}`;
+        const [settings, officialPodiumDoc, matches, bets] = await Promise.all([
+            Settings.findById(configId).lean(),
+            Settings.findOne({ key: 'podium', leagueId: lIdNum }).select('podium').lean(),
+            Match.find({ leagueId: lIdNum })
+                 .select('matchId date status scoreA scoreB penaltiesA penaltiesB phase teamA teamB logoA logoB group qualifiedSide')
+                 .lean(),
+            Bet.find({ hasSubmitted: true, $or: [{ leagueId: lIdStr }, { leagueId: lIdNum }] })
+               .select('user groupMatches.matchId groupMatches.winner groupMatches.qualifier podium podiumPoints') // 🔥 OTIMIZAÇÃO CRÍTICA
+               .populate('user', 'name')
+               .lean()
+        ]);
+
+        // 2. MODO SIMULAÇÃO (BLINDAGEM E INJEÇÃO)
+        // 🚨 Proteção Anti-ReDoS: Verifica se o payload de simulação não é gigantesco antes do JSON.parse
+        if (mode === 'simulacao' && simulations && simulations.length < 50000) {
+            try {
+                const parsedSimulations = JSON.parse(simulations);
+                matches.forEach(m => {
+                    const midStr = String(m.matchId);
+                    const simData = parsedSimulations[midStr];
+                    if (simData && m.status !== 'finished') {
+                        const winner = simData.winner?.toLowerCase();
+                        const qualifier = simData.qualifier?.toUpperCase();
+
+                        if (winner || qualifier) {
+                            m.isSimulated = true;
+                            if (winner === 'a') { m.scoreA = 2; m.scoreB = 0; }
+                            else if (winner === 'b') { m.scoreA = 0; m.scoreB = 2; }
+                            else if (winner === 'draw') { m.scoreA = 1; m.scoreB = 1; }
+
+                            if (qualifier === 'A') m.qualifiedSide = 'A';
+                            if (qualifier === 'B') m.qualifiedSide = 'B';
+                        }
+                    }
+                });
+            } catch (err) {
+                console.error('❌ Erro de Parsing no Modo Simulação:', err);
+            }
         }
 
-        const realWinner = getMatchResult(m.scoreA, m.scoreB);
-        const realQual = getQualifiedSide(m, realWinner);
-        
-        if (realWinner && gm.winner === realWinner) pts += 1;
-        if (gm.qualifier && realQual && gm.qualifier === realQual) pts += 1;
+        const unlockedPhases = settings?.unlockedPhases || [];
+        const officialPodium = officialPodiumDoc?.podium || {};
+        const betsByUserMap = new Map(bets.filter(b => b.user?._id).map(b => [b.user._id.toString(), b]));
+        const matchMap = new Map(matches.map(m => [String(m.matchId), m]));
+        const matchIdsDaLiga = new Set(matchMap.keys());
+        const eliminatedTeams = new Set();
 
-        // Atualização dinâmica do Pódio Live e Eliminações
-        // 🚨 PROTEÇÃO APLICADA: Evita eliminar seleções na fase de Semifinal/Final do pódio.
-        const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
-        if (isKnockoutPhase && m.group !== 'Semifinal' && m.group !== 'Final' && m.group !== '3º lugar') {
-          if (m.status === 'finished' || m.isSimulated) {
-            const loser = realQual === 'A' ? m.teamB : (realQual === 'B' ? m.teamA : null);
-            if (loser) eliminatedTeams.add(loser);
-          } else if (isLive && liveStatuses.includes(m.status)) {
-            if (m.scoreA > m.scoreB) eliminatedTeams.add(m.teamB);
-            else if (m.scoreB > m.scoreA) eliminatedTeams.add(m.teamA);
-          }
-        }
-      });
-      return { userId: b.user?._id?.toString(), points: pts + (b.podiumPoints || 0) };
-    }).filter(r => r.userId);
+        const targetBet = betsByUserMap.get(activeUserId);
+        if (!targetBet) return res.status(404).json({ success: false, message: 'Aposta não encontrada' });
 
-    const targetPoints = currentRanking.find(r => r.userId === activeUserId)?.points || 0;
-    const leaderPoints = Math.max(...currentRanking.map(r => r.points), 0);
-
-   // --- Cálculo da Posição Atual (Respeitando Empates do /leaderboard) ---
-   const sortedCurrentRanking = [...currentRanking].sort((a, b) => {
-     const nameA = betsByUserMap.get(a.userId)?.user?.name || "";
-     const nameB = betsByUserMap.get(b.userId)?.user?.name || "";
-     return b.points - a.points || nameA.localeCompare(nameB);
-   });
-   
-   let currentPosition = 1;
-   let lastPoints = null;
-   let posToAssign = 0;
-   
-   // 🟢 NOVO: Array que vai guardar o ranking completo
-   const simulatedRankingList = []; 
-
-   for (let i = 0; i < sortedCurrentRanking.length; i++) {
-     const item = sortedCurrentRanking[i];
-     if (lastPoints === null || item.points !== lastPoints) {
-       posToAssign = i + 1;
-       lastPoints = item.points;
-     }
-
-     // 🟢 NOVO: Preenchemos a lista simulada
-     simulatedRankingList.push({
-        position: posToAssign,
-        userId: item.userId,
-        points: item.points,
-        name: betsByUserMap.get(item.userId)?.user?.name || "Desconhecido"
-     });
-
-     if (item.userId === activeUserId) {
-       currentPosition = posToAssign;
-       // 🔴 ATENÇÃO: O `break;` que tinha aqui foi removido para podermos mapear todos os rivais!
-     }
-   }
-   // ----------------------------------------------------------------------------
-    // =========================================================================
-    // 🔀 DIVISÃO DE JOGOS FUTUROS (A mágica do Display vs Teto Máximo)
-    // =========================================================================
-    // 1. Array de visualização (Mantém os jogos que o usuário simulou na tela para ele poder alterar)
-    const displayFutureMatches = matches
-      .filter(m => (isLive ? m.status === 'scheduled' : m.status !== 'finished') || m.isSimulated)
-      .sort((a, b) => {
-        const idA = parseInt(String(a.matchId).replace(/\D/g, ''), 10) || 0;
-        const idB = parseInt(String(b.matchId).replace(/\D/g, ''), 10) || 0;
-        return idB - idA; 
-      });
-
-    // 2. Array para a matemática (Remove os jogos simulados para não dar ponto dobrado no Teto)
-    const mathFutureMatches = displayFutureMatches.filter(m => !m.isSimulated);
-    // =========================================================================
-
-    // =========================================================================
-    // 🏆 O CÉREBRO MATEMÁTICO DO MILAGRE (Executa escondido sem alterar UI)
-    // =========================================================================
-    const miracleSimulations = {}; 
-    let miracleAchieved = false;
-
-    if (isMiracleMode && activeUserId) {
-      // 1. O Placar Dinâmico na memória (Snapshot do ranking atual)
-      const placarDinamico = {};
-      currentRanking.forEach(user => {
-        placarDinamico[user.userId] = user.points; 
-      });
-
-      const checarSeEstouNoTopo = () => {
-        const pontuacaoMaxima = Math.max(...Object.values(placarDinamico));
-        return placarDinamico[activeUserId] >= pontuacaoMaxima;
-      };
-
-      // Só roda se já não estiver em 1º lugar
-      if (!checarSeEstouNoTopo()) {
-        // 2. Varrer os jogos não jogados ORDENADOS cronologicamente (Temporário)
-        const jogosParaCalculo = [...mathFutureMatches].sort((a, b) => {
-          return new Date(a.date) - new Date(b.date); 
+        // Map de palpites do alvo
+        const targetPicksMap = new Map();
+        (targetBet.groupMatches || []).forEach(gm => {
+            if (matchIdsDaLiga.has(String(gm.matchId))) targetPicksMap.set(String(gm.matchId), gm);
         });
 
-        for (const m of jogosParaCalculo) {
-          if (checarSeEstouNoTopo()) break; // Chegou no topo! Para a simulação
+        // 3. IDENTIFICAÇÃO DE ELIMINAÇÕES (FASE DE GRUPOS E MATA-MATA)
+        const knockoutQuotas = { '16-avos de final': 16, 'Oitavas de final': 8, 'Quartas de final': 4, 'Semifinal': 2, '3º lugar': 1, 'Final': 1 };
+        let initialKnockoutGroup = null;
+        let requiredMatchCount = 0;
 
-          const midStr = String(m.matchId);
-          const targetPick = targetPicksMap.get(midStr);
-          const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
+        matches.forEach(m => {
+            const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
+            if (isKnockoutPhase && knockoutQuotas[m.group] > requiredMatchCount) {
+                requiredMatchCount = knockoutQuotas[m.group];
+                initialKnockoutGroup = m.group;
+            }
+        });
 
-          if (targetPick && (targetPick.winner || targetPick.qualifier)) {
-            // 🌟 CORREÇÃO: Armazena o objeto de forma isolada para não amassar os dados
-            miracleSimulations[midStr] = {
-                winner: targetPick.winner || null,
-                qualifier: isKnockoutPhase ? (targetPick.qualifier || null) : null
-            };
-            
-            // 3. Efeito Carona: Atualiza placar de TODO MUNDO baseado neste resultado "certo"
-            Array.from(betsByUserMap.values()).forEach(bet => {
-              const rivalPick = (bet.groupMatches || []).find(gm => String(gm.matchId) === midStr);
-              if (rivalPick) {
-                // Pontuação por acertar Vencedor
-                if (targetPick.winner && rivalPick.winner === targetPick.winner) {
-                  placarDinamico[bet.user._id.toString()] = (placarDinamico[bet.user._id.toString()] || 0) + 1;
-                }
-                // Pontuação extra no mata-mata
-                if (isKnockoutPhase && targetPick.qualifier && rivalPick.qualifier === targetPick.qualifier) {
-                  placarDinamico[bet.user._id.toString()] = (placarDinamico[bet.user._id.toString()] || 0) + 1;
-                }
-              }
+        if (initialKnockoutGroup && requiredMatchCount > 0) {
+            const initialMatches = matches.filter(m => (m.phase === 'knockout' || m.phase === 'mata-mata') && m.group === initialKnockoutGroup);
+            if (initialMatches.length === requiredMatchCount) {
+                const teamsInKnockout = new Set();
+                initialMatches.forEach(m => {
+                    if (m.teamA) teamsInKnockout.add(m.teamA);
+                    if (m.teamB) teamsInKnockout.add(m.teamB);
+                });
+                matches.forEach(m => {
+                    if (m.phase === 'group') {
+                        if (m.teamA && !teamsInKnockout.has(m.teamA)) eliminatedTeams.add(m.teamA);
+                        if (m.teamB && !teamsInKnockout.has(m.teamB)) eliminatedTeams.add(m.teamB);
+                    }
+                });
+            }
+        }
+
+        // 4. RANKING ATUAL & ELIMINAÇÕES LIVE
+        const liveStatuses = ['ao_vivo', '1_tempo', '2_tempo', 'intervalo', 'prorrogacao', '1_tet', '2_tet', 'penaltis', 'live', 'in_progress'];
+        
+        const currentRanking = bets
+            .map(b => {
+                const betUserId = b.user?._id?.toString();
+                if (!betUserId) return null;
+
+                let pts = 0;
+                (b.groupMatches || []).forEach(gm => {
+                    const midStr = String(gm.matchId);
+                    const m = matchMap.get(midStr);
+                    if (!m) return;
+
+                    const isMatchValid = isLive ? (m.status !== 'scheduled' || m.isSimulated) : (m.status === 'finished' || m.isSimulated);
+                    if (!isMatchValid) return;
+
+                    const realWinner = getMatchResult(m.scoreA, m.scoreB);
+                    const realQual = getQualifiedSide(m, realWinner);
+
+                    if (realWinner && gm.winner === realWinner) pts += 1;
+                    if (gm.qualifier && realQual && gm.qualifier === realQual) pts += 1;
+
+                    const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
+                    if (isKnockoutPhase && !['Semifinal', 'Final', '3º lugar'].includes(m.group)) {
+                        if (m.status === 'finished' || m.isSimulated) {
+                            const loser = realQual === 'A' ? m.teamB : (realQual === 'B' ? m.teamA : null);
+                            if (loser) eliminatedTeams.add(loser);
+                        } else if (isLive && liveStatuses.includes(m.status)) {
+                            if (m.scoreA > m.scoreB) eliminatedTeams.add(m.teamB);
+                            else if (m.scoreB > m.scoreA) eliminatedTeams.add(m.teamA);
+                        }
+                    }
+                });
+
+                return { userId: betUserId, points: pts + (b.podiumPoints || 0), name: b.user?.name || "" };
+            })
+            .filter(Boolean);
+
+        const sortedCurrentRanking = [...currentRanking].sort((a, b) => b.points - a.points || a.name.localeCompare(b.name));
+
+        const targetPoints = sortedCurrentRanking.find(r => r.userId === activeUserId)?.points || 0;
+        const leaderPoints = sortedCurrentRanking[0]?.points || 0;
+
+        let currentPosition = 1;
+        let lastPoints = null;
+        let posToAssign = 0;
+        const simulatedRankingList = []; 
+
+        sortedCurrentRanking.forEach((item, i) => {
+            if (lastPoints === null || item.points !== lastPoints) {
+                posToAssign = i + 1;
+                lastPoints = item.points;
+            }
+            if (item.userId === activeUserId) currentPosition = posToAssign;
+
+            simulatedRankingList.push({
+                position: posToAssign,
+                userId: item.userId,
+                points: item.points,
+                name: item.name
             });
-          }
+        });
+
+        // 5. DIVISÃO DE JOGOS FUTUROS
+        const displayFutureMatches = matches
+            .filter(m => (isLive ? m.status === 'scheduled' : m.status !== 'finished') || m.isSimulated)
+            .sort((a, b) => (parseInt(String(b.matchId).replace(/\D/g, ''), 10) || 0) - (parseInt(String(a.matchId).replace(/\D/g, ''), 10) || 0));
+
+        const mathFutureMatches = displayFutureMatches.filter(m => !m.isSimulated);
+
+        // 6. MOTOR DO MILAGRE (SIMULAÇÃO DINÂMICA)
+        const miracleSimulations = {}; 
+        let miracleAchieved = false;
+
+        if (isMiracleMode && activeUserId) {
+            const placarDinamico = Object.fromEntries(currentRanking.map(u => [u.userId, u.points]));
+            const isNoTopo = () => placarDinamico[activeUserId] >= Math.max(...Object.values(placarDinamico));
+
+            if (!isNoTopo()) {
+                const jogosParaCalculo = [...mathFutureMatches].sort((a, b) => new Date(a.date) - new Date(b.date));
+                
+                for (const m of jogosParaCalculo) {
+                    if (isNoTopo()) break;
+                    
+                    const midStr = String(m.matchId);
+                    const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
+                    const targetPick = targetPicksMap.get(midStr);
+
+                    if (targetPick && (targetPick.winner || targetPick.qualifier)) {
+                        miracleSimulations[midStr] = { 
+                            winner: targetPick.winner || null, 
+                            qualifier: isKnockoutPhase ? (targetPick.qualifier || null) : null 
+                        };
+                        
+                        Array.from(betsByUserMap.values()).forEach(bet => {
+                            const rivalPick = (bet.groupMatches || []).find(gm => String(gm.matchId) === midStr);
+                            const uId = bet.user._id.toString();
+                            
+                            if (rivalPick) {
+                                if (targetPick.winner && rivalPick.winner === targetPick.winner) {
+                                    placarDinamico[uId] = (placarDinamico[uId] || 0) + 1;
+                                }
+                                if (isKnockoutPhase && targetPick.qualifier && rivalPick.qualifier === targetPick.qualifier) {
+                                    placarDinamico[uId] = (placarDinamico[uId] || 0) + 1;
+                                }
+                            }
+                        });
+                    }
+                }
+            }
+            miracleAchieved = isNoTopo();
         }
-      }
-      
-      // Verifica se a simulação foi forte o suficiente para superar o gap
-      const pontuacaoMaximaFinal = Math.max(...Object.values(placarDinamico));
-      miracleAchieved = placarDinamico[activeUserId] >= pontuacaoMaximaFinal;
-    }
-    // =========================================================================
 
-    // 3. MAPA DE POTENCIAL DE PÓDIO
-    const podiumWeights = { first: 7, second: 5, third: 4, fourth: 3 };
-    const userPodiumPotentialMap = new Map();
+        // 7. PÓDIO E PROJEÇÃO MÁXIMA
+        const podiumWeights = { first: 7, second: 5, third: 4, fourth: 3 };
+        const userPodiumPotentialMap = new Map();
 
-    bets.forEach(b => {
-      const betUserId = b.user?._id?.toString();
-      if (!betUserId) return;
-      let pot = 0;
-      if (b.podium) {
-        const p = b.podium;
-        if (!officialPodium.first && p.first && !eliminatedTeams.has(p.first)) pot += podiumWeights.first;
-        if (!officialPodium.second && p.second && !eliminatedTeams.has(p.second)) pot += podiumWeights.second;
-        if (!officialPodium.third && p.third && !eliminatedTeams.has(p.third)) pot += podiumWeights.third;
-        if (!officialPodium.fourth && p.fourth && !eliminatedTeams.has(p.fourth)) pot += podiumWeights.fourth;
-      }
-      userPodiumPotentialMap.set(betUserId, pot);
-    });
+        bets.forEach(b => {
+            const betUserId = b.user?._id?.toString();
+            if (!betUserId) return;
+            let pot = 0;
+            if (b.podium) {
+                ['first', 'second', 'third', 'fourth'].forEach(pos => {
+                    if (!officialPodium[pos] && b.podium[pos] && !eliminatedTeams.has(b.podium[pos])) pot += podiumWeights[pos];
+                });
+            }
+            userPodiumPotentialMap.set(betUserId, pot);
+        });
 
-    const targetPodiumPotential = userPodiumPotentialMap.get(activeUserId) || 0;
+        const targetPodiumPotential = userPodiumPotentialMap.get(activeUserId) || 0;
+        const isPodiumLocked = !isAdmin && !unlockedPhases.includes('podium') && !unlockedPhases.includes('Pódio');
+        const hidePodium = !isViewingSelf && isPodiumLocked;
+        const podiumDetails = [];
 
-    // 🌟 DETALHAMENTO DO PÓDIO DO USUÁRIO ALVO
-    const podiumDetails = [];
-    
-    // Regra de Visibilidade do Pódio (Proteção Anti-Espião)
-    const isPodiumLocked = !isAdmin && !unlockedPhases.includes('podium') && !unlockedPhases.includes('Pódio');
-    const hidePodium = !isViewingSelf && isPodiumLocked;
-
-    if (targetBet.podium) {
-      const slots = [
-          { key: 'first', label: '1º', points: podiumWeights.first },
-          { key: 'second', label: '2º', points: podiumWeights.second },
-          { key: 'third', label: '3º', points: podiumWeights.third },
-          { key: 'fourth', label: '4º', points: podiumWeights.fourth }
-      ];
-
-      slots.forEach(slot => {
-          if (hidePodium) {
-              podiumDetails.push({
-                  team: 'Conteúdo Bloqueado 🔒',
-                  logoUrl: null,
-                  position: slot.label,
-                  points: slot.points,
-                  status: 'locked'
-              });
-              return; 
-          }
-
-          const teamName = targetBet.podium[slot.key];
-          if (teamName) {
-              let status = 'alive';
-              
-              const matchRef = matches.find(m => m.teamA === teamName || m.teamB === teamName);
-              const foundLogo = matchRef 
-                  ? (matchRef.teamA === teamName ? matchRef.logoA : matchRef.logoB) 
-                  : null;
-
-              if (officialPodium[slot.key]) {
-                  status = officialPodium[slot.key] === teamName ? 'conquered' : 'dead';
-              } else if (eliminatedTeams.has(teamName)) {
-                  status = 'dead';
-              }
-
-              podiumDetails.push({
-                  team: teamName,
-                  logoUrl: foundLogo,
-                  position: slot.label,
-                  points: slot.points,
-                  status: status
-              });
-          }
-      });
-    }
-
-    // 4. Posição Máxima (Cenário de Ouro Clássico) - 🚨 Usa mathFutureMatches
-    const projectedRanking = currentRanking.map(r => {
-      let projPts = r.points;
-      const isTarget = r.userId === activeUserId;
-      const bRef = betsByUserMap.get(r.userId);
-
-      mathFutureMatches.forEach(m => {
-        const midStr = String(m.matchId);
-        const targetPick = targetPicksMap.get(midStr);
-        const rivalPick = (bRef?.groupMatches || []).find(gm => String(gm.matchId) === midStr);
-        const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
-
-        if (isTarget) {
-          if (targetPick?.winner) projPts += 1;
-          if (isKnockoutPhase && targetPick?.qualifier) projPts += 1;
-        } else if (targetPick && rivalPick) {
-          if (targetPick.winner && targetPick.winner === rivalPick.winner) projPts += 1;
-          if (isKnockoutPhase && targetPick.qualifier && targetPick.qualifier === rivalPick.qualifier) projPts += 1;
+        if (targetBet.podium) {
+            ['first', 'second', 'third', 'fourth'].forEach(key => {
+                if (hidePodium) {
+                    podiumDetails.push({ team: 'Conteúdo Bloqueado 🔒', position: key, points: podiumWeights[key], status: 'locked' });
+                    return;
+                }
+                const teamName = targetBet.podium[key];
+                if (teamName) {
+                    let status = officialPodium[key] === teamName ? 'conquered' : (officialPodium[key] || eliminatedTeams.has(teamName) ? 'dead' : 'alive');
+                    const matchRef = matches.find(m => m.teamA === teamName || m.teamB === teamName);
+                    const logoUrl = matchRef ? (matchRef.teamA === teamName ? matchRef.logoA : matchRef.logoB) : null;
+                    podiumDetails.push({ team: teamName, logoUrl, position: key, points: podiumWeights[key], status });
+                }
+            });
         }
-      });
-      if (isTarget) projPts += targetPodiumPotential;
-      return { userId: r.userId, totalPoints: projPts, name: bRef?.user?.name || "" };
-    });
 
-    // 🌟 CORREÇÃO DE ORDENAÇÃO: Substituído `nameB` (undefined) por `b.name`
-    projectedRanking.sort((a, b) => b.totalPoints - a.totalPoints || a.name.localeCompare(b.name));
-
-    // --- CORREÇÃO DO RANKING DE EMPATES ---
-    const targetUserProj = projectedRanking.find(r => r.userId === activeUserId);
-    const usersBetter = projectedRanking.filter(r => r.totalPoints > targetUserProj.totalPoints).length;
-    const targetMaxPosition = usersBetter + 1;
-
-    // 🚨 Usa mathFutureMatches
-    const matchPointsLeft = mathFutureMatches.reduce((acc, m) => {
-      const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
-      const targetPick = targetPicksMap.get(String(m.matchId));
-      let pts = 0;
-      if (targetPick?.winner) pts += 1;
-      if (isKnockoutPhase && targetPick?.qualifier) pts += 1;
-      return acc + pts;
-    }, 0);
-    
-    const totalPotential = matchPointsLeft + targetPodiumPotential;
-    const targetMaxTotal = targetPoints + totalPotential;
-
-    // =========================================================================
-    // 5. PROBABILIDADE AVANÇADA (Motor de Contenção) - 🚨 Usa mathFutureMatches
-    // =========================================================================
-    let probability = 0;
-
-    if (targetMaxPosition === 1) {
-      if (targetPoints > leaderPoints) {
-        const margem = targetPoints - leaderPoints;
-        probability = Math.min(99, 80 + (margem * 2));
-      } else {
-        const leaders = currentRanking.filter(r => r.points === leaderPoints && r.userId !== activeUserId);
-        
-        if (leaders.length === 0) {
-          probability = 80;
-        } else {
-          let minChanceAgainstLeaders = 100;
-
-          leaders.forEach(leader => {
-            const leaderBet = betsByUserMap.get(leader.userId);
-            let contestedPoints = 0;
+        const projectedRanking = currentRanking.map(r => {
+            let projPts = r.points;
+            const isTarget = r.userId === activeUserId;
+            const bRef = betsByUserMap.get(r.userId);
 
             mathFutureMatches.forEach(m => {
-              const midStr = String(m.matchId);
-              const isKnockout = m.phase === 'knockout' || m.phase === 'mata-mata';
-              const targetPick = targetPicksMap.get(midStr);
-              const leaderPick = (leaderBet?.groupMatches || []).find(gm => String(gm.matchId) === midStr);
+                const midStr = String(m.matchId);
+                const targetPick = targetPicksMap.get(midStr);
+                const rivalPick = (bRef?.groupMatches || []).find(gm => String(gm.matchId) === midStr);
+                const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
 
-              if (targetPick) {
-                if (targetPick.winner !== leaderPick?.winner) {
-                  contestedPoints += 1;
+                if (isTarget) {
+                    if (targetPick?.winner) projPts += 1;
+                    if (isKnockoutPhase && targetPick?.qualifier) projPts += 1;
+                } else if (targetPick && rivalPick) {
+                    if (targetPick.winner && targetPick.winner === rivalPick.winner) projPts += 1;
+                    if (isKnockoutPhase && targetPick.qualifier && targetPick.qualifier === rivalPick.qualifier) projPts += 1;
                 }
-                if (isKnockout && targetPick.qualifier !== leaderPick?.qualifier) {
-                  contestedPoints += 1;
-                }
-              }
             });
 
-            if (targetBet.podium) {
-              ['first', 'second', 'third', 'fourth'].forEach(pos => {
-                const myTeam = targetBet.podium[pos];
-                const leaderTeam = leaderBet?.podium?.[pos];
-                if (myTeam && !eliminatedTeams.has(myTeam) && myTeam !== leaderTeam) {
-                  contestedPoints += podiumWeights[pos];
-                }
-              });
-            }
-
-            const gap = leader.points - targetPoints;
-            if (contestedPoints >= gap) {
-              if (contestedPoints === 0 && gap === 0) {
-                minChanceAgainstLeaders = Math.min(minChanceAgainstLeaders, 50);
-              } else {
-                const margin = contestedPoints - gap; 
-                const reachabilityChance = 5 + ((margin / contestedPoints) * 70);
-                minChanceAgainstLeaders = Math.min(minChanceAgainstLeaders, reachabilityChance);
-              }
-            } else {
-              minChanceAgainstLeaders = 0; 
-            }
-          });
-
-          probability = Math.max(1, Math.round(minChanceAgainstLeaders));
-        }
-      }
-    }
-    // =========================================================================
-
-    // 6. Análise de Secagem Dinâmica - 🚨 Usa displayFutureMatches (para exibir no Card)
-    const matchesAnalysis = displayFutureMatches.map((m, index) => {
-      const midStr = String(m.matchId);
-      const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
-      const isLocked = !isAdmin && (m.phase === 'group' ? !unlockedPhases.includes('group') : !unlockedPhases.includes(m.group));
-      const targetPick = targetPicksMap.get(midStr);
-
-      if (index < 2) console.log(`5. ANALISANDO JOGO ${midStr}:`, targetPick ? '✅ ENCONTRADO' : '❌ SEM PALPITE');
-
-      let rivalsToWatch = currentRanking.filter(r => r.points > targetPoints);
-
-      if (rivalsToWatch.length === 0) {
-        let MARGEM_DE_PERIGO = 3; 
-        if (m.phase === 'group') {
-          MARGEM_DE_PERIGO = 4; 
-        } else if (isKnockoutPhase) {
-          switch (m.group) {
-            case '16-avos de final': MARGEM_DE_PERIGO = 6; break;
-            case 'Oitavas de final': MARGEM_DE_PERIGO = 4; break;
-            case 'Quartas de final': MARGEM_DE_PERIGO = 3; break;
-            case 'Semifinal':
-            case '3º lugar':
-            case 'Final': MARGEM_DE_PERIGO = 2; break;
-          }
-        }
-
-        const meuPotencialMaximo = targetPoints + targetPodiumPotential;
-
-        rivalsToWatch = currentRanking.filter(r => {
-          if (r.userId === activeUserId) return false; 
-          
-          const rivalPodium = userPodiumPotentialMap.get(r.userId) || 0;
-          const rivalPotencialMaximo = r.points + rivalPodium;
-
-          return rivalPotencialMaximo >= (meuPotencialMaximo - MARGEM_DE_PERIGO);
+            if (isTarget) projPts += targetPodiumPotential;
+            return { userId: r.userId, totalPoints: projPts, name: r.name };
         });
-      }
 
-      const opponentsToWatch = isLocked ? ["Conteúdo Bloqueado 🔒"] : rivalsToWatch.filter(ra => {
-        const rb = betsByUserMap.get(ra.userId);
-        const rp = (rb?.groupMatches || []).find(gm => String(gm.matchId) === midStr);
-        return rp && (rp.winner !== targetPick?.winner || (isKnockoutPhase && rp.qualifier !== targetPick?.qualifier));
-      }).map(ra => betsByUserMap.get(ra.userId)?.user?.name).filter(Boolean);
+        projectedRanking.sort((a, b) => b.totalPoints - a.totalPoints || a.name.localeCompare(b.name));
 
-      const hideTargetPick = isLocked && !isViewingSelf;
+        const targetUserProj = projectedRanking.find(r => r.userId === activeUserId);
+        const usersBetter = projectedRanking.filter(r => r.totalPoints > (targetUserProj?.totalPoints ?? 0)).length;
+        const targetMaxPosition = usersBetter + 1;
 
-      // 🏆 DADOS DO MILAGRE INJETADOS NO CARD (ESTRUTURA CORRIGIDA)
-      const miracleData = miracleSimulations[midStr] || null;
-      const isMiracleResult = !!miracleData;
-      const miracleChoice = miracleData ? miracleData.winner : null;
-      const miracleQualifier = miracleData ? miracleData.qualifier : null;
+        const matchPointsLeft = mathFutureMatches.reduce((acc, m) => {
+            const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
+            const targetPick = targetPicksMap.get(String(m.matchId));
+            let pts = 0;
+            if (targetPick?.winner) pts += 1;
+            if (isKnockoutPhase && targetPick?.qualifier) pts += 1;
+            return acc + pts;
+        }, 0);
 
-      return {
-        matchId: m.matchId,
-        teams: `${m.teamA} x ${m.teamB}`,
-        status: m.status,
-        phase: m.phase,
-        group: m.group,
-        // Mantém as regras antigas e ADICIONA o milagre como gatilho de impacto (Visibilidade)
-        hasImpact: m.isSimulated === true || isMiracleResult === true || opponentsToWatch.length > 0,
-        isMiracleResult: isMiracleResult,
-        miracleChoice: miracleChoice,       // Valor do vencedor (90 min)
-        miracleQualifier: miracleQualifier, // Valor do classificado independente
-        isLocked,
-        myChoice: hideTargetPick ? { 
-          winner: null, 
-          label: 'Conteúdo Bloqueado 🔒',
-          qualifier: null,
-          qualifierName: null
-        } : { 
-          winner: targetPick?.winner || null, 
-          label: toWinnerLabel(targetPick?.winner, m.teamA, m.teamB),
-          qualifier: targetPick?.qualifier || null,
-          qualifierName: targetPick?.qualifier === 'A' ? m.teamA : (targetPick?.qualifier === 'B' ? m.teamB : (isKnockoutPhase ? 'Sem Palpite' : null))
-        },
-        opponentsToWatch
-      };
-    });
+        const totalPotential = matchPointsLeft + targetPodiumPotential;
+        const targetMaxTotal = targetPoints + totalPotential;
 
-    console.log('--- 🏁 [FIM DEBUG COMPLETO] ---\n');
+        // 5. PROBABILIDADE AVANÇADA (Motor de Contenção) - usa teto de pontos + pressão do caminho
+        const clampNumber = (value, min, max) => Math.max(min, Math.min(max, value));
 
-    res.json({
-      success: true,
-      data: {
-        summary: {
-          currentPosition,
-          maxPosition: targetMaxPosition, 
-          probability, 
-          currentPoints: targetPoints, 
-          maxPoints: targetMaxTotal, 
-          podiumPotential: targetPodiumPotential, 
-          totalMatches: displayFutureMatches.length, // 🚨 Mantém a contagem de todos os cards
-          podiumDetails,
-          miracleAchieved, // 🏆 Passa para o Front-end se a simulação perfeita roubou o 1º lugar!
-          simulatedRanking: simulatedRankingList // 🟢 ADICIONADO AQUI
-        },
-        matches: matchesAnalysis
-      }
-    });
-  } catch (e) {
-    console.error('❌ ERRO CRÍTICO NO CAMINHO DA LIDERANÇA:', e);
-    res.status(500).json({ success: false, message: 'Erro interno no servidor' });
-  }
+        const calculateProbability = ({
+            gap,
+            remainingPoints,
+            volatility = 1,
+            leaderCount = 1,
+            hasPodiumEdge = false
+        }) => {
+            if (gap <= 0) {
+                const bonus = hasPodiumEdge ? 8 : 0;
+                return clampNumber(80 + bonus, 80, 99);
+            }
+
+            if (remainingPoints <= 0 || remainingPoints < gap) {
+                return 0;
+            }
+
+            const pressure = gap / remainingPoints; // 0 = fácil, 1 = no limite, >1 = impossível
+            const base = 100 * Math.pow(1 - pressure, 1.6);
+            const leaderPenalty = Math.max(0.72, 1 - ((leaderCount - 1) * 0.08));
+            const volatilityBoost = clampNumber(0.82 + (volatility * 0.18), 0.82, 1.0);
+            const podiumBoost = hasPodiumEdge ? 1.06 : 1;
+
+            const raw = base * leaderPenalty * volatilityBoost * podiumBoost;
+            return clampNumber(Math.round(raw), 1, 95);
+        };
+
+        const contenders = sortedCurrentRanking.filter(r => r.points === leaderPoints);
+        const leaderCount = contenders.length || 1;
+        const targetBestCase = targetMaxTotal;
+        const bestLeaderCase = leaderPoints;
+        const gapToLeader = Math.max(0, bestLeaderCase - targetPoints);
+
+        const remainingDisputablePoints = totalPotential;
+        const hasPodiumEdge = targetPodiumPotential > 0;
+
+        const canReachLeader = targetBestCase >= bestLeaderCase;
+        let probability = 0;
+
+        if (canReachLeader) {
+            const volatility = mathFutureMatches.length > 0
+                ? clampNumber(mathFutureMatches.length / Math.max(1, displayFutureMatches.length), 0.4, 1)
+                : 0.4;
+
+            probability = calculateProbability({
+                gap: gapToLeader,
+                remainingPoints: remainingDisputablePoints,
+                volatility,
+                leaderCount,
+                hasPodiumEdge
+            });
+        }
+
+        const matchesAnalysis = displayFutureMatches.map((m, index) => {
+            const midStr = String(m.matchId);
+            const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
+            const isLocked = !isAdmin && (m.phase === 'group' ? !unlockedPhases.includes('group') : !unlockedPhases.includes(m.group));
+            const targetPick = targetPicksMap.get(midStr);
+
+            if (index < 2) console.log(`5. ANALISANDO JOGO ${midStr}:`, targetPick ? '✅ ENCONTRADO' : '❌ SEM PALPITE');
+
+            let rivalsToWatch = currentRanking.filter(r => r.userId !== activeUserId && r.points > targetPoints);
+
+            if (rivalsToWatch.length === 0) {
+                let MARGEM_DE_PERIGO = 3; 
+                if (m.phase === 'group') {
+                    MARGEM_DE_PERIGO = 4; 
+                } else if (isKnockoutPhase) {
+                    switch (m.group) {
+                        case '16-avos de final': MARGEM_DE_PERIGO = 6; break;
+                        case 'Oitavas de final': MARGEM_DE_PERIGO = 4; break;
+                        case 'Quartas de final': MARGEM_DE_PERIGO = 3; break;
+                        case 'Semifinal':
+                        case '3º lugar':
+                        case 'Final': MARGEM_DE_PERIGO = 2; break;
+                    }
+                }
+
+                const meuPotencialMaximo = targetPoints + targetPodiumPotential;
+
+                rivalsToWatch = currentRanking.filter(r => {
+                    if (r.userId === activeUserId) return false; 
+
+                    const rivalPodium = userPodiumPotentialMap.get(r.userId) || 0;
+                    const rivalPotencialMaximo = r.points + rivalPodium;
+
+                    return rivalPotencialMaximo >= (meuPotencialMaximo - MARGEM_DE_PERIGO);
+                });
+            }
+
+            const opponentsToWatch = isLocked ? ["Conteúdo Bloqueado 🔒"] : rivalsToWatch.filter(ra => {
+                const rb = betsByUserMap.get(ra.userId);
+                const rp = (rb?.groupMatches || []).find(gm => String(gm.matchId) === midStr);
+                return rp && (rp.winner !== targetPick?.winner || (isKnockoutPhase && rp.qualifier !== targetPick?.qualifier));
+            }).map(ra => betsByUserMap.get(ra.userId)?.user?.name).filter(Boolean);
+
+            const hideTargetPick = isLocked && !isViewingSelf;
+
+            const miracleData = miracleSimulations[midStr] || null;
+            const isMiracleResult = !!miracleData;
+            const miracleChoice = miracleData ? miracleData.winner : null;
+            const miracleQualifier = miracleData ? miracleData.qualifier : null;
+
+            return {
+                matchId: m.matchId,
+                teams: `${m.teamA} x ${m.teamB}`,
+                status: m.status,
+                phase: m.phase,
+                group: m.group,
+                hasImpact: m.isSimulated === true || isMiracleResult === true || opponentsToWatch.length > 0,
+                isMiracleResult,
+                miracleChoice,
+                miracleQualifier,
+                isLocked,
+                myChoice: hideTargetPick ? {
+                    winner: null,
+                    label: 'Conteúdo Bloqueado 🔒',
+                    qualifier: null,
+                    qualifierName: null
+                } : {
+                    winner: targetPick?.winner || null,
+                    label: toWinnerLabel(targetPick?.winner, m.teamA, m.teamB),
+                    qualifier: targetPick?.qualifier || null,
+                    qualifierName: targetPick?.qualifier === 'A' ? m.teamA : (targetPick?.qualifier === 'B' ? m.teamB : (isKnockoutPhase ? 'Sem Palpite' : null))
+                },
+                opponentsToWatch
+            };
+        });
+
+        // Retorno Final Estruturado
+        res.json({
+            success: true,
+            data: {
+                summary: {
+                    currentPosition,
+                    maxPosition: targetMaxPosition,
+                    probability,
+                    currentPoints: targetPoints,
+                    maxPoints: targetMaxTotal,
+                    podiumPotential: targetPodiumPotential,
+                    totalMatches: displayFutureMatches.length,
+                    podiumDetails,
+                    miracleAchieved,
+                    simulatedRanking: simulatedRankingList,
+                    nemesis: null // feature desconsiderada nesta versão
+                },
+                matches: matchesAnalysis
+            }
+        });
+    } catch (e) {
+        console.error('❌ ERRO CRÍTICO NO CAMINHO DA LIDERANÇA:', e);
+        res.status(500).json({ success: false, message: 'Erro interno no servidor' });
+    }
 });
 //🎯 Meus palpites (Filtrado por Liga)
  
