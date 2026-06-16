@@ -29,17 +29,19 @@ function toWinnerLabel(choice, teamA, teamB) {
  * 🧠 ESTRATÉGIA: Caminho da Liderança (VERSÃO DEFINITIVA SUPREMA - 2026)
  * Inclui: Mata-mata independente, Pódio Live, Secagem Dinâmica + PROBABILIDADE POR CONTENÇÃO + Pênaltis + Proteção Anti-Espião + Ordem Cronológica Invertida
  * NOVO: 🎮 MODO SIMULAÇÃO INTERATIVO (Sandbox In-Memory)
+ * NOVO: 🏆 BOTÃO DO MILAGRE (Simulação Cronológica Dinâmica até o Topo)
  */
 router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
   try {
-    // 🎮 NOVO: Parâmetro 'simulations' extraído da query
-    const { leagueId, userId: targetUserId, mode, simulations } = req.query;
+    // 🎮 NOVO: Parâmetro 'simulations' e 'miracle' extraídos da query
+    const { leagueId, userId: targetUserId, mode, simulations, miracle } = req.query;
     
     console.log('\n--- 🚀 [INÍCIO DEBUG LEADERSHIP-PATH] ---');
-    console.log('1. PARÂMETROS:', { leagueId, targetUserId, mode });
+    console.log('1. PARÂMETROS:', { leagueId, targetUserId, mode, miracle });
 
     const lIdNum = Number(leagueId);
     const lIdStr = String(leagueId);
+    const isMiracleMode = miracle === 'true'; // Flag do Botão do Milagre
     
     // --- Lógica de Identidade (Proteção Anti-Espião) ---
     const loggedInUserId = req.user._id.toString();
@@ -50,11 +52,12 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     const isLive = mode === 'live';
 
     // 1. Carga de Dados (Busca flexível e blindada para Pênaltis)
+    // 🚨 ATENÇÃO: 'date' adicionado ao select para o milagre cronológico funcionar!
     const configId = `league_${leagueId}`;
     const [settings, officialPodiumDoc, matches, bets] = await Promise.all([
       Settings.findById(configId).lean(),
       Settings.findOne({ key: 'podium', leagueId: lIdNum }).select('podium').lean(),
-      Match.find({ leagueId: lIdNum }).select('matchId status scoreA scoreB penaltiesA penaltiesB phase teamA teamB logoA logoB group qualifiedSide').lean(),
+      Match.find({ leagueId: lIdNum }).select('matchId date status scoreA scoreB penaltiesA penaltiesB phase teamA teamB logoA logoB group qualifiedSide').lean(),
       Bet.find({ 
         hasSubmitted: true, 
         $or: [ { leagueId: lIdStr }, { leagueId: lIdNum } ] 
@@ -295,6 +298,66 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     const mathFutureMatches = displayFutureMatches.filter(m => !m.isSimulated);
     // =========================================================================
 
+    // =========================================================================
+    // 🏆 O CÉREBRO MATEMÁTICO DO MILAGRE (Executa escondido sem alterar UI)
+    // =========================================================================
+    const miracleSimulations = {}; 
+    let miracleAchieved = false;
+
+    if (isMiracleMode && activeUserId) {
+      // 1. O Placar Dinâmico na memória (Snapshot do ranking atual)
+      const placarDinamico = {};
+      currentRanking.forEach(user => {
+        placarDinamico[user.userId] = user.points; 
+      });
+
+      const checarSeEstouNoTopo = () => {
+        const pontuacaoMaxima = Math.max(...Object.values(placarDinamico));
+        return placarDinamico[activeUserId] >= pontuacaoMaxima;
+      };
+
+      // Só roda se já não estiver em 1º lugar
+      if (!checarSeEstouNoTopo()) {
+        // 2. Varrer os jogos não jogados ORDENADOS cronologicamente (Temporário)
+        const jogosParaCalculo = [...mathFutureMatches].sort((a, b) => {
+          return new Date(a.date) - new Date(b.date); 
+        });
+
+        for (const m of jogosParaCalculo) {
+          if (checarSeEstouNoTopo()) break; // Chegou no topo! Para a simulação
+
+          const midStr = String(m.matchId);
+          const targetPick = targetPicksMap.get(midStr);
+          const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
+
+          if (targetPick && (targetPick.winner || targetPick.qualifier)) {
+            // Marca no motor que esse jogo precisou ser ativado pelo milagre
+            miracleSimulations[midStr] = targetPick.winner || targetPick.qualifier; 
+            
+            // 3. Efeito Carona: Atualiza placar de TODO MUNDO baseado neste resultado "certo"
+            Array.from(betsByUserMap.values()).forEach(bet => {
+              const rivalPick = (bet.groupMatches || []).find(gm => String(gm.matchId) === midStr);
+              if (rivalPick) {
+                // Pontuação por acertar Vencedor
+                if (targetPick.winner && rivalPick.winner === targetPick.winner) {
+                  placarDinamico[bet.user._id.toString()] = (placarDinamico[bet.user._id.toString()] || 0) + 1;
+                }
+                // Pontuação extra no mata-mata
+                if (isKnockoutPhase && targetPick.qualifier && rivalPick.qualifier === targetPick.qualifier) {
+                  placarDinamico[bet.user._id.toString()] = (placarDinamico[bet.user._id.toString()] || 0) + 1;
+                }
+              }
+            });
+          }
+        }
+      }
+      
+      // Verifica se a simulação foi forte o suficiente para superar o gap
+      const pontuacaoMaximaFinal = Math.max(...Object.values(placarDinamico));
+      miracleAchieved = placarDinamico[activeUserId] >= pontuacaoMaximaFinal;
+    }
+    // =========================================================================
+
     // 3. MAPA DE POTENCIAL DE PÓDIO
     const podiumWeights = { first: 7, second: 5, third: 4, fourth: 3 };
     const userPodiumPotentialMap = new Map();
@@ -525,12 +588,19 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
 
       const hideTargetPick = isLocked && !isViewingSelf;
 
+      // 🏆 DADOS DO MILAGRE INJETADOS NO CARD
+      const miracleChoice = miracleSimulations[midStr] || null;
+      const isMiracleResult = !!miracleChoice;
+
       return {
         matchId: m.matchId,
         teams: `${m.teamA} x ${m.teamB}`,
         status: m.status,
         phase: m.phase,
-        hasImpact: m.isSimulated === true || opponentsToWatch.length > 0,
+        // Mantém as regras antigas e ADICIONA o milagre como gatilho de impacto (Visibilidade)
+        hasImpact: m.isSimulated === true || isMiracleResult === true || opponentsToWatch.length > 0,
+        isMiracleResult: isMiracleResult,
+        miracleChoice: miracleChoice,
         isLocked,
         myChoice: hideTargetPick ? { 
           winner: null, 
@@ -560,7 +630,8 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
           maxPoints: targetMaxTotal, 
           podiumPotential: targetPodiumPotential, 
           totalMatches: displayFutureMatches.length, // 🚨 Mantém a contagem de todos os cards
-          podiumDetails
+          podiumDetails,
+          miracleAchieved // 🏆 Passa para o Front-end se a simulação perfeita roubou o 1º lugar!
         },
         matches: matchesAnalysis
       }
