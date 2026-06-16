@@ -351,61 +351,69 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         const totalPotential = matchPointsLeft + targetPodiumPotential;
         const targetMaxTotal = targetPoints + totalPotential;
 
-        // 5. PROBABILIDADE AVANÇADA (Motor de Contenção) - usa teto de pontos + pressão do caminho
-        const clampNumber = (value, min, max) => Math.max(min, Math.min(max, value));
-
-        const calculateProbability = ({
-            gap,
-            remainingPoints,
-            volatility = 1,
-            leaderCount = 1,
-            hasPodiumEdge = false
-        }) => {
-            if (gap <= 0) {
-                const bonus = hasPodiumEdge ? 8 : 0;
-                return clampNumber(80 + bonus, 80, 99);
-            }
-
-            if (remainingPoints <= 0 || remainingPoints < gap) {
-                return 0;
-            }
-
-            const pressure = gap / remainingPoints; // 0 = fácil, 1 = no limite, >1 = impossível
-            const base = 100 * Math.pow(1 - pressure, 1.6);
-            const leaderPenalty = Math.max(0.72, 1 - ((leaderCount - 1) * 0.08));
-            const volatilityBoost = clampNumber(0.82 + (volatility * 0.18), 0.82, 1.0);
-            const podiumBoost = hasPodiumEdge ? 1.06 : 1;
-
-            const raw = base * leaderPenalty * volatilityBoost * podiumBoost;
-            return clampNumber(Math.round(raw), 1, 95);
-        };
-
-        const contenders = sortedCurrentRanking.filter(r => r.points === leaderPoints);
-        const leaderCount = contenders.length || 1;
-        const targetBestCase = targetMaxTotal;
-        const bestLeaderCase = leaderPoints;
-        const gapToLeader = Math.max(0, bestLeaderCase - targetPoints);
-
-        const remainingDisputablePoints = totalPotential;
-        const hasPodiumEdge = targetPodiumPotential > 0;
-
-        const canReachLeader = targetBestCase >= bestLeaderCase;
+        // 5. PROBABILIDADE AVANÇADA (Motor de Contenção) - 🚨 Usa mathFutureMatches
         let probability = 0;
 
-        if (canReachLeader) {
-            const volatility = mathFutureMatches.length > 0
-                ? clampNumber(mathFutureMatches.length / Math.max(1, displayFutureMatches.length), 0.4, 1)
-                : 0.4;
+        if (targetMaxPosition === 1) {
+            if (targetPoints > leaderPoints) {
+                const margem = targetPoints - leaderPoints;
+                probability = Math.min(99, 80 + (margem * 2));
+            } else {
+                const leaders = sortedCurrentRanking.filter(r => r.points === leaderPoints && r.userId !== activeUserId);
 
-            probability = calculateProbability({
-                gap: gapToLeader,
-                remainingPoints: remainingDisputablePoints,
-                volatility,
-                leaderCount,
-                hasPodiumEdge
-            });
+                if (leaders.length === 0) {
+                    probability = 80;
+                } else {
+                    let minChanceAgainstLeaders = 100;
+
+                    leaders.forEach(leader => {
+                        const leaderBet = betsByUserMap.get(leader.userId);
+                        let contestedPoints = 0;
+
+                        mathFutureMatches.forEach(m => {
+                            const midStr = String(m.matchId);
+                            const isKnockout = m.phase === 'knockout' || m.phase === 'mata-mata';
+                            const targetPick = targetPicksMap.get(midStr);
+                            const leaderPick = (leaderBet?.groupMatches || []).find(gm => String(gm.matchId) === midStr);
+
+                            if (targetPick) {
+                                if (targetPick.winner !== leaderPick?.winner) {
+                                    contestedPoints += 1;
+                                }
+                                if (isKnockout && targetPick.qualifier !== leaderPick?.qualifier) {
+                                    contestedPoints += 1;
+                                }
+                            }
+                        });
+
+                        if (targetBet.podium) {
+                            ['first', 'second', 'third', 'fourth'].forEach(pos => {
+                                const myTeam = targetBet.podium[pos];
+                                const leaderTeam = leaderBet?.podium?.[pos];
+                                if (myTeam && !eliminatedTeams.has(myTeam) && myTeam !== leaderTeam) {
+                                    contestedPoints += podiumWeights[pos];
+                                }
+                            });
+                        }
+
+                        const gap = leader.points - targetPoints;
+                        if (contestedPoints >= gap) {
+                            if (contestedPoints === 0 && gap === 0) {
+                                minChanceAgainstLeaders = Math.min(minChanceAgainstLeaders, 50);
+                            } else {
+                                const margin = contestedPoints - gap; 
+                                const reachabilityChance = 5 + ((margin / contestedPoints) * 70);
+                                minChanceAgainstLeaders = Math.min(minChanceAgainstLeaders, reachabilityChance);
+                            }
+                        } else {
+                            minChanceAgainstLeaders = 0; 
+                        }
+                    });
+
+                    probability = Math.max(1, Math.round(minChanceAgainstLeaders));
+                }
+            }
         }
-
         const matchesAnalysis = displayFutureMatches.map((m, index) => {
             const midStr = String(m.matchId);
             const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
