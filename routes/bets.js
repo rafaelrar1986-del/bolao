@@ -50,12 +50,6 @@ const getQualifiedSide = (match, matchResult) => {
     return matchResult && matchResult !== 'draw' ? matchResult : null;
 };
 
-const toWinnerLabel = (winner, teamA, teamB) => {
-    if (winner === 'A') return teamA;
-    if (winner === 'B') return teamB;
-    if (winner === 'draw') return 'Empate';
-    return 'Sem Palpite'; 
-};
 
 // =========================================================================
 // 🚀 ROTA PRINCIPAL
