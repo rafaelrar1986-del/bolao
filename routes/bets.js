@@ -265,29 +265,40 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     const leaderPoints = Math.max(...currentRanking.map(r => r.points), 0);
 
    // --- Cálculo da Posição Atual (Respeitando Empates do /leaderboard) ---
-    const sortedCurrentRanking = [...currentRanking].sort((a, b) => {
-      const nameA = betsByUserMap.get(a.userId)?.user?.name || "";
-      const nameB = betsByUserMap.get(b.userId)?.user?.name || "";
-      return b.points - a.points || nameA.localeCompare(nameB);
-    });
-    
-    let currentPosition = 1;
-    let lastPoints = null;
-    let posToAssign = 0;
+   const sortedCurrentRanking = [...currentRanking].sort((a, b) => {
+     const nameA = betsByUserMap.get(a.userId)?.user?.name || "";
+     const nameB = betsByUserMap.get(b.userId)?.user?.name || "";
+     return b.points - a.points || nameA.localeCompare(nameB);
+   });
+   
+   let currentPosition = 1;
+   let lastPoints = null;
+   let posToAssign = 0;
+   
+   // 🟢 NOVO: Array que vai guardar o ranking completo
+   const simulatedRankingList = []; 
 
-    for (let i = 0; i < sortedCurrentRanking.length; i++) {
-      const item = sortedCurrentRanking[i];
-      if (lastPoints === null || item.points !== lastPoints) {
-        posToAssign = i + 1;
-        lastPoints = item.points;
-      }
-      if (item.userId === activeUserId) {
-        currentPosition = posToAssign;
-        break;
-      }
-    }
-    // ----------------------------------------------------------------------------
+   for (let i = 0; i < sortedCurrentRanking.length; i++) {
+     const item = sortedCurrentRanking[i];
+     if (lastPoints === null || item.points !== lastPoints) {
+       posToAssign = i + 1;
+       lastPoints = item.points;
+     }
 
+     // 🟢 NOVO: Preenchemos a lista simulada
+     simulatedRankingList.push({
+        position: posToAssign,
+        userId: item.userId,
+        points: item.points,
+        name: betsByUserMap.get(item.userId)?.user?.name || "Desconhecido"
+     });
+
+     if (item.userId === activeUserId) {
+       currentPosition = posToAssign;
+       // 🔴 ATENÇÃO: O `break;` que tinha aqui foi removido para podermos mapear todos os rivais!
+     }
+   }
+   // ----------------------------------------------------------------------------
     // =========================================================================
     // 🔀 DIVISÃO DE JOGOS FUTUROS (A mágica do Display vs Teto Máximo)
     // =========================================================================
@@ -645,7 +656,8 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
           podiumPotential: targetPodiumPotential, 
           totalMatches: displayFutureMatches.length, // 🚨 Mantém a contagem de todos os cards
           podiumDetails,
-          miracleAchieved // 🏆 Passa para o Front-end se a simulação perfeita roubou o 1º lugar!
+          miracleAchieved, // 🏆 Passa para o Front-end se a simulação perfeita roubou o 1º lugar!
+          simulatedRanking: simulatedRankingList // 🟢 ADICIONADO AQUI
         },
         matches: matchesAnalysis
       }
