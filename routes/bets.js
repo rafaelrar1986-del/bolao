@@ -59,9 +59,6 @@ const getQualifiedSide = (match, matchResult) => {
 };
 
 
-// =========================================================================
-// 🚀 ROTA PRINCIPAL
-// =========================================================================
 router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
     try {
         const { leagueId, userId: targetUserId, mode, simulations, miracle } = req.query;
@@ -233,12 +230,54 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         let miracleAchieved = false;
         let miracleCriticalMatches = 0;
 
+        const getRankingSnapshot = (pointsMap) => {
+            const list = Object.entries(pointsMap)
+                .map(([userId, points]) => {
+                    const bet = betsByUserMap.get(userId);
+                    return {
+                        userId,
+                        points,
+                        name: bet?.user?.name || ''
+                    };
+                })
+                .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name));
+
+            let posToAssign = 0;
+            let lastPoints = null;
+
+            const ranked = list.map((item, index) => {
+                if (lastPoints === null || item.points !== lastPoints) {
+                    posToAssign = index + 1;
+                    lastPoints = item.points;
+                }
+                return {
+                    ...item,
+                    position: posToAssign
+                };
+            });
+
+            const target = ranked.find(r => r.userId === activeUserId);
+            const leader = ranked[0] || null;
+
+            return {
+                ranked,
+                targetPosition: target?.position || ranked.length + 1,
+                targetPoints: target?.points || 0,
+                leaderId: leader?.userId || null,
+                leaderPoints: leader?.points || 0,
+                gapToLeader: (leader?.points || 0) - (target?.points || 0)
+            };
+        };
+
         const getTopPoints = (pointsMap) => Math.max(...Object.values(pointsMap));
         const getGapToLeader = (pointsMap) => getTopPoints(pointsMap) - (pointsMap[activeUserId] || 0);
 
         if (isMiracleMode && activeUserId) {
             const placarDinamico = Object.fromEntries(currentRanking.map(u => [u.userId, u.points]));
-            const isNoTopo = () => placarDinamico[activeUserId] >= getTopPoints(placarDinamico);
+            const isNoTopo = () => {
+                const snapshot = getRankingSnapshot(placarDinamico);
+                return snapshot.targetPosition === 1;
+            };
 
             if (!isNoTopo()) {
                 const jogosParaCalculo = [...mathFutureMatches].sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -250,33 +289,37 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                     const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
                     const targetPick = targetPicksMap.get(midStr);
 
-                    if (targetPick && (targetPick.winner || targetPick.qualifier)) {
-                        const gapBefore = getGapToLeader(placarDinamico);
+                    if (!targetPick || (!targetPick.winner && !targetPick.qualifier)) continue;
 
-                        miracleSimulations[midStr] = {
-                            winner: targetPick.winner || null,
-                            qualifier: isKnockoutPhase ? (targetPick.qualifier || null) : null
-                        };
+                    const before = getRankingSnapshot(placarDinamico);
 
-                        Array.from(betsByUserMap.values()).forEach(bet => {
-                            const rivalPick = (bet.groupMatches || []).find(gm => String(gm.matchId) === midStr);
-                            const uId = bet.user._id.toString();
+                    miracleSimulations[midStr] = {
+                        winner: targetPick.winner || null,
+                        qualifier: isKnockoutPhase ? (targetPick.qualifier || null) : null
+                    };
 
-                            if (rivalPick) {
-                                if (targetPick.winner && rivalPick.winner === targetPick.winner) {
-                                    placarDinamico[uId] = (placarDinamico[uId] || 0) + 1;
-                                }
-                                if (isKnockoutPhase && targetPick.qualifier && rivalPick.qualifier === targetPick.qualifier) {
-                                    placarDinamico[uId] = (placarDinamico[uId] || 0) + 1;
-                                }
+                    Array.from(betsByUserMap.values()).forEach(bet => {
+                        const rivalPick = (bet.groupMatches || []).find(gm => String(gm.matchId) === midStr);
+                        const uId = bet.user._id.toString();
+
+                        if (rivalPick) {
+                            if (targetPick.winner && rivalPick.winner === targetPick.winner) {
+                                placarDinamico[uId] = (placarDinamico[uId] || 0) + 1;
                             }
-                        });
-
-                        const gapAfter = getGapToLeader(placarDinamico);
-
-                        if (gapAfter < gapBefore) {
-                            miracleCriticalMatches++;
+                            if (isKnockoutPhase && targetPick.qualifier && rivalPick.qualifier === targetPick.qualifier) {
+                                placarDinamico[uId] = (placarDinamico[uId] || 0) + 1;
+                            }
                         }
+                    });
+
+                    const after = getRankingSnapshot(placarDinamico);
+
+                    const changedLeader = before.leaderId !== after.leaderId;
+                    const improvedTargetPosition = after.targetPosition < before.targetPosition;
+                    const reducedGap = after.gapToLeader < before.gapToLeader;
+
+                    if (changedLeader || improvedTargetPosition || reducedGap) {
+                        miracleCriticalMatches++;
                     }
                 }
             }
