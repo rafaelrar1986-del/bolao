@@ -468,6 +468,14 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
             // Nos outros modos (Oficial/Live), continua filtrando só quem tem impacto real.
             const isSimulationMode = mode === 'simulacao' || isMiracleMode;
             const hasImpact = isSimulationMode ? true : (m.isSimulated === true || isMiracleResult === true || opponentsToWatch.length > 0);
+          // 🚀 CÁLCULO PARA O ALERTA DO MILAGRE NO FRONTEND
+        // 1. Total de jogos que o motor precisou avançar para te colocar no topo:
+        const miracleTotalMatchesNeeded = Object.keys(miracleSimulations).length;
+        
+        // 2. Quantos desses jogos realmente fazem diferença (onde os rivais apostaram diferente):
+        const miracleCriticalMatches = matchesAnalysis.filter(m => 
+            m.isMiracleResult && m.opponentsToWatch && m.opponentsToWatch.length > 0
+        ).length;
 
             return {
                 matchId: m.matchId,
@@ -508,6 +516,8 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                     totalMatches: displayFutureMatches.length,
                     podiumDetails,
                     miracleAchieved,
+                  miracleTotalMatchesNeeded, // 👈 INSERIDO AQUI
+                    miracleCriticalMatches,    // 👈 INSERIDO AQUI
                     simulatedRanking: simulatedRankingList,
                     nemesis: null // feature desconsiderada nesta versão
                 },
