@@ -73,7 +73,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
             Settings.findById(configId).lean(),
             Settings.findOne({ key: 'podium', leagueId: lIdNum }).select('podium').lean(),
             Match.find({ leagueId: lIdNum })
-                .select('matchId date status scoreA scoreB penaltiesA penaltiesB phase teamA teamB logoA logoB group qualifiedSide')
+                .select('matchId date time status scoreA scoreB penaltiesA penaltiesB phase teamA teamB logoA logoB group qualifiedSide')
                 .lean(),
             Bet.find({ hasSubmitted: true, $or: [{ leagueId: lIdStr }, { leagueId: lIdNum }] })
                 .select('user groupMatches.matchId groupMatches.winner groupMatches.qualifier podium podiumPoints')
