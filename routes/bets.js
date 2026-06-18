@@ -519,6 +519,8 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
 
             return {
                 matchId: m.matchId,
+                date: m.date, // 🟢 ADICIONE ESTA LINHA
+                time: m.time, // 🟢 ADICIONE ESTA LINHA
                 teams: `${m.teamA} x ${m.teamB}`,
                 status: m.status,
                 phase: m.phase,
