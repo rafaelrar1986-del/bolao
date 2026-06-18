@@ -422,53 +422,53 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 }
             }
         }
-        const matchesAnalysis = displayFutureMatches.map((m, index) => {
-            const midStr = String(m.matchId);
-            const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
-            const isLocked = !isAdmin && (m.phase === 'group' ? !unlockedPhases.includes('group') : !unlockedPhases.includes(m.group));
-            const targetPick = targetPicksMap.get(midStr);
+      const matchesAnalysis = displayFutureMatches.map((m, index) => {
+            const midStr = String(m.matchId);
+            const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
+            const isLocked = !isAdmin && (m.phase === 'group' ? !unlockedPhases.includes('group') : !unlockedPhases.includes(m.group));
+            const targetPick = targetPicksMap.get(midStr);
 
-            if (index < 2) console.log(`5. ANALISANDO JOGO ${midStr}:`, targetPick ? '✅ ENCONTRADO' : '❌ SEM PALPITE');
+            if (index < 2) console.log(`5. ANALISANDO JOGO ${midStr}:`, targetPick ? '✅ ENCONTRADO' : '❌ SEM PALPITE');
 
-            let rivalsToWatch = currentRanking.filter(r => r.userId !== activeUserId && r.points > targetPoints);
+            let rivalsToWatch = currentRanking.filter(r => r.userId !== activeUserId && r.points > targetPoints);
 
-            if (rivalsToWatch.length === 0) {
-                let MARGEM_DE_PERIGO = 3; 
-                if (m.phase === 'group') {
-                    MARGEM_DE_PERIGO = 4; 
-                } else if (isKnockoutPhase) {
-                    switch (m.group) {
-                        case '16-avos de final': MARGEM_DE_PERIGO = 6; break;
-                        case 'Oitavas de final': MARGEM_DE_PERIGO = 4; break;
-                        case 'Quartas de final': MARGEM_DE_PERIGO = 3; break;
-                        case 'Semifinal':
-                        case '3º lugar':
-                        case 'Final': MARGEM_DE_PERIGO = 2; break;
-                    }
-                }
+            if (rivalsToWatch.length === 0) {
+                let MARGEM_DE_PERIGO = 3; 
+                if (m.phase === 'group') {
+                    MARGEM_DE_PERIGO = 4; 
+                } else if (isKnockoutPhase) {
+                    switch (m.group) {
+                        case '16-avos de final': MARGEM_DE_PERIGO = 6; break;
+                        case 'Oitavas de final': MARGEM_DE_PERIGO = 4; break;
+                        case 'Quartas de final': MARGEM_DE_PERIGO = 3; break;
+                        case 'Semifinal':
+                        case '3º lugar':
+                        case 'Final': MARGEM_DE_PERIGO = 2; break;
+                    }
+                }
 
-                const meuPotencialMaximo = targetPoints + targetPodiumPotential;
+                const meuPotencialMaximo = targetPoints + targetPodiumPotential;
 
-                rivalsToWatch = currentRanking.filter(r => {
-                    if (r.userId === activeUserId) return false; 
+                rivalsToWatch = currentRanking.filter(r => {
+                    if (r.userId === activeUserId) return false; 
 
-                    const rivalPodium = userPodiumPotentialMap.get(r.userId) || 0;
-                    const rivalPotencialMaximo = r.points + rivalPodium;
+                    const rivalPodium = userPodiumPotentialMap.get(r.userId) || 0;
+                    const rivalPotencialMaximo = r.points + rivalPodium;
 
-                    return rivalPotencialMaximo >= (meuPotencialMaximo - MARGEM_DE_PERIGO);
-                });
-            }
+                    return rivalPotencialMaximo >= (meuPotencialMaximo - MARGEM_DE_PERIGO);
+                });
+            }
 
-            const opponentsToWatch = isLocked ? ["Conteúdo Bloqueado 🔒"] : rivalsToWatch.filter(ra => {
-                const rb = betsByUserMap.get(ra.userId);
-                const rp = (rb?.groupMatches || []).find(gm => String(gm.matchId) === midStr);
-                return rp && (rp.winner !== targetPick?.winner || (isKnockoutPhase && rp.qualifier !== targetPick?.qualifier));
-            }).map(ra => betsByUserMap.get(ra.userId)?.user?.name).filter(Boolean);
+            const opponentsToWatch = isLocked ? ["Conteúdo Bloqueado 🔒"] : rivalsToWatch.filter(ra => {
+                const rb = betsByUserMap.get(ra.userId);
+                const rp = (rb?.groupMatches || []).find(gm => String(gm.matchId) === midStr);
+                return rp && (rp.winner !== targetPick?.winner || (isKnockoutPhase && rp.qualifier !== targetPick?.qualifier));
+            }).map(ra => betsByUserMap.get(ra.userId)?.user?.name).filter(Boolean);
 
-            const hideTargetPick = isLocked && !isViewingSelf;
+            const hideTargetPick = isLocked && !isViewingSelf;
 
-            const miracleData = miracleSimulations[midStr] || null;
-           const isMiracleResult = !!miracleData;
+            const miracleData = miracleSimulations[midStr] || null;
+            const isMiracleResult = !!miracleData;
             const miracleChoice = miracleData ? miracleData.winner : null;
             const miracleQualifier = miracleData ? miracleData.qualifier : null;
 
@@ -485,49 +485,61 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 group: m.group,
                 hasImpact: hasImpact, // AQUI: A nova variável entra em ação
                 isMiracleResult,
-                miracleChoice,
-                miracleQualifier,
-                isLocked,
-                myChoice: hideTargetPick ? {
-                    winner: null,
-                    label: 'Conteúdo Bloqueado 🔒',
-                    qualifier: null,
-                    qualifierName: null
-                } : {
-                    winner: targetPick?.winner || null,
-                    label: toWinnerLabel(targetPick?.winner, m.teamA, m.teamB),
-                    qualifier: targetPick?.qualifier || null,
-                    qualifierName: targetPick?.qualifier === 'A' ? m.teamA : (targetPick?.qualifier === 'B' ? m.teamB : (isKnockoutPhase ? 'Sem Palpite' : null))
-                },
-                opponentsToWatch
-            };
-        });
+                miracleChoice,
+                miracleQualifier,
+                isLocked,
+                myChoice: hideTargetPick ? {
+                    winner: null,
+                    label: 'Conteúdo Bloqueado 🔒',
+                    qualifier: null,
+                    qualifierName: null
+                } : {
+                    winner: targetPick?.winner || null,
+                    label: toWinnerLabel(targetPick?.winner, m.teamA, m.teamB),
+                    qualifier: targetPick?.qualifier || null,
+                    qualifierName: targetPick?.qualifier === 'A' ? m.teamA : (targetPick?.qualifier === 'B' ? m.teamB : (isKnockoutPhase ? 'Sem Palpite' : null))
+                },
+                opponentsToWatch
+            };
+        });
 
-        // Retorno Final Estruturado
-        res.json({
-            success: true,
-            data: {
-                summary: {
-                    currentPosition,
-                    maxPosition: targetMaxPosition,
-                    probability,
-                    currentPoints: targetPoints,
-                    maxPoints: targetMaxTotal,
-                    podiumPotential: targetPodiumPotential,
-                    totalMatches: displayFutureMatches.length,
-                    podiumDetails,
-                    miracleAchieved,
-                    simulatedRanking: simulatedRankingList,
-                    nemesis: null // feature desconsiderada nesta versão
-                },
-                matches: matchesAnalysis
-            }
-        });
-    } catch (e) {
-        console.error('❌ ERRO CRÍTICO NO CAMINHO DA LIDERANÇA:', e);
-        res.status(500).json({ success: false, message: 'Erro interno no servidor' });
-    }
+        // 🚀 CÁLCULOS DO MILAGRE PARA O FRONTEND
+        // Total de jogos avançados para o topo:
+        const miracleTotalMatchesNeeded = Object.keys(miracleSimulations).length;
+        
+        // Total de jogos críticos (onde o motor alterou resultado E há rivais para secar)
+        const miracleCriticalMatches = matchesAnalysis.filter(m => 
+            m.isMiracleResult === true && m.opponentsToWatch && m.opponentsToWatch.length > 0
+        ).length;
+
+        // Retorno Final Estruturado
+        res.json({
+            success: true,
+            data: {
+                summary: {
+                    currentPosition,
+                    maxPosition: targetMaxPosition,
+                    probability,
+                    currentPoints: targetPoints,
+                    maxPoints: targetMaxTotal,
+                    podiumPotential: targetPodiumPotential,
+                    totalMatches: displayFutureMatches.length,
+                    podiumDetails,
+                    miracleAchieved,
+                    miracleTotalMatchesNeeded, // Injetado aqui
+                    miracleCriticalMatches,    // Injetado aqui
+                    simulatedRanking: simulatedRankingList,
+                    nemesis: null // feature desconsiderada nesta versão
+                },
+                matches: matchesAnalysis
+            }
+        });
+    } catch (e) {
+        console.error('❌ ERRO CRÍTICO NO CAMINHO DA LIDERANÇA:', e);
+        res.status(500).json({ success: false, message: 'Erro interno no servidor' });
+    }
 });
+
 //🎯 Meus palpites (Filtrado por Liga)
  
 router.get('/my-bets', protect, checkPaid, async (req, res) => {
