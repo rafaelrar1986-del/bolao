@@ -460,9 +460,14 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
             const hideTargetPick = isLocked && !isViewingSelf;
 
             const miracleData = miracleSimulations[midStr] || null;
-            const isMiracleResult = !!miracleData;
+           const isMiracleResult = !!miracleData;
             const miracleChoice = miracleData ? miracleData.winner : null;
             const miracleQualifier = miracleData ? miracleData.qualifier : null;
+
+            // 🚀 CORREÇÃO: Força a exibição de TODOS os cards no modo Simulação e Milagre. 
+            // Nos outros modos (Oficial/Live), continua filtrando só quem tem impacto real.
+            const isSimulationMode = mode === 'simulacao' || isMiracleMode;
+            const hasImpact = isSimulationMode ? true : (m.isSimulated === true || isMiracleResult === true || opponentsToWatch.length > 0);
 
             return {
                 matchId: m.matchId,
@@ -470,9 +475,8 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 status: m.status,
                 phase: m.phase,
                 group: m.group,
-                hasImpact: m.isSimulated === true || isMiracleResult === true || opponentsToWatch.length > 0,
-                isMiracleResult,
-                miracleChoice,
+                hasImpact: hasImpact, // AQUI: A nova variável entra em ação
+                isMiracleResult,                miracleChoice,
                 miracleQualifier,
                 isLocked,
                 myChoice: hideTargetPick ? {
