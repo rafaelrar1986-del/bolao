@@ -26,38 +26,36 @@ function toWinnerLabel(choice, teamA, teamB) {
 
 
 function toWinnerLabel(choice, teamA, teamB) {
-  if (choice === 'A') return teamA || 'Time A';
-  if (choice === 'B') return teamB || 'Time B';
-  if (choice === 'draw') return 'Empate';
-  return '-';
+  if (choice === 'A') return teamA || 'Time A';
+  if (choice === 'B') return teamB || 'Time B';
+  if (choice === 'draw') return 'Empate';
+  return '-';
 }
 
-
 /**
- * 🧠 ESTRATÉGIA: Caminho da Liderança (VERSÃO DEFINITIVA SUPREMA - 2026)
- * Inclui: Mata-mata independente, Pódio Live, Secagem Dinâmica, Pênaltis, Cronologia Invertida e Botão do Milagre.
- * 🚀 NOVO: Otimização de Memória (Mongoose Select), Anti-ReDoS (Limite JSON) e Feature 'Nêmesis'.
- */
+ * 🧠 ESTRATÉGIA: Caminho da Liderança (VERSÃO DEFINITIVA SUPREMA - 2026)
+ * Inclui: Mata-mata independente, Pódio Live, Secagem Dinâmica, Pênaltis, Cronologia Invertida e Botão do Milagre.
+ * 🚀 NOVO: Otimização de Memória (Mongoose Select), Anti-ReDoS (Limite JSON) e Feature 'Nêmesis'.
+ */
 
 // =========================================================================
 // 🛠️ FUNÇÕES AUXILIARES (HELPERS) - Podem ser extraídas para um arquivo de Service
 // =========================================================================
 const getMatchResult = (a, b) => {
-    if (a === undefined || b === undefined || a === null || b === null) return null;
-    if (a > b) return 'A';
-    if (b > a) return 'B';
-    return 'draw';
+    if (a === undefined || b === undefined || a === null || b === null) return null;
+    if (a > b) return 'A';
+    if (b > a) return 'B';
+    return 'draw';
 };
 
 const getQualifiedSide = (match, matchResult) => {
-    if (match.qualifiedSide) return match.qualifiedSide;
-    if (match.penaltiesA != null && match.penaltiesB != null) {
-        if (match.penaltiesA > match.penaltiesB) return 'A';
-        if (match.penaltiesB > match.penaltiesA) return 'B';
-    }
-    return matchResult && matchResult !== 'draw' ? matchResult : null;
+    if (match.qualifiedSide) return match.qualifiedSide;
+    if (match.penaltiesA != null && match.penaltiesB != null) {
+        if (match.penaltiesA > match.penaltiesB) return 'A';
+        if (match.penaltiesB > match.penaltiesA) return 'B';
+    }
+    return matchResult && matchResult !== 'draw' ? matchResult : null;
 };
-
 
 router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
     try {
@@ -269,9 +267,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
             };
         };
 
-        const getTopPoints = (pointsMap) => Math.max(...Object.values(pointsMap));
-        const getGapToLeader = (pointsMap) => getTopPoints(pointsMap) - (pointsMap[activeUserId] || 0);
-
         if (isMiracleMode && activeUserId) {
             const placarDinamico = Object.fromEntries(currentRanking.map(u => [u.userId, u.points]));
             const isNoTopo = () => {
@@ -291,11 +286,13 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
 
                     if (!targetPick || (!targetPick.winner && !targetPick.qualifier)) continue;
 
+                    // 📸 1. Tira o snapshot ANTES do resultado acontecer
                     const before = getRankingSnapshot(placarDinamico);
 
                     miracleSimulations[midStr] = {
                         winner: targetPick.winner || null,
-                        qualifier: isKnockoutPhase ? (targetPick.qualifier || null) : null
+                        qualifier: isKnockoutPhase ? (targetPick.qualifier || null) : null,
+                        isCriticalMatch: false // Inicializa como falso por padrão
                     };
 
                     Array.from(betsByUserMap.values()).forEach(bet => {
@@ -312,13 +309,17 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                         }
                     });
 
+                    // 📸 2. Tira o snapshot DEPOIS do resultado acontecer
                     const after = getRankingSnapshot(placarDinamico);
 
+                    // 🎯 3. Lógica Estrita: Foco Exclusivo no Líder
+                    // Subir do 8º pro 7º não importa. O jogo só é crítico se encurtar
+                    // a distância para o 1º lugar ou provocar a mudança do líder absoluto.
                     const changedLeader = before.leaderId !== after.leaderId;
-                    const improvedTargetPosition = after.targetPosition < before.targetPosition;
                     const reducedGap = after.gapToLeader < before.gapToLeader;
 
-                    if (changedLeader || improvedTargetPosition || reducedGap) {
+                    if (changedLeader || reducedGap) {
+                        miracleSimulations[midStr].isCriticalMatch = true;
                         miracleCriticalMatches++;
                     }
                 }
@@ -517,6 +518,9 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
             const isMiracleResult = !!miracleData;
             const miracleChoice = miracleData ? miracleData.winner : null;
             const miracleQualifier = miracleData ? miracleData.qualifier : null;
+            
+            // 🟢 Injeta a flag correspondente na análise final enviada à API
+            const isCriticalMatch = miracleData ? !!miracleData.isCriticalMatch : false;
 
             const isSimulationMode = mode === 'simulacao' || isMiracleMode;
             const hasImpact = isSimulationMode ? true : (m.isSimulated === true || isMiracleResult === true || opponentsToWatch.length > 0);
@@ -529,6 +533,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 group: m.group,
                 hasImpact,
                 isMiracleResult,
+                isCriticalMatch, // 🟢 Retornando no Objeto da partida
                 miracleChoice,
                 miracleQualifier,
                 isLocked,
