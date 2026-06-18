@@ -503,14 +503,17 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
             };
         });
 
-        // 🚀 CÁLCULOS DO MILAGRE PARA O FRONTEND
-        // Total de jogos avançados para o topo:
-        const miracleTotalMatchesNeeded = Object.keys(miracleSimulations).length;
-        
-        // Total de jogos críticos (onde o motor alterou resultado E há rivais para secar)
-        const miracleCriticalMatches = matchesAnalysis.filter(m => 
-            m.isMiracleResult === true && m.opponentsToWatch && m.opponentsToWatch.length > 0
-        ).length;
+       // 🚀 CORREÇÃO INFALÍVEL: Cálculo com verificação de dados
+    const miracleTotalMatchesNeeded = Object.keys(miracleSimulations).length;
+    
+    // Filtramos garantindo que estamos olhando para o que foi gerado pelo milagre
+    const miracleCriticalMatches = matchesAnalysis.filter(m => 
+        m.isMiracleResult === true && 
+        Array.isArray(m.opponentsToWatch) && 
+        m.opponentsToWatch.length > 0
+    ).length;
+
+    console.log(`DEBUG MILAGRE: Total Needed: ${miracleTotalMatchesNeeded}, Critical: ${miracleCriticalMatches}`);
 
         // Retorno Final Estruturado
         res.json({
@@ -526,9 +529,9 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                     totalMatches: displayFutureMatches.length,
                     podiumDetails,
                     miracleAchieved,
-                    miracleTotalMatchesNeeded, // Injetado aqui
-                    miracleCriticalMatches,    // Injetado aqui
-                    simulatedRanking: simulatedRankingList,
+                    miracleTotalMatchesNeeded: miracleTotalMatchesNeeded,
+                miracleCriticalMatches: miracleCriticalMatches,
+                  simulatedRanking: simulatedRankingList,
                     nemesis: null // feature desconsiderada nesta versão
                 },
                 matches: matchesAnalysis
