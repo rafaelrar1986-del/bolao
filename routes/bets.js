@@ -314,6 +314,8 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
 
                     if (changedLeader || improvedTargetPosition || reducedGap) {
                         miracleCriticalMatches++;
+                      // ADICIONE ESTA LINHA ABAIXO PARA SINALIZAR A PARTIDA:
+                      miracleSimulations[midStr].isCritical = true;
                     }
                 }
             }
@@ -523,6 +525,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 group: m.group,
                 hasImpact,
                 isMiracleResult,
+               isCriticalForMiracle: miracleData ? !!miracleData.isCritical : false,
                 miracleChoice,
                 miracleQualifier,
                 isLocked,
