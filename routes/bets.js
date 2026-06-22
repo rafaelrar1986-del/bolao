@@ -474,33 +474,35 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
 
             if (index < 2) console.log(`5. ANALISANDO JOGO ${midStr}:`, targetPick ? '✅ ENCONTRADO' : '❌ SEM PALPITE');
 
-            let rivalsToWatch = currentRanking.filter(r => r.userId !== activeUserId && r.points > targetPoints);
+            // 🎯 NOVA LÓGICA: Monitora quem está à frente E quem está ameaçando logo atrás
+let MARGEM_DE_PERIGO = 3;
+if (m.phase === 'group') {
+    MARGEM_DE_PERIGO = 1;
+} else if (isKnockoutPhase) {
+    switch (m.group) {
+        case '16-avos de final': MARGEM_DE_PERIGO = 6; break;
+        case 'Oitavas de final': MARGEM_DE_PERIGO = 4; break;
+        case 'Quartas de final': MARGEM_DE_PERIGO = 3; break;
+        case 'Semifinal':
+        case '3º lugar':
+        case 'Final': MARGEM_DE_PERIGO = 2; break;
+    }
+}
 
-            if (rivalsToWatch.length === 0) {
-                let MARGEM_DE_PERIGO = 3;
-                if (m.phase === 'group') {
-                    MARGEM_DE_PERIGO = 4;
-                } else if (isKnockoutPhase) {
-                    switch (m.group) {
-                        case '16-avos de final': MARGEM_DE_PERIGO = 6; break;
-                        case 'Oitavas de final': MARGEM_DE_PERIGO = 4; break;
-                        case 'Quartas de final': MARGEM_DE_PERIGO = 3; break;
-                        case 'Semifinal':
-                        case '3º lugar':
-                        case 'Final': MARGEM_DE_PERIGO = 2; break;
-                    }
-                }
+const meuPotencialMaximo = targetPoints + targetPodiumPotential;
 
-                const meuPotencialMaximo = targetPoints + targetPodiumPotential;
+const rivalsToWatch = currentRanking.filter(r => {
+    if (r.userId === activeUserId) return false;
 
-                rivalsToWatch = currentRanking.filter(r => {
-                    if (r.userId === activeUserId) return false;
+    // 1. Se o rival está estritamente à frente, sempre incluir (para o usuário tentar alcançar)
+    if (r.points > targetPoints) return true;
 
-                    const rivalPodium = userPodiumPotentialMap.get(r.userId) || 0;
-                    const rivalPotencialMaximo = r.points + rivalPodium;
+    // 2. Se está atrás ou empatado, incluir se o potencial máximo dele ameaçar a posição do usuário
+    const rivalPodium = userPodiumPotentialMap.get(r.userId) || 0;
+    const rivalPotencialMaximo = r.points + rivalPodium;
 
-                    return rivalPotencialMaximo >= (meuPotencialMaximo - MARGEM_DE_PERIGO);
-                });
+    return rivalPotencialMaximo >= (meuPotencialMaximo - MARGEM_DE_PERIGO);
+});
             }
 
             // 🚀 AQUI ESTAVA FALTANDO A LÓGICA DAS CORES
