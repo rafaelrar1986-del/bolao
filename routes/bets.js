@@ -503,7 +503,7 @@ const rivalsToWatch = currentRanking.filter(r => {
 
     return rivalPotencialMaximo >= (meuPotencialMaximo - MARGEM_DE_PERIGO);
 });
-            }
+            
 
             // 🚀 AQUI ESTAVA FALTANDO A LÓGICA DAS CORES
             const opponentsToWatch = isLocked ? [{ name: "Conteúdo Bloqueado 🔒", color: 'locked' }] : rivalsToWatch.filter(ra => {
