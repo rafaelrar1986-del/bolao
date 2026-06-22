@@ -27,7 +27,7 @@ function toWinnerLabel(choice, teamA, teamB) {
 /**
  * 🧠 ESTRATÉGIA: Caminho da Liderança (VERSÃO DEFINITIVA SUPREMA - 2026)
  * Inclui: Mata-mata independente, Pódio Live, Secagem Dinâmica, Pênaltis, Cronologia Invertida e Botão do Milagre.
- * 🚀 NOVO: Otimização de Memória (Mongoose Select), Anti-ReDoS (Limite JSON), Feature 'Nêmesis' e Partidas Críticas.
+ * 🚀 NOVO: Otimização de Memória (Mongoose Select), Anti-ReDoS (Limite JSON), Feature 'Nêmesis', Partidas Críticas e Cores.
  */
 
 // =========================================================================
@@ -213,6 +213,10 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
             });
         });
 
+        // 🚀 MAPA DE POSIÇÕES (Necessário para a lógica de cores dos rivais)
+        const positionMap = new Map();
+        simulatedRankingList.forEach(r => positionMap.set(r.userId, r.position));
+
         const displayFutureMatches = matches
             .filter(m => (isLive ? m.status === 'scheduled' : m.status !== 'finished') || m.isSimulated)
             .sort((a, b) => (parseInt(String(b.matchId).replace(/\D/g, ''), 10) || 0) - (parseInt(String(a.matchId).replace(/\D/g, ''), 10) || 0));
@@ -313,7 +317,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
 
                     if (changedLeader || improvedTargetPosition || reducedGap) {
                         miracleCriticalMatches++;
-                        // Partida sinalizada como crítica
                         miracleSimulations[midStr].isCritical = true;
                     }
                 }
@@ -500,11 +503,31 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 });
             }
 
-            const opponentsToWatch = isLocked ? ["Conteúdo Bloqueado 🔒"] : rivalsToWatch.filter(ra => {
+            // 🚀 AQUI ESTAVA FALTANDO A LÓGICA DAS CORES
+            const opponentsToWatch = isLocked ? [{ name: "Conteúdo Bloqueado 🔒", color: 'locked' }] : rivalsToWatch.filter(ra => {
                 const rb = betsByUserMap.get(ra.userId);
                 const rp = (rb?.groupMatches || []).find(gm => String(gm.matchId) === midStr);
                 return rp && (rp.winner !== targetPick?.winner || (isKnockoutPhase && rp.qualifier !== targetPick?.qualifier));
-            }).map(ra => betsByUserMap.get(ra.userId)?.user?.name).filter(Boolean);
+            }).map(ra => {
+                const rivalName = betsByUserMap.get(ra.userId)?.user?.name;
+                if (!rivalName) return null;
+
+                const rivalPosition = positionMap.get(ra.userId) || 999;
+                let colorCode = 'red'; 
+                
+                if (rivalPosition === 1) {
+                    colorCode = 'gold'; // O cara tá em 1º!
+                } else if (rivalPosition <= currentPosition) {
+                    colorCode = 'green'; // Tá na sua frente ou empatado com você
+                } else {
+                    colorCode = 'red'; // Tá atrás de você
+                }
+
+                return {
+                    name: rivalName,
+                    color: colorCode
+                };
+            }).filter(Boolean);
 
             const hideTargetPick = isLocked && !isViewingSelf;
 
@@ -574,7 +597,9 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         console.error('❌ ERRO CRÍTICO NO CAMINHO DA LIDERANÇA:', e);
         res.status(500).json({ success: false, message: 'Erro interno no servidor' });
     }
-});//🎯 Meus palpites (Filtrado por Liga)
+});
+
+//🎯 Meus palpites (Filtrado por Liga)
  
 router.get('/my-bets', protect, checkPaid, async (req, res) => {
   try {
