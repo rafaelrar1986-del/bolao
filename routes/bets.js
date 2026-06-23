@@ -524,11 +524,11 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
             // 🚀 NOVA LÓGICA DE RIVAIS (Olha para cima e para baixo de forma inteligente)
             let MARGEM_DE_PERIGO = 3;
             if (m.phase === 'group') {
-                MARGEM_DE_PERIGO = 4;
+                MARGEM_DE_PERIGO = 2;
             } else if (isKnockoutPhase) {
                 switch (m.group) {
-                    case '16-avos de final': MARGEM_DE_PERIGO = 6; break;
-                    case 'Oitavas de final': MARGEM_DE_PERIGO = 4; break;
+                    case '16-avos de final': MARGEM_DE_PERIGO = 4; break;
+                    case 'Oitavas de final': MARGEM_DE_PERIGO = 3; break;
                     case 'Quartas de final': MARGEM_DE_PERIGO = 3; break;
                     case 'Semifinal':
                     case '3º lugar':
