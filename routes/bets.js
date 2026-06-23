@@ -18,21 +18,18 @@ const getConfigId = (leagueId) => {
 };
 
 function toWinnerLabel(choice, teamA, teamB) {
-  if (choice === 'A') return teamA || 'Time A';
-  if (choice === 'B') return teamB || 'Time B';
-  if (choice === 'draw') return 'Empate';
-  return '-';
+    if (choice === 'A') return teamA || 'Time A';
+    if (choice === 'B') return teamB || 'Time B';
+    if (choice === 'draw') return 'Empate';
+    return '-';
 }
 
 /**
  * 🧠 ESTRATÉGIA: Caminho da Liderança (VERSÃO DEFINITIVA SUPREMA - 2026)
- * Inclui: Mata-mata independente, Pódio Live, Secagem Dinâmica, Pênaltis, Cronologia Invertida e Botão do Milagre.
- * 🚀 NOVO: Otimização de Memória (Mongoose Select), Anti-ReDoS (Limite JSON), Feature 'Nêmesis', Partidas Críticas e Cores.
+ * Inclui: Mata-mata independente, Pódio Live, Secagem Dinâmica, Pênaltis, Cronologia Invertida, Botão do Milagre.
+ * 🚀 NOVO: Feature 'Nêmesis', Partidas Críticas, Cores Dinâmicas e Impacto Visual (GAP/Posição).
  */
 
-// =========================================================================
-// 🛠️ FUNÇÕES AUXILIARES (HELPERS) - Podem ser extraídas para um arquivo de Service
-// =========================================================================
 const getMatchResult = (a, b) => {
     if (a === undefined || b === undefined || a === null || b === null) return null;
     if (a > b) return 'A';
@@ -49,9 +46,6 @@ const getQualifiedSide = (match, matchResult) => {
     return matchResult && matchResult !== 'draw' ? matchResult : null;
 };
 
-// =========================================================================
-// 🚀 ROTA PRINCIPAL
-// =========================================================================
 router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
     try {
         const { leagueId, userId: targetUserId, mode, simulations, miracle } = req.query;
@@ -213,7 +207,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
             });
         });
 
-        // 🚀 MAPA DE POSIÇÕES (Necessário para a lógica de cores dos rivais)
+        // 🚀 MAPA DE POSIÇÕES (Para cores dos rivais)
         const positionMap = new Map();
         simulatedRankingList.forEach(r => positionMap.set(r.userId, r.position));
 
@@ -318,6 +312,14 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                     if (changedLeader || improvedTargetPosition || reducedGap) {
                         miracleCriticalMatches++;
                         miracleSimulations[midStr].isCritical = true;
+                        
+                        // 🚀 NOVO: Salvando o impacto visual exato da partida
+                        miracleSimulations[midStr].impact = {
+                            posBefore: before.targetPosition,
+                            posAfter: after.targetPosition,
+                            gapBefore: before.gapToLeader,
+                            gapAfter: after.gapToLeader
+                        };
                     }
                 }
             }
@@ -472,40 +474,36 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
             const isLocked = !isAdmin && (m.phase === 'group' ? !unlockedPhases.includes('group') : !unlockedPhases.includes(m.group));
             const targetPick = targetPicksMap.get(midStr);
 
-            if (index < 2) console.log(`5. ANALISANDO JOGO ${midStr}:`, targetPick ? '✅ ENCONTRADO' : '❌ SEM PALPITE');
+            let rivalsToWatch = currentRanking.filter(r => r.userId !== activeUserId && r.points > targetPoints);
 
-            // 🎯 NOVA LÓGICA: Monitora quem está à frente E quem está ameaçando logo atrás
-let MARGEM_DE_PERIGO = 3;
-if (m.phase === 'group') {
-    MARGEM_DE_PERIGO = 1;
-} else if (isKnockoutPhase) {
-    switch (m.group) {
-        case '16-avos de final': MARGEM_DE_PERIGO = 4; break;
-        case 'Oitavas de final': MARGEM_DE_PERIGO = 3; break;
-        case 'Quartas de final': MARGEM_DE_PERIGO = 3; break;
-        case 'Semifinal':
-        case '3º lugar':
-        case 'Final': MARGEM_DE_PERIGO = 2; break;
-    }
-}
+            if (rivalsToWatch.length === 0) {
+                let MARGEM_DE_PERIGO = 3;
+                if (m.phase === 'group') {
+                    MARGEM_DE_PERIGO = 4;
+                } else if (isKnockoutPhase) {
+                    switch (m.group) {
+                        case '16-avos de final': MARGEM_DE_PERIGO = 6; break;
+                        case 'Oitavas de final': MARGEM_DE_PERIGO = 4; break;
+                        case 'Quartas de final': MARGEM_DE_PERIGO = 3; break;
+                        case 'Semifinal':
+                        case '3º lugar':
+                        case 'Final': MARGEM_DE_PERIGO = 2; break;
+                    }
+                }
 
-const meuPotencialMaximo = targetPoints + targetPodiumPotential;
+                const meuPotencialMaximo = targetPoints + targetPodiumPotential;
 
-const rivalsToWatch = currentRanking.filter(r => {
-    if (r.userId === activeUserId) return false;
+                rivalsToWatch = currentRanking.filter(r => {
+                    if (r.userId === activeUserId) return false;
 
-    // 1. Se o rival está estritamente à frente, sempre incluir (para o usuário tentar alcançar)
-    if (r.points > targetPoints) return true;
+                    const rivalPodium = userPodiumPotentialMap.get(r.userId) || 0;
+                    const rivalPotencialMaximo = r.points + rivalPodium;
 
-    // 2. Se está atrás ou empatado, incluir se o potencial máximo dele ameaçar a posição do usuário
-    const rivalPodium = userPodiumPotentialMap.get(r.userId) || 0;
-    const rivalPotencialMaximo = r.points + rivalPodium;
+                    return rivalPotencialMaximo >= (meuPotencialMaximo - MARGEM_DE_PERIGO);
+                });
+            }
 
-    return rivalPotencialMaximo >= (meuPotencialMaximo - MARGEM_DE_PERIGO);
-});
-            
-
-            // 🚀 AQUI ESTAVA FALTANDO A LÓGICA DAS CORES
+            // 🚀 OBJETOS COMPLEXOS COM CORES
             const opponentsToWatch = isLocked ? [{ name: "Conteúdo Bloqueado 🔒", color: 'locked' }] : rivalsToWatch.filter(ra => {
                 const rb = betsByUserMap.get(ra.userId);
                 const rp = (rb?.groupMatches || []).find(gm => String(gm.matchId) === midStr);
@@ -518,11 +516,11 @@ const rivalsToWatch = currentRanking.filter(r => {
                 let colorCode = 'red'; 
                 
                 if (rivalPosition === 1) {
-                    colorCode = 'gold'; // O cara tá em 1º!
+                    colorCode = 'gold'; // Líder
                 } else if (rivalPosition <= currentPosition) {
-                    colorCode = 'green'; // Tá na sua frente ou empatado com você
+                    colorCode = 'green'; // Na frente ou empatado
                 } else {
-                    colorCode = 'red'; // Tá atrás de você
+                    colorCode = 'red'; // Atrás
                 }
 
                 return {
@@ -537,6 +535,7 @@ const rivalsToWatch = currentRanking.filter(r => {
             const isMiracleResult = !!miracleData;
             const miracleChoice = miracleData ? miracleData.winner : null;
             const miracleQualifier = miracleData ? miracleData.qualifier : null;
+            const miracleImpact = miracleData ? miracleData.impact : null; // 🚀 EXTRAINDO IMPACTO
 
             const isSimulationMode = mode === 'simulacao' || isMiracleMode;
             const hasImpact = isSimulationMode ? true : (m.isSimulated === true || isMiracleResult === true || opponentsToWatch.length > 0);
@@ -552,6 +551,7 @@ const rivalsToWatch = currentRanking.filter(r => {
                 hasImpact,
                 isMiracleResult,
                 isCriticalForMiracle: miracleData ? !!miracleData.isCritical : false,
+                miracleImpact, // 🚀 MANDANDO PRO FRONT-END
                 miracleChoice,
                 miracleQualifier,
                 isLocked,
