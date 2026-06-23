@@ -27,7 +27,7 @@ function toWinnerLabel(choice, teamA, teamB) {
 /**
  * 🧠 ESTRATÉGIA: Caminho da Liderança (VERSÃO DEFINITIVA SUPREMA - 2026)
  * Inclui: Mata-mata independente, Pódio Live, Secagem Dinâmica, Pênaltis, Cronologia Invertida, Botão do Milagre.
- * 🚀 ATUALIZADO: Correção do fluxo de badges de impacto unificado para o Modo Simulação.
+ * 🚀 ATUALIZADO: Correção da ordenação cronológica unificada e suporte a impactos negativos (perda de posições).
  */
 
 const getMatchResult = (a, b) => {
@@ -44,6 +44,27 @@ const getQualifiedSide = (match, matchResult) => {
         if (match.penaltiesB > match.penaltiesA) return 'B';
     }
     return matchResult && matchResult !== 'draw' ? matchResult : null;
+};
+
+// 🗓️ Helper para ordenar partidas de forma cronológica absoluta (Data + Hora de Brasília)
+const sortMatchesChronologically = (a, b) => {
+    const parseDate = (dStr) => {
+        if (!dStr) return '1970-01-01';
+        if (dStr.includes('/')) {
+            const [day, month, year] = dStr.split('/');
+            return `${year}-${month}-${day}`;
+        }
+        return dStr;
+    };
+    const dateA = new Date(`${parseDate(a.date)}T${a.time || '00:00'}`);
+    const dateB = new Date(`${parseDate(b.date)}T${b.time || '00:00'}`);
+    
+    if (dateA - dateB !== 0) return dateA - dateB;
+    
+    // Fallback estável por ID caso aconteçam no mesmo minuto
+    const idA = parseInt(String(a.matchId).replace(/\D/g, ''), 10) || 0;
+    const idB = parseInt(String(b.matchId).replace(/\D/g, ''), 10) || 0;
+    return idA - idB;
 };
 
 router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
@@ -209,7 +230,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
             });
         });
 
-        // 🚀 MAPA DE POSIÇÕES (Para cores dos rivais)
         const positionMap = new Map();
         simulatedRankingList.forEach(r => positionMap.set(r.userId, r.position));
 
@@ -220,7 +240,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         const mathFutureMatches = displayFutureMatches.filter(m => !m.isSimulated);
 
         // ------------------------------------------------------------------------------------------------
-        // 🚀 ENGINE UNIFICADA DE SECAGEM/MILAGRE (STEP-BY-STEP)
+        // 🚀 ENGINE UNIFICADA DE SECAGEM/MILAGRE (STEP-BY-STEP CRONOLÓGICO)
         // ------------------------------------------------------------------------------------------------
         
         const getRankingSnapshot = (pointsMap) => {
@@ -264,11 +284,10 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
             let jogosParaCalculo = [];
 
             if (isMiracleMode) {
-                // Modo Milagre: Baseia no Ranking Atual e projeta no futuro
                 currentRanking.forEach(u => { placarDinamico[u.userId] = u.points; });
-                jogosParaCalculo = [...mathFutureMatches].sort((a, b) => new Date(a.date) - new Date(b.date));
+                // 🚀 CORRIGIDO: Ordenação estrita por data e hora reais
+                jogosParaCalculo = [...mathFutureMatches].sort(sortMatchesChronologically);
             } else {
-                // Modo Simulação: Ignora as simulações para criar o Ranking "Real" base, depois aplica os jogos cronologicamente.
                 const basePointsMap = {};
                 bets.forEach(b => {
                     const betUserId = b.user?._id?.toString();
@@ -277,7 +296,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                     (b.groupMatches || []).forEach(gm => {
                         const midStr = String(gm.matchId);
                         const m = matchMap.get(midStr);
-                        if (!m || m.isSimulated) return; // 🚀 CRUCIAL: Ignora os simulados na base
+                        if (!m || m.isSimulated) return; 
                         const isMatchValid = isLive ? (m.status !== 'scheduled') : (m.status === 'finished');
                         if (!isMatchValid) return;
 
@@ -290,7 +309,8 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 });
 
                 Object.assign(placarDinamico, basePointsMap);
-                jogosParaCalculo = matches.filter(m => m.isSimulated).sort((a, b) => new Date(a.date) - new Date(b.date));
+                // 🚀 CORRIGIDO: Ordenação idêntica ao modo milagre usando data e hora reais
+                jogosParaCalculo = matches.filter(m => m.isSimulated).sort(sortMatchesChronologically);
             }
 
             const isNoTopo = () => getRankingSnapshot(placarDinamico).targetPosition === 1;
@@ -353,7 +373,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 const reducedGap = after.gapToLeader < before.gapToLeader;
                 const increasedGap = after.gapToLeader > before.gapToLeader;
 
-                // Em Simulação, queremos monitorar impactos positivos e negativos. Em Milagre, apenas positivos.
+                // Em Simulação, monitoramos tanto melhorias quanto pioras (ganhar ou perder posições)
                 const isImpactful = isMiracleMode 
                     ? (changedLeader || improvedPos || reducedGap)
                     : (changedLeader || improvedPos || worsenedPos || reducedGap || increasedGap);
@@ -363,14 +383,20 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                     stepByStepSimulations[midStr].isCritical = true;
                 }
 
-                // 🚀 CORREÇÃO CRUCIAL APLICADA AQUI:
-                // O objeto impact foi retirado de dentro do 'if (isImpactful)' 
-                // e agora sempre será despachado pro front-end renderizar a badge dinamicamente!
+                // 🚀 DEFINIÇÃO DO TIPO DE IMPACTO (Para renderizar setas/cores verdes ou vermelhas no front)
+                let impactType = 'neutral';
+                if (improvedPos || reducedGap || (changedLeader && after.targetPosition === 1)) {
+                    impactType = 'positive';
+                } else if (worsenedPos || increasedGap) {
+                    impactType = 'negative';
+                }
+
                 stepByStepSimulations[midStr].impact = {
                     posBefore: before.targetPosition,
                     posAfter: after.targetPosition,
                     gapBefore: before.gapToLeader,
-                    gapAfter: after.gapToLeader
+                    gapAfter: after.gapToLeader,
+                    type: impactType
                 };
             }
 
@@ -644,7 +670,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         res.status(500).json({ success: false, message: 'Erro interno no servidor' });
     }
 });
-
 //🎯 Meus palpites (Filtrado por Liga)
  
 router.get('/my-bets', protect, checkPaid, async (req, res) => {
