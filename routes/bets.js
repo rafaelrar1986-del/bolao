@@ -363,7 +363,9 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                     stepByStepSimulations[midStr].isCritical = true;
                 }
 
-                // 🚀 CORREÇÃO CRUCIAL: Sempre preencher o objeto de impacto para garantir o retorno no front-end unificado!
+                // 🚀 CORREÇÃO CRUCIAL APLICADA AQUI:
+                // O objeto impact foi retirado de dentro do 'if (isImpactful)' 
+                // e agora sempre será despachado pro front-end renderizar a badge dinamicamente!
                 stepByStepSimulations[midStr].impact = {
                     posBefore: before.targetPosition,
                     posAfter: after.targetPosition,
