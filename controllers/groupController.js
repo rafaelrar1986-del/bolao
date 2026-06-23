@@ -24,13 +24,12 @@ const getGroupStandings = async (req, res) => {
 
   try {
     // 2. Busca partidas apenas da liga solicitada
-    // Adicionamos um log temporário para você conferir no terminal do Render/Node
     console.log(`[Standings] Calculando liga: ${leagueId} | Live: ${isLiveRequest}`);
 
     const allMatches = await Match.find({ leagueId, phase: 'group' }).lean();
     
     if (!allMatches || allMatches.length === 0) {
-      // Se não houver partidas, retornamos um objeto vazio, mas limpamos o cache antigo
+      // Se não houver partidas, retornamos um objeto vazio
       return res.json({});
     }
 
@@ -88,32 +87,94 @@ const getGroupStandings = async (req, res) => {
       groupedResults[t.group].push(t);
     });
 
-    // 7. Ordenação (Pts > SG > GP > Confronto Direto)
+    // 7. Ordenação (Regras Oficiais: Confronto Direto Primeiro)
     for (const groupName in groupedResults) {
       groupedResults[groupName].sort((a, b) => {
+        // Regra Base: Pontos gerais em todas as partidas do grupo
         if (b.pts !== a.pts) return b.pts - a.pts;
-        if (b.sg !== a.sg) return b.sg - a.sg;
-        if (b.gp !== a.gp) return b.gp - a.gp;
 
-        const h2h = activeMatches.find(m => 
+        // ==========================================
+        // PREPARAÇÃO PARA O PRIMEIRO PASSO
+        // Isolar apenas os confrontos diretos entre A e B
+        // ==========================================
+        const h2hMatches = activeMatches.filter(m => 
           (m.teamA === a.name && m.teamB === b.name) || 
           (m.teamA === b.name && m.teamB === a.name)
         );
 
-        if (h2h && typeof h2h.scoreA === 'number') {
-          const aScore = h2h.teamA === a.name ? h2h.scoreA : h2h.scoreB;
-          const bScore = h2h.teamA === b.name ? h2h.scoreA : h2h.scoreB;
-          if (aScore !== bScore) return bScore - aScore;
-        }
+        let h2hPtsA = 0, h2hPtsB = 0;
+        let h2hSgA = 0, h2hSgB = 0;
+        let h2hGpA = 0, h2hGpB = 0;
+
+        h2hMatches.forEach(m => {
+          if (typeof m.scoreA === 'number' && typeof m.scoreB === 'number') {
+            const golsA = m.teamA === a.name ? m.scoreA : m.scoreB;
+            const golsB = m.teamA === b.name ? m.scoreA : m.scoreB;
+
+            // Gols Pró (H2H)
+            h2hGpA += golsA;
+            h2hGpB += golsB;
+
+            // Saldo de Gols (H2H)
+            h2hSgA += (golsA - golsB);
+            h2hSgB += (golsB - golsA);
+
+            // Pontos (H2H)
+            if (golsA > golsB) h2hPtsA += 3;
+            else if (golsB > golsA) h2hPtsB += 3;
+            else { h2hPtsA += 1; h2hPtsB += 1; }
+          }
+        });
+
+        // ==========================================
+        // PRIMEIRO PASSO (Entre as equipes envolvidas)
+        // ==========================================
+        
+        // 1. Maior número de pontos obtidos nos confrontos diretos
+        if (h2hPtsB !== h2hPtsA) return h2hPtsB - h2hPtsA;
+
+        // 2. Saldo de gols superior nos confrontos diretos
+        if (h2hSgB !== h2hSgA) return h2hSgB - h2hSgA;
+
+        // 3. Maior número de gols marcados nos confrontos diretos
+        if (h2hGpB !== h2hGpA) return h2hGpB - h2hGpA;
+
+        // ==========================================
+        // SEGUNDO PASSO (Se continuarem empatados)
+        // ==========================================
+        
+        // 4. Melhor saldo de gols em todas as partidas do grupo
+        if (b.sg !== a.sg) return b.sg - a.sg;
+
+        // 5. Maior número de gols marcados em todas as partidas do grupo
+        if (b.gp !== a.gp) return b.gp - a.gp;
+
+        // ==========================================
+        // CRITÉRIO FINAL (Segurança do Sistema)
+        // ==========================================
+        // Se empatarem em TUDO (inclusive no geral), usa ordem alfabética 
+        // para o JavaScript não bugar a renderização da tabela.
         return a.name.localeCompare(b.name);
       });
     }
 
     // 8. Melhores Terceiros (Regra Copa 2026: 12 grupos -> 8 melhores)
     const allThirdPlaces = Object.values(groupedResults)
-      .map(g => g[2])
-      .filter(Boolean)
-      .sort((a, b) => b.pts - a.pts || b.sg - a.sg || b.gp - a.gp);
+      .map(g => g[2]) // Pega o 3º colocado de cada grupo (índice 2 do array)
+      .filter(Boolean) // Garante que não vai dar erro se o grupo estiver vazio
+      .sort((a, b) => {
+        // 1. Maior número de pontos obtidos em todas as partidas do grupo
+        if (b.pts !== a.pts) return b.pts - a.pts;
+
+        // 2. Saldo de gols resultante de todas as partidas do grupo
+        if (b.sg !== a.sg) return b.sg - a.sg;
+
+        // 3. Maior número de gols marcados em todas as partidas do grupo
+        if (b.gp !== a.gp) return b.gp - a.gp;
+
+        // CRITÉRIO DE SEGURANÇA (Caso de Empate Absoluto)
+        return a.name.localeCompare(b.name);
+      });
 
     const best8Names = allThirdPlaces.slice(0, 8).map(t => t.name);
 
