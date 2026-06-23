@@ -27,7 +27,7 @@ function toWinnerLabel(choice, teamA, teamB) {
 /**
  * 🧠 ESTRATÉGIA: Caminho da Liderança (VERSÃO DEFINITIVA SUPREMA - 2026)
  * Inclui: Mata-mata independente, Pódio Live, Secagem Dinâmica, Pênaltis, Cronologia Invertida, Botão do Milagre.
- * 🚀 NOVO: Feature 'Nêmesis', Partidas Críticas, Cores Dinâmicas e Impacto Visual (GAP/Posição) unificado para Simulação e Milagre.
+ * 🚀 ATUALIZADO: Correção do fluxo de badges de impacto unificado para o Modo Simulação.
  */
 
 const getMatchResult = (a, b) => {
@@ -353,7 +353,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 const reducedGap = after.gapToLeader < before.gapToLeader;
                 const increasedGap = after.gapToLeader > before.gapToLeader;
 
-                // Em Simulação, queremos mostrar impactos positivos e negativos. Em Milagre, apenas positivos.
+                // Em Simulação, queremos monitorar impactos positivos e negativos. Em Milagre, apenas positivos.
                 const isImpactful = isMiracleMode 
                     ? (changedLeader || improvedPos || reducedGap)
                     : (changedLeader || improvedPos || worsenedPos || reducedGap || increasedGap);
@@ -361,14 +361,17 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 if (isImpactful) {
                     if (isMiracleMode) miracleCriticalMatches++;
                     stepByStepSimulations[midStr].isCritical = true;
-                    
-                    stepByStepSimulations[midStr].impact = {
-                        posBefore: before.targetPosition,
-                        posAfter: after.targetPosition,
-                        gapBefore: before.gapToLeader,
-                        gapAfter: after.gapToLeader
-                    };
                 }
+
+                // 🚀 CORREÇÃO CRUCIAL APLICADA AQUI:
+                // O objeto impact foi retirado de dentro do 'if (isImpactful)' 
+                // e agora sempre será despachado pro front-end renderizar a badge dinamicamente!
+                stepByStepSimulations[midStr].impact = {
+                    posBefore: before.targetPosition,
+                    posAfter: after.targetPosition,
+                    gapBefore: before.gapToLeader,
+                    gapAfter: after.gapToLeader
+                };
             }
 
             if (isMiracleMode) miracleAchieved = isNoTopo();
@@ -521,7 +524,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
             const isLocked = !isAdmin && (m.phase === 'group' ? !unlockedPhases.includes('group') : !unlockedPhases.includes(m.group));
             const targetPick = targetPicksMap.get(midStr);
 
-            // 🚀 NOVA LÓGICA DE RIVAIS (Olha para cima e para baixo de forma inteligente)
             let MARGEM_DE_PERIGO = 3;
             if (m.phase === 'group') {
                 MARGEM_DE_PERIGO = 2;
@@ -540,15 +542,11 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
 
             const rivalsToWatch = currentRanking.filter(r => {
                 if (r.userId === activeUserId) return false;
-
-                // 1. O Rival está acima de mim? (Ameaça direta que preciso ultrapassar)
                 if (r.points > targetPoints) return true;
 
-                // 2. O Rival está atrás ou empatado, mas matematicamente pode me alcançar?
                 const rivalPodium = userPodiumPotentialMap.get(r.userId) || 0;
                 const rivalPotencialMaximo = r.points + rivalPodium;
 
-                // Se o teto máximo dele encosta no meu teto menos a margem do jogo atual, é ameaça!
                 return rivalPotencialMaximo >= (meuPotencialMaximo - MARGEM_DE_PERIGO);
             });
 
@@ -564,17 +562,14 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 let colorCode = 'red'; 
                 
                 if (rivalPosition === 1) {
-                    colorCode = 'gold'; // Líder
+                    colorCode = 'gold';
                 } else if (rivalPosition <= currentPosition) {
-                    colorCode = 'green'; // Na frente ou empatado
+                    colorCode = 'green';
                 } else {
-                    colorCode = 'red'; // Atrás (agora eles vão aparecer aqui!)
+                    colorCode = 'red';
                 }
 
-                return {
-                    name: rivalName,
-                    color: colorCode
-                };
+                return { name: rivalName, color: colorCode };
             }).filter(Boolean);
 
             const hideTargetPick = isLocked && !isViewingSelf;
@@ -649,6 +644,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         res.status(500).json({ success: false, message: 'Erro interno no servidor' });
     }
 });
+
 //🎯 Meus palpites (Filtrado por Liga)
  
 router.get('/my-bets', protect, checkPaid, async (req, res) => {
