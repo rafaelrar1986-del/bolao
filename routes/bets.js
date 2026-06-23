@@ -27,7 +27,7 @@ function toWinnerLabel(choice, teamA, teamB) {
 /**
  * 🧠 ESTRATÉGIA: Caminho da Liderança (VERSÃO DEFINITIVA SUPREMA - 2026)
  * Inclui: Mata-mata independente, Pódio Live, Secagem Dinâmica, Pênaltis, Cronologia Invertida, Botão do Milagre.
- * 🚀 NOVO: Feature 'Nêmesis', Partidas Críticas, Cores Dinâmicas e Impacto Visual (GAP/Posição).
+ * 🚀 NOVO: Feature 'Nêmesis', Partidas Críticas, Cores Dinâmicas e Impacto Visual (GAP/Posição) unificado para Simulação e Milagre.
  */
 
 const getMatchResult = (a, b) => {
@@ -74,9 +74,10 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 .lean()
         ]);
 
+        let parsedSimulations = {};
         if (mode === 'simulacao' && simulations && simulations.length < 50000) {
             try {
-                const parsedSimulations = JSON.parse(simulations);
+                parsedSimulations = JSON.parse(simulations);
                 matches.forEach(m => {
                     const midStr = String(m.matchId);
                     const simData = parsedSimulations[midStr];
@@ -146,6 +147,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
 
         const liveStatuses = ['ao_vivo', '1_tempo', '2_tempo', 'intervalo', 'prorrogacao', '1_tet', '2_tet', 'penaltis', 'live', 'in_progress'];
 
+        // 🚀 CURRENT RANKING: Inclui as simulações já aplicadas para calcular sua Posição Final.
         const currentRanking = bets
             .map(b => {
                 const betUserId = b.user?._id?.toString();
@@ -217,19 +219,15 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
 
         const mathFutureMatches = displayFutureMatches.filter(m => !m.isSimulated);
 
-        const miracleSimulations = {};
-        let miracleAchieved = false;
-        let miracleCriticalMatches = 0;
-
+        // ------------------------------------------------------------------------------------------------
+        // 🚀 ENGINE UNIFICADA DE SECAGEM/MILAGRE (STEP-BY-STEP)
+        // ------------------------------------------------------------------------------------------------
+        
         const getRankingSnapshot = (pointsMap) => {
             const list = Object.entries(pointsMap)
                 .map(([userId, points]) => {
                     const bet = betsByUserMap.get(userId);
-                    return {
-                        userId,
-                        points,
-                        name: bet?.user?.name || ''
-                    };
+                    return { userId, points, name: bet?.user?.name || '' };
                 })
                 .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name));
 
@@ -241,10 +239,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                     posToAssign = index + 1;
                     lastPoints = item.points;
                 }
-                return {
-                    ...item,
-                    position: posToAssign
-                };
+                return { ...item, position: posToAssign };
             });
 
             const target = ranked.find(r => r.userId === activeUserId);
@@ -260,71 +255,123 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
             };
         };
 
-        const getTopPoints = (pointsMap) => Math.max(...Object.values(pointsMap));
-        const getGapToLeader = (pointsMap) => getTopPoints(pointsMap) - (pointsMap[activeUserId] || 0);
+        const stepByStepSimulations = {};
+        let miracleAchieved = false;
+        let miracleCriticalMatches = 0;
 
-        if (isMiracleMode && activeUserId) {
-            const placarDinamico = Object.fromEntries(currentRanking.map(u => [u.userId, u.points]));
-            const isNoTopo = () => {
-                const snapshot = getRankingSnapshot(placarDinamico);
-                return snapshot.targetPosition === 1;
-            };
+        if ((isMiracleMode || mode === 'simulacao') && activeUserId) {
+            const placarDinamico = {};
+            let jogosParaCalculo = [];
 
-            if (!isNoTopo()) {
-                const jogosParaCalculo = [...mathFutureMatches].sort((a, b) => new Date(a.date) - new Date(b.date));
+            if (isMiracleMode) {
+                // Modo Milagre: Baseia no Ranking Atual e projeta no futuro
+                currentRanking.forEach(u => { placarDinamico[u.userId] = u.points; });
+                jogosParaCalculo = [...mathFutureMatches].sort((a, b) => new Date(a.date) - new Date(b.date));
+            } else {
+                // Modo Simulação: Ignora as simulações para criar o Ranking "Real" base, depois aplica os jogos cronologicamente.
+                const basePointsMap = {};
+                bets.forEach(b => {
+                    const betUserId = b.user?._id?.toString();
+                    if (!betUserId) return;
+                    let pts = 0;
+                    (b.groupMatches || []).forEach(gm => {
+                        const midStr = String(gm.matchId);
+                        const m = matchMap.get(midStr);
+                        if (!m || m.isSimulated) return; // 🚀 CRUCIAL: Ignora os simulados na base
+                        const isMatchValid = isLive ? (m.status !== 'scheduled') : (m.status === 'finished');
+                        if (!isMatchValid) return;
 
-                for (const m of jogosParaCalculo) {
-                    if (isNoTopo()) break;
-
-                    const midStr = String(m.matchId);
-                    const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
-                    const targetPick = targetPicksMap.get(midStr);
-
-                    if (!targetPick || (!targetPick.winner && !targetPick.qualifier)) continue;
-
-                    const before = getRankingSnapshot(placarDinamico);
-
-                    miracleSimulations[midStr] = {
-                        winner: targetPick.winner || null,
-                        qualifier: isKnockoutPhase ? (targetPick.qualifier || null) : null
-                    };
-
-                    Array.from(betsByUserMap.values()).forEach(bet => {
-                        const rivalPick = (bet.groupMatches || []).find(gm => String(gm.matchId) === midStr);
-                        const uId = bet.user._id.toString();
-
-                        if (rivalPick) {
-                            if (targetPick.winner && rivalPick.winner === targetPick.winner) {
-                                placarDinamico[uId] = (placarDinamico[uId] || 0) + 1;
-                            }
-                            if (isKnockoutPhase && targetPick.qualifier && rivalPick.qualifier === targetPick.qualifier) {
-                                placarDinamico[uId] = (placarDinamico[uId] || 0) + 1;
-                            }
-                        }
+                        const realWinner = getMatchResult(m.scoreA, m.scoreB);
+                        const realQual = getQualifiedSide(m, realWinner);
+                        if (realWinner && gm.winner === realWinner) pts += 1;
+                        if (gm.qualifier && realQual && gm.qualifier === realQual) pts += 1;
                     });
+                    basePointsMap[betUserId] = pts + (b.podiumPoints || 0);
+                });
 
-                    const after = getRankingSnapshot(placarDinamico);
+                Object.assign(placarDinamico, basePointsMap);
+                jogosParaCalculo = matches.filter(m => m.isSimulated).sort((a, b) => new Date(a.date) - new Date(b.date));
+            }
 
-                    const changedLeader = before.leaderId !== after.leaderId;
-                    const improvedTargetPosition = after.targetPosition < before.targetPosition;
-                    const reducedGap = after.gapToLeader < before.gapToLeader;
+            const isNoTopo = () => getRankingSnapshot(placarDinamico).targetPosition === 1;
 
-                    if (changedLeader || improvedTargetPosition || reducedGap) {
-                        miracleCriticalMatches++;
-                        miracleSimulations[midStr].isCritical = true;
-                        
-                        // 🚀 NOVO: Salvando o impacto visual exato da partida
-                        miracleSimulations[midStr].impact = {
-                            posBefore: before.targetPosition,
-                            posAfter: after.targetPosition,
-                            gapBefore: before.gapToLeader,
-                            gapAfter: after.gapToLeader
-                        };
+            for (const m of jogosParaCalculo) {
+                if (isMiracleMode && isNoTopo()) break;
+
+                const midStr = String(m.matchId);
+                const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
+                let winChoice, qualChoice;
+
+                if (isMiracleMode) {
+                    const targetPick = targetPicksMap.get(midStr);
+                    if (!targetPick || (!targetPick.winner && !targetPick.qualifier)) continue;
+                    winChoice = targetPick.winner;
+                    qualChoice = targetPick.qualifier;
+                } else {
+                    const simData = parsedSimulations[midStr];
+                    if (!simData) continue;
+                    
+                    winChoice = simData.winner?.toLowerCase();
+                    if (winChoice === 'a') winChoice = 'A';
+                    else if (winChoice === 'b') winChoice = 'B';
+                    else if (winChoice === 'draw') winChoice = 'draw';
+                    else winChoice = null;
+
+                    qualChoice = simData.qualifier?.toUpperCase();
+                    if (qualChoice !== 'A' && qualChoice !== 'B') qualChoice = null;
+                }
+
+                if (!winChoice && !qualChoice) continue;
+
+                const before = getRankingSnapshot(placarDinamico);
+
+                stepByStepSimulations[midStr] = {
+                    winner: winChoice || null,
+                    qualifier: isKnockoutPhase ? (qualChoice || null) : null,
+                    isCritical: false
+                };
+
+                Array.from(betsByUserMap.values()).forEach(bet => {
+                    const rivalPick = (bet.groupMatches || []).find(gm => String(gm.matchId) === midStr);
+                    const uId = bet.user._id.toString();
+
+                    if (rivalPick) {
+                        if (winChoice && rivalPick.winner === winChoice) {
+                            placarDinamico[uId] = (placarDinamico[uId] || 0) + 1;
+                        }
+                        if (isKnockoutPhase && qualChoice && rivalPick.qualifier === qualChoice) {
+                            placarDinamico[uId] = (placarDinamico[uId] || 0) + 1;
+                        }
                     }
+                });
+
+                const after = getRankingSnapshot(placarDinamico);
+
+                const changedLeader = before.leaderId !== after.leaderId;
+                const improvedPos = after.targetPosition < before.targetPosition;
+                const worsenedPos = after.targetPosition > before.targetPosition;
+                const reducedGap = after.gapToLeader < before.gapToLeader;
+                const increasedGap = after.gapToLeader > before.gapToLeader;
+
+                // Em Simulação, queremos mostrar impactos positivos e negativos. Em Milagre, apenas positivos.
+                const isImpactful = isMiracleMode 
+                    ? (changedLeader || improvedPos || reducedGap)
+                    : (changedLeader || improvedPos || worsenedPos || reducedGap || increasedGap);
+
+                if (isImpactful) {
+                    if (isMiracleMode) miracleCriticalMatches++;
+                    stepByStepSimulations[midStr].isCritical = true;
+                    
+                    stepByStepSimulations[midStr].impact = {
+                        posBefore: before.targetPosition,
+                        posAfter: after.targetPosition,
+                        gapBefore: before.gapToLeader,
+                        gapAfter: after.gapToLeader
+                    };
                 }
             }
 
-            miracleAchieved = isNoTopo();
+            if (isMiracleMode) miracleAchieved = isNoTopo();
         }
 
         const podiumWeights = { first: 7, second: 5, third: 4, fourth: 3 };
@@ -474,36 +521,37 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
             const isLocked = !isAdmin && (m.phase === 'group' ? !unlockedPhases.includes('group') : !unlockedPhases.includes(m.group));
             const targetPick = targetPicksMap.get(midStr);
 
-            let rivalsToWatch = currentRanking.filter(r => r.userId !== activeUserId && r.points > targetPoints);
-
-            if (rivalsToWatch.length === 0) {
-                let MARGEM_DE_PERIGO = 3;
-                if (m.phase === 'group') {
-                    MARGEM_DE_PERIGO = 4;
-                } else if (isKnockoutPhase) {
-                    switch (m.group) {
-                        case '16-avos de final': MARGEM_DE_PERIGO = 6; break;
-                        case 'Oitavas de final': MARGEM_DE_PERIGO = 4; break;
-                        case 'Quartas de final': MARGEM_DE_PERIGO = 3; break;
-                        case 'Semifinal':
-                        case '3º lugar':
-                        case 'Final': MARGEM_DE_PERIGO = 2; break;
-                    }
+            // 🚀 NOVA LÓGICA DE RIVAIS (Olha para cima e para baixo de forma inteligente)
+            let MARGEM_DE_PERIGO = 3;
+            if (m.phase === 'group') {
+                MARGEM_DE_PERIGO = 4;
+            } else if (isKnockoutPhase) {
+                switch (m.group) {
+                    case '16-avos de final': MARGEM_DE_PERIGO = 6; break;
+                    case 'Oitavas de final': MARGEM_DE_PERIGO = 4; break;
+                    case 'Quartas de final': MARGEM_DE_PERIGO = 3; break;
+                    case 'Semifinal':
+                    case '3º lugar':
+                    case 'Final': MARGEM_DE_PERIGO = 2; break;
                 }
-
-                const meuPotencialMaximo = targetPoints + targetPodiumPotential;
-
-                rivalsToWatch = currentRanking.filter(r => {
-                    if (r.userId === activeUserId) return false;
-
-                    const rivalPodium = userPodiumPotentialMap.get(r.userId) || 0;
-                    const rivalPotencialMaximo = r.points + rivalPodium;
-
-                    return rivalPotencialMaximo >= (meuPotencialMaximo - MARGEM_DE_PERIGO);
-                });
             }
 
-            // 🚀 OBJETOS COMPLEXOS COM CORES
+            const meuPotencialMaximo = targetPoints + targetPodiumPotential;
+
+            const rivalsToWatch = currentRanking.filter(r => {
+                if (r.userId === activeUserId) return false;
+
+                // 1. O Rival está acima de mim? (Ameaça direta que preciso ultrapassar)
+                if (r.points > targetPoints) return true;
+
+                // 2. O Rival está atrás ou empatado, mas matematicamente pode me alcançar?
+                const rivalPodium = userPodiumPotentialMap.get(r.userId) || 0;
+                const rivalPotencialMaximo = r.points + rivalPodium;
+
+                // Se o teto máximo dele encosta no meu teto menos a margem do jogo atual, é ameaça!
+                return rivalPotencialMaximo >= (meuPotencialMaximo - MARGEM_DE_PERIGO);
+            });
+
             const opponentsToWatch = isLocked ? [{ name: "Conteúdo Bloqueado 🔒", color: 'locked' }] : rivalsToWatch.filter(ra => {
                 const rb = betsByUserMap.get(ra.userId);
                 const rp = (rb?.groupMatches || []).find(gm => String(gm.matchId) === midStr);
@@ -520,7 +568,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 } else if (rivalPosition <= currentPosition) {
                     colorCode = 'green'; // Na frente ou empatado
                 } else {
-                    colorCode = 'red'; // Atrás
+                    colorCode = 'red'; // Atrás (agora eles vão aparecer aqui!)
                 }
 
                 return {
@@ -531,11 +579,11 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
 
             const hideTargetPick = isLocked && !isViewingSelf;
 
-            const miracleData = miracleSimulations[midStr] || null;
+            const miracleData = stepByStepSimulations[midStr] || null;
             const isMiracleResult = !!miracleData;
             const miracleChoice = miracleData ? miracleData.winner : null;
             const miracleQualifier = miracleData ? miracleData.qualifier : null;
-            const miracleImpact = miracleData ? miracleData.impact : null; // 🚀 EXTRAINDO IMPACTO
+            const miracleImpact = miracleData ? miracleData.impact : null; 
 
             const isSimulationMode = mode === 'simulacao' || isMiracleMode;
             const hasImpact = isSimulationMode ? true : (m.isSimulated === true || isMiracleResult === true || opponentsToWatch.length > 0);
@@ -549,9 +597,9 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 phase: m.phase,
                 group: m.group,
                 hasImpact,
-                isMiracleResult,
+                isMiracleResult, 
                 isCriticalForMiracle: miracleData ? !!miracleData.isCritical : false,
-                miracleImpact, // 🚀 MANDANDO PRO FRONT-END
+                miracleImpact, 
                 miracleChoice,
                 miracleQualifier,
                 isLocked,
@@ -569,10 +617,11 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 opponentsToWatch
             };
         });
+        const miracleTotalMatchesNeeded = Object.keys(stepByStepSimulations).length;
 
-        const miracleTotalMatchesNeeded = Object.keys(miracleSimulations).length;
-
-        console.log(`DEBUG MILAGRE: Total Needed: ${miracleTotalMatchesNeeded}, Critical: ${miracleCriticalMatches}`);
+        if (isMiracleMode) {
+            console.log(`DEBUG MILAGRE: Total Needed: ${miracleTotalMatchesNeeded}, Critical: ${miracleCriticalMatches}`);
+        }
 
         res.json({
             success: true,
@@ -600,7 +649,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         res.status(500).json({ success: false, message: 'Erro interno no servidor' });
     }
 });
-
 //🎯 Meus palpites (Filtrado por Liga)
  
 router.get('/my-bets', protect, checkPaid, async (req, res) => {
