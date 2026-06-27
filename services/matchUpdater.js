@@ -601,53 +601,11 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
       const rawPeriod = firstDefined(gameData.period, core.period);
       const proposedStatus = mapStatus(rawStatus, rawPeriod);
 
-     // --- NOVA TRAVA: EVITAR ATUALIZAÇÕES FANTASMAS EM JOGOS FUTUROS ---
+     // --- NOVA TRAVA: EVITAR ATUALIZAÇÕES FANTASMAS ---
+// Se o jogo já estava agendado e continua agendado, ignoramos.
+// Não comparamos hora nem nomes pois eles divergem entre API (UTC/Inglês) e DB (Local/PT).
 if (match.status === 'scheduled' && proposedStatus === 'scheduled') {
-    let apiDate = match.date;
-    let apiTime = match.time;
-
-    // Simular a transformação de data
-    if (core.eventDate) {
-        const d = new Date(core.eventDate);
-        if (!Number.isNaN(d.getTime())) {
-            const day = String(d.getUTCDate()).padStart(2, '0');
-            const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-            const year = d.getUTCFullYear();
-            const hh = String(d.getUTCHours()).padStart(2, '0');
-            const mm = String(d.getUTCMinutes()).padStart(2, '0');
-            apiDate = `${day}/${month}/${year}`;
-            apiTime = `${hh}:${mm}`;
-        }
-    }
-
-    // NORMALIZAÇÃO: Usamos .trim() para ignorar espaços extras e safeStr para garantir string
-    const dbTime = safeStr(match.time).trim();
-    const dbDate = safeStr(match.date).trim();
-    const dbTeamA = safeStr(match.teamA).trim();
-    const dbTeamB = safeStr(match.teamB).trim();
-
-    const apiTimeNorm = safeStr(apiTime).trim();
-    const apiDateNorm = safeStr(apiDate).trim();
-    const apiTeamA = safeStr(core.homeTeam || match.teamA).trim();
-    const apiTeamB = safeStr(core.awayTeam || match.teamB).trim();
-
-    const dadosIdenticos =
-        dbTime === apiTimeNorm &&
-        dbDate === apiDateNorm &&
-        dbTeamA === apiTeamA &&
-        dbTeamB === apiTeamB;
-
-    if (dadosIdenticos) {
-        // Nada mudou, podemos saltar este jogo com segurança
-        continue;
-    } else {
-        // LOG DE INVESTIGAÇÃO: O que está a mudar?
-        console.log(`[DEBUG] Jogo ${core.id} ("${core.homeTeam}" vs "${core.awayTeam}") vai atualizar pois dadosIdenticos falhou:`);
-        if (dbTime !== apiTimeNorm) console.log(`  -> Hora difere: DB[${dbTime}] vs API[${apiTimeNorm}]`);
-        if (dbDate !== apiDateNorm) console.log(`  -> Data difere: DB[${dbDate}] vs API[${apiDateNorm}]`);
-        if (dbTeamA !== apiTeamA)   console.log(`  -> TimeA difere: DB[${dbTeamA}] vs API[${apiTeamA}]`);
-        if (dbTeamB !== apiTeamB)   console.log(`  -> TimeB difere: DB[${dbTeamB}] vs API[${apiTeamB}]`);
-    }
+    continue; 
 }
       // ------------------------------------------------------------------
 
