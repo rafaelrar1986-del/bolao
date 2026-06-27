@@ -628,7 +628,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                     winner: null,
                     label: 'Conteúdo Bloqueado 🔒',
                     qualifier: null,
-                    qualifierName: null
+                    qualifierName: 'Conteúdo Bloqueado 🔒'
                 } : {
                     winner: targetPick?.winner || null,
                     label: toWinnerLabel(targetPick?.winner, m.teamA, m.teamB),
