@@ -419,7 +419,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         });
 
         const targetPodiumPotential = userPodiumPotentialMap.get(activeUserId) || 0;
-        const isPodiumLocked = !isAdmin && !unlockedPhases.includes('podium') && !unlockedPhases.includes('Pódio');
+        const isPodiumLocked = !unlockedPhases.includes('podium') && !unlockedPhases.includes('Pódio');
         const hidePodium = !isViewingSelf && isPodiumLocked;
         const podiumDetails = [];
 
@@ -547,7 +547,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         const matchesAnalysis = displayFutureMatches.map((m, index) => {
             const midStr = String(m.matchId);
             const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
-            const isLocked = !isAdmin && (m.phase === 'group' ? !unlockedPhases.includes('group') : !unlockedPhases.includes(m.group));
+            const isLocked = (m.phase === 'group' ? !unlockedPhases.includes('group') : !unlockedPhases.includes(m.group));
             const targetPick = targetPicksMap.get(midStr);
 
             let MARGEM_DE_PERIGO = 3;
