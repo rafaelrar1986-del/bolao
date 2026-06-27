@@ -898,7 +898,7 @@ async function updateMatches() {
 
     const now = Date.now();
     const yesterday = new Date(now - 86_400_000).toISOString().split('T')[0];
-    const tomorrow = new Date(now + 86_400_000).toISOString().split('T')[0];
+    const tomorrow = new Date(now + 400_000).toISOString().split('T')[0];
 
     try {
       const liveRes = await fetchJson('/events/live/', { timeout: 10000 });
