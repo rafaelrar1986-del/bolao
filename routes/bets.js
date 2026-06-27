@@ -233,9 +233,11 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         const positionMap = new Map();
         simulatedRankingList.forEach(r => positionMap.set(r.userId, r.position));
 
+        // 🚀 CORREÇÃO APLICADA AQUI: Array original usava .sort() baseado em matchId reverso.
+        // Agora, aplica-se explicitamente o helper cronológico unificando todo o fluxo do backend ao frontend.
         const displayFutureMatches = matches
             .filter(m => (isLive ? m.status === 'scheduled' : m.status !== 'finished') || m.isSimulated)
-            .sort((a, b) => (parseInt(String(b.matchId).replace(/\D/g, ''), 10) || 0) - (parseInt(String(a.matchId).replace(/\D/g, ''), 10) || 0));
+            .sort(sortMatchesChronologically);
 
         const mathFutureMatches = displayFutureMatches.filter(m => !m.isSimulated);
 
@@ -670,6 +672,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         res.status(500).json({ success: false, message: 'Erro interno no servidor' });
     }
 });
+
 //🎯 Meus palpites (Filtrado por Liga)
  
 router.get('/my-bets', protect, checkPaid, async (req, res) => {
