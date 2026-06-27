@@ -90,12 +90,10 @@ function mapApiStatus(status, period) {
   if (s === 'cancelled') return 'CXL';
   if (s === 'penalties' || p === 'pen') return 'PEN';
   
-  // Mudei aqui: Agora lê '1h' da API e retorna '1T' para o Painel
   if (s === '1st_half' || p === '1t' || p === '1h') return '1T';
   
   if (s === 'halftime' || p === 'ht') return 'HT';
   
-  // Mudei aqui: Agora lê '2h' da API e retorna '2T' para o Painel
   if (s === '2nd_half' || p === '2t' || p === '2h') return '2T';
   
   if (s === 'extra_time' || p === 'et') return 'ET';
@@ -113,12 +111,10 @@ function mapStatus(status, period) {
   if (s === 'cancelled') return 'cancelled';
   if (s === 'penalties' || p === 'pen') return 'penaltis';
   
-  // Mudei aqui: Agora lê '1h' da API e salva como '1_tempo' no banco
   if (s === '1st_half' || p === '1t' || p === '1h') return '1_tempo';
   
   if (s === 'halftime' || p === 'ht') return 'intervalo';
   
-  // Mudei aqui: Agora lê '2h' da API e salva como '2_tempo' no banco
   if (s === '2nd_half' || p === '2t' || p === '2h') return '2_tempo';
   
   if (s === 'extra_time' || p === 'et') return 'prorrogacao';
@@ -604,6 +600,39 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
       const rawStatus = firstDefined(gameData.status, core.status);
       const rawPeriod = firstDefined(gameData.period, core.period);
       const proposedStatus = mapStatus(rawStatus, rawPeriod);
+
+      // --- NOVA TRAVA: EVITAR ATUALIZAÇÕES FANTASMAS EM JOGOS FUTUROS ---
+      if (match.status === 'scheduled' && proposedStatus === 'scheduled') {
+        let apiDate = match.date;
+        let apiTime = match.time;
+        
+        // Simular a mesma transformação de data que ocorre mais abaixo no código
+        if (core.eventDate) {
+          const d = new Date(core.eventDate);
+          if (!Number.isNaN(d.getTime())) {
+            const day = String(d.getUTCDate()).padStart(2, '0');
+            const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+            const year = d.getUTCFullYear();
+            const hh = String(d.getUTCHours()).padStart(2, '0');
+            const mm = String(d.getUTCMinutes()).padStart(2, '0');
+            apiDate = `${day}/${month}/${year}`;
+            apiTime = `${hh}:${mm}`;
+          }
+        }
+
+        const dadosIdenticos =
+          match.time === apiTime &&
+          match.date === apiDate &&
+          match.teamA === (core.homeTeam || match.teamA) &&
+          match.teamB === (core.awayTeam || match.teamB);
+
+        // Se nada de importante mudou no jogo futuro, pulamos a atualização no Mongo
+        if (dadosIdenticos) {
+          continue; 
+        }
+      }
+      // ------------------------------------------------------------------
+
       const status = shouldIgnoreStatusRegression(match.status, proposedStatus)
         ? match.status
         : proposedStatus;
@@ -855,33 +884,33 @@ async function processGameList(games, allowedLeagues, robotSettings, source) {
         updateData.unavailable = lineups.unavailable || [];
       }
 
-            await Match.updateOne({ _id: match._id }, { $set: updateData });
+      await Match.updateOne({ _id: match._id }, { $set: updateData });
 
-     if (effectiveStatus === 'finished' && match.status !== 'finished') {
-  const tid = match.leagueId || eventDetail.leagueId || '1';
+      if (effectiveStatus === 'finished' && match.status !== 'finished') {
+        const tid = match.leagueId || eventDetail.leagueId || '1';
 
-  const snapshotDate =
-    match.date ||
-    updateData.date ||
-    eventDetail.eventDate ||
-    core.eventDate ||
-    gameData.event_date ||
-    null;
+        const snapshotDate =
+          match.date ||
+          updateData.date ||
+          eventDetail.eventDate ||
+          core.eventDate ||
+          gameData.event_date ||
+          null;
 
-try {
-  await recalculateAllPoints(tid);
+        try {
+          await recalculateAllPoints(tid);
 
-  // pequena espera para garantir persistência no Mongo
-  await new Promise(resolve => setTimeout(resolve, 3000));
+          // pequena espera para garantir persistência no Mongo
+          await new Promise(resolve => setTimeout(resolve, 3000));
 
-  if (snapshotDate) {
-    await trySaveDailyPoints(snapshotDate, tid);
-  }
+          if (snapshotDate) {
+            await trySaveDailyPoints(snapshotDate, tid);
+          }
 
-} catch (e) {
-  console.error('❌ [finish processing]', e.message);
-}
-     }
+        } catch (e) {
+          console.error('❌ [finish processing]', e.message);
+        }
+      }
     } catch (err) {
       console.error(`❌ [Erro jogo ${gameData?.id ?? 'unknown'}]:`, err.message);
     }
@@ -898,7 +927,7 @@ async function updateMatches() {
 
     const now = Date.now();
     const yesterday = new Date(now - 86_400_000).toISOString().split('T')[0];
-    const tomorrow = new Date(now + 400_000).toISOString().split('T')[0];
+    const tomorrow = new Date(now + 86_400_000).toISOString().split('T')[0];
 
     try {
       const liveRes = await fetchJson('/events/live/', { timeout: 10000 });
