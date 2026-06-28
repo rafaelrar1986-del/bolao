@@ -673,6 +673,67 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     }
 });
 
+//🎯 Meus palpites (Filtrado por Liga)
+ 
+router.get('/my-bets', protect, checkPaid, async (req, res) => {
+  try {
+    const { leagueId } = req.query;
+    if (!leagueId) {
+      return res.status(400).json({ success: false, message: 'ID da liga é obrigatório' });
+    }
+
+    // Convertemos para Number e String para garantir compatibilidade
+    const lIdNum = Number(leagueId);
+    const lIdStr = String(leagueId);
+
+    const [bet, matches] = await Promise.all([
+      // AQUI ESTAVA O ERRO: Adicionamos o leagueId na busca da aposta
+      Bet.findOne({ 
+        user: req.user._id, 
+        leagueId: lIdStr 
+      }).lean(),
+      
+      Match.find({ leagueId: lIdNum }).lean()
+    ]);
+
+    // Se não encontrou aposta para ESTA LIGA específica
+    if (!bet) {
+      return res.json({ success: true, data: null, hasSubmitted: false });
+    }
+
+    // Criamos um Set de IDs de partidas da liga atual (para performance e comparação segura)
+    const matchIdsDaLiga = new Set(matches.map(m => Number(m.matchId)));
+
+    // Filtramos os palpites que pertencem APENAS a esta liga
+    const gm = (bet.groupMatches || [])
+      .filter(b => matchIdsDaLiga.has(Number(b.matchId))) // Comparação Number vs Number
+      .map((b) => {
+        const m = matches.find(x => Number(x.matchId) === Number(b.matchId));
+        const teamA = m?.teamA || 'Time A';
+        const teamB = m?.teamB || 'Time B';
+        return {
+          ...b,
+          matchName: m ? `${m.teamA} vs ${m.teamB}` : `Jogo ${b.matchId}`,
+          teamA,
+          teamB,
+          status: m?.status || 'scheduled',
+          choiceLabel: toWinnerLabel(b.winner, teamA, teamB)
+        };
+      });
+
+    // O status de submissão agora é real por liga
+    return res.json({
+      success: true,
+      data: { ...bet, groupMatches: gm },
+      hasSubmitted: gm.length > 0
+    });
+
+  } catch (e) {
+    console.error('GET /my-bets error:', e);
+    res.status(500).json({ success: false, message: 'Erro ao carregar palpites' });
+  }
+});
+
 
 /**
 /* =========================================================================
