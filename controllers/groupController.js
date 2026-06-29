@@ -161,13 +161,12 @@ const getGroupStandings = async (req, res) => {
 };
 
 /**
- * 2. NOVA FUNÇÃO: RETORNA AS CHAVES DO MATA-MATA (Com Cache e Ordenação Estruturada)
+ * 2. FUNÇÃO CORRIGIDA: RETORNA AS CHAVES DO MATA-MATA (Alinhado ao Select e ao Match Schema)
  */
 const getKnockoutMatches = async (req, res) => {
   const now = Date.now();
   let leagueId = req.query.leagueId ? Number(req.query.leagueId) : 1;
 
-  // Verificação de Cache estratégico do Mata-Mata
   if (cacheKnockout[leagueId] && (now - lastCacheKnockout[leagueId] < CACHE_DURATION)) {
     return res.json(cacheKnockout[leagueId]);
   }
@@ -175,14 +174,15 @@ const getKnockoutMatches = async (req, res) => {
   try {
     console.log(`[Knockout] Buscando chaves do mata-mata da liga: ${leagueId}`);
 
-    // Busca todas as fases eliminatórias da Copa (Mata-Mata)
-    // Ordena por número da partida (se houver) ou data para manter a simetria perfeita na tela
+    // CORREÇÃO 1: Busca pelo campo 'phase' correto do Schema (Enum: knockout ou mata-mata)
+    // CORREÇÃO 2: Ordena por data, hora e matchId (pois matchNumber não existe no Schema)
     const knockoutMatches = await Match.find({
       leagueId,
-      phase: { $in: ['round_32', 'round_16', 'quarterfinals', 'semifinals', 'third_place', 'final'] }
-    }).sort({ matchNumber: 1, date: 1 }).lean();
+      phase: { $in: ['knockout', 'mata-mata'] }
+    }).sort({ date: 1, time: 1, matchId: 1 }).lean();
 
-    // Dicionário base inicializado para evitar erros de undefined nas colunas do front
+    console.log(`[Knockout] Encontradas ${knockoutMatches.length} partidas no banco para esta liga.`);
+
     const phasesMap = {
       round_32: [],
       round_16: [],
@@ -192,14 +192,27 @@ const getKnockoutMatches = async (req, res) => {
       final: []
     };
 
-    // Aloca cada partida dinamicamente dentro do seu respectivo grupo de fase
+    // CORREÇÃO 3: Distribuição exata e sem conflitos baseada nas opções do seu Select (phaseName)
     knockoutMatches.forEach(match => {
-      if (phasesMap[match.phase]) {
-        phasesMap[match.phase].push(match);
+      const nameClean = match.phaseName ? match.phaseName.toLowerCase().trim() : '';
+      
+      if (nameClean.includes('16-avos')) {
+        phasesMap.round_32.push(match); // "16-avos de final"
+      } else if (nameClean.includes('oitavas')) {
+        phasesMap.round_16.push(match); // "Oitavas de final"
+      } else if (nameClean.includes('quartas')) {
+        phasesMap.quarterfinals.push(match); // "Quartas de final"
+      } else if (nameClean.includes('semi')) {
+        phasesMap.semifinals.push(match); // "Semifinal"
+      } else if (nameClean.includes('3º') || nameClean.includes('terceiro') || nameClean.includes('3o')) {
+        phasesMap.third_place.push(match); // "3º lugar"
+      } else if (nameClean === 'final' || nameClean.endsWith(' de final')) {
+        phasesMap.final.push(match); // "Final"
+      } else {
+        phasesMap.final.push(match); // Fallback de segurança
       }
     });
 
-    // Grava o resultado no cache da liga correspondente
     cacheKnockout[leagueId] = phasesMap;
     lastCacheKnockout[leagueId] = now;
 
