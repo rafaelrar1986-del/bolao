@@ -1,20 +1,26 @@
 const Match = require('../models/Match');
 
-// Caches organizados por LeagueID
+// Caches organizados por LeagueID para a Fase de Grupos
 let cacheOficial = {};
 let cacheParcial = {};
 let lastCacheOficial = {};
 let lastCacheParcial = {};
+
+// Caches organizados por LeagueID para o Mata-Mata
+let cacheKnockout = {};
+let lastCacheKnockout = {};
+
 const CACHE_DURATION = 30000;
 
+/**
+ * 1. CLASSIFICAÇÃO DA FASE DE GRUPOS (Sua lógica original mantida)
+ */
 const getGroupStandings = async (req, res) => {
   const now = Date.now();
   const isLiveRequest = req.query.live === 'true';
   
-  // Ajuste: Fallback para a liga 1 caso não venha no query
   let leagueId = req.query.leagueId ? Number(req.query.leagueId) : 1;
 
-  // 1. Verificação de Cache por Liga (Prevenção de undefined)
   if (!isLiveRequest && cacheOficial[leagueId] && (now - lastCacheOficial[leagueId] < CACHE_DURATION)) {
     return res.json(cacheOficial[leagueId]);
   }
@@ -23,19 +29,16 @@ const getGroupStandings = async (req, res) => {
   }
 
   try {
-    // 2. Busca partidas apenas da liga solicitada
     console.log(`[Standings] Calculando liga: ${leagueId} | Live: ${isLiveRequest}`);
 
     const allMatches = await Match.find({ leagueId, phase: 'group' }).lean();
     
     if (!allMatches || allMatches.length === 0) {
-      // Se não houver partidas, retornamos um objeto vazio
       return res.json({});
     }
 
     const standings = {};
 
-    // 3. Inicializar times
     allMatches.forEach(m => {
       [m.teamA, m.teamB].forEach(t => {
         if (t && !standings[t]) {
@@ -50,12 +53,10 @@ const getGroupStandings = async (req, res) => {
       });
     });
 
-    // 4. Filtrar partidas conforme o modo (Live ou Oficial)
     const activeMatches = allMatches.filter(m => 
       isLiveRequest ? m.status !== 'scheduled' : m.status === 'finished'
     );
 
-    // 5. Processar tabela
     activeMatches.forEach(m => {
       const { teamA, teamB, scoreA, scoreB } = m;
       if (typeof scoreA === 'number' && typeof scoreB === 'number') {
@@ -80,23 +81,16 @@ const getGroupStandings = async (req, res) => {
       }
     });
 
-    // 6. Agrupar por Grupo
     const groupedResults = {};
     Object.values(standings).forEach(t => {
       if (!groupedResults[t.group]) groupedResults[t.group] = [];
       groupedResults[t.group].push(t);
     });
 
-    // 7. Ordenação (Regras Oficiais: Confronto Direto Primeiro)
     for (const groupName in groupedResults) {
       groupedResults[groupName].sort((a, b) => {
-        // Regra Base: Pontos gerais em todas as partidas do grupo
         if (b.pts !== a.pts) return b.pts - a.pts;
 
-        // ==========================================
-        // PREPARAÇÃO PARA O PRIMEIRO PASSO
-        // Isolar apenas os confrontos diretos entre A e B
-        // ==========================================
         const h2hMatches = activeMatches.filter(m => 
           (m.teamA === a.name && m.teamB === b.name) || 
           (m.teamA === b.name && m.teamB === a.name)
@@ -111,81 +105,46 @@ const getGroupStandings = async (req, res) => {
             const golsA = m.teamA === a.name ? m.scoreA : m.scoreB;
             const golsB = m.teamA === b.name ? m.scoreA : m.scoreB;
 
-            // Gols Pró (H2H)
             h2hGpA += golsA;
             h2hGpB += golsB;
 
-            // Saldo de Gols (H2H)
             h2hSgA += (golsA - golsB);
             h2hSgB += (golsB - golsA);
 
-            // Pontos (H2H)
             if (golsA > golsB) h2hPtsA += 3;
             else if (golsB > golsA) h2hPtsB += 3;
             else { h2hPtsA += 1; h2hPtsB += 1; }
           }
         });
 
-        // ==========================================
-        // PRIMEIRO PASSO (Entre as equipes envolvidas)
-        // ==========================================
-        
-        // 1. Maior número de pontos obtidos nos confrontos diretos
         if (h2hPtsB !== h2hPtsA) return h2hPtsB - h2hPtsA;
-
-        // 2. Saldo de gols superior nos confrontos diretos
         if (h2hSgB !== h2hSgA) return h2hSgB - h2hSgA;
-
-        // 3. Maior número de gols marcados nos confrontos diretos
         if (h2hGpB !== h2hGpA) return h2hGpB - h2hGpA;
-
-        // ==========================================
-        // SEGUNDO PASSO (Se continuarem empatados)
-        // ==========================================
-        
-        // 4. Melhor saldo de gols em todas as partidas do grupo
         if (b.sg !== a.sg) return b.sg - a.sg;
-
-        // 5. Maior número de gols marcados em todas as partidas do grupo
         if (b.gp !== a.gp) return b.gp - a.gp;
 
-        // ==========================================
-        // CRITÉRIO FINAL (Segurança do Sistema)
-        // ==========================================
-        // Se empatarem em TUDO (inclusive no geral), usa ordem alfabética 
-        // para o JavaScript não bugar a renderização da tabela.
         return a.name.localeCompare(b.name);
       });
     }
 
-    // 8. Melhores Terceiros (Regra Copa 2026: 12 grupos -> 8 melhores)
     const allThirdPlaces = Object.values(groupedResults)
-      .map(g => g[2]) // Pega o 3º colocado de cada grupo (índice 2 do array)
-      .filter(Boolean) // Garante que não vai dar erro se o grupo estiver vazio
+      .map(g => g[2])
+      .filter(Boolean)
       .sort((a, b) => {
-        // 1. Maior número de pontos obtidos em todas as partidas do grupo
         if (b.pts !== a.pts) return b.pts - a.pts;
-
-        // 2. Saldo de gols resultante de todas as partidas do grupo
         if (b.sg !== a.sg) return b.sg - a.sg;
-
-        // 3. Maior número de gols marcados em todas as partidas do grupo
         if (b.gp !== a.gp) return b.gp - a.gp;
-
-        // CRITÉRIO DE SEGURANÇA (Caso de Empate Absoluto)
         return a.name.localeCompare(b.name);
       });
 
     const best8Names = allThirdPlaces.slice(0, 8).map(t => t.name);
 
-    // 9. Marcar Qualificados
     for (const g in groupedResults) {
       groupedResults[g].forEach((t, i) => {
         t.qualified = (i < 2 || (i === 2 && best8Names.includes(t.name)));
       });
     }
 
-    // 10. Salvar Cache
     if (isLiveRequest) { 
       cacheParcial[leagueId] = groupedResults; 
       lastCacheParcial[leagueId] = now; 
@@ -201,4 +160,54 @@ const getGroupStandings = async (req, res) => {
   }
 };
 
-module.exports = { getGroupStandings };
+/**
+ * 2. NOVA FUNÇÃO: RETORNA AS CHAVES DO MATA-MATA (Com Cache e Ordenação Estruturada)
+ */
+const getKnockoutMatches = async (req, res) => {
+  const now = Date.now();
+  let leagueId = req.query.leagueId ? Number(req.query.leagueId) : 1;
+
+  // Verificação de Cache estratégico do Mata-Mata
+  if (cacheKnockout[leagueId] && (now - lastCacheKnockout[leagueId] < CACHE_DURATION)) {
+    return res.json(cacheKnockout[leagueId]);
+  }
+
+  try {
+    console.log(`[Knockout] Buscando chaves do mata-mata da liga: ${leagueId}`);
+
+    // Busca todas as fases eliminatórias da Copa (Mata-Mata)
+    // Ordena por número da partida (se houver) ou data para manter a simetria perfeita na tela
+    const knockoutMatches = await Match.find({
+      leagueId,
+      phase: { $in: ['round_32', 'round_16', 'quarterfinals', 'semifinals', 'third_place', 'final'] }
+    }).sort({ matchNumber: 1, date: 1 }).lean();
+
+    // Dicionário base inicializado para evitar erros de undefined nas colunas do front
+    const phasesMap = {
+      round_32: [],
+      round_16: [],
+      quarterfinals: [],
+      semifinals: [],
+      third_place: [],
+      final: []
+    };
+
+    // Aloca cada partida dinamicamente dentro do seu respectivo grupo de fase
+    knockoutMatches.forEach(match => {
+      if (phasesMap[match.phase]) {
+        phasesMap[match.phase].push(match);
+      }
+    });
+
+    // Grava o resultado no cache da liga correspondente
+    cacheKnockout[leagueId] = phasesMap;
+    lastCacheKnockout[leagueId] = now;
+
+    res.json(phasesMap);
+  } catch (error) {
+    console.error(`[Error Knockout] Falha na liga ${leagueId}:`, error);
+    res.status(500).json({ error: 'Erro ao processar chaves eliminatórias.' });
+  }
+};
+
+module.exports = { getGroupStandings, getKnockoutMatches };
