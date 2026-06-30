@@ -54,6 +54,12 @@ function parseMinuteValue(value) {
 }
 
 function shouldIgnoreStatusRegression(currentStatus, nextStatus) {
+  // EXCEÇÃO MATA-MATA: Se o status atual for 'finished', mas o próximo for prorrogação ou pênaltis,
+  // nós PERMITIMOS a atualização para o sistema não travar nos 90 minutos.
+  if (currentStatus === 'finished' && ['prorrogacao', 'penaltis'].includes(nextStatus)) {
+    return false;
+  }
+
   const order = {
     scheduled: 0,
     ao_vivo: 1,
@@ -71,7 +77,6 @@ function shouldIgnoreStatusRegression(currentStatus, nextStatus) {
   const next = order[nextStatus] ?? 0;
   return next < current;
 }
-
 function shouldIgnoreMinuteRegression(currentMinute, nextMinute) {
   const current = parseMinuteValue(currentMinute);
   const next = parseMinuteValue(nextMinute);
@@ -85,18 +90,17 @@ function mapApiStatus(status, period) {
   const s = safeStr(status).toLowerCase();
   const p = safeStr(period).toLowerCase();
 
+  if (s === 'penalties' || (p === 'pen' && s !== 'finished')) return 'PEN';
+  if (s === 'extra_time' || (p === 'et' && s !== 'finished')) return 'ET';
+
   if (s === 'finished' || p === 'ft') return 'FT';
   if (s === 'postponed') return 'PST';
   if (s === 'cancelled') return 'CXL';
-  if (s === 'penalties' || p === 'pen') return 'PEN';
   
   if (s === '1st_half' || p === '1t' || p === '1h') return '1T';
-  
   if (s === 'halftime' || p === 'ht') return 'HT';
-  
   if (s === '2nd_half' || p === '2t' || p === '2h') return '2T';
   
-  if (s === 'extra_time' || p === 'et') return 'ET';
   if (s === 'notstarted') return 'NS';
   if (s === 'inprogress') return 'LIVE';
   return 'NS';
@@ -106,22 +110,23 @@ function mapStatus(status, period) {
   const s = safeStr(status).toLowerCase();
   const p = safeStr(period).toLowerCase();
 
+  // Checa primeiro se está ativamente em pênaltis ou prorrogação
+  if (s === 'penalties' || (p === 'pen' && s !== 'finished')) return 'penaltis';
+  if (s === 'extra_time' || (p === 'et' && s !== 'finished')) return 'prorrogacao';
+
   if (s === 'finished' || p === 'ft') return 'finished';
   if (s === 'postponed') return 'postponed';
   if (s === 'cancelled') return 'cancelled';
-  if (s === 'penalties' || p === 'pen') return 'penaltis';
   
   if (s === '1st_half' || p === '1t' || p === '1h') return '1_tempo';
-  
   if (s === 'halftime' || p === 'ht') return 'intervalo';
-  
   if (s === '2nd_half' || p === '2t' || p === '2h') return '2_tempo';
   
-  if (s === 'extra_time' || p === 'et') return 'prorrogacao';
   if (s === 'notstarted') return 'scheduled';
   if (s === 'inprogress') return 'ao_vivo';
   return 'scheduled';
 }
+
 function mapPlayerV2(p) {
   if (!p) return null;
 
