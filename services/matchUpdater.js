@@ -91,7 +91,7 @@ function mapApiStatus(status, period) {
   const p = safeStr(period).toLowerCase();
 
   if (s === 'penalties' || (p === 'pen' && s !== 'finished')) return 'PEN';
-  if (s === 'extra_time' || (p === 'et' && s !== 'finished')) return 'ET';
+  if (s === 'extratime' || (p === 'et' && s !== 'finished')) return 'ET';
 
   if (s === 'finished' || p === 'ft') return 'FT';
   if (s === 'postponed') return 'PST';
@@ -112,7 +112,7 @@ function mapStatus(status, period) {
 
   // Checa primeiro se está ativamente em pênaltis ou prorrogação
   if (s === 'penalties' || (p === 'pen' && s !== 'finished')) return 'penaltis';
-  if (s === 'extra_time' || (p === 'et' && s !== 'finished')) return 'prorrogacao';
+  if (s === 'extratime' || (p === 'et' && s !== 'finished')) return 'prorrogacao';
 
   if (s === 'finished' || p === 'ft') return 'finished';
   if (s === 'postponed') return 'postponed';
