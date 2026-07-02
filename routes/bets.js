@@ -1021,10 +1021,13 @@ router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, r
     const matchMap = new Map(matches.map(m => [Number(m.matchId), m]));
     const matchIdsDaLiga = new Set(matches.map(m => Number(m.matchId)));
 
+    // CORREÇÃO: Garante conversão para Número para evitar bugs de string
     const getWinner = (a, b) => {
       if (a === undefined || b === undefined || a === null || b === null) return null;
-      if (a > b) return 'A';
-      if (b > a) return 'B';
+      const numA = Number(a);
+      const numB = Number(b);
+      if (numA > numB) return 'A';
+      if (numB > numA) return 'B';
       return 'draw';
     };
 
@@ -1059,7 +1062,12 @@ router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, r
         }
 
         // 2. Ponto por acertar quem classifica (Mata-mata)
-        const realQual = m.qualifiedSide || (realWinner !== 'draw' ? realWinner : null);
+        // CORREÇÃO AQUI: Se a partida está finalizada, usamos o m.qualifiedSide oficial do banco.
+        // Se a partida está RO LANDO (parcial), ignoramos o banco e calculamos puramente pelo placar ao vivo.
+        const realQual = m.status === 'finished'
+          ? (m.qualifiedSide || (realWinner !== 'draw' ? realWinner : null))
+          : (realWinner !== 'draw' ? realWinner : null);
+
         if (gm.qualifier && realQual && gm.qualifier === realQual) {
           totalPoints += 1;
           knockoutPoints += 1;
