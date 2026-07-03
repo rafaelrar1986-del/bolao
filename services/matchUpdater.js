@@ -680,7 +680,7 @@ if (match.status === 'scheduled' && proposedStatus === 'scheduled') {
       const detailHomeScore = firstDefined(eventDetail.homeScore, eventDetail.home_score);
       const detailAwayScore = firstDefined(eventDetail.awayScore, eventDetail.away_score);
 
-      const resolvedHomeScore = liveHomeScore !== null
+      let resolvedHomeScore = liveHomeScore !== null
         ? Number(liveHomeScore)
         : (
             detailHomeScore !== null
@@ -688,7 +688,7 @@ if (match.status === 'scheduled' && proposedStatus === 'scheduled') {
               : (match.scoreA !== null && match.scoreA !== undefined ? Number(match.scoreA) : 0)
           );
 
-      const resolvedAwayScore = liveAwayScore !== null
+      let resolvedAwayScore = liveAwayScore !== null
         ? Number(liveAwayScore)
         : (
             detailAwayScore !== null
@@ -711,6 +711,21 @@ if (match.status === 'scheduled' && proposedStatus === 'scheduled') {
       }
 
       const incidents = normalizeIncidentsV2(incidentsPayload);
+      
+      // --- AJUSTE EM TEMPO REAL DO PLACAR (CORREÇÃO DE DELAY DA API EXTERNA) ---
+      let timelineHomeGoals = 0;
+      let timelineAwayGoals = 0;
+      if (incidents && Array.isArray(incidents.goals)) {
+        incidents.goals.forEach(g => {
+          if (g.side === 'home') timelineHomeGoals++;
+          if (g.side === 'away') timelineAwayGoals++;
+        });
+      }
+      // Sobrescreve garantindo que o placar use a maior contagem (Evita o delay do payload global)
+      resolvedHomeScore = Math.max(resolvedHomeScore, timelineHomeGoals);
+      resolvedAwayScore = Math.max(resolvedAwayScore, timelineAwayGoals);
+      // -------------------------------------------------------------------------
+
       let lineups = mapLineupsV2(lineupsPayload);
       if (playerStatsPayload?.player_stats && Array.isArray(playerStatsPayload.player_stats)) {
         lineups = mergePlayerStatsIntoLineups(lineups, playerStatsPayload.player_stats);
