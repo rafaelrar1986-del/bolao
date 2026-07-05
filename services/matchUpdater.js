@@ -110,23 +110,32 @@ function mapStatus(status, period) {
   const s = safeStr(status).toLowerCase();
   const p = safeStr(period).toLowerCase();
 
-  // Checa primeiro se está ativamente em pênaltis ou prorrogação
-  if (s === 'penalties' || (p === 'pen' && s !== 'finished')) return 'penaltis';
-  if (s === 'extratime' || (p === 'et' && s !== 'finished')) return 'prorrogacao';
-
-  if (s === 'finished' || p === 'ft') return 'finished';
+  // 1. Se o status da API diz que acabou, o jogo está finalizado
+  if (s === 'finished' || p === 'ft' || p === 'finished') return 'finished';
   if (s === 'postponed') return 'postponed';
   if (s === 'cancelled') return 'cancelled';
+
+  // 2. Checa PÊNALTIS (seja no status ou se o período contiver 'pen')
+  if (s === 'penalties' || p === 'penalties' || p.includes('pen')) {
+    return 'penaltis';
+  }
   
-  if (s === '1st_half' || p === '1t' || p === '1h') return '1_tempo';
-  if (s === 'halftime' || p === 'ht') return 'intervalo';
-  if (s === '2nd_half' || p === '2t' || p === '2h') return '2_tempo';
+  // 3. Checa PRORROGAÇÃO (se o período contiver 'extra' ou 'et')
+  if (s === 'extratime' || p === 'extratime' || p.includes('extra') || p === 'et') {
+    return 'prorrogacao';
+  }
   
+  // 4. Tempos normais da partida
+  if (s === '1st_half' || p === '1st_half' || p === '1t' || p === '1h') return '1_tempo';
+  if (s === 'halftime' || p === 'halftime' || p === 'ht') return 'intervalo';
+  if (s === '2nd_half' || p === '2nd_half' || p === '2t' || p === '2h') return '2_tempo';
+  
+  // 5. Status genéricos da API
   if (s === 'notstarted') return 'scheduled';
-  if (s === 'inprogress') return 'ao_vivo';
+  if (s === 'inprogress' || s === 'live') return 'ao_vivo';
+  
   return 'scheduled';
 }
-
 function mapPlayerV2(p) {
   if (!p) return null;
 
