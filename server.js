@@ -143,6 +143,7 @@ mongoose.connect(process.env.MONGODB_URI)
     scoreB: doc.scoreB,
     penaltiesA: doc.penaltiesA,
     penaltiesB: doc.penaltiesB,
+    shootoutDetail: doc.shootoutDetail || [],
     timestamp: new Date().toISOString(),
     goalsDetail: doc.goalsDetail || [],
     possession: doc.possession || { home: 0, away: 0 },
