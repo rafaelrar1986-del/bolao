@@ -904,15 +904,20 @@ router.post('/save', protect, checkPaid, async (req, res) => {
       // 🌟 SISTEMA DE PESOS PARA ORDENAÇÃO DECRESCENTE (Mata-Mata -> Grupos)
       const getPhaseWeight = (phaseName) => {
         const p = String(phaseName).toLowerCase();
-        if (p.includes('final') && !p.includes('semi') && !p.includes('quartas') && !p.includes('oitavas')) return 70; // Final
+        
+        // 1. Verifica primeiro as fases específicas para evitar conflito com a palavra "final"
         if (p.includes('3') || p.includes('terceiro')) return 60; // Disputa 3º Lugar
         if (p.includes('semi')) return 50; // Semifinal
         if (p.includes('quartas')) return 40; // Quartas de final
         if (p.includes('oitavas')) return 30; // Oitavas de final
-        if (p.includes('16') || p.includes('avos')) return 20; // 16-avos
+        if (p.includes('16') || p.includes('avos')) return 20; // 16-avos de final
+        
+        // 2. Se não caiu em nenhuma acima e tem "final", então é realmente a Grande Final
+        if (p.includes('final')) return 70; // Final
+        
+        // 3. Qualquer outra coisa cai aqui
         return 10; // Fase de Grupos
       };
-
       palpitesCompletos.sort((a, b) => {
         const gradeA = a.gameData.phaseName || a.gameData.group || 'Geral';
         const gradeB = b.gameData.phaseName || b.gameData.group || 'Geral';
