@@ -994,6 +994,124 @@ router.post('/save', protect, checkPaid, async (req, res) => {
     return res.status(500).json({ success: false, message: 'Erro ao salvar palpites' });
   }
 });
+
+/* =========================================================================
+   🎯 Salvar palpite INDIVIDUAL (Com trava rigorosa de tempo e status)
+   ========================================================================= */
+router.post('/single', protect, checkPaid, async (req, res) => {
+  try {
+    const { leagueId, matchId, winner, qualifier } = req.body;
+
+    // 1. Validação básica de entrada e caracteres permitidos (Igual ao seu /save)
+    if (!leagueId || !matchId || !winner) {
+      return res.status(400).json({ success: false, message: 'Dados insuficientes para salvar o palpite.' });
+    }
+
+    if (!['A', 'B', 'draw'].includes(winner)) {
+      return res.status(400).json({ success: false, message: 'Palpite inválido. Escolha permitida: A, B ou draw.' });
+    }
+
+    let validQualifier = null;
+    if (qualifier === 'A' || qualifier === 'B') {
+      validQualifier = qualifier;
+    }
+
+    const idNum = Number(matchId);
+    
+    const Settings = require('../models/Settings'); 
+    const Match = require('../models/Match');
+    const Bet = require('../models/Bet');
+    const User = require('../models/User');
+
+    // 2. Busca a partida real no Banco de Dados
+    const match = await Match.findOne({ matchId: idNum, leagueId: Number(leagueId) }).lean();
+
+    if (!match) {
+      return res.status(404).json({ success: false, message: 'Partida não encontrada no sistema.' });
+    }
+
+    // ============================================================
+    // 🛡️ SEGURANÇA 1: Trava de Horário Absoluta (A Prova de Hackers)
+    // ============================================================
+    const now = new Date();
+    const matchDate = new Date(match.date);
+    
+    if (match.status !== 'scheduled' || matchDate <= now) {
+       return res.status(403).json({ 
+         success: false, 
+         message: 'Aposta bloqueada: Esta partida já começou ou foi encerrada.' 
+       });
+    }
+
+    // ============================================================
+    // 🛡️ SEGURANÇA 2: Trava de Fase/Grade (Settings do Admin igual ao /save)
+    // ============================================================
+    const configId = `league_${leagueId}`;
+    const settings = await Settings.findById(configId).lean();
+    const gradeDaPartida = match.phaseName || match.group;
+
+    if (settings && settings.lockedPhases && settings.lockedPhases.includes(gradeDaPartida)) {
+        return res.status(403).json({ 
+          success: false, 
+          message: `As apostas para a fase "${gradeDaPartida}" foram encerradas pelo Administrador!` 
+        });
+    }
+
+    // ============================================================
+    // 💾 ATUALIZAÇÃO CIRÚRGICA (Merge Inteligente)
+    // ============================================================
+    let betDoc = await Bet.findOne({ user: req.user._id, leagueId: String(leagueId) });
+
+    const novoPalpite = {
+        matchId: idNum,
+        winner: winner, // Já validado se é A, B ou draw
+        qualifier: validQualifier, // Já validado se é A, B ou nulo
+        points: 0,
+        qualifierPoints: 0
+    };
+
+    if (!betDoc) {
+        // Caso raríssimo do usuário não ter nenhum palpite e usar a edição avulsa
+        betDoc = new Bet({
+            user: req.user._id,
+            leagueId: String(leagueId),
+            groupMatches: [novoPalpite],
+            hasSubmitted: true,
+            lastUpdate: now,
+            firstSubmission: now
+        });
+        
+        await User.findByIdAndUpdate(req.user._id, { $addToSet: { leagues: Number(leagueId) } });
+    } else {
+        const index = betDoc.groupMatches.findIndex(b => Number(b.matchId) === idNum);
+        
+        if (index !== -1) {
+            betDoc.groupMatches[index].winner = winner;
+            betDoc.groupMatches[index].qualifier = validQualifier;
+            betDoc.groupMatches[index].points = 0;
+            betDoc.groupMatches[index].qualifierPoints = 0;
+        } else {
+            betDoc.groupMatches.push(novoPalpite);
+        }
+        
+        betDoc.lastUpdate = now;
+    }
+
+    await betDoc.save();
+
+    // NOTA: Sem envio de e-mail aqui para não "flood" a caixa de entrada do usuário.
+
+    return res.json({ 
+      success: true, 
+      message: 'Palpite individual salvo com sucesso!' 
+    });
+
+  } catch (error) {
+    console.error('POST /single error:', error);
+    return res.status(500).json({ success: false, message: 'Erro ao salvar palpite individual.' });
+  }
+});
+
 /**
  * 🏆 Leaderboard (Filtrado por LIGA)
  * Totalmente alinhado com ranking.js
