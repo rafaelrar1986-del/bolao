@@ -735,9 +735,8 @@ router.get('/my-bets', protect, checkPaid, async (req, res) => {
 });
 
 
-/**
 /* =========================================================================
-   💾 Salvar palpites (ATUALIZADO, CORRIGIDO E ORDENADO POR GRUPO NO EMAIL)
+   💾 Salvar palpites (ATUALIZADO: Ordenação Decrescente + Segurança Anti-Fraude)
    ========================================================================= */
 router.post('/save', protect, checkPaid, async (req, res) => {
   try {
@@ -886,9 +885,10 @@ router.post('/save', protect, checkPaid, async (req, res) => {
       const userName = req.user.name || 'Participante';
       const leagueName = settings?.title || `Liga #${leagueId}`;
 
-      // 🌟 NOVA LÓGICA DE ORDENAÇÃO:
-      // Vamos criar uma lista nova que junta o palpite do usuário com os dados reais do jogo.
-      // Isso nos permite ordenar por "phaseName" ou por "group" antes de desenhar a tabela.
+      // 🌟 GERAÇÃO DE PROTOCOLO E TIMESTAMP DE SEGURANÇA
+      const protocolo = `${String(req.user._id).slice(-4).toUpperCase()}-${Date.now()}`;
+      const dataEmissao = new Date().toLocaleString('pt-BR');
+
       const palpitesCompletos = [];
 
       listaFinalGrupoMatches.forEach((userBet) => {
@@ -901,32 +901,59 @@ router.post('/save', protect, checkPaid, async (req, res) => {
         }
       });
 
-      // Ordena por fase/rodada e depois por grupo alfabeticamente
+      // 🌟 SISTEMA DE PESOS PARA ORDENAÇÃO DECRESCENTE (Mata-Mata -> Grupos)
+      const getPhaseWeight = (phaseName) => {
+        const p = String(phaseName).toLowerCase();
+        if (p.includes('final') && !p.includes('semi') && !p.includes('quartas') && !p.includes('oitavas')) return 70; // Final
+        if (p.includes('3') || p.includes('terceiro')) return 60; // Disputa 3º Lugar
+        if (p.includes('semi')) return 50; // Semifinal
+        if (p.includes('quartas')) return 40; // Quartas de final
+        if (p.includes('oitavas')) return 30; // Oitavas de final
+        if (p.includes('16') || p.includes('avos')) return 20; // 16-avos
+        return 10; // Fase de Grupos
+      };
+
       palpitesCompletos.sort((a, b) => {
-        const gradeA = a.gameData.phaseName || a.gameData.group || '';
-        const gradeB = b.gameData.phaseName || b.gameData.group || '';
+        const gradeA = a.gameData.phaseName || a.gameData.group || 'Geral';
+        const gradeB = b.gameData.phaseName || b.gameData.group || 'Geral';
+        
+        const weightA = getPhaseWeight(gradeA);
+        const weightB = getPhaseWeight(gradeB);
+
+        // Se forem fases diferentes, a de maior peso fica no topo
+        if (weightA !== weightB) {
+          return weightB - weightA; 
+        }
+        
+        // Se for a mesma fase (ex: Grupo A e Grupo B), organiza alfabeticamente
         return gradeA.localeCompare(gradeB, undefined, { numeric: true, sensitivity: 'base' });
       });
 
+      // 🌟 CABEÇALHO DO E-MAIL COM DADOS DE AUDITORIA
       let betsHtml = `
-        <table style="width: 100%; border-collapse: collapse; font-family: sans-serif; margin-top: 15px;">
-          <thead>
-            <tr style="background-color: #f4f6f7; border-bottom: 2px solid #bdc3c7;">
-              <th style="padding: 12px; text-align: left; color: #34495e;">Confronto / Grupo</th>
-              <th style="padding: 12px; text-align: center; color: #34495e; width: 160px;">Seu Palpite</th>
-            </tr>
-          </thead>
-          <tbody>
+        <div style="font-family: sans-serif; max-width: 600px; margin: auto;">
+          <div style="background-color: #2c3e50; padding: 15px; color: white; text-align: center; border-radius: 4px 4px 0 0;">
+            <h2 style="margin: 0;">Comprovante de Palpites</h2>
+            <p style="margin: 5px 0 0 0; font-size: 14px;">Protocolo: <strong>${protocolo}</strong></p>
+            <p style="margin: 5px 0 0 0; font-size: 12px;">Emitido em: ${dataEmissao}</p>
+          </div>
+          
+          <table style="width: 100%; border-collapse: collapse; font-family: sans-serif; margin-top: 15px;">
+            <thead>
+              <tr style="background-color: #f4f6f7; border-bottom: 2px solid #bdc3c7;">
+                <th style="padding: 12px; text-align: left; color: #34495e;">Confronto / Fase</th>
+                <th style="padding: 12px; text-align: center; color: #34495e; width: 160px;">Seu Palpite</th>
+              </tr>
+            </thead>
+            <tbody>
       `;
 
       let ultimaGrade = '';
 
-      // Varre a lista que já está perfeitamente ordenada por grupo/rodada
       palpitesCompletos.forEach((item) => {
         const matchInfo = item.gameData;
         const gradeAtual = matchInfo.phaseName || matchInfo.group || 'Geral';
 
-        // Cria uma linha divisória visual cinza toda vez que mudar de grupo/rodada
         if (gradeAtual !== ultimaGrade) {
           betsHtml += `
             <tr style="background-color: #eaeded;">
@@ -974,6 +1001,16 @@ router.post('/save', protect, checkPaid, async (req, res) => {
           </div>
         `;
       }
+
+      // 🌟 CLÁUSULA LEGAL / AVISO NO RODAPÉ
+      betsHtml += `
+          <div style="margin-top: 30px; padding: 15px; border-top: 1px dashed #bdc3c7; font-size: 12px; color: #7f8c8d; background-color: #f9f9f9; border-radius: 0 0 4px 4px;">
+            <p><strong>⚠️ AVISO IMPORTANTE DE AUDITORIA:</strong></p>
+            <p>Este comprovante reflete exclusivamente os palpites salvos no sistema no exato momento de sua emissão (<strong>${dataEmissao}</strong>).</p>
+            <p>Nossa plataforma permite a edição individual de palpites até o horário de início oficial de cada partida. <strong>Caso você realize qualquer alteração no site após o recebimento deste e-mail, este comprovante perderá automaticamente sua validade legal para as partidas alteradas.</strong> Em caso de divergência, prevalecerá incondicionalmente o último registro gravado em nosso banco de dados antes do bloqueio do jogo.</p>
+          </div>
+        </div>
+      `;
 
       sendBetsConfirmationEmail(userEmail, userName, leagueName, betsHtml)
         .catch(err => console.error('❌ Falha assíncrona ao enviar e-mail de palpites:', err.message));
