@@ -27,7 +27,7 @@ function toWinnerLabel(choice, teamA, teamB) {
 /**
  * 🧠 ESTRATÉGIA: Caminho da Liderança (VERSÃO DEFINITIVA SUPREMA - 2026)
  * Inclui: Mata-mata independente, Pódio Live, Secagem Dinâmica, Pênaltis, Cronologia Invertida, Botão do Milagre.
- * 🚀 ATUALIZADO: Correção da ordenação cronológica unificada e suporte a impactos negativos (perda de posições).
+ * 🚀 ATUALIZADO: Suporte total a times repetidos estrategicamente no pódio + Trava de Colisão Corrigida.
  */
 
 const getMatchResult = (a, b) => {
@@ -168,7 +168,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
 
         const liveStatuses = ['ao_vivo', '1_tempo', '2_tempo', 'intervalo', 'prorrogacao', '1_tet', '2_tet', 'penaltis', 'live', 'in_progress'];
 
-        // 🚀 CURRENT RANKING: Inclui as simulações já aplicadas para calcular sua Posição Final.
+        // 🚀 CURRENT RANKING: Calcula pontuação atual e descobre os eliminados reais acumulados até aqui
         const currentRanking = bets
             .map(b => {
                 const betUserId = b.user?._id?.toString();
@@ -233,8 +233,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         const positionMap = new Map();
         simulatedRankingList.forEach(r => positionMap.set(r.userId, r.position));
 
-        // 🚀 CORREÇÃO APLICADA AQUI: Array original usava .sort() baseado em matchId reverso.
-        // Agora, aplica-se explicitamente o helper cronológico unificando todo o fluxo do backend ao frontend.
         const displayFutureMatches = matches
             .filter(m => (isLive ? m.status === 'scheduled' : m.status !== 'finished') || m.isSimulated)
             .sort(sortMatchesChronologically);
@@ -287,7 +285,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
 
             if (isMiracleMode) {
                 currentRanking.forEach(u => { placarDinamico[u.userId] = u.points; });
-                // 🚀 CORRIGIDO: Ordenação estrita por data e hora reais
                 jogosParaCalculo = [...mathFutureMatches].sort(sortMatchesChronologically);
             } else {
                 const basePointsMap = {};
@@ -311,7 +308,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 });
 
                 Object.assign(placarDinamico, basePointsMap);
-                // 🚀 CORRIGIDO: Ordenação idêntica ao modo milagre usando data e hora reais
                 jogosParaCalculo = matches.filter(m => m.isSimulated).sort(sortMatchesChronologically);
             }
 
@@ -375,7 +371,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 const reducedGap = after.gapToLeader < before.gapToLeader;
                 const increasedGap = after.gapToLeader > before.gapToLeader;
 
-                // Em Simulação, monitoramos tanto melhorias quanto pioras (ganhar ou perder posições)
                 const isImpactful = isMiracleMode 
                     ? (changedLeader || improvedPos || reducedGap)
                     : (changedLeader || improvedPos || worsenedPos || reducedGap || increasedGap);
@@ -385,7 +380,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                     stepByStepSimulations[midStr].isCritical = true;
                 }
 
-                // 🚀 DEFINIÇÃO DO TIPO DE IMPACTO (Para renderizar setas/cores verdes ou vermelhas no front)
                 let impactType = 'neutral';
                 if (improvedPos || reducedGap || (changedLeader && after.targetPosition === 1)) {
                     impactType = 'positive';
@@ -405,22 +399,82 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
             if (isMiracleMode) miracleAchieved = isNoTopo();
         }
 
+        // ------------------------------------------------------------------------------------------------
+        // 🚀 CÁLCULO INTELIGENTE DO PÓDIO POTENCIAL (COM DETECTOR DE COLISÃO PRECOCE ATUALIZADO)
+        // ------------------------------------------------------------------------------------------------
         const podiumWeights = { first: 7, second: 5, third: 4, fourth: 3 };
         const userPodiumPotentialMap = new Map();
+        const userSpecificEliminatedMap = new Map(); 
 
         bets.forEach(b => {
             const betUserId = b.user?._id?.toString();
             if (!betUserId) return;
+            
             let pot = 0;
+            const userEliminatedTeams = new Set(eliminatedTeams);
+
             if (b.podium) {
-                ['first', 'second', 'third', 'fourth'].forEach(pos => {
-                    if (!officialPodium[pos] && b.podium[pos] && !eliminatedTeams.has(b.podium[pos])) pot += podiumWeights[pos];
+                // 1. ANALISADOR DE CHAVEAMENTO: Verifica colisões inevitáveis em mata-matas futuros (exclui finais/semis)
+                mathFutureMatches.forEach(m => {
+                    const isEarlyKnockout = (m.phase === 'knockout' || m.phase === 'mata-mata') && 
+                                            !['Semifinal', 'Final', '3º lugar'].includes(m.group);
+                    
+                    if (isEarlyKnockout && m.teamA && m.teamB) {
+                        // 🛠️ CORREÇÃO: Filtra todas as ocorrências dos dois times para mapear a cobertura completa do usuário
+                        const positionsA = Object.keys(b.podium).filter(key => b.podium[key] === m.teamA);
+                        const positionsB = Object.keys(b.podium).filter(key => b.podium[key] === m.teamB);
+
+                        // Se o usuário apostou em ambos os times (mesmo que repetidas vezes) para compor o pódio
+                        if (positionsA.length > 0 && positionsB.length > 0) {
+                            // Encontra o maior peso individual ativo do Time A
+                            let maxWeightA = 0;
+                            positionsA.forEach(pos => {
+                                if (!officialPodium[pos]) {
+                                    maxWeightA = Math.max(maxWeightA, podiumWeights[pos] || 0);
+                                }
+                            });
+
+                            // Encontra o maior peso individual ativo do Time B
+                            let maxWeightB = 0;
+                            positionsB.forEach(pos => {
+                                if (!officialPodium[pos]) {
+                                    maxWeightB = Math.max(maxWeightB, podiumWeights[pos] || 0);
+                                }
+                            });
+
+                            // O time que oferece a menor recompensa máxima possível é sacrificado na árvore de potencial
+                            if (maxWeightA >= maxWeightB) {
+                                userEliminatedTeams.add(m.teamB);
+                            } else {
+                                userEliminatedTeams.add(m.teamA);
+                            }
+                        }
+                    }
                 });
+
+                // 2. DEDUP & FILTRAGEM: Calcula o potencial real baseado nas eliminações e colisões calculadas acima
+                const teamMaxPotential = {};
+                ['first', 'second', 'third', 'fourth'].forEach(pos => {
+                    const teamName = b.podium[pos];
+                    if (!officialPodium[pos] && teamName && !userEliminatedTeams.has(teamName)) {
+                        const weight = podiumWeights[pos];
+                        // Mantém a maior pontuação possível do time (estratégia de hedge bem-sucedida)
+                        if (!teamMaxPotential[teamName] || weight > teamMaxPotential[teamName]) {
+                            teamMaxPotential[teamName] = weight;
+                        }
+                    }
+                });
+
+                pot = Object.values(teamMaxPotential).reduce((acc, val) => acc + val, 0);
             }
+            
             userPodiumPotentialMap.set(betUserId, pot);
+            userSpecificEliminatedMap.set(betUserId, userEliminatedTeams);
         });
 
         const targetPodiumPotential = userPodiumPotentialMap.get(activeUserId) || 0;
+        const targetEliminatedTeams = userSpecificEliminatedMap.get(activeUserId) || eliminatedTeams;
+        
         const isPodiumLocked = !unlockedPhases.includes('podium') && !unlockedPhases.includes('Pódio');
         const hidePodium = !isViewingSelf && isPodiumLocked;
         const podiumDetails = [];
@@ -433,7 +487,8 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 }
                 const teamName = targetBet.podium[key];
                 if (teamName) {
-                    let status = officialPodium[key] === teamName ? 'conquered' : (officialPodium[key] || eliminatedTeams.has(teamName) ? 'dead' : 'alive');
+                    // Reage independentemente por posição: se a vaga específica fechou ou o time foi eliminado globalmente, fica 'dead'
+                    let status = officialPodium[key] === teamName ? 'conquered' : (officialPodium[key] || targetEliminatedTeams.has(teamName) ? 'dead' : 'alive');
                     const matchRef = matches.find(m => m.teamA === teamName || m.teamB === teamName);
                     const logoUrl = matchRef ? (matchRef.teamA === teamName ? matchRef.logoA : matchRef.logoB) : null;
                     podiumDetails.push({ team: teamName, logoUrl, position: key, points: podiumWeights[key], status });
@@ -517,14 +572,24 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                             }
                         });
 
+                        // 🛠️ CORREÇÃO: Agrupa os pontos contestados do pódio por time.
+                        // Como um único time não pode ocupar duas posições reais na tabela simultaneamente,
+                        // o cálculo de probabilidade agora respeita o teto máximo de vantagem que cada time oferece.
                         if (targetBet.podium) {
+                            const targetPodiumTeamsMaxContested = {};
                             ['first', 'second', 'third', 'fourth'].forEach(pos => {
+                                if (officialPodium[pos]) return;
                                 const myTeam = targetBet.podium[pos];
                                 const leaderTeam = leaderBet?.podium?.[pos];
-                                if (myTeam && !eliminatedTeams.has(myTeam) && myTeam !== leaderTeam) {
-                                    contestedPoints += podiumWeights[pos];
+                                if (myTeam && !targetEliminatedTeams.has(myTeam) && myTeam !== leaderTeam) {
+                                    const weight = podiumWeights[pos];
+                                    if (!targetPodiumTeamsMaxContested[myTeam] || weight > targetPodiumTeamsMaxContested[myTeam]) {
+                                        targetPodiumTeamsMaxContested[myTeam] = weight;
+                                    }
                                 }
                             });
+                            const podiumContestedPoints = Object.values(targetPodiumTeamsMaxContested).reduce((acc, val) => acc + val, 0);
+                            contestedPoints += podiumContestedPoints;
                         }
 
                         const gap = leader.points - targetPoints;
