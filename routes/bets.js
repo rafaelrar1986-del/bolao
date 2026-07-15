@@ -22,6 +22,7 @@ function toWinnerLabel(choice, teamA, teamB) {
     if (choice === 'B') return teamB || 'Time B';
     if (choice === 'draw') return 'Empate';
     return '-';
+  };
 /**
  * 🧠 ESTRATÉGIA: Caminho da Liderança (VERSÃO DEFINITIVA SUPREMA - 2026)
  * Inclui: Mata-mata independente, Pódio Live, Secagem Dinâmica, Pênaltis, Cronologia Invertida, Botão do Milagre.
