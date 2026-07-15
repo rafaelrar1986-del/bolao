@@ -27,7 +27,7 @@ function toWinnerLabel(choice, teamA, teamB) {
  * 🧠 ESTRATÉGIA: Caminho da Liderança (VERSÃO DEFINITIVA SUPREMA - 2026)
  * Inclui: Mata-mata independente, Pódio Live, Secagem Dinâmica, Pênaltis, Cronologia Invertida, Botão do Milagre.
  * 🚀 ATUALIZADO: Trava de Semifinais, Finais e 3º Lugar Dinâmicas (Bloqueio Automático de Posições Inválidas).
- * 🎯 CORREÇÃO: Universo Perfeito do Target (Impede soma mútua de times nas mesmas posições de pódio).
+ * 🎯 CORREÇÃO: Universo Perfeito do Target + Motor de Pontos Fantasmas Dedutivo + Selos de Status Matemático.
  */
 
 const getMatchResult = (a, b) => {
@@ -284,6 +284,34 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
             .filter(m => (isLive ? m.status === 'scheduled' : m.status !== 'finished') || m.isSimulated)
             .sort(sortMatchesChronologically);
         const mathFutureMatches = displayFutureMatches.filter(m => !m.isSimulated);
+
+        // --------------------------------------------------------------------------------------------
+        // 👻 INÍCIO: MOTOR DE PONTOS FANTASMAS DEDUTIVO (INCLUI 3º LUGAR)
+        // --------------------------------------------------------------------------------------------
+        const ghostPhasesOrder = ['16-avos de final', 'Oitavas de final', 'Quartas de final', 'Semifinal', '3º lugar', 'Final'];
+        let startedKnockoutAt = null;
+
+        for (const phase of ghostPhasesOrder) {
+            if (matches.some(m => (m.phase === 'knockout' || m.phase === 'mata-mata') && m.group === phase)) {
+                startedKnockoutAt = phase;
+                break;
+            }
+        }
+
+        let ghostPoints = 0;
+        if (startedKnockoutAt) {
+            const startIndex = ghostPhasesOrder.indexOf(startedKnockoutAt);
+            
+            for (let i = startIndex; i < ghostPhasesOrder.length; i++) {
+                const phaseName = ghostPhasesOrder[i];
+                const expectedMatches = knockoutQuotas[phaseName];
+                const actualMatchesInDb = matches.filter(m => (m.phase === 'knockout' || m.phase === 'mata-mata') && m.group === phaseName).length;
+                
+                const missingMatches = Math.max(0, expectedMatches - actualMatchesInDb);
+                ghostPoints += missingMatches * 2;
+            }
+        }
+        // --------------------------------------------------------------------------------------------
 
         const getRankingSnapshot = (pointsMap) => {
             const list = Object.entries(pointsMap)
@@ -553,7 +581,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         }
 
         // --------------------------------------------------------------------------------------------
-        // 🚀 CORREÇÃO APLICADA: CÁLCULO DE PROJEÇÃO NO "UNIVERSO PERFEITO DO TARGET"
+        // 🚀 PROJEÇÃO DO TARGET ("UNIVERSO PERFEITO")
         // --------------------------------------------------------------------------------------------
         const projectedRanking = currentRanking.map(r => {
             let projPts = r.points;
@@ -575,10 +603,9 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 }
             });
 
-            // NOVO: Cálculo inteligente do Pódio no "Universo do Target"
             if (isTarget) {
-                // Target pontua seu potencial máximo normalmente
-                projPts += targetPodiumPotential;
+                // Target pontua seu potencial máximo normalmente + Fantasmas
+                projPts += targetPodiumPotential + ghostPoints;
             } else {
                 let rivalPodiumInTargetUniverse = 0;
                 const rivalEliminated = userSpecificEliminatedMap.get(r.userId) || eliminatedTeams;
@@ -587,7 +614,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                     const targetLockedPositions = {};
                     const targetUsedTeams = new Set();
                     
-                    // PASSO 1: Travar as posições em que o Target pontua
                     ['first', 'second', 'third', 'fourth'].forEach(pos => {
                         const targetTeam = targetBet.podium[pos];
                         if (targetTeam && !targetEliminatedTeams.has(targetTeam)) {
@@ -606,20 +632,15 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                         }
                     });
 
-                    // PASSO 2: Avaliar o Rival perante os bloqueios gerados pelo Target
                     ['first', 'second', 'third', 'fourth'].forEach(pos => {
                         const rivalTeam = bRef?.podium?.[pos];
                         if (!rivalTeam) return;
 
                         if (targetLockedPositions[pos]) {
-                            // Se o Target travou a posição (ex: apostou na França para 1º), 
-                            // o Rival SÓ pontua se também cravou a França nessa mesma posição.
                             if (rivalTeam === targetLockedPositions[pos]) {
                                 rivalPodiumInTargetUniverse += podiumWeights[pos] || 0;
                             }
                         } else {
-                            // Se o Target NÃO tem time vivo pra essa posição, ela fica livre para o Rival.
-                            // Mas o Rival NÃO PODE usar um time que o Target já travou em outra posição!
                             if (!rivalEliminated.has(rivalTeam) && !targetUsedTeams.has(rivalTeam)) {
                                 let invalidRival = false;
                                 if (semiWinners.has(rivalTeam) && (pos === 'third' || pos === 'fourth')) invalidRival = true;
@@ -631,14 +652,12 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                                 
                                 if (!invalidRival) {
                                     rivalPodiumInTargetUniverse += podiumWeights[pos] || 0;
-                                    // Adiciona aos times travados para evitar duplicidade lógica
                                     targetUsedTeams.add(rivalTeam);
                                 }
                             }
                         }
                     });
                 } else {
-                    // Se o Target não tem pódio, o Rival pontua de forma livre
                     rivalPodiumInTargetUniverse = userPodiumPotentialMap.get(r.userId) || 0;
                 }
                 
@@ -654,6 +673,47 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         const usersBetter = projectedRanking.filter(r => r.totalPoints > (targetUserProj?.totalPoints ?? 0)).length;
         const targetMaxPosition = usersBetter + 1;
 
+        // --------------------------------------------------------------------------------------------
+        // 🚨 CÁLCULO DE CENÁRIO PESSIMISTA (Para as Badges)
+        // --------------------------------------------------------------------------------------------
+        const worstCaseTargetPoints = targetPoints; 
+        let usersBeatingTargetInWorstCase = 0;
+
+        currentRanking.forEach(r => {
+            if (r.userId !== activeUserId) {
+                const bRef = betsByUserMap.get(r.userId);
+                let rivalMaxPts = r.points;
+
+                // Rivais gabaritam as partidas visíveis restantes
+                mathFutureMatches.forEach(m => {
+                    const midStr = String(m.matchId);
+                    const rivalPick = (bRef?.groupMatches || []).find(gm => String(gm.matchId) === midStr);
+                    const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
+                    if (rivalPick?.winner) rivalMaxPts += 1;
+                    if (isKnockoutPhase && rivalPick?.qualifier) rivalMaxPts += 1;
+                });
+
+                // Rivais somam pódio total e fantasmas totais
+                const rivalPodium = userPodiumPotentialMap.get(r.userId) || 0;
+                rivalMaxPts += rivalPodium + ghostPoints;
+
+                if (rivalMaxPts > worstCaseTargetPoints) {
+                    usersBeatingTargetInWorstCase++;
+                }
+            }
+        });
+        
+        // A pior posição matemática possível que o Target pode ficar
+        const targetMinPosition = usersBeatingTargetInWorstCase + 1;
+
+        let statusBadge = 'IN_CONTENTION';
+        if (targetMinPosition <= 2) {
+            statusBadge = 'GUARANTEED_PODIUM'; // Matematicamente garantido em 1º ou 2º! (Troféu no UI)
+        } else if (targetMaxPosition > 2) { // 🚀 CORREÇÃO AQUI: Agora usa > 2 em vez de > 1
+            statusBadge = 'ELIMINATED'; // Matematicamente sem chance de alcançar sequer o 2º lugar (X vermelho no UI)
+        }
+        // --------------------------------------------------------------------------------------------
+
         const matchPointsLeft = mathFutureMatches.reduce((acc, m) => {
             const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
             const targetPick = targetPicksMap.get(String(m.matchId));
@@ -663,7 +723,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
             return acc + pts;
         }, 0);
         
-        const totalPotential = matchPointsLeft + targetPodiumPotential;
+        const totalPotential = matchPointsLeft + targetPodiumPotential + ghostPoints;
         const targetMaxTotal = targetPoints + totalPotential;
 
         let probability = 0;
@@ -714,6 +774,9 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                             contestedPoints += podiumContestedPoints;
                         }
 
+                        // Target pode secar o líder nos jogos que ainda nem foram cadastrados (Fantasmas)!
+                        contestedPoints += ghostPoints;
+
                         const gap = leader.points - targetPoints;
                         if (contestedPoints >= gap) {
                             if (contestedPoints === 0 && gap === 0) {
@@ -753,13 +816,13 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 }
             }
 
-            const meuPotencialMaximo = targetPoints + targetPodiumPotential;
+            const meuPotencialMaximo = targetPoints + targetPodiumPotential + ghostPoints;
             const rivalsToWatch = currentRanking.filter(r => {
                 if (r.userId === activeUserId) return false;
                 if (r.points > targetPoints) return true;
 
                 const rivalPodium = userPodiumPotentialMap.get(r.userId) || 0;
-                const rivalPotencialMaximo = r.points + rivalPodium;
+                const rivalPotencialMaximo = r.points + rivalPodium + ghostPoints;
 
                 return rivalPotencialMaximo >= (meuPotencialMaximo - MARGEM_DE_PERIGO);
             });
@@ -835,6 +898,8 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 summary: {
                     currentPosition,
                     maxPosition: targetMaxPosition,
+                    minPosition: targetMinPosition,
+                    statusBadge, // 🛡️ AQUI ESTÁ A BADGE (GURANTEED_PODIUM, ELIMINATED, IN_CONTENTION)
                     probability,
                     currentPoints: targetPoints,
                     maxPoints: targetMaxTotal,
