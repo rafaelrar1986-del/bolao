@@ -22,12 +22,10 @@ function toWinnerLabel(choice, teamA, teamB) {
     if (choice === 'B') return teamB || 'Time B';
     if (choice === 'draw') return 'Empate';
     return '-';
-}
-
 /**
  * 🧠 ESTRATÉGIA: Caminho da Liderança (VERSÃO DEFINITIVA SUPREMA - 2026)
  * Inclui: Mata-mata independente, Pódio Live, Secagem Dinâmica, Pênaltis, Cronologia Invertida, Botão do Milagre.
- * 🚀 ATUALIZADO: Suporte total a times repetidos estrategicamente no pódio + Trava de Colisão Corrigida + Trava de Semifinais.
+ * 🚀 ATUALIZADO: Trava de Semifinais, Finais e 3º Lugar Dinâmicas (Bloqueio Automático de Posições Inválidas).
  */
 
 const getMatchResult = (a, b) => {
@@ -168,32 +166,53 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
 
         const liveStatuses = ['ao_vivo', '1_tempo', '2_tempo', 'intervalo', 'prorrogacao', '1_tet', '2_tet', 'penaltis', 'live', 'in_progress'];
 
-        // 🏆 NOVA LÓGICA: Rastreio de teto e piso das Semifinais
+        // 🏆 NOVA LÓGICA: Rastreio de teto e piso para Semifinais, Final e 3º Lugar
         const semiWinners = new Set();
         const semiLosers = new Set();
+        const finalWinners = new Set();
+        const finalLosers = new Set();
+        const thirdWinners = new Set();
+        const thirdLosers = new Set();
 
         matches.forEach(m => {
-            if (m.group === 'Semifinal') {
+            if (['Semifinal', 'Final', '3º lugar'].includes(m.group)) {
                 const isMatchValid = isLive ? (m.status !== 'scheduled' || m.isSimulated) : (m.status === 'finished' || m.isSimulated);
                 
                 if (isMatchValid) {
                     const realWinner = getMatchResult(m.scoreA, m.scoreB);
                     const realQual = getQualifiedSide(m, realWinner);
 
+                    let winnerTeam = null;
+                    let loserTeam = null;
+
+                    // Determina o vencedor/perdedor (considera placar ao vivo se no modo live)
                     if (realQual === 'A') {
-                        if (m.teamA) semiWinners.add(m.teamA);
-                        if (m.teamB) semiLosers.add(m.teamB);
+                        winnerTeam = m.teamA;
+                        loserTeam = m.teamB;
                     } else if (realQual === 'B') {
-                        if (m.teamB) semiWinners.add(m.teamB);
-                        if (m.teamA) semiLosers.add(m.teamA);
+                        winnerTeam = m.teamB;
+                        loserTeam = m.teamA;
                     } else if (isLive && liveStatuses.includes(m.status)) {
-                        // Trata o placar momentâneo no modo live
                         if (m.scoreA > m.scoreB) {
-                            if (m.teamA) semiWinners.add(m.teamA);
-                            if (m.teamB) semiLosers.add(m.teamB);
+                            winnerTeam = m.teamA;
+                            loserTeam = m.teamB;
                         } else if (m.scoreB > m.scoreA) {
-                            if (m.teamB) semiWinners.add(m.teamB);
-                            if (m.teamA) semiLosers.add(m.teamA);
+                            winnerTeam = m.teamB;
+                            loserTeam = m.teamA;
+                        }
+                    }
+
+                    // Distribui os resultados em seus respectivos sets
+                    if (winnerTeam && loserTeam) {
+                        if (m.group === 'Semifinal') {
+                            semiWinners.add(winnerTeam);
+                            semiLosers.add(loserTeam);
+                        } else if (m.group === 'Final') {
+                            finalWinners.add(winnerTeam);
+                            finalLosers.add(loserTeam);
+                        } else if (m.group === '3º lugar') {
+                            thirdWinners.add(winnerTeam);
+                            thirdLosers.add(loserTeam);
                         }
                     }
                 }
@@ -452,13 +471,10 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                                             !['Semifinal', 'Final', '3º lugar'].includes(m.group);
                     
                     if (isEarlyKnockout && m.teamA && m.teamB) {
-                        // 🛠️ CORREÇÃO: Filtra todas as ocorrências dos dois times para mapear a cobertura completa do usuário
                         const positionsA = Object.keys(b.podium).filter(key => b.podium[key] === m.teamA);
                         const positionsB = Object.keys(b.podium).filter(key => b.podium[key] === m.teamB);
 
-                        // Se o usuário apostou em ambos os times (mesmo que repetidas vezes) para compor o pódio
                         if (positionsA.length > 0 && positionsB.length > 0) {
-                            // Encontra o maior peso individual ativo do Time A
                             let maxWeightA = 0;
                             positionsA.forEach(pos => {
                                 if (!officialPodium[pos]) {
@@ -466,7 +482,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                                 }
                             });
 
-                            // Encontra o maior peso individual ativo do Time B
                             let maxWeightB = 0;
                             positionsB.forEach(pos => {
                                 if (!officialPodium[pos]) {
@@ -474,7 +489,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                                 }
                             });
 
-                            // O time que oferece a menor recompensa máxima possível é sacrificado na árvore de potencial
                             if (maxWeightA >= maxWeightB) {
                                 userEliminatedTeams.add(m.teamB);
                             } else {
@@ -491,14 +505,14 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                     
                     if (!teamName || officialPodium[pos] || userEliminatedTeams.has(teamName)) return;
 
-                    // 🛑 TRAVA DAS SEMIFINAIS: Invalida posições impossíveis
+                    // 🛑 TRAVA DEFINITIVA (SEMI, FINAL e 3º LUGAR): Invalida posições que se tornaram impossíveis
                     let isPositionValid = true;
-                    if (semiWinners.has(teamName) && (pos === 'third' || pos === 'fourth')) {
-                        isPositionValid = false; // Ganhou a semi, só pode ser 1º ou 2º
-                    }
-                    if (semiLosers.has(teamName) && (pos === 'first' || pos === 'second')) {
-                        isPositionValid = false; // Perdeu a semi, só pode ser 3º ou 4º
-                    }
+                    if (semiWinners.has(teamName) && (pos === 'third' || pos === 'fourth')) isPositionValid = false;
+                    if (semiLosers.has(teamName) && (pos === 'first' || pos === 'second')) isPositionValid = false;
+                    if (finalWinners.has(teamName) && pos !== 'first') isPositionValid = false;
+                    if (finalLosers.has(teamName) && pos !== 'second') isPositionValid = false;
+                    if (thirdWinners.has(teamName) && pos !== 'third') isPositionValid = false;
+                    if (thirdLosers.has(teamName) && pos !== 'fourth') isPositionValid = false;
 
                     if (isPositionValid) {
                         const weight = podiumWeights[pos];
@@ -531,16 +545,20 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 }
                 const teamName = targetBet.podium[key];
                 if (teamName) {
-                    // Verifica se a posição foi invalidada pela semifinal
-                    let isInvalidBySemi = false;
-                    if (semiWinners.has(teamName) && (key === 'third' || key === 'fourth')) isInvalidBySemi = true;
-                    if (semiLosers.has(teamName) && (key === 'first' || key === 'second')) isInvalidBySemi = true;
+                    // Verifica se a posição foi invalidada por jogos decisivos da reta final
+                    let isInvalidDynamic = false;
+                    if (semiWinners.has(teamName) && (key === 'third' || key === 'fourth')) isInvalidDynamic = true;
+                    if (semiLosers.has(teamName) && (key === 'first' || key === 'second')) isInvalidDynamic = true;
+                    if (finalWinners.has(teamName) && key !== 'first') isInvalidDynamic = true;
+                    if (finalLosers.has(teamName) && key !== 'second') isInvalidDynamic = true;
+                    if (thirdWinners.has(teamName) && key !== 'third') isInvalidDynamic = true;
+                    if (thirdLosers.has(teamName) && key !== 'fourth') isInvalidDynamic = true;
 
                     // Reage independentemente por posição
                     let status = 'alive';
                     if (officialPodium[key] === teamName) {
                         status = 'conquered';
-                    } else if (officialPodium[key] || targetEliminatedTeams.has(teamName) || isInvalidBySemi) {
+                    } else if (officialPodium[key] || targetEliminatedTeams.has(teamName) || isInvalidDynamic) {
                         status = 'dead';
                     }
 
@@ -627,9 +645,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                             }
                         });
 
-                        // 🛠️ CORREÇÃO: Agrupa os pontos contestados do pódio por time.
-                        // Como um único time não pode ocupar duas posições reais na tabela simultaneamente,
-                        // o cálculo de probabilidade agora respeita o teto máximo de vantagem que cada time oferece.
                         if (targetBet.podium) {
                             const targetPodiumTeamsMaxContested = {};
                             ['first', 'second', 'third', 'fourth'].forEach(pos => {
@@ -792,7 +807,8 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         res.status(500).json({ success: false, message: 'Erro interno no servidor' });
     }
 });
-//🎯 Meus palpites (Filtrado por Liga)
+  
+  //🎯 Meus palpites (Filtrado por Liga)
  
 router.get('/my-bets', protect, checkPaid, async (req, res) => {
   try {
