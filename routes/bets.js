@@ -59,7 +59,6 @@ const sortMatchesChronologically = (a, b) => {
     const dateB = new Date(`${parseDate(b.date)}T${b.time || '00:00'}`);
     
     if (dateA - dateB !== 0) return dateA - dateB;
-    
     // Fallback estável por ID caso aconteçam no mesmo minuto
     const idA = parseInt(String(a.matchId).replace(/\D/g, ''), 10) || 0;
     const idB = parseInt(String(b.matchId).replace(/\D/g, ''), 10) || 0;
@@ -127,7 +126,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         const matchMap = new Map(matches.map(m => [String(m.matchId), m]));
         const matchIdsDaLiga = new Set(matchMap.keys());
         const eliminatedTeams = new Set();
-
+        
         const targetBet = betsByUserMap.get(activeUserId);
         if (!targetBet) return res.status(404).json({ success: false, message: 'Aposta não encontrada' });
 
@@ -166,7 +165,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         }
 
         const liveStatuses = ['ao_vivo', '1_tempo', '2_tempo', 'intervalo', 'prorrogacao', '1_tet', '2_tet', 'penaltis', 'live', 'in_progress'];
-
+        
         // 🏆 NOVA LÓGICA: Rastreio de teto e piso para Semifinais, Final e 3º Lugar
         const semiWinners = new Set();
         const semiLosers = new Set();
@@ -252,7 +251,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                         }
                     }
                 });
-
                 return { userId: betUserId, points: pts + (b.podiumPoints || 0), name: b.user?.name || "" };
             })
             .filter(Boolean);
@@ -288,7 +286,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         const displayFutureMatches = matches
             .filter(m => (isLive ? m.status === 'scheduled' : m.status !== 'finished') || m.isSimulated)
             .sort(sortMatchesChronologically);
-
         const mathFutureMatches = displayFutureMatches.filter(m => !m.isSimulated);
 
         // ------------------------------------------------------------------------------------------------
@@ -302,7 +299,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                     return { userId, points, name: bet?.user?.name || '' };
                 })
                 .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name));
-
+            
             let posToAssign = 0;
             let lastPoints = null;
 
@@ -348,17 +345,19 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                         const midStr = String(gm.matchId);
                         const m = matchMap.get(midStr);
                         if (!m || m.isSimulated) return; 
+                       
                         const isMatchValid = isLive ? (m.status !== 'scheduled') : (m.status === 'finished');
                         if (!isMatchValid) return;
 
                         const realWinner = getMatchResult(m.scoreA, m.scoreB);
                         const realQual = getQualifiedSide(m, realWinner);
+      
                         if (realWinner && gm.winner === realWinner) pts += 1;
                         if (gm.qualifier && realQual && gm.qualifier === realQual) pts += 1;
                     });
+                    
                     basePointsMap[betUserId] = pts + (b.podiumPoints || 0);
                 });
-
                 Object.assign(placarDinamico, basePointsMap);
                 jogosParaCalculo = matches.filter(m => m.isSimulated).sort(sortMatchesChronologically);
             }
@@ -392,7 +391,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 }
 
                 if (!winChoice && !qualChoice) continue;
-
                 const before = getRankingSnapshot(placarDinamico);
 
                 stepByStepSimulations[midStr] = {
@@ -456,7 +454,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         // ------------------------------------------------------------------------------------------------
         const podiumWeights = { first: 7, second: 5, third: 4, fourth: 3 };
         const userPodiumPotentialMap = new Map();
-        const userSpecificEliminatedMap = new Map(); 
+        const userSpecificEliminatedMap = new Map();
 
         bets.forEach(b => {
             const betUserId = b.user?._id?.toString();
@@ -469,7 +467,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 // 1. ANALISADOR DE CHAVEAMENTO: Verifica colisões inevitáveis em mata-matas futuros (exclui finais/semis)
                 mathFutureMatches.forEach(m => {
                     const isEarlyKnockout = (m.phase === 'knockout' || m.phase === 'mata-mata') && 
-                                            !['Semifinal', 'Final', '3º lugar'].includes(m.group);
+                                           !['Semifinal', 'Final', '3º lugar'].includes(m.group);
                     
                     if (isEarlyKnockout && m.teamA && m.teamB) {
                         const positionsA = Object.keys(b.podium).filter(key => b.podium[key] === m.teamA);
@@ -590,12 +588,14 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 }
             });
 
-            if (isTarget) projPts += targetPodiumPotential;
+            // CORREÇÃO: Adiciona o potencial de pódio de TODOS os usuários
+            const userPodium = userPodiumPotentialMap.get(r.userId) || 0;
+            projPts += userPodium;
+
             return { userId: r.userId, totalPoints: projPts, name: r.name };
         });
 
         projectedRanking.sort((a, b) => b.totalPoints - a.totalPoints || a.name.localeCompare(b.name));
-
         const targetUserProj = projectedRanking.find(r => r.userId === activeUserId);
         const usersBetter = projectedRanking.filter(r => r.totalPoints > (targetUserProj?.totalPoints ?? 0)).length;
         const targetMaxPosition = usersBetter + 1;
@@ -608,24 +608,21 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
             if (isKnockoutPhase && targetPick?.qualifier) pts += 1;
             return acc + pts;
         }, 0);
-
+        
         const totalPotential = matchPointsLeft + targetPodiumPotential;
         const targetMaxTotal = targetPoints + totalPotential;
 
         let probability = 0;
-
         if (targetMaxPosition === 1) {
             if (targetPoints > leaderPoints) {
                 const margem = targetPoints - leaderPoints;
                 probability = Math.min(99, 80 + (margem * 2));
             } else {
                 const leaders = sortedCurrentRanking.filter(r => r.points === leaderPoints && r.userId !== activeUserId);
-
                 if (leaders.length === 0) {
                     probability = 80;
                 } else {
                     let minChanceAgainstLeaders = 100;
-
                     leaders.forEach(leader => {
                         const leaderBet = betsByUserMap.get(leader.userId);
                         let contestedPoints = 0;
@@ -676,8 +673,9 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                             minChanceAgainstLeaders = 0;
                         }
                     });
-
-                    probability = Math.max(1, Math.round(minChanceAgainstLeaders));
+                    
+                    // CORREÇÃO: Permite que a chance real chegue a 0% se matematicamente impossível
+                    probability = Math.max(0, Math.round(minChanceAgainstLeaders));
                 }
             }
         }
@@ -703,7 +701,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
             }
 
             const meuPotencialMaximo = targetPoints + targetPodiumPotential;
-
             const rivalsToWatch = currentRanking.filter(r => {
                 if (r.userId === activeUserId) return false;
                 if (r.points > targetPoints) return true;
@@ -713,7 +710,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
 
                 return rivalPotencialMaximo >= (meuPotencialMaximo - MARGEM_DE_PERIGO);
             });
-
+            
             const opponentsToWatch = isLocked ? [{ name: "Conteúdo Bloqueado 🔒", color: 'locked' }] : rivalsToWatch.filter(ra => {
                 const rb = betsByUserMap.get(ra.userId);
                 const rp = (rb?.groupMatches || []).find(gm => String(gm.matchId) === midStr);
@@ -735,7 +732,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
 
                 return { name: rivalName, color: colorCode };
             }).filter(Boolean);
-
+            
             const hideTargetPick = isLocked && !isViewingSelf;
 
             const miracleData = stepByStepSimulations[midStr] || null;
@@ -746,7 +743,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
 
             const isSimulationMode = mode === 'simulacao' || isMiracleMode;
             const hasImpact = isSimulationMode ? true : (m.isSimulated === true || isMiracleResult === true || opponentsToWatch.length > 0);
-
+            
             return {
                 matchId: m.matchId,
                 date: m.date,
@@ -776,6 +773,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 opponentsToWatch
             };
         });
+        
         const miracleTotalMatchesNeeded = Object.keys(stepByStepSimulations).length;
 
         if (isMiracleMode) {
@@ -808,7 +806,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         res.status(500).json({ success: false, message: 'Erro interno no servidor' });
     }
 });
-  
+
   //🎯 Meus palpites (Filtrado por Liga)
  
 router.get('/my-bets', protect, checkPaid, async (req, res) => {
