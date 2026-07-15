@@ -27,7 +27,7 @@ function toWinnerLabel(choice, teamA, teamB) {
 /**
  * 🧠 ESTRATÉGIA: Caminho da Liderança (VERSÃO DEFINITIVA SUPREMA - 2026)
  * Inclui: Mata-mata independente, Pódio Live, Secagem Dinâmica, Pênaltis, Cronologia Invertida, Botão do Milagre.
- * 🚀 ATUALIZADO: Suporte total a times repetidos estrategicamente no pódio + Trava de Colisão Corrigida.
+ * 🚀 ATUALIZADO: Suporte total a times repetidos estrategicamente no pódio + Trava de Colisão Corrigida + Trava de Semifinais.
  */
 
 const getMatchResult = (a, b) => {
@@ -167,6 +167,38 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         }
 
         const liveStatuses = ['ao_vivo', '1_tempo', '2_tempo', 'intervalo', 'prorrogacao', '1_tet', '2_tet', 'penaltis', 'live', 'in_progress'];
+
+        // 🏆 NOVA LÓGICA: Rastreio de teto e piso das Semifinais
+        const semiWinners = new Set();
+        const semiLosers = new Set();
+
+        matches.forEach(m => {
+            if (m.group === 'Semifinal') {
+                const isMatchValid = isLive ? (m.status !== 'scheduled' || m.isSimulated) : (m.status === 'finished' || m.isSimulated);
+                
+                if (isMatchValid) {
+                    const realWinner = getMatchResult(m.scoreA, m.scoreB);
+                    const realQual = getQualifiedSide(m, realWinner);
+
+                    if (realQual === 'A') {
+                        if (m.teamA) semiWinners.add(m.teamA);
+                        if (m.teamB) semiLosers.add(m.teamB);
+                    } else if (realQual === 'B') {
+                        if (m.teamB) semiWinners.add(m.teamB);
+                        if (m.teamA) semiLosers.add(m.teamA);
+                    } else if (isLive && liveStatuses.includes(m.status)) {
+                        // Trata o placar momentâneo no modo live
+                        if (m.scoreA > m.scoreB) {
+                            if (m.teamA) semiWinners.add(m.teamA);
+                            if (m.teamB) semiLosers.add(m.teamB);
+                        } else if (m.scoreB > m.scoreA) {
+                            if (m.teamB) semiWinners.add(m.teamB);
+                            if (m.teamA) semiLosers.add(m.teamA);
+                        }
+                    }
+                }
+            }
+        });
 
         // 🚀 CURRENT RANKING: Calcula pontuação atual e descobre os eliminados reais acumulados até aqui
         const currentRanking = bets
@@ -456,7 +488,19 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 const teamMaxPotential = {};
                 ['first', 'second', 'third', 'fourth'].forEach(pos => {
                     const teamName = b.podium[pos];
-                    if (!officialPodium[pos] && teamName && !userEliminatedTeams.has(teamName)) {
+                    
+                    if (!teamName || officialPodium[pos] || userEliminatedTeams.has(teamName)) return;
+
+                    // 🛑 TRAVA DAS SEMIFINAIS: Invalida posições impossíveis
+                    let isPositionValid = true;
+                    if (semiWinners.has(teamName) && (pos === 'third' || pos === 'fourth')) {
+                        isPositionValid = false; // Ganhou a semi, só pode ser 1º ou 2º
+                    }
+                    if (semiLosers.has(teamName) && (pos === 'first' || pos === 'second')) {
+                        isPositionValid = false; // Perdeu a semi, só pode ser 3º ou 4º
+                    }
+
+                    if (isPositionValid) {
                         const weight = podiumWeights[pos];
                         // Mantém a maior pontuação possível do time (estratégia de hedge bem-sucedida)
                         if (!teamMaxPotential[teamName] || weight > teamMaxPotential[teamName]) {
@@ -487,8 +531,19 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 }
                 const teamName = targetBet.podium[key];
                 if (teamName) {
-                    // Reage independentemente por posição: se a vaga específica fechou ou o time foi eliminado globalmente, fica 'dead'
-                    let status = officialPodium[key] === teamName ? 'conquered' : (officialPodium[key] || targetEliminatedTeams.has(teamName) ? 'dead' : 'alive');
+                    // Verifica se a posição foi invalidada pela semifinal
+                    let isInvalidBySemi = false;
+                    if (semiWinners.has(teamName) && (key === 'third' || key === 'fourth')) isInvalidBySemi = true;
+                    if (semiLosers.has(teamName) && (key === 'first' || key === 'second')) isInvalidBySemi = true;
+
+                    // Reage independentemente por posição
+                    let status = 'alive';
+                    if (officialPodium[key] === teamName) {
+                        status = 'conquered';
+                    } else if (officialPodium[key] || targetEliminatedTeams.has(teamName) || isInvalidBySemi) {
+                        status = 'dead';
+                    }
+
                     const matchRef = matches.find(m => m.teamA === teamName || m.teamB === teamName);
                     const logoUrl = matchRef ? (matchRef.teamA === teamName ? matchRef.logoA : matchRef.logoB) : null;
                     podiumDetails.push({ team: teamName, logoUrl, position: key, points: podiumWeights[key], status });
@@ -737,7 +792,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         res.status(500).json({ success: false, message: 'Erro interno no servidor' });
     }
 });
-
 //🎯 Meus palpites (Filtrado por Liga)
  
 router.get('/my-bets', protect, checkPaid, async (req, res) => {
