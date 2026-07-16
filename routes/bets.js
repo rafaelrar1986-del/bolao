@@ -28,6 +28,7 @@ function toWinnerLabel(choice, teamA, teamB) {
  * Inclui: Mata-mata independente, Pódio Live, Secagem Dinâmica, Pênaltis, Cronologia Invertida, Botão do Milagre.
  * 🚀 ATUALIZADO: Trava de Semifinais, Finais e 3º Lugar Dinâmicas (Bloqueio Automático de Posições Inválidas).
  * 🎯 CORREÇÃO: Universo Perfeito do Target + Motor de Pontos Fantasmas Dedutivo + Selos de Status Matemático.
+ * 🏆 CORREÇÃO: Conversão Dinâmica de Potencial de Pódio para Ponto Real durante Simulações de Final/3º Lugar.
  */
 
 const getMatchResult = (a, b) => {
@@ -45,6 +46,7 @@ const getQualifiedSide = (match, matchResult) => {
     }
     return matchResult && matchResult !== 'draw' ? matchResult : null;
 };
+
 
 // 🗓️ Helper para ordenar partidas de forma cronológica absoluta (Data + Hora de Brasília)
 const sortMatchesChronologically = (a, b) => {
@@ -123,6 +125,9 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
 
         const unlockedPhases = settings?.unlockedPhases || [];
         const officialPodium = officialPodiumDoc?.podium || {};
+        const podiumWeights = { first: 7, second: 5, third: 4, fourth: 3 }; // Declarado no topo
+        const dynamicPodium = { ...officialPodium }; // Pódio dinâmico mescla oficial com simulações
+
         const betsByUserMap = new Map(bets.filter(b => b.user?._id).map(b => [b.user._id.toString(), b]));
         const matchMap = new Map(matches.map(m => [String(m.matchId), m]));
         const matchIdsDaLiga = new Set(matchMap.keys());
@@ -192,13 +197,8 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                         winnerTeam = m.teamB;
                         loserTeam = m.teamA;
                     } else if (isLive && liveStatuses.includes(m.status)) {
-                        if (m.scoreA > m.scoreB) {
-                            winnerTeam = m.teamA;
-                            loserTeam = m.teamB;
-                        } else if (m.scoreB > m.scoreA) {
-                            winnerTeam = m.teamB;
-                            loserTeam = m.teamA;
-                        }
+                        if (m.scoreA > m.scoreB) { winnerTeam = m.teamA; loserTeam = m.teamB; }
+                        else if (m.scoreB > m.scoreA) { winnerTeam = m.teamB; loserTeam = m.teamA; }
                     }
 
                     if (winnerTeam && loserTeam) {
@@ -208,9 +208,15 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                         } else if (m.group === 'Final') {
                             finalWinners.add(winnerTeam);
                             finalLosers.add(loserTeam);
+                            // 🏆 ALIMENTA O PÓDIO DINÂMICO SE FOR FINALIZADO/SIMULADO
+                            dynamicPodium['first'] = winnerTeam;
+                            dynamicPodium['second'] = loserTeam;
                         } else if (m.group === '3º lugar') {
                             thirdWinners.add(winnerTeam);
                             thirdLosers.add(loserTeam);
+                            // 🏆 ALIMENTA O PÓDIO DINÂMICO SE FOR FINALIZADO/SIMULADO
+                            dynamicPodium['third'] = winnerTeam;
+                            dynamicPodium['fourth'] = loserTeam;
                         }
                     }
                 }
@@ -248,7 +254,19 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                         }
                     }
                 });
-                return { userId: betUserId, points: pts + (b.podiumPoints || 0), name: b.user?.name || "" };
+
+                // 🏆 CONVERSÃO DE PONTOS DE PÓDIO SIMULADOS
+                let simPodiumPts = 0;
+                if (b.podium) {
+                    ['first', 'second', 'third', 'fourth'].forEach(pos => {
+                        // Se a posição foi definida dinamicamente na simulação E não existia no pódio oficial
+                        if (!officialPodium[pos] && dynamicPodium[pos] && b.podium[pos] === dynamicPodium[pos]) {
+                            simPodiumPts += podiumWeights[pos];
+                        }
+                    });
+                }
+
+                return { userId: betUserId, points: pts + (b.podiumPoints || 0) + simPodiumPts, name: b.user?.name || "" };
             })
             .filter(Boolean);
 
@@ -286,7 +304,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         const mathFutureMatches = displayFutureMatches.filter(m => !m.isSimulated);
 
         // --------------------------------------------------------------------------------------------
-        // 👻 INÍCIO: MOTOR DE PONTOS FANTASMAS DEDUTIVO (INCLUI 3º LUGAR)
+        // 👻 MOTOR DE PONTOS FANTASMAS DEDUTIVO
         // --------------------------------------------------------------------------------------------
         const ghostPhasesOrder = ['16-avos de final', 'Oitavas de final', 'Quartas de final', 'Semifinal', '3º lugar', 'Final'];
         let startedKnockoutAt = null;
@@ -311,7 +329,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 ghostPoints += missingMatches * 2;
             }
         }
-        // --------------------------------------------------------------------------------------------
 
         const getRankingSnapshot = (pointsMap) => {
             const list = Object.entries(pointsMap)
@@ -365,6 +382,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                     (b.groupMatches || []).forEach(gm => {
                         const midStr = String(gm.matchId);
                         const m = matchMap.get(midStr);
+                        // IMPORTANTE: Exclui simulados para basePoints refletir o momento ANTES da simulação
                         if (!m || m.isSimulated) return; 
                        
                         const isMatchValid = isLive ? (m.status !== 'scheduled') : (m.status === 'finished');
@@ -412,6 +430,19 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 }
 
                 if (!winChoice && !qualChoice) continue;
+
+                // 🏆 PREPARA CONVERSÃO STEP-BY-STEP DE PÓDIO
+                const isFinal = m.group === 'Final';
+                const isThirdPlace = m.group === '3º lugar';
+                let simWinnerTeam = null;
+                let simLoserTeam = null;
+                
+                if (isFinal || isThirdPlace) {
+                    const side = qualChoice || winChoice;
+                    if (side === 'A') { simWinnerTeam = m.teamA; simLoserTeam = m.teamB; }
+                    else if (side === 'B') { simWinnerTeam = m.teamB; simLoserTeam = m.teamA; }
+                }
+
                 const before = getRankingSnapshot(placarDinamico);
 
                 stepByStepSimulations[midStr] = {
@@ -430,6 +461,17 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                         }
                         if (isKnockoutPhase && qualChoice && rivalPick.qualifier === qualChoice) {
                             placarDinamico[uId] = (placarDinamico[uId] || 0) + 1;
+                        }
+                    }
+
+                    // Se a partida simulada resolver um pódio, converte o potencial do usuário em pontos reais
+                    if (simWinnerTeam && simLoserTeam && bet.podium) {
+                        if (isFinal) {
+                            if (!officialPodium['first'] && bet.podium.first === simWinnerTeam) placarDinamico[uId] = (placarDinamico[uId] || 0) + podiumWeights.first;
+                            if (!officialPodium['second'] && bet.podium.second === simLoserTeam) placarDinamico[uId] = (placarDinamico[uId] || 0) + podiumWeights.second;
+                        } else if (isThirdPlace) {
+                            if (!officialPodium['third'] && bet.podium.third === simWinnerTeam) placarDinamico[uId] = (placarDinamico[uId] || 0) + podiumWeights.third;
+                            if (!officialPodium['fourth'] && bet.podium.fourth === simLoserTeam) placarDinamico[uId] = (placarDinamico[uId] || 0) + podiumWeights.fourth;
                         }
                     }
                 });
@@ -470,7 +512,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
             if (isMiracleMode) miracleAchieved = isNoTopo();
         }
 
-        const podiumWeights = { first: 7, second: 5, third: 4, fourth: 3 };
         const userPodiumPotentialMap = new Map();
         const userSpecificEliminatedMap = new Map();
 
@@ -493,14 +534,14 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                         if (positionsA.length > 0 && positionsB.length > 0) {
                             let maxWeightA = 0;
                             positionsA.forEach(pos => {
-                                if (!officialPodium[pos]) {
+                                if (!dynamicPodium[pos]) { // Troca de officialPodium para dynamicPodium
                                     maxWeightA = Math.max(maxWeightA, podiumWeights[pos] || 0);
                                 }
                             });
 
                             let maxWeightB = 0;
                             positionsB.forEach(pos => {
-                                if (!officialPodium[pos]) {
+                                if (!dynamicPodium[pos]) {
                                     maxWeightB = Math.max(maxWeightB, podiumWeights[pos] || 0);
                                 }
                             });
@@ -518,7 +559,8 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 ['first', 'second', 'third', 'fourth'].forEach(pos => {
                     const teamName = b.podium[pos];
                     
-                    if (!teamName || officialPodium[pos] || userEliminatedTeams.has(teamName)) return;
+                    // Se o pódio já foi resolvido pela simulação (dynamicPodium), descarta o potencial (já virou ponto)
+                    if (!teamName || dynamicPodium[pos] || userEliminatedTeams.has(teamName)) return;
 
                     let isPositionValid = true;
                     if (semiWinners.has(teamName) && (pos === 'third' || pos === 'fourth')) isPositionValid = false;
@@ -567,9 +609,9 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                     if (thirdLosers.has(teamName) && key !== 'fourth') isInvalidDynamic = true;
 
                     let status = 'alive';
-                    if (officialPodium[key] === teamName) {
+                    if (dynamicPodium[key] === teamName) { // Validado com o Pódio Dinâmico
                         status = 'conquered';
-                    } else if (officialPodium[key] || targetEliminatedTeams.has(teamName) || isInvalidDynamic) {
+                    } else if (dynamicPodium[key] || targetEliminatedTeams.has(teamName) || isInvalidDynamic) { // Validado com Pódio Dinâmico
                         status = 'dead';
                     }
 
@@ -604,7 +646,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
             });
 
             if (isTarget) {
-                // Target pontua seu potencial máximo normalmente + Fantasmas
+                // Target pontua seu potencial máximo (que exclui o que já virou ponto pelo dynamicPodium) + Fantasmas
                 projPts += targetPodiumPotential + ghostPoints;
             } else {
                 let rivalPodiumInTargetUniverse = 0;
@@ -615,6 +657,8 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                     const targetUsedTeams = new Set();
                     
                     ['first', 'second', 'third', 'fourth'].forEach(pos => {
+                        if (dynamicPodium[pos]) return; // Ignora o que já foi decidido na simulação
+                        
                         const targetTeam = targetBet.podium[pos];
                         if (targetTeam && !targetEliminatedTeams.has(targetTeam)) {
                             let invalid = false;
@@ -633,6 +677,8 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                     });
 
                     ['first', 'second', 'third', 'fourth'].forEach(pos => {
+                        if (dynamicPodium[pos]) return; // Ignora o que já foi decidido na simulação
+                        
                         const rivalTeam = bRef?.podium?.[pos];
                         if (!rivalTeam) return;
 
@@ -684,7 +730,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 const bRef = betsByUserMap.get(r.userId);
                 let rivalMaxPts = r.points;
 
-                // Rivais gabaritam as partidas visíveis restantes
                 mathFutureMatches.forEach(m => {
                     const midStr = String(m.matchId);
                     const rivalPick = (bRef?.groupMatches || []).find(gm => String(gm.matchId) === midStr);
@@ -693,7 +738,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                     if (isKnockoutPhase && rivalPick?.qualifier) rivalMaxPts += 1;
                 });
 
-                // Rivais somam pódio total e fantasmas totais
                 const rivalPodium = userPodiumPotentialMap.get(r.userId) || 0;
                 rivalMaxPts += rivalPodium + ghostPoints;
 
@@ -703,14 +747,13 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
             }
         });
         
-        // A pior posição matemática possível que o Target pode ficar
         const targetMinPosition = usersBeatingTargetInWorstCase + 1;
 
         let statusBadge = 'IN_CONTENTION';
         if (targetMinPosition <= 2) {
-            statusBadge = 'GUARANTEED_PODIUM'; // Matematicamente garantido em 1º ou 2º! (Troféu no UI)
-        } else if (targetMaxPosition > 2) { // 🚀 CORREÇÃO AQUI: Agora usa > 2 em vez de > 1
-            statusBadge = 'ELIMINATED'; // Matematicamente sem chance de alcançar sequer o 2º lugar (X vermelho no UI)
+            statusBadge = 'GUARANTEED_PODIUM'; 
+        } else if (targetMaxPosition > 2) { 
+            statusBadge = 'ELIMINATED'; 
         }
         // --------------------------------------------------------------------------------------------
 
@@ -760,7 +803,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                         if (targetBet.podium) {
                             const targetPodiumTeamsMaxContested = {};
                             ['first', 'second', 'third', 'fourth'].forEach(pos => {
-                                if (officialPodium[pos]) return;
+                                if (dynamicPodium[pos]) return; // Proteção para ignorar posições já resolvidas na simulação
                                 const myTeam = targetBet.podium[pos];
                                 const leaderTeam = leaderBet?.podium?.[pos];
                                 if (myTeam && !targetEliminatedTeams.has(myTeam) && myTeam !== leaderTeam) {
@@ -774,7 +817,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                             contestedPoints += podiumContestedPoints;
                         }
 
-                        // Target pode secar o líder nos jogos que ainda nem foram cadastrados (Fantasmas)!
                         contestedPoints += ghostPoints;
 
                         const gap = leader.points - targetPoints;
@@ -882,7 +924,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                     qualifierName: 'Conteúdo Bloqueado 🔒'
                 } : {
                     winner: targetPick?.winner || null,
-                    label: toWinnerLabel(targetPick?.winner, m.teamA, m.teamB), // Requer ter a function toWinnerLabel fora
+                    label: toWinnerLabel(targetPick?.winner, m.teamA, m.teamB), 
                     qualifier: targetPick?.qualifier || null,
                     qualifierName: targetPick?.qualifier === 'A' ? m.teamA : (targetPick?.qualifier === 'B' ? m.teamB : (isKnockoutPhase ? 'Sem Palpite' : null))
                 },
@@ -899,7 +941,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                     currentPosition,
                     maxPosition: targetMaxPosition,
                     minPosition: targetMinPosition,
-                    statusBadge, // 🛡️ AQUI ESTÁ A BADGE (GURANTEED_PODIUM, ELIMINATED, IN_CONTENTION)
+                    statusBadge, 
                     probability,
                     currentPoints: targetPoints,
                     maxPoints: targetMaxTotal,
@@ -920,7 +962,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         res.status(500).json({ success: false, message: 'Erro interno no servidor' });
     }
 });
-  //🎯 Meus palpites (Filtrado por Liga)
+//🎯 Meus palpites (Filtrado por Liga)
  
 router.get('/my-bets', protect, checkPaid, async (req, res) => {
   try {
