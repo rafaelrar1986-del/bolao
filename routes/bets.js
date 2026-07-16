@@ -29,6 +29,7 @@ function toWinnerLabel(choice, teamA, teamB) {
  * 🚀 ATUALIZADO: Trava de Semifinais, Finais e 3º Lugar Dinâmicas (Bloqueio Automático de Posições Inválidas).
  * 🎯 CORREÇÃO: Universo Perfeito do Target + Motor de Pontos Fantasmas Dedutivo + Selos de Status Matemático.
  * 🏆 CORREÇÃO: Conversão Dinâmica de Potencial de Pódio para Ponto Real durante Simulações de Final/3º Lugar.
+ * 💯 ATUALIZAÇÃO: Escala de probabilidade inteligente até 100% quando título é matematicamente garantido.
  */
 
 const getMatchResult = (a, b) => {
@@ -125,8 +126,8 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
 
         const unlockedPhases = settings?.unlockedPhases || [];
         const officialPodium = officialPodiumDoc?.podium || {};
-        const podiumWeights = { first: 7, second: 5, third: 4, fourth: 3 }; // Declarado no topo
-        const dynamicPodium = { ...officialPodium }; // Pódio dinâmico mescla oficial com simulações
+        const podiumWeights = { first: 7, second: 5, third: 4, fourth: 3 }; 
+        const dynamicPodium = { ...officialPodium }; 
 
         const betsByUserMap = new Map(bets.filter(b => b.user?._id).map(b => [b.user._id.toString(), b]));
         const matchMap = new Map(matches.map(m => [String(m.matchId), m]));
@@ -720,10 +721,11 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         const targetMaxPosition = usersBetter + 1;
 
         // --------------------------------------------------------------------------------------------
-        // 🚨 CÁLCULO DE CENÁRIO PESSIMISTA (Para as Badges)
+        // 🚨 CÁLCULO DE CENÁRIO PESSIMISTA (Para as Badges e Probabilidade Suprema)
         // --------------------------------------------------------------------------------------------
         const worstCaseTargetPoints = targetPoints; 
         let usersBeatingTargetInWorstCase = 0;
+        let maxRivalPotential = 0;
 
         currentRanking.forEach(r => {
             if (r.userId !== activeUserId) {
@@ -740,6 +742,11 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
 
                 const rivalPodium = userPodiumPotentialMap.get(r.userId) || 0;
                 rivalMaxPts += rivalPodium + ghostPoints;
+
+                // Monitora a maior pontuação possível de um adversário
+                if (rivalMaxPts > maxRivalPotential) {
+                    maxRivalPotential = rivalMaxPts;
+                }
 
                 if (rivalMaxPts > worstCaseTargetPoints) {
                     usersBeatingTargetInWorstCase++;
@@ -769,15 +776,31 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         const totalPotential = matchPointsLeft + targetPodiumPotential + ghostPoints;
         const targetMaxTotal = targetPoints + totalPotential;
 
+        // --------------------------------------------------------------------------------------------
+        // 💯 CÁLCULO DE PROBABILIDADE (Escala até 100%)
+        // --------------------------------------------------------------------------------------------
         let probability = 0;
         if (targetMaxPosition === 1) {
-            if (targetPoints > leaderPoints) {
+            if (targetPoints >= maxRivalPotential) {
+                // 🏆 Título Matematicamente Garantido (Ninguém pode alcançá-lo)
+                probability = 100;
+            } else if (targetPoints > leaderPoints) {
+                // Caso simulação: passou o antigo líder de pontos oficiais
                 const margem = targetPoints - leaderPoints;
                 probability = Math.min(99, 80 + (margem * 2));
             } else {
                 const leaders = sortedCurrentRanking.filter(r => r.points === leaderPoints && r.userId !== activeUserId);
                 if (leaders.length === 0) {
-                    probability = 80;
+                    // É líder isolado, mas matematicamente ainda pode ser alcançado.
+                    // Escala dinamicamente de 80 a 99 baseada na diminuição da ameaça restante.
+                    const ameaca = maxRivalPotential - targetPoints;
+                    if (ameaca <= 0) {
+                        probability = 100; // Garantido
+                    } else {
+                        const pontosEmDisputa = totalPotential > 0 ? totalPotential : 1; // Previne divisão por zero
+                        const fatorSeguranca = Math.max(0, 1 - (ameaca / pontosEmDisputa));
+                        probability = Math.round(80 + (19 * fatorSeguranca));
+                    }
                 } else {
                     let minChanceAgainstLeaders = 100;
                     leaders.forEach(leader => {
@@ -837,6 +860,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 }
             }
         }
+        // --------------------------------------------------------------------------------------------
 
         const matchesAnalysis = displayFutureMatches.map((m, index) => {
             const midStr = String(m.matchId);
