@@ -31,6 +31,7 @@ function toWinnerLabel(choice, teamA, teamB) {
  * 🏆 CORREÇÃO: Conversão Dinâmica de Potencial de Pódio para Ponto Real durante Simulações de Final/3º Lugar.
  * 💯 ATUALIZAÇÃO: Escala de probabilidade inteligente até 100% quando título é matematicamente garantido.
  * 🔥 ATUALIZAÇÃO MÁSTER: Dedução de Partida Contraditória (Prioriza Pódio sobre palpite desalinhado no Teto Máximo).
+ * 🧨 NOVO: Índice de Ousadia (Fator Kamikaze) - Análise de desvio estratégico contra o líder.
  */
 
 const getMatchResult = (a, b) => {
@@ -918,7 +919,67 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 }
             }
         }
+
         // --------------------------------------------------------------------------------------------
+        // 🧨 ÍNDICE DE OUSADIA (FATOR KAMIKAZE)
+        // --------------------------------------------------------------------------------------------
+        let ousadiaLevel = 'Seguro';
+        let ousadiaPercentage = 0;
+        let ousadiaMessage = null;
+
+        const currentLeaderId = sortedCurrentRanking[0]?.userId;
+        
+        if (currentLeaderId && currentLeaderId !== activeUserId) {
+            const leaderBetData = betsByUserMap.get(currentLeaderId);
+            let divergencias = 0;
+            let totalComparavel = 0;
+
+            if (leaderBetData) {
+                // Analisa todos os jogos futuros matematicamente vivos
+                mathFutureMatches.forEach(m => {
+                    const midStr = String(m.matchId);
+                    const targetPick = targetPicksMap.get(midStr);
+                    const leaderPick = (leaderBetData.groupMatches || []).find(gm => String(gm.matchId) === midStr);
+                    
+                    if (targetPick && leaderPick) {
+                        totalComparavel++;
+                        let isDifferent = false;
+                        
+                        // Verifica se discordaram de vencedor
+                        if (targetPick.winner !== leaderPick.winner) isDifferent = true;
+                        
+                        // Verifica se discordaram de quem se qualifica (em mata-mata)
+                        if ((m.phase === 'knockout' || m.phase === 'mata-mata') && targetPick.qualifier !== leaderPick.qualifier) {
+                            isDifferent = true;
+                        }
+                        
+                        if (isDifferent) divergencias++;
+                    }
+                });
+
+                if (totalComparavel > 0) {
+                    ousadiaPercentage = Math.round((divergencias / totalComparavel) * 100);
+                    
+                    // Categoriza a estratégia baseada na taxa de discordância com o líder
+                    if (ousadiaPercentage < 34) {
+                        ousadiaLevel = 'Seguro';
+                    } else if (ousadiaPercentage < 67) {
+                        ousadiaLevel = 'Equilibrado';
+                    } else {
+                        ousadiaLevel = 'Kamikaze';
+                    }
+                }
+            }
+            
+            // 🗣️ Dica da engine se a situação for dramática
+            if (probability < 10 && ousadiaLevel !== 'Kamikaze' && currentPosition > 1) {
+                ousadiaMessage = "Você precisa de um milagre. Que tal arriscar algumas zebras na próxima rodada para tentar desbancar a liderança?";
+            }
+        } else if (currentLeaderId === activeUserId) {
+            ousadiaLevel = 'Líder';
+        }
+        // --------------------------------------------------------------------------------------------
+
 
         const matchesAnalysis = displayFutureMatches.map((m, index) => {
             const midStr = String(m.matchId);
@@ -1006,7 +1067,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                     qualifierName: 'Conteúdo Bloqueado 🔒'
                 } : {
                     winner: targetPick?.winner || null,
-                    label: toWinnerLabel(targetPick?.winner, m.teamA, m.teamB), 
+                    label: targetPick?.winner === 'A' ? m.teamA : (targetPick?.winner === 'B' ? m.teamB : (targetPick?.winner === 'draw' ? 'Empate' : 'Sem Palpite')), 
                     qualifier: targetPick?.qualifier || null,
                     qualifierName: targetPick?.qualifier === 'A' ? m.teamA : (targetPick?.qualifier === 'B' ? m.teamB : (isKnockoutPhase ? 'Sem Palpite' : null))
                 },
@@ -1026,15 +1087,20 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                     statusBadge, 
                     probability,
                     currentPoints: targetPoints,
-                    maxPoints: targetMaxTotal, // Agora deduzindo inteligentemente as partidas!
+                    maxPoints: targetMaxTotal,
                     podiumPotential: targetPodiumPotential,
                     totalMatches: displayFutureMatches.length,
-                    podiumDetails, // O time permanece 'alive' visualmente!
+                    podiumDetails,
                     miracleAchieved,
                     miracleTotalMatchesNeeded,
                     miracleCriticalMatches,
                     simulatedRanking: simulatedRankingList,
-                    nemesis: null
+                    nemesis: null,
+                    ousadia: {
+                        level: ousadiaLevel,
+                        percentage: ousadiaPercentage,
+                        message: ousadiaMessage
+                    }
                 },
                 matches: matchesAnalysis
             }
