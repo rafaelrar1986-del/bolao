@@ -31,7 +31,7 @@ function toWinnerLabel(choice, teamA, teamB) {
  * 🏆 CORREÇÃO: Conversão Dinâmica de Potencial de Pódio para Ponto Real durante Simulações de Final/3º Lugar.
  * 💯 ATUALIZAÇÃO: Escala de probabilidade inteligente até 100% quando título é matematicamente garantido.
  * 🔥 ATUALIZAÇÃO MÁSTER: Dedução de Partida Contraditória (Prioriza Pódio sobre palpite desalinhado no Teto Máximo).
- * 🧨 NOVO: Índice de Ousadia (Fator Kamikaze) - Análise de desvio estratégico contra o líder.
+ * 🧨 NOVO: Índice de Ousadia (Fator Kamikaze) movido para análise por partida!
  */
 
 const getMatchResult = (a, b) => {
@@ -920,67 +920,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
             }
         }
 
-        // --------------------------------------------------------------------------------------------
-        // 🧨 ÍNDICE DE OUSADIA (FATOR KAMIKAZE)
-        // --------------------------------------------------------------------------------------------
-        let ousadiaLevel = 'Seguro';
-        let ousadiaPercentage = 0;
-        let ousadiaMessage = null;
-
-        const currentLeaderId = sortedCurrentRanking[0]?.userId;
-        
-        if (currentLeaderId && currentLeaderId !== activeUserId) {
-            const leaderBetData = betsByUserMap.get(currentLeaderId);
-            let divergencias = 0;
-            let totalComparavel = 0;
-
-            if (leaderBetData) {
-                // Analisa todos os jogos futuros matematicamente vivos
-                mathFutureMatches.forEach(m => {
-                    const midStr = String(m.matchId);
-                    const targetPick = targetPicksMap.get(midStr);
-                    const leaderPick = (leaderBetData.groupMatches || []).find(gm => String(gm.matchId) === midStr);
-                    
-                    if (targetPick && leaderPick) {
-                        totalComparavel++;
-                        let isDifferent = false;
-                        
-                        // Verifica se discordaram de vencedor
-                        if (targetPick.winner !== leaderPick.winner) isDifferent = true;
-                        
-                        // Verifica se discordaram de quem se qualifica (em mata-mata)
-                        if ((m.phase === 'knockout' || m.phase === 'mata-mata') && targetPick.qualifier !== leaderPick.qualifier) {
-                            isDifferent = true;
-                        }
-                        
-                        if (isDifferent) divergencias++;
-                    }
-                });
-
-                if (totalComparavel > 0) {
-                    ousadiaPercentage = Math.round((divergencias / totalComparavel) * 100);
-                    
-                    // Categoriza a estratégia baseada na taxa de discordância com o líder
-                    if (ousadiaPercentage < 34) {
-                        ousadiaLevel = 'Seguro';
-                    } else if (ousadiaPercentage < 67) {
-                        ousadiaLevel = 'Equilibrado';
-                    } else {
-                        ousadiaLevel = 'Kamikaze';
-                    }
-                }
-            }
-            
-            // 🗣️ Dica da engine se a situação for dramática
-            if (probability < 10 && ousadiaLevel !== 'Kamikaze' && currentPosition > 1) {
-                ousadiaMessage = "Você precisa de um milagre. Que tal arriscar algumas zebras na próxima rodada para tentar desbancar a liderança?";
-            }
-        } else if (currentLeaderId === activeUserId) {
-            ousadiaLevel = 'Líder';
-        }
-        // --------------------------------------------------------------------------------------------
-
-
         const matchesAnalysis = displayFutureMatches.map((m, index) => {
             const midStr = String(m.matchId);
             const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
@@ -1033,6 +972,49 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
 
                 return { name: rivalName, color: colorCode };
             }).filter(Boolean);
+
+            // 🧨 ÍNDICE DE OUSADIA (FATOR KAMIKAZE) ISOLADO POR PARTIDA
+            let matchOusadia = null;
+            if (!isLocked && targetPick && (targetPick.winner || (isKnockoutPhase && targetPick.qualifier))) {
+                let divergencias = 0;
+                let totalComparavel = 0;
+
+                // Compara o palpite do usuário alvo com TODOS os outros jogadores válidos
+                betsByUserMap.forEach((betData, uId) => {
+                    if (uId !== activeUserId) {
+                        const rivalPick = (betData.groupMatches || []).find(gm => String(gm.matchId) === midStr);
+                        if (rivalPick && (rivalPick.winner || (isKnockoutPhase && rivalPick.qualifier))) {
+                            totalComparavel++;
+                            let isDifferent = false;
+                            
+                            // Avalia discordância no vencedor
+                            if (targetPick.winner !== rivalPick.winner) isDifferent = true;
+                            // Avalia discordância no classificado (em caso de mata-mata)
+                            if (isKnockoutPhase && targetPick.qualifier !== rivalPick.qualifier) isDifferent = true;
+                            
+                            if (isDifferent) divergencias++;
+                        }
+                    }
+                });
+
+                if (totalComparavel > 0) {
+                    const ousadiaPercentage = Math.round((divergencias / totalComparavel) * 100);
+                    let ousadiaLevel = 'Seguro';
+                    
+                    if (ousadiaPercentage >= 67) {
+                        ousadiaLevel = 'Kamikaze';
+                    } else if (ousadiaPercentage >= 34) {
+                        ousadiaLevel = 'Equilibrado';
+                    }
+
+                    matchOusadia = {
+                        level: ousadiaLevel,
+                        percentage: ousadiaPercentage,
+                        divergencias,
+                        totalComparavel
+                    };
+                }
+            }
             
             const hideTargetPick = isLocked && !isViewingSelf;
 
@@ -1060,6 +1042,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                 miracleChoice,
                 miracleQualifier,
                 isLocked,
+                ousadia: matchOusadia, // 🔥 ENVIADO PARA O FRONTEND AQUI
                 myChoice: hideTargetPick ? {
                     winner: null,
                     label: 'Conteúdo Bloqueado 🔒',
@@ -1095,12 +1078,7 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
                     miracleTotalMatchesNeeded,
                     miracleCriticalMatches,
                     simulatedRanking: simulatedRankingList,
-                    nemesis: null,
-                    ousadia: {
-                        level: ousadiaLevel,
-                        percentage: ousadiaPercentage,
-                        message: ousadiaMessage
-                    }
+                    nemesis: null
                 },
                 matches: matchesAnalysis
             }
@@ -1110,7 +1088,6 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
         res.status(500).json({ success: false, message: 'Erro interno no servidor' });
     }
 });
-
 //🎯 Meus palpites (Filtrado por Liga)
  
 router.get('/my-bets', protect, checkPaid, async (req, res) => {
