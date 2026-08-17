@@ -1940,101 +1940,375 @@ router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, r
 
 router.get('/all-bets', protect, checkPaid, blockStatsIfLocked, async (req, res) => {
   try {
-    const { search, matchId, group, leagueId } = req.query;
+    const {
+      search,
+      matchId,
+      group,
+      leagueId
+    } = req.query;
+
     const isAdmin = req.user?.isAdmin === true;
 
     const configId = toLeagueId(leagueId);
-    const settings = await Settings.findById(configId).lean();
-    const unlockedPhases = settings?.unlockedPhases || [];
 
+    // ============================================================
+    // CONFIGURAÇÕES DA LIGA
+    // ============================================================
+    const settings =
+      await Settings.findById(configId).lean();
+
+    if (!settings) {
+      return res.status(404).json({
+        success: false,
+        message: 'Configurações da liga não encontradas'
+      });
+    }
+
+    const unlockedPhases =
+      settings.unlockedPhases || [];
+
+    // ============================================================
+    // FILTRO DE PARTIDAS
+    // ============================================================
     let matchFilter = {};
-    if (leagueId) matchFilter.leagueId = toLeagueId(leagueId);
+
+    if (leagueId) {
+      matchFilter.leagueId =
+        toLeagueId(leagueId);
+    }
 
     if (group) {
       matchFilter.$or = [
-        { group: { $regex: group, $options: 'i' } },
-        { phaseName: { $regex: group, $options: 'i' } }
+        {
+          group: {
+            $regex: group,
+            $options: 'i'
+          }
+        },
+        {
+          phaseName: {
+            $regex: group,
+            $options: 'i'
+          }
+        }
       ];
     }
 
-    if (matchId) matchFilter.matchId = Number(matchId);
-
-    const matches = await Match.find(matchFilter).lean();
-    const matchIdsFilter = matches.map(m => m.matchId);
-
-    if (matchIdsFilter.length === 0) {
-      return res.json({ success: true, data: [] });
+    if (matchId) {
+      matchFilter.matchId =
+        Number(matchId);
     }
 
-    let query = { hasSubmitted: true };
+    const matches =
+      await Match.find(matchFilter).lean();
+
+    const matchIdsFilter =
+      matches.map(m => m.matchId);
+
+    if (matchIdsFilter.length === 0) {
+      return res.json({
+        success: true,
+        data: []
+      });
+    }
+
+    // ============================================================
+    // FILTRO DE USUÁRIOS / APOSTAS
+    // ============================================================
+    const query = {
+      hasSubmitted: true
+    };
+
     if (search) {
-      const users = await User.find({ name: { $regex: search, $options: 'i' } }).select('_id').lean();
-      query.user = { $in: users.map(u => u._id) };
+      const users =
+        await User.find({
+          name: {
+            $regex: search,
+            $options: 'i'
+          }
+        })
+        .select('_id')
+        .lean();
+
+      query.user = {
+        $in: users.map(u => u._id)
+      };
     }
 
     if (leagueId) {
       query.$or = [
-        { leagueId: String(leagueId) },
-        { leagueId: Number(leagueId) }
+        {
+          leagueId:
+            String(leagueId)
+        },
+        {
+          leagueId:
+            Number(leagueId)
+        }
       ];
     }
 
-    query['groupMatches.matchId'] = { $in: matchIdsFilter };
+    query['groupMatches.matchId'] = {
+      $in: matchIdsFilter
+    };
 
-    const bets = await Bet.find(query).populate('user', 'name').lean();
+    const bets =
+      await Bet.find(query)
+        .populate('user', 'name')
+        .lean();
 
+    // ============================================================
+    // MAPA DAS PARTIDAS
+    // ============================================================
+    const matchMap =
+      new Map(
+        matches.map(m => [
+          String(m.matchId),
+          m
+        ])
+      );
+
+    // ============================================================
+    // ENRIQUECIMENTO
+    // ============================================================
     const enriched = bets.map(b => {
-      const gm = (b.groupMatches || []).filter(x => matchIdsFilter.includes(x.matchId));
 
-      const viewBets = gm.map(g => {
-        const m = matches.find(x => x.matchId === g.matchId);
+      // ----------------------------------------------------------
+      // PARTIDAS DO USUÁRIO DENTRO DO FILTRO
+      // ----------------------------------------------------------
+      const gm =
+        (b.groupMatches || [])
+          .filter(x =>
+            matchIdsFilter.includes(
+              x.matchId
+            )
+          );
 
-        let isLocked = !isAdmin;
+      const viewBets =
+        gm.map(g => {
 
-        if (m?.phase === 'group' || m?.phase === 'pontos_corridos') {
-          const groupUnlocked = unlockedPhases.includes('group');
-          const specificGroupUnlocked = unlockedPhases.includes(m?.group);
-          const phaseNameUnlocked = unlockedPhases.includes(m?.phaseName);
-          isLocked = !isAdmin && !groupUnlocked && !specificGroupUnlocked && !phaseNameUnlocked;
-        } else {
-          isLocked = !isAdmin && !unlockedPhases.includes(m?.group);
-        }
+          const m =
+            matchMap.get(
+              String(g.matchId)
+            );
 
-        return {
-          matchId: g.matchId,
-          scoreA: g.scoreA,
-          scoreB: g.scoreB,
-          choice: isLocked ? '🔒' : g.winner,
-          choiceLabel: isLocked ? 'Bloqueado' : toWinnerLabel(g.winner, m?.teamA, m?.teamB),
-          matchName: m ? `${m.teamA} vs ${m.teamB}` : `Jogo ${g.matchId}`,
-          status: m?.status || 'scheduled',
-          qualifier: isLocked ? null : g.qualifier
+          let isLocked = !isAdmin;
+
+          if (
+            m?.phase === 'group' ||
+            m?.phase === 'pontos_corridos'
+          ) {
+
+            const groupUnlocked =
+              unlockedPhases.includes(
+                'group'
+              );
+
+            const specificGroupUnlocked =
+              unlockedPhases.includes(
+                m?.group
+              );
+
+            const phaseNameUnlocked =
+              unlockedPhases.includes(
+                m?.phaseName
+              );
+
+            isLocked =
+              !isAdmin &&
+              !groupUnlocked &&
+              !specificGroupUnlocked &&
+              !phaseNameUnlocked;
+
+          } else {
+
+            isLocked =
+              !isAdmin &&
+              !unlockedPhases.includes(
+                m?.group
+              );
+          }
+
+          return {
+            matchId: g.matchId,
+
+            scoreA: g.scoreA,
+            scoreB: g.scoreB,
+
+            choice:
+              isLocked
+                ? '🔒'
+                : g.winner,
+
+            choiceLabel:
+              isLocked
+                ? 'Bloqueado'
+                : toWinnerLabel(
+                    g.winner,
+                    m?.teamA,
+                    m?.teamB
+                  ),
+
+            matchName:
+              m
+                ? `${m.teamA} vs ${m.teamB}`
+                : `Jogo ${g.matchId}`,
+
+            status:
+              m?.status ||
+              'scheduled',
+
+            qualifier:
+              isLocked
+                ? null
+                : g.qualifier
+          };
+        });
+
+      // ----------------------------------------------------------
+      // VISIBILIDADE DO PÓDIO E EXTRAS
+      // ----------------------------------------------------------
+      const isPodiumLocked =
+        !isAdmin &&
+        !unlockedPhases.includes(
+          'podium'
+        );
+
+      const finalPodium =
+        (
+          b.podium &&
+          b.podium.length > 0 &&
+          !isPodiumLocked
+        )
+          ? b.podium
+          : (
+              b.podium &&
+              b.podium.length > 0
+                ? Array(
+                    b.podium.length
+                  ).fill('🔒')
+                : null
+            );
+
+      const finalExtras =
+        (
+          b.extras &&
+          !isPodiumLocked
+        )
+          ? b.extras
+          : null;
+
+      // ----------------------------------------------------------
+      // RECÁLCULO OFICIAL DOS PONTOS
+      // ----------------------------------------------------------
+      //
+      // Usa exatamente as regras/resultados atuais da liga.
+      // Isso evita depender de totalPoints antigo gravado no Bet.
+      //
+      const computed =
+        computeBetTotal(
+          b,
+          matchMap,
+          settings,
+          false
+        );
+
+      // ----------------------------------------------------------
+      // EXTRAS BREAKDOWN
+      // ----------------------------------------------------------
+      //
+      // O computeBetTotal() calcula extrasPoints oficialmente.
+      // Aqui também geramos o breakdown para o frontend.
+      //
+      let finalExtrasBreakdown = null;
+
+      if (!isPodiumLocked && b.extras) {
+
+        const rules = {
+          ...DEFAULT_SCORING,
+          ...(settings?.scoringRules || {})
         };
-      });
 
-      const isPodiumLocked = !isAdmin && !unlockedPhases.includes('podium');
-      const finalPodium = (b.podium && b.podium.length > 0 && !isPodiumLocked)
-        ? b.podium
-        : (b.podium && b.podium.length > 0 ? Array(b.podium.length).fill('🔒') : null);
+        const champResults =
+          settings?.championshipResults || {};
 
-      const finalExtras = (b.extras && !isPodiumLocked) ? b.extras : null;
+        const extrasCalc =
+          calcExtrasPoints(
+            b.extras,
+            champResults,
+            rules
+          );
 
+        finalExtrasBreakdown =
+          extrasCalc.breakdown;
+      }
+
+      // ----------------------------------------------------------
+      // RETORNO DO USUÁRIO
+      // ----------------------------------------------------------
       return {
-        userName: b.user?.name || 'Usuário',
-        totalPoints: b.totalPoints || 0,
-        bets: viewBets,
-        podium: finalPodium,
-        extras: finalExtras
+        userName:
+          b.user?.name ||
+          'Usuário',
+
+        // PONTUAÇÃO ATUALIZADA
+        totalPoints:
+          computed.totalPoints,
+
+        groupPhasePoints:
+          computed.groupPhasePoints,
+
+        knockoutPoints:
+          computed.knockoutPoints,
+
+        podiumPoints:
+          computed.podiumPoints,
+
+        extrasPoints:
+          computed.extrasPoints,
+
+        bonusPoints:
+          computed.bonusPoints,
+
+        bets:
+          viewBets,
+
+        podium:
+          finalPodium,
+
+        extras:
+          finalExtras,
+
+        extrasBreakdown:
+          finalExtrasBreakdown,
+
+        lastUpdate:
+          computed.lastUpdate
       };
     });
 
-    res.json({ success: true, data: enriched });
+    // ============================================================
+    // RESPOSTA
+    // ============================================================
+    return res.json({
+      success: true,
+      data: enriched
+    });
+
   } catch (e) {
-    console.error('All-bets error:', e);
-    res.status(500).json({ success: false, message: 'Erro ao carregar apostas' });
+
+    console.error(
+      'All-bets error:',
+      e
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        'Erro ao carregar apostas'
+    });
   }
 });
-
 /* ================================================================
    🔍 GET /matches-for-filter
    ================================================================ */
