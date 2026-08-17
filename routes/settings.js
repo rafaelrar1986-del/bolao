@@ -1,148 +1,502 @@
 // routes/settings.js
+
 const express = require('express');
 const router = express.Router();
+
 const Settings = require('../models/Settings');
+const PointsService = require('../services/pointsService');
+
 const { protect, admin } = require('../middleware/auth');
 
 /**
- * 🛠️ HELPER: Normaliza o ID da liga
- * 🆕 CORREÇÃO: Alinhado com toLeagueId() usado em todo o sistema
- * O schema Settings usa _id como String (ex: '27', 'default')
+ * ================================================================
+ * HELPER: Normaliza o ID da liga
+ * ================================================================
+ *
+ * O schema Settings usa _id como String:
+ *   '1'
+ *   '27'
+ *   'default'
  */
 function toLeagueId(leagueId) {
-  return leagueId != null ? String(leagueId).trim() : 'default';
+  return leagueId != null
+    ? String(leagueId).trim()
+    : 'default';
 }
 
 /**
- * @route   GET /api/settings/global
- * @desc    Busca as configurações de uma liga específica
- * @access  Público
+ * ================================================================
+ * GET /api/settings/global
+ * ================================================================
+ *
+ * Busca as configurações de uma liga específica.
+ *
+ * Acesso: Público
  */
 router.get('/global', async (req, res) => {
   try {
-    const leagueId = req.query.leagueId || '1';
-    const configId = toLeagueId(leagueId);
+    const leagueId =
+      req.query.leagueId || '1';
 
-    let s = await Settings.findById(configId).lean();
-    
-    if (!s) {
-      // Cria a configuração inicial específica para esta liga se não existir
-      s = await Settings.create({ 
+    const configId =
+      toLeagueId(leagueId);
+
+    let settings =
+      await Settings.findById(configId).lean();
+
+    /*
+     * Se a configuração não existir,
+     * cria uma configuração inicial para a liga.
+     */
+    if (!settings) {
+      settings = await Settings.create({
         _id: configId,
+
         leagueId: String(leagueId),
-        unlockedPhases: [], // O que o usuário vê (Gerenciador)
-        lockedPhases: [],          // O que o Robô tranca (Segurança)
+
+        unlockedPhases: [],
+
+        lockedPhases: [],
+
         blockSaveBets: false,
+
         blockSaveKnockout: false,
+
         statsLocked: true
       });
     }
-    
-    res.json({ success: true, data: s });
+
+    return res.json({
+      success: true,
+      data: settings
+    });
+
   } catch (err) {
-    console.error('Erro ao ler configurações:', err);
-    res.status(500).json({ success: false, message: 'Erro ao ler configurações' });
+
+    console.error(
+      'Erro ao ler configurações:',
+      err
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: 'Erro ao ler configurações'
+    });
   }
 });
 
 /**
- * @route   POST /api/settings/global
- * @desc    Rota unificada: edita TODAS as configurações da liga (travas, regras de pontuação, regras do campeonato, resultados oficiais, robô)
+ * ================================================================
+ * POST /api/settings/global
+ * ================================================================
+ *
+ * Rota unificada para editar:
+ *
+ * - travas
+ * - regras de pontuação
+ * - regras do campeonato
+ * - resultados oficiais dos Extras
+ * - configurações do robô
+ *
+ * Acesso: Admin
  */
 router.post('/global', protect, admin, async (req, res) => {
   try {
-    const targetLeagueId = req.body.leagueId || req.query.leagueId || '1';
-    const configId = toLeagueId(targetLeagueId);
-    const mainLeagueId = toLeagueId('1');
 
-    // 1. 🔒 CAMPOS DE TRAVA (Vão para a liga alvo)
+    const targetLeagueId =
+      req.body.leagueId ||
+      req.query.leagueId ||
+      '1';
+
+    const configId =
+      toLeagueId(targetLeagueId);
+
+    /*
+     * O robô continua sendo forçado
+     * para a liga principal '1'.
+     */
+    const mainLeagueId =
+      toLeagueId('1');
+
+    /*
+     * ============================================================
+     * 1. CAMPOS DE TRAVA / CONFIGURAÇÕES GERAIS
+     * ============================================================
+     */
+
     const lockUpdates = {};
-    const booleanFields = ['blockSaveBets', 'blockSaveKnockout', 'requireAllBets', 'statsLocked'];
 
-    booleanFields.forEach(k => {
-      if (req.body[k] !== undefined) lockUpdates[k] = !!req.body[k];
+    const booleanFields = [
+      'blockSaveBets',
+      'blockSaveKnockout',
+      'requireAllBets',
+      'statsLocked'
+    ];
+
+    booleanFields.forEach(field => {
+
+      if (req.body[field] !== undefined) {
+        lockUpdates[field] =
+          !!req.body[field];
+      }
+
     });
 
-    if (req.body.unlockedPhases && Array.isArray(req.body.unlockedPhases)) {
-      lockUpdates.unlockedPhases = req.body.unlockedPhases;
+    /*
+     * Fases liberadas
+     */
+    if (
+      req.body.unlockedPhases &&
+      Array.isArray(req.body.unlockedPhases)
+    ) {
+      lockUpdates.unlockedPhases =
+        req.body.unlockedPhases;
     }
 
-    if (req.body.lockedPhases && Array.isArray(req.body.lockedPhases)) {
-      lockUpdates.lockedPhases = req.body.lockedPhases;
+    /*
+     * Fases bloqueadas
+     */
+    if (
+      req.body.lockedPhases &&
+      Array.isArray(req.body.lockedPhases)
+    ) {
+      lockUpdates.lockedPhases =
+        req.body.lockedPhases;
     }
 
-    if (req.body.lockedReason !== undefined) lockUpdates.lockedReason = req.body.lockedReason;
-
-    if (req.body.unlockAt !== undefined) {
-      lockUpdates.unlockAt = req.body.unlockAt ? new Date(req.body.unlockAt) : null;
+    /*
+     * Motivo do bloqueio
+     */
+    if (
+      req.body.lockedReason !== undefined
+    ) {
+      lockUpdates.lockedReason =
+        req.body.lockedReason;
     }
 
-    if (req.body.status !== undefined) lockUpdates.status = req.body.status;
-
-    if (req.body.title !== undefined) lockUpdates.title = String(req.body.title).trim();
-
-    // 2. 🏆 REGRAS DE PONTUAÇÃO (Vão para a liga alvo — merge em objetos aninhados)
-    if (req.body.scoringRules && typeof req.body.scoringRules === 'object') {
-      const settings = await Settings.findById(configId).lean();
-      const currentScoring = settings?.scoringRules || {};
-      lockUpdates.scoringRules = { ...currentScoring, ...req.body.scoringRules };
+    /*
+     * Data/hora de desbloqueio
+     */
+    if (
+      req.body.unlockAt !== undefined
+    ) {
+      lockUpdates.unlockAt =
+        req.body.unlockAt
+          ? new Date(req.body.unlockAt)
+          : null;
     }
 
-    if (req.body.championshipRules && typeof req.body.championshipRules === 'object') {
-      const settings = await Settings.findById(configId).lean();
-      const currentChamp = settings?.championshipRules || {};
-      lockUpdates.championshipRules = { ...currentChamp, ...req.body.championshipRules };
+    /*
+     * Status da liga
+     */
+    if (
+      req.body.status !== undefined
+    ) {
+      lockUpdates.status =
+        req.body.status;
     }
 
-    if (req.body.championshipResults && typeof req.body.championshipResults === 'object') {
-      const settings = await Settings.findById(configId).lean();
-      const currentResults = settings?.championshipResults || {};
-      lockUpdates.championshipResults = { ...currentResults, ...req.body.championshipResults };
+    /*
+     * Título da liga
+     */
+    if (
+      req.body.title !== undefined
+    ) {
+      lockUpdates.title =
+        String(req.body.title).trim();
     }
 
-    // Salva na liga alvo
-    const s = await Settings.findByIdAndUpdate(
-      configId,
-      { $set: { ...lockUpdates, leagueId: String(targetLeagueId) } },
-      { new: true, upsert: true }
-    ).lean();
+    /*
+     * ============================================================
+     * 2. REGRAS DE PONTUAÇÃO
+     * ============================================================
+     *
+     * Fazemos MERGE com as regras atuais para não apagar
+     * configurações que não vierem neste request.
+     */
 
-    // 3. 🤖 CAMPOS DO ROBÔ (Sempre forçados para liga 1)
+    let shouldRecalculate = false;
+
+    /*
+     * Regras de pontuação
+     */
+    if (
+      req.body.scoringRules &&
+      typeof req.body.scoringRules === 'object'
+    ) {
+
+      const settings =
+        await Settings
+          .findById(configId)
+          .lean();
+
+      const currentScoring =
+        settings?.scoringRules || {};
+
+      lockUpdates.scoringRules = {
+        ...currentScoring,
+        ...req.body.scoringRules
+      };
+
+      shouldRecalculate = true;
+    }
+
+    /*
+     * Regras adicionais do campeonato
+     */
+    if (
+      req.body.championshipRules &&
+      typeof req.body.championshipRules === 'object'
+    ) {
+
+      const settings =
+        await Settings
+          .findById(configId)
+          .lean();
+
+      const currentChamp =
+        settings?.championshipRules || {};
+
+      lockUpdates.championshipRules = {
+        ...currentChamp,
+        ...req.body.championshipRules
+      };
+
+      shouldRecalculate = true;
+    }
+
+    /*
+     * ============================================================
+     * 3. RESULTADOS OFICIAIS DOS EXTRAS
+     * ============================================================
+     *
+     * Exemplos:
+     *
+     * championshipResults: {
+     *   topScorer: 'Jogador X',
+     *   bestAttack: 'Brasil',
+     *   worstDefense: 'Canadá',
+     *   upset: 'Japão'
+     * }
+     */
+    if (
+      req.body.championshipResults &&
+      typeof req.body.championshipResults === 'object'
+    ) {
+
+      const settings =
+        await Settings
+          .findById(configId)
+          .lean();
+
+      const currentResults =
+        settings?.championshipResults || {};
+
+      lockUpdates.championshipResults = {
+        ...currentResults,
+        ...req.body.championshipResults
+      };
+
+      /*
+       * IMPORTANTE:
+       * qualquer alteração nos resultados oficiais
+       * dos Extras precisa recalcular as apostas.
+       */
+      shouldRecalculate = true;
+    }
+
+    /*
+     * ============================================================
+     * 4. SALVA AS CONFIGURAÇÕES DA LIGA
+     * ============================================================
+     */
+
+    const settingsSaved =
+      await Settings.findByIdAndUpdate(
+        configId,
+
+        {
+          $set: {
+            ...lockUpdates,
+            leagueId: String(targetLeagueId)
+          }
+        },
+
+        {
+          new: true,
+          upsert: true
+        }
+      ).lean();
+
+    /*
+     * ============================================================
+     * 5. RECÁLCULO AUTOMÁTICO DOS PONTOS
+     * ============================================================
+     *
+     * Se foram alteradas:
+     *
+     * - scoringRules
+     * - championshipRules
+     * - championshipResults
+     *
+     * recalcula todas as apostas da liga.
+     *
+     * Isso atualiza:
+     *
+     * - groupMatches.points
+     * - groupMatches.pointsBreakdown
+     * - podiumPoints
+     * - extrasBreakdown
+     * - extrasPoints
+     * - totalPoints
+     */
+
+    let recalculateResult = null;
+
+    if (shouldRecalculate) {
+
+      try {
+
+        recalculateResult =
+          await PointsService.recalculateAllPoints(
+            configId
+          );
+
+      } catch (recalculateError) {
+
+        /*
+         * O Settings já foi salvo.
+         * Porém, se o recálculo falhar,
+         * informamos claramente no retorno.
+         */
+        console.error(
+          'Erro ao recalcular pontos após atualização das configurações:',
+          recalculateError
+        );
+
+        return res.status(500).json({
+          success: false,
+
+          message:
+            'Configurações salvas, mas ocorreu um erro ao recalcular os pontos.',
+
+          data: settingsSaved,
+
+          recalculate: {
+            success: false,
+            error:
+              recalculateError.message ||
+              'Erro desconhecido'
+          }
+        });
+      }
+    }
+
+    /*
+     * ============================================================
+     * 6. CONFIGURAÇÕES DO ROBÔ
+     * ============================================================
+     *
+     * Essas configurações continuam sendo forçadas
+     * para a liga principal '1'.
+     */
+
     const robotUpdates = {};
+
     let hasRobotUpdates = false;
 
-    if (req.body.cron_interval !== undefined) {
-      robotUpdates.cron_interval = Number(req.body.cron_interval);
-      hasRobotUpdates = true;
-    }
-    if (req.body.api_season !== undefined) {
-      robotUpdates.api_season = Number(req.body.api_season);
-      hasRobotUpdates = true;
-    }
-    if (req.body.api_leagues !== undefined) {
-      robotUpdates.api_leagues = Array.isArray(req.body.api_leagues)
-        ? req.body.api_leagues.map(id => Number(id))
-        : [];
+    /*
+     * Intervalo do robô
+     */
+    if (
+      req.body.cron_interval !== undefined
+    ) {
+
+      robotUpdates.cron_interval =
+        Number(req.body.cron_interval);
+
       hasRobotUpdates = true;
     }
 
+    /*
+     * Temporada da API
+     */
+    if (
+      req.body.api_season !== undefined
+    ) {
+
+      robotUpdates.api_season =
+        Number(req.body.api_season);
+
+      hasRobotUpdates = true;
+    }
+
+    /*
+     * Competições da API
+     */
+    if (
+      req.body.api_leagues !== undefined
+    ) {
+
+      robotUpdates.api_leagues =
+        Array.isArray(req.body.api_leagues)
+          ? req.body.api_leagues.map(
+              id => Number(id)
+            )
+          : [];
+
+      hasRobotUpdates = true;
+    }
+
+    /*
+     * Salva configurações do robô
+     * na liga principal.
+     */
     if (hasRobotUpdates) {
+
       await Settings.findByIdAndUpdate(
         mainLeagueId,
-        { $set: robotUpdates },
-        { upsert: true }
+
+        {
+          $set: robotUpdates
+        },
+
+        {
+          upsert: true
+        }
       );
     }
 
-    res.json({
+    /*
+     * ============================================================
+     * 7. RESPOSTA
+     * ============================================================
+     */
+
+    return res.json({
       success: true,
-      message: `Configurações da liga ${targetLeagueId} atualizadas.`,
-      data: s
+
+      message:
+        `Configurações da liga ${targetLeagueId} atualizadas.`,
+
+      data: settingsSaved,
+
+      recalculate: recalculateResult
     });
 
   } catch (err) {
-    console.error('Erro ao atualizar configurações:', err);
-    res.status(500).json({ success: false, message: 'Erro ao atualizar configurações' });
+
+    console.error(
+      'Erro ao atualizar configurações:',
+      err
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        err.message ||
+        'Erro ao atualizar configurações'
+    });
   }
 });
 
