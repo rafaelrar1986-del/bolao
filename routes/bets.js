@@ -1901,19 +1901,36 @@ router.get('/leaderboard', protect, checkPaid, blockStatsIfLocked, async (req, r
     const matchMap = new Map(matches.map(m => [String(m.matchId), m]));
 
     const ranked = bets.map((b) => {
-      const computed = computeBetTotal(b, matchMap, settings, isPartialRequest);
+  const computed = computeBetTotal(b, matchMap, settings, isPartialRequest);
 
-      return {
-        user: b.user,
-        totalPoints: computed.totalPoints,
-        groupPhasePoints: computed.groupPhasePoints,
-        knockoutPoints: computed.knockoutPoints,
-        podiumPoints: computed.podiumPoints,
-        extrasPoints: computed.extrasPoints,
-        bonusPoints: computed.bonusPoints,
-        lastUpdate: computed.lastUpdate
-      };
-    });
+  // Pontuações extras individuais.
+  // Preferimos o breakdown calculado, mas usamos o breakdown
+  // persistido da aposta como fallback.
+  const extrasBreakdown =
+    computed.extrasBreakdown ||
+    b.extrasBreakdown ||
+    {};
+
+  return {
+    user: b.user,
+    totalPoints: computed.totalPoints,
+    groupPhasePoints: computed.groupPhasePoints,
+    knockoutPoints: computed.knockoutPoints,
+    podiumPoints: computed.podiumPoints,
+
+    // Extras individuais
+    topScorerPoints: Number(extrasBreakdown.topScorer || 0),
+    bestAttackPoints: Number(extrasBreakdown.bestAttack || 0),
+    worstDefensePoints: Number(extrasBreakdown.worstDefense || 0),
+    upsetPoints: Number(extrasBreakdown.upset || 0),
+
+    // Mantém o total agregado das extras
+    extrasPoints: computed.extrasPoints,
+
+    bonusPoints: computed.bonusPoints,
+    lastUpdate: computed.lastUpdate
+  };
+});
 
     ranked.sort((a, b) => b.totalPoints - a.totalPoints || (a.user?.name || "").localeCompare(b.user?.name || ""));
 
