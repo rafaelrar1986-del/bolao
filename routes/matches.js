@@ -864,26 +864,99 @@ router.put('/admin/championship-results/:leagueId', protect, admin, async (req, 
 router.get('/stats', async (req, res) => {
   try {
     const { leagueId } = req.query;
-    let filtro = { status: 'finished' };
-    // 🆕 CORREÇÃO: Normaliza leagueId para evitar filtro com string vazia
-    const normalizedLeagueId = toLeagueId(leagueId);
-    if (normalizedLeagueId !== 'default') filtro.leagueId = normalizedLeagueId;
 
-    const groupFinished = await Match.countDocuments({ ...filtro, phase: 'group' });
-    const knockoutFinished = await Match.countDocuments({ ...filtro, phase: 'knockout' });
-    // 🆕 CORREÇÃO: Inclui contagem de pontos_corridos para não deixar de fora
-    const pontosCorridosFinished = await Match.countDocuments({ ...filtro, phase: 'pontos_corridos' });
+    let filtro = { status: 'finished' };
+
+    // Normaliza leagueId
+    const normalizedLeagueId = toLeagueId(leagueId);
+
+    if (normalizedLeagueId !== 'default') {
+      filtro.leagueId = normalizedLeagueId;
+    }
+
+    // Busca as regras da liga
+    const settings = await Settings.findById(normalizedLeagueId).lean();
+
+    // Mesma lógica de fallback usada no cálculo real de pontos
+    const scoringRules = {
+      exactScore: 5,
+      scoreTeamA: 1,
+      scoreTeamB: 1,
+      winner: 2,
+      qualifier: 3,
+      ...(settings?.scoringRules || {})
+    };
+
+    // Garante valores numéricos válidos
+    const exactScore = Math.max(0, Number(scoringRules.exactScore) || 0);
+    const scoreTeamA = Math.max(0, Number(scoringRules.scoreTeamA) || 0);
+    const scoreTeamB = Math.max(0, Number(scoringRules.scoreTeamB) || 0);
+    const winner = Math.max(0, Number(scoringRules.winner) || 0);
+    const qualifier = Math.max(0, Number(scoringRules.qualifier) || 0);
+
+    // Máximo possível por partida:
+    // Grupos / pontos corridos NÃO usam classificado.
+    const groupPointsPerMatch =
+      exactScore +
+      scoreTeamA +
+      scoreTeamB +
+      winner;
+
+    // Mata-mata usa também o classificado.
+    const knockoutPointsPerMatch =
+      exactScore +
+      scoreTeamA +
+      scoreTeamB +
+      winner +
+      qualifier;
+
+    const groupFinished = await Match.countDocuments({
+      ...filtro,
+      $or: [
+        { phase: 'group' },
+        { phase: 'pontos_corridos' }
+      ]
+    });
+
+    const knockoutFinished = await Match.countDocuments({
+      ...filtro,
+      $or: [
+        { phase: 'knockout' },
+        { phase: 'mata-mata' }
+      ]
+    });
+
+    // Mantém a informação separada de pontos corridos
+    const pontosCorridosFinished = await Match.countDocuments({
+      ...filtro,
+      phase: 'pontos_corridos'
+    });
 
     res.json({
       success: true,
       data: {
-        group: { finished: groupFinished },
-        knockout: { finished: knockoutFinished },
-        pontos_corridos: { finished: pontosCorridosFinished }
+        group: {
+          finished: groupFinished,
+          pointsPerMatch: groupPointsPerMatch
+        },
+        knockout: {
+          finished: knockoutFinished,
+          pointsPerMatch: knockoutPointsPerMatch
+        },
+        pontos_corridos: {
+          finished: pontosCorridosFinished,
+          pointsPerMatch: groupPointsPerMatch
+        }
       }
     });
+
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Erro ao buscar estatísticas' });
+    console.error('Match Stats Error:', err);
+
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao buscar estatísticas'
+    });
   }
 });
 
