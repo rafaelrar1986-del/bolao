@@ -44,6 +44,19 @@ function strMatch(a, b) {
   return String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
 }
 
+function winnerFromScores(scoreA, scoreB) {
+  const a = Number(scoreA);
+  const b = Number(scoreB);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  return a > b ? 'A' : b > a ? 'B' : 'draw';
+}
+
+function scoresAreEnabled(scoringRules = {}) {
+  return (Number(scoringRules.exactScore) || 0) > 0 ||
+    (Number(scoringRules.scoreTeamA) || 0) > 0 ||
+    (Number(scoringRules.scoreTeamB) || 0) > 0;
+}
+
 // ---------- HELPERS DO LEADERSHIP-PATH ----------
 
 const getMatchResult = (a, b) => {
@@ -1336,16 +1349,22 @@ router.post('/save', protect, checkPaid, async (req, res) => {
       const scoreA = data?.scoreA;
       const scoreB = data?.scoreB;
 
-      if (!['A', 'B', 'draw'].includes(choice)) return;
-
-      // 🆕 Se o admin zerou todas as regras de placar, aceita null/'' nos scores
       const scoringRules = settings?.scoringRules || {};
-      const scoresDisabled =
-        (scoringRules.exactScore || 0) === 0 &&
-        (scoringRules.scoreTeamA || 0) === 0 &&
-        (scoringRules.scoreTeamB || 0) === 0;
+      const scoresEnabled = scoresAreEnabled(scoringRules);
 
-      if (!scoresDisabled && (scoreA == null || scoreB == null || scoreA === '' || scoreB === '')) return;
+      if (scoresEnabled && (scoreA == null || scoreB == null || scoreA === '' || scoreB === '')) return;
+
+      let effectiveChoice = choice;
+      if (scoresEnabled && settings?.championshipRules?.winnerFromScore !== false) {
+        const derivedWinner = winnerFromScores(scoreA, scoreB);
+        if (!derivedWinner) return;
+        if (choice != null && choice !== '' && choice !== derivedWinner) {
+          return res.status(400).json({ success: false, message: 'Palpite inconsistente: o vencedor não corresponde ao placar informado.' });
+        }
+        effectiveChoice = derivedWinner;
+      }
+
+      if (!['A', 'B', 'draw'].includes(effectiveChoice)) return;
 
       let qualifier = data?.qualifier || null;
       if (qualifier !== 'A' && qualifier !== 'B') qualifier = null;
@@ -1354,9 +1373,9 @@ router.post('/save', protect, checkPaid, async (req, res) => {
 
       gmMap.set(idNum, {
         matchId: idNum,
-        winner: choice,
-        scoreA: Number(scoreA),
-        scoreB: Number(scoreB),
+        winner: effectiveChoice,
+        scoreA: scoreA == null || scoreA === '' ? null : Number(scoreA),
+        scoreB: scoreB == null || scoreB === '' ? null : Number(scoreB),
         qualifier,
         points: existingGm?.points || 0,
         pointsBreakdown: existingGm?.pointsBreakdown || {
@@ -1603,6 +1622,22 @@ router.post('/single', protect, checkPaid, async (req, res) => {
     const configId = toLeagueId(leagueId);
     const settings = await Settings.findById(configId).lean();
 
+    const scoringRules = settings?.scoringRules || {};
+    const scoresEnabled = scoresAreEnabled(scoringRules);
+
+    if (scoresEnabled && (scoreA == null || scoreB == null || scoreA === '' || scoreB === '')) {
+      return res.status(400).json({ success: false, message: 'Placar (scoreA e scoreB) é obrigatório.' });
+    }
+
+    let effectiveWinner = winner;
+    if (scoresEnabled && settings?.championshipRules?.winnerFromScore !== false) {
+      const derivedWinner = winnerFromScores(scoreA, scoreB);
+      if (!derivedWinner || winner !== derivedWinner) {
+        return res.status(400).json({ success: false, message: 'Palpite inconsistente: o vencedor não corresponde ao placar informado.' });
+      }
+      effectiveWinner = derivedWinner;
+    }
+
     // 🛡️ Verificação de bloqueio global de apostas
     if (settings?.blockSaveBets) {
       return res.status(403).json({
@@ -1627,7 +1662,7 @@ router.post('/single', protect, checkPaid, async (req, res) => {
 
     const novoPalpite = {
       matchId: idNum,
-      winner: winner,
+      winner: effectiveWinner,
       scoreA: Number(scoreA),
       scoreB: Number(scoreB),
       qualifier: validQualifier,
@@ -1652,7 +1687,7 @@ router.post('/single', protect, checkPaid, async (req, res) => {
       const index = betDoc.groupMatches.findIndex(b => Number(b.matchId) === idNum);
 
       if (index !== -1) {
-        betDoc.groupMatches[index].winner = winner;
+        betDoc.groupMatches[index].winner = effectiveWinner;
         betDoc.groupMatches[index].scoreA = Number(scoreA);
         betDoc.groupMatches[index].scoreB = Number(scoreB);
         betDoc.groupMatches[index].qualifier = validQualifier;
