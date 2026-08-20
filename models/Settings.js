@@ -99,6 +99,7 @@ const SettingsSchema = new mongoose.Schema(
     // Alinhado com pointsService.js e bets.js
     championshipRules: {
       drawIncludesExtraTime: { type: Boolean, default: false },
+      winnerFromScore:      { type: Boolean, default: true },
       podiumSize:            { type: Number, default: 4 }
     },
 
