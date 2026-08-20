@@ -23,6 +23,7 @@ const DEFAULT_SCORING = Object.freeze({
 
 const DEFAULT_CHAMPIONSHIP_RULES = Object.freeze({
   drawIncludesExtraTime: false,
+  winnerFromScore: true,
   podiumSize: 4
 });
 
@@ -123,7 +124,7 @@ async function getChampionshipRules(leagueId = 'default') {
  * Partidas simuladas são aceitas para os cálculos de simulação do ranking,
  * mas nunca são persistidas por calculateMatchPoints().
  */
-function getMatchReferenceScore(match, champRules = DEFAULT_CHAMPIONSHIP_RULES, isPartial = false) {
+function getMatchReferenceScore(match, champRules = DEFAULT_CHAMPIONSHIP_RULES) {
   if (!match) {
     return {
       refA: null,
@@ -134,31 +135,13 @@ function getMatchReferenceScore(match, champRules = DEFAULT_CHAMPIONSHIP_RULES, 
 
   const isFinished = match.status === 'finished';
   const isSimulated = Boolean(match.isSimulated);
-  const isLivePartial = Boolean(isPartial) && !isFinished && !isSimulated && match.status !== 'scheduled';
 
-  if (!isFinished && !isSimulated && !isLivePartial) {
+  if (!isFinished && !isSimulated) {
     return {
       refA: null,
       refB: null,
       refWinner: null
     };
-  }
-
-  // No modo parcial, o placar atual é tratado como se a partida tivesse
-  // terminado exatamente neste instante. Portanto NÃO usamos o placar do
-  // tempo normal salvo anteriormente: usamos scoreA/scoreB atuais.
-  if (isLivePartial) {
-    const refA = match.scoreA;
-    const refB = match.scoreB;
-    let refWinner = null;
-
-    if (refA != null && refB != null) {
-      if (Number(refA) > Number(refB)) refWinner = 'A';
-      else if (Number(refB) > Number(refA)) refWinner = 'B';
-      else refWinner = 'draw';
-    }
-
-    return { refA, refB, refWinner };
   }
 
   const useFinalScore = Boolean(
@@ -322,8 +305,7 @@ function calculateMatchPoints(
 
   const { refA, refB, refWinner } = getMatchReferenceScore(
     realMatch,
-    champRules,
-    isPartial
+    champRules
   );
 
   if (refA == null || refB == null) {
@@ -358,6 +340,16 @@ function calculateMatchPoints(
     betA === Number(refA) &&
     betB === Number(refB);
 
+  // Quando habilitado e houver pontuação por placar, o winner do palpite
+  // é derivado dos próprios gols. Quando desabilitado, o winner salvo pelo
+  // usuário permanece independente do placar.
+  const winnerFromScore = champRules.winnerFromScore !== false &&
+    (rules.exactScore > 0 || rules.scoreTeamA > 0 || rules.scoreTeamB > 0);
+
+  const effectiveBetWinner = winnerFromScore && validBetA && validBetB
+    ? (betA > betB ? 'A' : betB > betA ? 'B' : 'draw')
+    : betMatch.winner;
+
   if (rules.scoringMode === 'dependent') {
     // Modo dependente:
     // - se acertou o placar exato, pontua o placar exato;
@@ -384,8 +376,8 @@ function calculateMatchPoints(
 
       if (
         rules.winner > 0 &&
-        betMatch.winner &&
-        betMatch.winner === refWinner
+        effectiveBetWinner &&
+        effectiveBetWinner === refWinner
       ) {
         breakdown.winner = rules.winner;
       }
@@ -414,8 +406,8 @@ function calculateMatchPoints(
 
     if (
       rules.winner > 0 &&
-      betMatch.winner &&
-      betMatch.winner === refWinner
+      effectiveBetWinner &&
+      effectiveBetWinner === refWinner
     ) {
       breakdown.winner = rules.winner;
     }
