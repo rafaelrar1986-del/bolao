@@ -43,6 +43,36 @@ function firstDefined(...values) {
   return null;
 }
 
+function resolveApiScores(event, fallbackHome = 0, fallbackAway = 0) {
+  // A API Bzzoiro documenta home_score/away_score como o placar
+  // do tempo regulamentar. Os gols da prorrogação vêm separados
+  // em extra_time_score e devem ser somados ao placar de 90 minutos.
+  const regulationA = safeNullableNum(event?.home_score ?? event?.homeScore);
+  const regulationB = safeNullableNum(event?.away_score ?? event?.awayScore);
+
+  const baseA = regulationA !== null ? regulationA : safeNum(fallbackHome, 0);
+  const baseB = regulationB !== null ? regulationB : safeNum(fallbackAway, 0);
+
+  const etHome = safeNullableNum(
+    event?.extra_time_score?.home ?? event?.extraTimeScore?.home
+  );
+  const etAway = safeNullableNum(
+    event?.extra_time_score?.away ?? event?.extraTimeScore?.away
+  );
+
+  const extraA = etHome ?? 0;
+  const extraB = etAway ?? 0;
+
+  return {
+    regularTimeScoreA: baseA,
+    regularTimeScoreB: baseB,
+    scoreA: baseA + extraA,
+    scoreB: baseB + extraB,
+    extraTimeScoreA: etHome,
+    extraTimeScoreB: etAway
+  };
+}
+
 function parseMinuteValue(value) {
   if (value === null || value === undefined || value === '') return null;
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -689,27 +719,39 @@ if (match.status === 'scheduled' && proposedStatus === 'scheduled') {
         : mapStatus(firstDefined(gameData.status, eventDetail.status), firstDefined(gameData.period, eventDetail.period));
       const effectiveStatusChanged = match.status !== effectiveStatus;
 
-      // Scores: prioritize live payload first, then detail, then persisted values.
-      const liveHomeScore = firstDefined(gameData.home_score, gameData.homeScore);
-      const liveAwayScore = firstDefined(gameData.away_score, gameData.awayScore);
-      const detailHomeScore = firstDefined(eventDetail.homeScore, eventDetail.home_score);
-      const detailAwayScore = firstDefined(eventDetail.awayScore, eventDetail.away_score);
+      // Scores:
+      // Bzzoiro API: home_score/away_score = regulation time only.
+      // extra_time_score = goals scored in extra time.
+      // Keep both references so drawIncludesExtraTime can choose correctly.
+      const liveScoreSource = {
+        home_score: firstDefined(gameData.home_score, gameData.homeScore),
+        away_score: firstDefined(gameData.away_score, gameData.awayScore),
+        extra_time_score: gameData.extra_time_score ?? gameData.extraTimeScore ?? null
+      };
 
-      let resolvedHomeScore = liveHomeScore !== null
-        ? Number(liveHomeScore)
-        : (
-            detailHomeScore !== null
-              ? Number(detailHomeScore)
-              : (match.scoreA !== null && match.scoreA !== undefined ? Number(match.scoreA) : 0)
-          );
+      const detailScoreSource = {
+        home_score: firstDefined(eventDetail.homeScore, eventDetail.home_score),
+        away_score: firstDefined(eventDetail.awayScore, eventDetail.away_score),
+        extra_time_score: eventDetail.extraTimeScore ?? null
+      };
 
-      let resolvedAwayScore = liveAwayScore !== null
-        ? Number(liveAwayScore)
-        : (
-            detailAwayScore !== null
-              ? Number(detailAwayScore)
-              : (match.scoreB !== null && match.scoreB !== undefined ? Number(match.scoreB) : 0)
-          );
+      const liveHasScore =
+        liveScoreSource.home_score !== null ||
+        liveScoreSource.away_score !== null ||
+        liveScoreSource.extra_time_score !== null;
+
+      const scoreSource = liveHasScore ? liveScoreSource : detailScoreSource;
+
+      const resolvedScores = resolveApiScores(
+        scoreSource,
+        match.regularTimeScoreA ?? match.scoreA ?? 0,
+        match.regularTimeScoreB ?? match.scoreB ?? 0
+      );
+
+      let resolvedHomeScore = resolvedScores.scoreA;
+      let resolvedAwayScore = resolvedScores.scoreB;
+      let resolvedRegularHomeScore = resolvedScores.regularTimeScoreA;
+      let resolvedRegularAwayScore = resolvedScores.regularTimeScoreB;
 
       // Penalties can come from event detail or shootout shots.
       let penA = firstDefined(eventDetail.penaltyShootout?.home, match.penaltiesA);
@@ -728,6 +770,9 @@ if (match.status === 'scheduled' && proposedStatus === 'scheduled') {
       const incidents = normalizeIncidentsV2(incidentsPayload);
       
       // --- AJUSTE EM TEMPO REAL DO PLACAR (CORREÇÃO DE DELAY DA API EXTERNA) ---
+      // Os incidentes trazem a contagem acumulada de gols da partida. Eles podem
+      // chegar antes do placar consolidado, então continuam sendo usados como
+      // fallback/anti-delay, mas nunca alteram a referência de 90 minutos.
       let timelineHomeGoals = 0;
       let timelineAwayGoals = 0;
       if (incidents && Array.isArray(incidents.goals)) {
@@ -736,9 +781,17 @@ if (match.status === 'scheduled' && proposedStatus === 'scheduled') {
           if (g.side === 'away') timelineAwayGoals++;
         });
       }
-      // Sobrescreve garantindo que o placar use a maior contagem (Evita o delay do payload global)
+
       resolvedHomeScore = Math.max(resolvedHomeScore, timelineHomeGoals);
       resolvedAwayScore = Math.max(resolvedAwayScore, timelineAwayGoals);
+
+      // Se os incidentes tiverem gols que ainda não apareceram no placar da API,
+      // preservamos o placar regulamentar separadamente quando não há ET.
+      // Em ET, a fonte oficial de extra_time_score já representa esses gols.
+      if (resolvedScores.extraTimeScoreA === null && resolvedScores.extraTimeScoreB === null) {
+        resolvedRegularHomeScore = Math.max(resolvedRegularHomeScore, timelineHomeGoals);
+        resolvedRegularAwayScore = Math.max(resolvedRegularAwayScore, timelineAwayGoals);
+      }
       // -------------------------------------------------------------------------
 
       let lineups = mapLineupsV2(lineupsPayload);
@@ -754,8 +807,14 @@ if (match.status === 'scheduled' && proposedStatus === 'scheduled') {
         : `${liveMinute}'`;
 
       const updateData = {
+        // scoreA/B = 90' + gols da prorrogação
         scoreA: resolvedHomeScore,
         scoreB: resolvedAwayScore,
+
+        // regularTimeScoreA/B = somente os 90 minutos
+        regularTimeScoreA: resolvedRegularHomeScore,
+        regularTimeScoreB: resolvedRegularAwayScore,
+
         status: effectiveStatus,
         apiStatus: mapApiStatus(firstDefined(gameData.status, eventDetail.status), firstDefined(gameData.period, eventDetail.period)),
         minute: effectiveStatus === 'finished' ? 'Fim' : resolvedMinute,
@@ -817,16 +876,6 @@ if (match.status === 'scheduled' && proposedStatus === 'scheduled') {
       if (eventDetail.attendance !== null && eventDetail.attendance !== undefined) {
         updateData.attendance = eventDetail.attendance;
       }
-      if (eventDetail.homeScoreHT !== null && eventDetail.homeScoreHT !== undefined) {
-        updateData.homeScoreHT = eventDetail.homeScoreHT;
-      }
-      if (eventDetail.awayScoreHT !== null && eventDetail.awayScoreHT !== undefined) {
-        updateData.awayScoreHT = eventDetail.awayScoreHT;
-      }
-      if (eventDetail.extraTimeScore !== null && eventDetail.extraTimeScore !== undefined) {
-        updateData.extraTimeScore = eventDetail.extraTimeScore;
-      }
-
       if (effectiveStatus === 'finished') {
         if (penA !== null && penB !== null && penA !== penB) {
           updateData.qualifiedSide = penA > penB ? 'A' : 'B';
