@@ -314,37 +314,88 @@ router.put('/admin/edit/:matchId', protect, admin, async (req, res) => {
     const matchId = Number(req.params.matchId);
 
     if (!Number.isFinite(matchId)) {
-      return res.status(400).json({ success: false, message: 'matchId inválido' });
+      return res.status(400).json({
+        success: false,
+        message: 'matchId inválido'
+      });
     }
 
     const match = await Match.findOne({ matchId });
+
     if (!match) {
-      return res.status(404).json({ success: false, message: 'Partida não encontrada' });
+      return res.status(404).json({
+        success: false,
+        message: 'Partida não encontrada'
+      });
     }
 
     const oldStatus = match.status;
 
     const updates = {};
+
     const fields = [
-      'teamA', 'teamB', 'date', 'time', 'group', 'phaseName',
-      'stadium', 'phase', 'status', 'scoreA', 'scoreB',
-      'apiId', 'penaltiesA', 'penaltiesB', 'leagueId', 'leagueName',
-      'regularTimeScoreA', 'regularTimeScoreB', 'qualifiedSide'
+      'teamA',
+      'teamB',
+      'date',
+      'time',
+      'group',
+      'phaseName',
+      'stadium',
+      'phase',
+      'status',
+      'scoreA',
+      'scoreB',
+      'apiId',
+      'penaltiesA',
+      'penaltiesB',
+      'leagueId',
+      'leagueName',
+      'regularTimeScoreA',
+      'regularTimeScoreB',
+      'qualifiedSide'
     ];
 
     fields.forEach(k => {
-      if (req.body[k] !== undefined) updates[k] = req.body[k];
+      if (req.body[k] !== undefined) {
+        updates[k] = req.body[k];
+      }
     });
 
-    if (updates.teamA) updates.teamA = String(updates.teamA).trim();
-    if (updates.teamB) updates.teamB = String(updates.teamB).trim();
-    if (updates.date) updates.date = String(updates.date).trim();
-    if (updates.time) updates.time = String(updates.time).trim();
-    if (updates.leagueName) updates.leagueName = String(updates.leagueName).trim();
-    if (updates.phaseName) updates.phaseName = String(updates.phaseName).trim();
-    if (updates.group) updates.group = String(updates.group).trim();
-    if (updates.stadium) updates.stadium = String(updates.stadium).trim();
-    if (updates.leagueId) updates.leagueId = String(updates.leagueId).trim();
+    if (updates.teamA) {
+      updates.teamA = String(updates.teamA).trim();
+    }
+
+    if (updates.teamB) {
+      updates.teamB = String(updates.teamB).trim();
+    }
+
+    if (updates.date) {
+      updates.date = String(updates.date).trim();
+    }
+
+    if (updates.time) {
+      updates.time = String(updates.time).trim();
+    }
+
+    if (updates.leagueName) {
+      updates.leagueName = String(updates.leagueName).trim();
+    }
+
+    if (updates.phaseName) {
+      updates.phaseName = String(updates.phaseName).trim();
+    }
+
+    if (updates.group) {
+      updates.group = String(updates.group).trim();
+    }
+
+    if (updates.stadium) {
+      updates.stadium = String(updates.stadium).trim();
+    }
+
+    if (updates.leagueId) {
+      updates.leagueId = String(updates.leagueId).trim();
+    }
 
     // Se o admin está alterando manualmente o qualifiedSide,
     // sincroniza a flag qualifiedSideManuallySet para que o pre('save') não sobrescreva.
@@ -356,157 +407,382 @@ router.put('/admin/edit/:matchId', protect, admin, async (req, res) => {
       }
     }
 
-    // 🆕 CORREÇÃO CRÍTICA: Guarda os valores antigos dos campos de placar
-    // ANTES do match.set(), para que a comparação de mudança seja confiável.
+    // ============================================================
+    // GUARDA OS VALORES ANTIGOS DOS CAMPOS DE PLACAR
+    // ANTES DO match.set()
+    // ============================================================
     const scoreFields = [
-      'scoreA', 'scoreB', 'penaltiesA', 'penaltiesB',
-      'regularTimeScoreA', 'regularTimeScoreB', 'qualifiedSide'
+      'scoreA',
+      'scoreB',
+      'penaltiesA',
+      'penaltiesB',
+      'regularTimeScoreA',
+      'regularTimeScoreB',
+      'qualifiedSide'
     ];
+
     const oldValues = {};
+
     scoreFields.forEach(k => {
       oldValues[k] = match[k];
     });
 
-    // 🆕 CORREÇÃO: Usa match.set() em vez de atribuição direta por loop.
-    // O Mongoose filtra campos do schema, aplica casting e validações.
+    // ============================================================
+    // APLICA ATUALIZAÇÕES
+    // ============================================================
     match.set(updates);
 
-    // 🆕 CORREÇÃO CRÍTICA: Valida unicidade de apiId ao editar
+    // ============================================================
+    // VALIDAÇÃO DE API ID
+    // ============================================================
     if (updates.apiId !== undefined) {
       const apiNum = Number(updates.apiId);
+
       if (!Number.isFinite(apiNum)) {
-        return res.status(400).json({ success: false, message: 'apiId deve ser um número válido' });
+        return res.status(400).json({
+          success: false,
+          message: 'apiId deve ser um número válido'
+        });
       }
-      const apiExists = await Match.findOne({ apiId: apiNum, matchId: { $ne: match.matchId } });
+
+      const apiExists = await Match.findOne({
+        apiId: apiNum,
+        matchId: { $ne: match.matchId }
+      });
+
       if (apiExists) {
-        return res.status(409).json({ success: false, message: 'apiId já existe em outra partida' });
+        return res.status(409).json({
+          success: false,
+          message: 'apiId já existe em outra partida'
+        });
       }
     }
 
-    // 🆕 CORREÇÃO CRÍTICA: Se o status mudou de finished para não-jogando, limpa todos os scores
-    const nonPlayingStatuses = ['scheduled', 'cancelled', 'postponed'];
-    if (oldStatus === 'finished' && nonPlayingStatuses.includes(match.status)) {
+    // ============================================================
+    // SE SAIU DE FINISHED PARA NÃO-JOGANDO,
+    // LIMPA OS DADOS DA PARTIDA
+    // ============================================================
+    const nonPlayingStatuses = [
+      'scheduled',
+      'cancelled',
+      'postponed'
+    ];
+
+    if (
+      oldStatus === 'finished' &&
+      nonPlayingStatuses.includes(match.status)
+    ) {
       match.scoreA = null;
       match.scoreB = null;
+
       match.regularTimeScoreA = null;
       match.regularTimeScoreB = null;
+
       match.penaltiesA = null;
       match.penaltiesB = null;
+
       match.qualifiedSide = null;
       match.qualifiedSideManuallySet = false;
+
       match.minute = '';
       match.processed = false;
       match.scoutsConsolidated = false;
+
       match.goalsDetail = [];
       match.statistics = [];
       match.shootoutDetail = [];
-      match.possession = { home: 0, away: 0 };
-      match.xg = { home: 0, away: 0 };
-      match.odds = { home: null, draw: null, away: null };
+
+      match.possession = {
+        home: 0,
+        away: 0
+      };
+
+      match.xg = {
+        home: 0,
+        away: 0
+      };
+
+      match.odds = {
+        home: null,
+        draw: null,
+        away: null
+      };
+
       match.unavailable = [];
+
       match.ai_analysis = '';
       match.video_url = '';
       match.apiStatus = 'NS';
+
       match.lineups = {
-        home: { formation: "", players: [], substitutes: [] },
-        away: { formation: "", players: [], substitutes: [] },
+        home: {
+          formation: "",
+          players: [],
+          substitutes: []
+        },
+
+        away: {
+          formation: "",
+          players: [],
+          substitutes: []
+        },
+
         confirmed: false
       };
     }
 
+    // ============================================================
+    // MINUTO
+    // ============================================================
     if (match.status === 'finished') {
-      match.minute = "Fim";
-    } else if (match.status === '1_tempo' && !match.minute) {
+      match.minute = 'Fim';
+    } else if (
+      match.status === '1_tempo' &&
+      !match.minute
+    ) {
       match.minute = "0'";
     }
 
     await match.save();
 
-    // Trava de grade e auditoria
-    if (updates.status && oldStatus === 'scheduled' && !['scheduled', 'cancelled'].includes(updates.status)) {
+    // ============================================================
+    // 🔒 TRAVA DE GRADE + 👁️ LIBERAÇÃO DE VISIBILIDADE + 📧 AUDITORIA
+    //
+    // SOMENTE A PRIMEIRA PARTIDA DA GRADE EXECUTA ESTE BLOCO.
+    //
+    // Ao iniciar a primeira partida:
+    //   lockedPhases   -> adiciona a rodada/fase
+    //   unlockedPhases -> adiciona a rodada/fase
+    //   unlockedPhases -> mantém 'podium'
+    //   envia 1 único e-mail
+    //
+    // As partidas seguintes da mesma grade não entram,
+    // porque lockIdentifier já estará em lockedPhases.
+    // ============================================================
+    if (
+      updates.status &&
+      oldStatus === 'scheduled' &&
+      !['scheduled', 'cancelled'].includes(updates.status)
+    ) {
       const configId = toLeagueId(match.leagueId);
-      const lockIdentifier = match.phaseName || match.group;
+
+      const lockIdentifier =
+        match.phaseName ||
+        match.group;
 
       if (lockIdentifier) {
-        const settingsUpdated = await Settings.findOneAndUpdate(
-          { _id: configId, lockedPhases: { $ne: lockIdentifier } },
-          {
-            $addToSet: { lockedPhases: lockIdentifier },
-            // Remove de unlockedPhases para evitar estado simultâneo
-            $pull: { unlockedPhases: lockIdentifier },
-            $set: { statsLocked: false, blockSaveBets: true, blockSaveKnockout: true }
-          },
-          { new: true }
-        );
 
+        const settingsUpdated =
+          await Settings.findOneAndUpdate(
+            {
+              _id: configId,
+
+              // Garante que somente a PRIMEIRA
+              // partida da grade dispare o processo.
+              lockedPhases: {
+                $ne: lockIdentifier
+              }
+            },
+            {
+              $addToSet: {
+                lockedPhases: lockIdentifier,
+
+                // IMPORTANTE:
+                // A grade continua bloqueada para NOVOS
+                // palpites, mas seus palpites passam a
+                // ficar visíveis para os outros usuários.
+                unlockedPhases: {
+                  $each: [
+                    lockIdentifier,
+                    'podium'
+                  ]
+                }
+              },
+
+              $set: {
+                statsLocked: false,
+                blockSaveBets: true,
+                blockSaveKnockout: true
+              }
+            },
+            {
+              new: true
+            }
+          );
+
+        // ========================================================
+        // E-MAIL SOMENTE SE ESTA FOI A PRIMEIRA PARTIDA
+        // DA GRADE.
+        //
+        // Se lockedPhases já continha lockIdentifier,
+        // settingsUpdated será null e nenhum e-mail será enviado.
+        // ========================================================
         if (settingsUpdated) {
+
           try {
-            const csv = await auditService.generateAuditCSV(match.leagueId || 'default', lockIdentifier);
+
+            const csv =
+              await auditService.generateAuditCSV(
+                match.leagueId || 'default',
+                lockIdentifier
+              );
+
             if (csv) {
-              const users = await User.find({ leagues: String(match.leagueId || 'default') }, 'email');
-              const emails = users.map((u) => u.email).filter(Boolean);
+
+              const users =
+                await User.find(
+                  {
+                    leagues: String(
+                      match.leagueId || 'default'
+                    )
+                  },
+                  'email'
+                );
+
+              const emails =
+                users
+                  .map(u => u.email)
+                  .filter(Boolean);
+
               if (emails.length > 0) {
+
                 await emailService.sendBroadcastEmail(
                   emails,
+
                   `🔒 Auditoria Manual (Painel Admin): ${lockIdentifier}`,
+
                   `A rodada/fase foi trancada manualmente pelo administrador. Partida disparadora: ${match.teamA} x ${match.teamB}.`,
+
                   csv
                 );
               }
             }
+
           } catch (auditErr) {
-            console.error('❌ [ADMIN AUDIT]: Erro na auditoria manual:', auditErr.message);
+
+            console.error(
+              '❌ [ADMIN AUDIT]: Erro na auditoria manual:',
+              auditErr.message
+            );
           }
         }
       }
     }
 
-    // 🆕 CORREÇÃO CRÍTICA: Usa oldValues para detectar mudança real de placar,
-    // evitando recálculos desnecessários e garantindo detecção em partidas já finalizadas.
-    // 🆕 CORREÇÃO: Trata null explicitamente para evitar falso negativo quando
-    // Number(null) === Number(0) → 0 === 0 (falso negativo).
-    const scoreChanged = scoreFields.some(k => {
-      if (updates[k] === undefined) return false;
-      const oldVal = oldValues[k];
-      const newVal = updates[k];
-      // Se ambos são null/undefined, não mudou
-      if ((oldVal === null || oldVal === undefined) && (newVal === null || newVal === undefined)) {
-        return false;
-      }
-      // Se um dos lados é null/undefined e o outro não, mudou
-      if (oldVal === null || oldVal === undefined || newVal === null || newVal === undefined) {
-        return true;
-      }
-      return Number(oldVal) !== Number(newVal);
-    });
+    // ============================================================
+    // DETECÇÃO DE ALTERAÇÃO REAL DE PLACAR
+    // ============================================================
+    const scoreChanged =
+      scoreFields.some(k => {
 
-    const becameFinished = updates.status === 'finished' && oldStatus !== 'finished';
-    const wasAlreadyFinished = oldStatus === 'finished' && scoreChanged;
-    const statusChangedFromFinished = oldStatus === 'finished' && updates.status && updates.status !== 'finished';
-
-    if (becameFinished || wasAlreadyFinished || statusChangedFromFinished) {
-      try {
-        const configId = toLeagueId(match.leagueId);
-        await pointsService.recalculateAllPoints(configId);
-
-        const normalizedDate = parseMatchDate(match.date);
-        if (normalizedDate) {
-          await new Promise(resolve => setTimeout(resolve, 3000));
-          await trySaveDailyPoints(normalizedDate, String(match.leagueId || 'default'));
+        if (updates[k] === undefined) {
+          return false;
         }
+
+        const oldVal = oldValues[k];
+        const newVal = updates[k];
+
+        // Ambos ausentes
+        if (
+          (oldVal === null || oldVal === undefined) &&
+          (newVal === null || newVal === undefined)
+        ) {
+          return false;
+        }
+
+        // Um ausente e outro presente
+        if (
+          oldVal === null ||
+          oldVal === undefined ||
+          newVal === null ||
+          newVal === undefined
+        ) {
+          return true;
+        }
+
+        return Number(oldVal) !== Number(newVal);
+      });
+
+    const becameFinished =
+      updates.status === 'finished' &&
+      oldStatus !== 'finished';
+
+    const wasAlreadyFinished =
+      oldStatus === 'finished' &&
+      scoreChanged;
+
+    const statusChangedFromFinished =
+      oldStatus === 'finished' &&
+      updates.status &&
+      updates.status !== 'finished';
+
+    // ============================================================
+    // RECÁLCULO DE PONTOS
+    // ============================================================
+    if (
+      becameFinished ||
+      wasAlreadyFinished ||
+      statusChangedFromFinished
+    ) {
+
+      try {
+
+        const configId =
+          toLeagueId(match.leagueId);
+
+        await pointsService.recalculateAllPoints(
+          configId
+        );
+
+        const normalizedDate =
+          parseMatchDate(match.date);
+
+        if (normalizedDate) {
+
+          await new Promise(
+            resolve =>
+              setTimeout(resolve, 3000)
+          );
+
+          await trySaveDailyPoints(
+            normalizedDate,
+            String(
+              match.leagueId || 'default'
+            )
+          );
+        }
+
       } catch (pointsErr) {
-        console.error('❌ [ADMIN EDIT]: Erro ao recalcular pontos:', pointsErr.message);
+
+        console.error(
+          '❌ [ADMIN EDIT]: Erro ao recalcular pontos:',
+          pointsErr.message
+        );
       }
     }
 
-    // Usa o documento match diretamente (já reflete pre('save') e save)
-    res.json({ success: true, data: match });
+    // Usa o documento match diretamente
+    // (já reflete pre('save') e save)
+    res.json({
+      success: true,
+      data: match
+    });
+
   } catch (err) {
-    console.error('Erro ao editar partida:', err);
-    res.status(500).json({ success: false, message: err.message || 'Erro ao editar partida' });
+
+    console.error(
+      'Erro ao editar partida:',
+      err
+    );
+
+    res.status(500).json({
+      success: false,
+      message:
+        err.message ||
+        'Erro ao editar partida'
+    });
   }
 });
-
 // ======================
 // 6. POST /api/matches/admin/finish/:matchId (Admin)
 // ======================
