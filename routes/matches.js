@@ -794,70 +794,99 @@ router.post('/admin/finish/:matchId', protect, admin, async (req, res) => {
       regularTimeScoreA, regularTimeScoreB, qualifiedSide
     } = req.body;
 
-    // 🆕 CORREÇÃO CRÍTICA: Rejeita null, undefined e string vazia nos scores obrigatórios
-    if (!Number.isFinite(matchId) || scoreA == null || scoreB == null) {
-      return res.status(400).json({ success: false, message: 'matchId, scoreA e scoreB são obrigatórios' });
+    if (!Number.isFinite(matchId)) {
+      return res.status(400).json({ success: false, message: 'matchId inválido' });
     }
 
-    // 🆕 CORREÇÃO CRÍTICA: Rejeita string vazia e NaN silencioso vindos do body
-    // Number('') === 0 (finite), então precisamos checar explicitamente
-    const numScoreA = scoreA !== '' && scoreA != null ? Number(scoreA) : NaN;
-    const numScoreB = scoreB !== '' && scoreB != null ? Number(scoreB) : NaN;
-    if (!Number.isFinite(numScoreA) || !Number.isFinite(numScoreB)) {
-      return res.status(400).json({ success: false, message: 'scoreA e scoreB devem ser números válidos' });
-    }
-    const numPenA = penaltiesA !== undefined && penaltiesA !== '' ? Number(penaltiesA) : null;
-    const numPenB = penaltiesB !== undefined && penaltiesB !== '' ? Number(penaltiesB) : null;
-    if (penaltiesA !== undefined && penaltiesA !== '' && !Number.isFinite(numPenA)) {
-      return res.status(400).json({ success: false, message: 'penaltiesA deve ser um número válido' });
-    }
-    if (penaltiesB !== undefined && penaltiesB !== '' && !Number.isFinite(numPenB)) {
-      return res.status(400).json({ success: false, message: 'penaltiesB deve ser um número válido' });
-    }
-    const numRegA = regularTimeScoreA !== undefined && regularTimeScoreA !== '' ? Number(regularTimeScoreA) : null;
-    const numRegB = regularTimeScoreB !== undefined && regularTimeScoreB !== '' ? Number(regularTimeScoreB) : null;
-    if (regularTimeScoreA !== undefined && regularTimeScoreA !== '' && !Number.isFinite(numRegA)) {
-      return res.status(400).json({ success: false, message: 'regularTimeScoreA deve ser um número válido' });
-    }
-    if (regularTimeScoreB !== undefined && regularTimeScoreB !== '' && !Number.isFinite(numRegB)) {
-      return res.status(400).json({ success: false, message: 'regularTimeScoreB deve ser um número válido' });
-    }
-
-    // 🆕 CORREÇÃO: Busca a partida e as regras da liga para validar regularTimeScore em knockout
     const preMatch = await Match.findOne({ matchId });
     if (!preMatch) {
       return res.status(404).json({ success: false, message: 'Partida não encontrada' });
     }
 
-    if (preMatch.phase === 'knockout') {
-      const configId = toLeagueId(preMatch.leagueId);
-      const settings = await Settings.findById(configId).lean();
-      const drawIncludesExtraTime = settings?.championshipRules?.drawIncludesExtraTime ?? false;
+    const isKnockout = preMatch.phase === 'knockout';
 
-      if (!drawIncludesExtraTime) {
-        // 🆕 CORREÇÃO: Usa os valores JÁ CONVERTIDOS (numRegA/B) para validar,
-        // garantindo que string vazia seja tratada como ausente.
-        if (numRegA == null || numRegB == null) {
-          return res.status(400).json({
-            success: false,
-            message: 'Para partidas de mata-mata com regra de 90 minutos isolados, regularTimeScoreA e regularTimeScoreB são obrigatórios.'
-          });
+    const toScore = (value) => {
+      if (value === undefined || value === null || value === '') return null;
+      const n = Number(value);
+      return Number.isInteger(n) && n >= 0 ? n : NaN;
+    };
+
+    const numScoreA = toScore(scoreA);
+    const numScoreB = toScore(scoreB);
+    const numRegA = toScore(regularTimeScoreA);
+    const numRegB = toScore(regularTimeScoreB);
+    const numPenA = toScore(penaltiesA);
+    const numPenB = toScore(penaltiesB);
+
+    if (numScoreA === null || numScoreB === null || !Number.isInteger(numScoreA) || !Number.isInteger(numScoreB)) {
+      return res.status(400).json({ success: false, message: 'O placar final A e B é obrigatório e deve conter inteiros não negativos.' });
+    }
+
+    if (Number.isNaN(numScoreA) || Number.isNaN(numScoreB)) {
+      return res.status(400).json({ success: false, message: 'O placar final deve conter números inteiros não negativos.' });
+    }
+
+    if (Number.isNaN(numRegA) || Number.isNaN(numRegB)) {
+      return res.status(400).json({ success: false, message: 'O placar dos 90 minutos deve conter números inteiros não negativos.' });
+    }
+
+    if (Number.isNaN(numPenA) || Number.isNaN(numPenB)) {
+      return res.status(400).json({ success: false, message: 'O placar de pênaltis deve conter números inteiros não negativos.' });
+    }
+
+    if (!isKnockout) {
+      // Fase de grupos: não existe prorrogação nem disputa de pênaltis.
+      // O placar final também representa o resultado dos 90 minutos.
+      if (numPenA !== null || numPenB !== null) {
+        return res.status(400).json({ success: false, message: 'Partidas da fase de grupos não podem ter pênaltis.' });
+      }
+      if (qualifiedSide === 'A' || qualifiedSide === 'B') {
+        return res.status(400).json({ success: false, message: 'Partidas da fase de grupos não possuem classificado.' });
+      }
+    } else {
+      // Mata-mata: sempre preservamos o resultado aos 90 minutos.
+      // drawIncludesExtraTime apenas define qual referência o pointsService usa;
+      // não determina se o placar dos 90 deve ser armazenado.
+      if (numRegA === null || numRegB === null) {
+        return res.status(400).json({
+          success: false,
+          message: 'Para partidas de mata-mata, informe o placar dos 90 minutos.'
+        });
+      }
+
+      // Se o resultado final for diferente do resultado aos 90, isso representa
+      // uma partida que avançou para a prorrogação. O backend não precisa de um
+      // campo extra: a diferença entre scoreA/B e regularTimeScoreA/B registra isso.
+      if (numPenA !== null || numPenB !== null) {
+        if (numPenA === null || numPenB === null) {
+          return res.status(400).json({ success: false, message: 'Informe os dois placares de pênaltis ou deixe ambos vazios.' });
+        }
+        if (numPenA === numPenB) {
+          return res.status(400).json({ success: false, message: 'O placar de pênaltis precisa indicar um vencedor.' });
         }
       }
     }
 
-    // 🆕 CORREÇÃO: Early return se a partida já está no estado exato solicitado,
-    // evitando recálculo desnecessário de pontos.
-    const qSideWillChange = qualifiedSide !== undefined && ['A', 'B'].includes(qualifiedSide) && preMatch.qualifiedSide !== qualifiedSide;
+    const normalizedQualifiedSide = ['A', 'B'].includes(qualifiedSide) ? qualifiedSide : null;
+
+    if (normalizedQualifiedSide && !isKnockout) {
+      return res.status(400).json({ success: false, message: 'Classificado só pode ser informado em partidas de mata-mata.' });
+    }
+
+    // A finalização manual recebe sempre o placar final em scoreA/B.
+    // Em grupos, o resultado dos 90 é o próprio placar final.
+    const finalRegA = isKnockout ? numRegA : numScoreA;
+    const finalRegB = isKnockout ? numRegB : numScoreB;
+
     const alreadyFinished =
       preMatch.status === 'finished' &&
-      preMatch.scoreA === Number(scoreA) &&
-      preMatch.scoreB === Number(scoreB) &&
-      preMatch.penaltiesA === (penaltiesA != null ? Number(penaltiesA) : null) &&
-      preMatch.penaltiesB === (penaltiesB != null ? Number(penaltiesB) : null) &&
-      preMatch.regularTimeScoreA === (regularTimeScoreA != null ? Number(regularTimeScoreA) : null) &&
-      preMatch.regularTimeScoreB === (regularTimeScoreB != null ? Number(regularTimeScoreB) : null) &&
-      !qSideWillChange;
+      preMatch.scoreA === numScoreA &&
+      preMatch.scoreB === numScoreB &&
+      preMatch.penaltiesA === numPenA &&
+      preMatch.penaltiesB === numPenB &&
+      preMatch.regularTimeScoreA === finalRegA &&
+      preMatch.regularTimeScoreB === finalRegB &&
+      (!normalizedQualifiedSide || preMatch.qualifiedSide === normalizedQualifiedSide);
 
     if (alreadyFinished) {
       return res.json({
@@ -868,19 +897,15 @@ router.post('/admin/finish/:matchId', protect, admin, async (req, res) => {
       });
     }
 
-    // Match.finishMatch agora aceita qualifiedSide como 8º parâmetro e gerencia
-    // a flag qualifiedSideManuallySet internamente.
-    // 🆕 CORREÇÃO CRÍTICA: Passa os valores JÁ CONVERTIDOS (numScoreA, numPenA, etc.)
-    // em vez dos valores brutos do body, para evitar que string vazia vire 0.
     const match = await Match.finishMatch(
       matchId,
       numScoreA,
       numScoreB,
       numPenA,
       numPenB,
-      numRegA,
-      numRegB,
-      qualifiedSide !== undefined ? qualifiedSide : null
+      finalRegA,
+      finalRegB,
+      normalizedQualifiedSide
     );
 
     const configId = toLeagueId(match.leagueId);
@@ -904,9 +929,6 @@ router.post('/admin/finish/:matchId', protect, admin, async (req, res) => {
   }
 });
 
-// ======================
-// 7. POST /api/matches/admin/unfinish-bulk (Admin)
-// ======================
 router.post('/admin/unfinish-bulk', protect, admin, async (req, res) => {
   try {
     const { matchId, leagueName, groupName } = req.body;
