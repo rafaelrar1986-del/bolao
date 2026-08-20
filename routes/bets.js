@@ -1184,7 +1184,14 @@ router.get('/leadership-path', protect, checkPaid, blockStatsIfLocked, async (re
     const matchesAnalysis = displayFutureMatches.map((m, index) => {
       const midStr = String(m.matchId);
       const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
-      const isLocked = (m.phase === 'group' ? !unlockedPhases.includes('group') : !unlockedPhases.includes(m.group));
+      const isLocked =
+  (m.phase === 'group' || m.phase === 'pontos_corridos')
+    ? (
+        !unlockedPhases.includes('group') &&
+        !unlockedPhases.includes(m.group) &&
+        !unlockedPhases.includes(m.phaseName)
+      )
+    : !unlockedPhases.includes(m.group);
       const targetPick = targetPicksMap.get(midStr);
 
       let MARGEM_DE_PERIGO_PARTIDAS = 3;
