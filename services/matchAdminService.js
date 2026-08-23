@@ -1,6 +1,27 @@
-// Match administration business operations.
-// Phase 12A: add/edit extracted from matchAdminController.
-// The ctx adapter preserves the existing request/response behavior during the incremental refactor.
+'use strict';
+
+const Match = require('../models/Match');
+const Bet = require('../models/Bet');
+const Settings = require('../models/Settings');
+const User = require('../models/User');
+
+const {
+  parseMatchDate,
+  isValidMatchDate,
+  isValidMatchTime,
+  isKnockoutPhase,
+  validatePhaseSpecificData,
+  compareMatchesChronologically,
+  toLeagueId,
+  VALID_MATCH_PHASES
+} = require('./matchValidationService');
+
+const { parsePositiveInteger } = require('../utils/validation');
+const { requireLeagueId } = require('../utils/league');
+
+const matchHistoryService = require('./matchHistoryService');
+const auditService = require('./auditService');
+const emailService = require('./emailService');
 
 async function addMatch(ctx) {
 
