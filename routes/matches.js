@@ -38,3 +38,5 @@ router.get('/match-technical/:matchId', getMatchTechnical);
 router.get('/admin/all', protect, admin, getAllMatches);
 router.get('/stats', getStats);
 router.get('/rules/:leagueId', getRules);
+
+module.exports = router;
