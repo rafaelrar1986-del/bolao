@@ -185,19 +185,19 @@ async function getMatchTechnical(req, res) {
 }
 
 
-async function getRules(ctx) {
+async function getRules(req, res) {
 
   try {
-    const leagueId = requireLeagueId(ctx.req.params.leagueId);
-    if (!leagueId) return ctx.res.status(400).json({ success: false, message: 'leagueId é obrigatório' });
+    const leagueId = requireLeagueId(req.params.leagueId);
+    if (!leagueId) return res.status(400).json({ success: false, message: 'leagueId é obrigatório' });
 
     const settings = await Settings.findById(leagueId).lean();
 
     if (!settings) {
-      return ctx.res.status(404).json({ success: false, message: 'Configurações não encontradas para esta liga' });
+      return res.status(404).json({ success: false, message: 'Configurações não encontradas para esta liga' });
     }
 
-    ctx.res.json({
+    res.json({
       success: true,
       data: {
         status: settings.status,
@@ -211,7 +211,7 @@ async function getRules(ctx) {
     });
   } catch (err) {
     console.error('Erro ao buscar regras da liga:', err);
-    ctx.res.status(500).json({ success: false, message: 'Erro ao buscar regras da liga' });
+    res.status(500).json({ success: false, message: 'Erro ao buscar regras da liga' });
   }
 
 }
@@ -223,4 +223,4 @@ async function getStats(req, res) {
 
 module.exports = { getLeagues,
   getMatches,
-  getMatchTechnical, getRules, getStats };;;
+  getMatchTechnical, getRules, getStats };;
