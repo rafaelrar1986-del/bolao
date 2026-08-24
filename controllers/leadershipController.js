@@ -9,6 +9,8 @@ const { blockStatsIfLocked } = require('../middleware/blockStats');
 
 const { sortMatchesChronologically } = require('../utils/matchSort');
 const {
+  DEFAULT_SCORING,
+  DEFAULT_CHAMPIONSHIP_RULES,
   calculateBetTotal,
   calculateMatchPoints,
   getMaxPointsPerMatch
@@ -60,10 +62,14 @@ async function getLeadershipPath(req, res) {
     const officialPodium = settings.podium || [];
     const podiumSize = champRules.podiumSize ?? 4;
     const podiumPointsArr = scoringRules.podiumPoints || [];
-    const maxPointsPerMatch = getMaxPointsPerMatch(
-      scoringRules,
-      champRules
-    );
+    // Mantém exatamente a regra usada pelo leadership-path antes da refatoração.
+    // O valor é usado como teto por partida nos cálculos de margem/ghost points.
+    const maxPointsPerMatch =
+      (scoringRules.exactScore || 0) +
+      (scoringRules.scoreTeamA || 0) +
+      (scoringRules.scoreTeamB || 0) +
+      (scoringRules.winner || 0) +
+      (scoringRules.qualifier || 0);
 
     let parsedSimulations = {};
     if (mode === 'simulacao' && simulations && simulations.length < 50000) {
