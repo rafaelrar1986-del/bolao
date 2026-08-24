@@ -1,6 +1,10 @@
 // Statistics service for match statistics.
 // Phase 16C-A: extracted from routes/matches.js without changing the API contract.
 
+const Match = require('../models/Match');
+const Settings = require('../models/Settings');
+const pointsService = require('./pointsService');
+const { requireLeagueId } = require('../utils/leagueId');
 
 async function getStats(ctx) {
 
