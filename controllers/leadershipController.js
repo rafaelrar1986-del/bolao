@@ -4,14 +4,19 @@ const PointsHistory = require('../models/PointsHistory');
 const Match = require('../models/Match');
 const User = require('../models/User');
 const Settings = require('../models/Settings');
-const { protect, admin, checkPaid } = require('../middleware/auth');
+
 const {
   DEFAULT_SCORING,
   DEFAULT_CHAMPIONSHIP_RULES,
   getMaxPointsPerMatch,
   calculateBetTotal
 } = require('../services/pointsService');
-const { sortMatchesChronologically } = require('../utils/matchSort');
+
+const {
+  sortMatchesChronologically
+} = require('../utils/matchSort');
+
+const { protect, admin, checkPaid } = require('../middleware/auth');
 const { blockStatsIfLocked } = require('../middleware/blockStats');
 
 function strMatch(a, b) {

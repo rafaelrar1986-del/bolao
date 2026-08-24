@@ -13,11 +13,11 @@ function sortMatchesChronologically(a, b) {
   };
 
   const dateA = new Date(
-    `${parseDate(a.date)}T${a.time || '00:00'}`
+    `${parseDate(a?.date)}T${a?.time || '00:00'}`
   );
 
   const dateB = new Date(
-    `${parseDate(b.date)}T${b.time || '00:00'}`
+    `${parseDate(b?.date)}T${b?.time || '00:00'}`
   );
 
   if (dateA - dateB !== 0) {
@@ -25,10 +25,10 @@ function sortMatchesChronologically(a, b) {
   }
 
   const idA =
-    parseInt(String(a.matchId).replace(/\D/g, ''), 10) || 0;
+    parseInt(String(a?.matchId ?? '').replace(/\D/g, ''), 10) || 0;
 
   const idB =
-    parseInt(String(b.matchId).replace(/\D/g, ''), 10) || 0;
+    parseInt(String(b?.matchId ?? '').replace(/\D/g, ''), 10) || 0;
 
   return idA - idB;
 }

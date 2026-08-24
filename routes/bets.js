@@ -35,6 +35,7 @@ const getQualifiedSide = (match, matchResult) => {
   return matchResult && matchResult !== 'draw' ? matchResult : null;
 };
 
+const { sortMatchesChronologically } = require('../utils/matchSort');
 
 /* ================================================================
    🚀 GET /leadership-path
