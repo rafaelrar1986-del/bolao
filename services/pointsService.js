@@ -124,7 +124,11 @@ async function getChampionshipRules(leagueId = 'default') {
  * Partidas simuladas são aceitas para os cálculos de simulação do ranking,
  * mas nunca são persistidas por calculateMatchPoints().
  */
-function getMatchReferenceScore(match, champRules = DEFAULT_CHAMPIONSHIP_RULES) {
+function getMatchReferenceScore(
+  match,
+  champRules = DEFAULT_CHAMPIONSHIP_RULES,
+  isPartial = false
+) {
   if (!match) {
     return {
       refA: null,
@@ -135,6 +139,28 @@ function getMatchReferenceScore(match, champRules = DEFAULT_CHAMPIONSHIP_RULES) 
 
   const isFinished = match.status === 'finished';
   const isSimulated = Boolean(match.isSimulated);
+  const isLivePartial =
+    Boolean(isPartial) &&
+    !isFinished &&
+    !isSimulated &&
+    match.status !== 'scheduled';
+
+  // No modo parcial, o placar atual é tratado como a referência
+  // exatamente neste instante. Mantém o comportamento da versão
+  // anterior à refatoração do bets.js.
+  if (isLivePartial) {
+    const refA = match.scoreA;
+    const refB = match.scoreB;
+    let refWinner = null;
+
+    if (refA != null && refB != null) {
+      if (Number(refA) > Number(refB)) refWinner = 'A';
+      else if (Number(refB) > Number(refA)) refWinner = 'B';
+      else refWinner = 'draw';
+    }
+
+    return { refA, refB, refWinner };
+  }
 
   if (!isFinished && !isSimulated) {
     return {
@@ -306,7 +332,8 @@ function calculateMatchPoints(
 
   const { refA, refB, refWinner } = getMatchReferenceScore(
     realMatch,
-    champRules
+    champRules,
+    isPartial
   );
 
   if (refA == null || refB == null) {
