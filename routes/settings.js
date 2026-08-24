@@ -384,6 +384,150 @@ router.post('/global', protect, admin, async (req, res) => {
       shouldRecalculate = true;
     }
 
+
+    /*
+     * ============================================================
+     * 🏆 3A. ZONA DE PREMIAÇÃO + DESEMPATE
+     * ============================================================
+     */
+    if (req.body.prizeZone && typeof req.body.prizeZone === 'object') {
+      const current = currentSettingsForRules?.prizeZone || {};
+      const incoming = { ...current, ...req.body.prizeZone };
+
+      const positions = Math.max(
+        0,
+        Math.floor(Number(incoming.positions ?? 0))
+      );
+      const totalAmount = Math.max(
+        0,
+        Number(incoming.totalAmount ?? 0)
+      );
+
+      let distribution = Array.isArray(incoming.distribution)
+        ? incoming.distribution.map(item => ({
+            position: Math.floor(Number(item.position)),
+            percentage: Number(item.percentage)
+          }))
+        : [];
+
+      if (positions === 0) {
+        distribution = [];
+      } else {
+        if (distribution.length !== positions) {
+          return res.status(400).json({
+            success: false,
+            message: 'A distribuição da premiação deve ter uma porcentagem para cada posição.'
+          });
+        }
+
+        const positionsSet = new Set();
+        for (const item of distribution) {
+          if (
+            !Number.isInteger(item.position) ||
+            item.position < 1 ||
+            item.position > positions ||
+            positionsSet.has(item.position) ||
+            !Number.isFinite(item.percentage) ||
+            item.percentage < 0 ||
+            item.percentage > 100
+          ) {
+            return res.status(400).json({
+              success: false,
+              message: 'Distribuição da premiação inválida.'
+            });
+          }
+          positionsSet.add(item.position);
+        }
+
+        const totalPercentage = distribution.reduce(
+          (sum, item) => sum + item.percentage, 0
+        );
+
+        if (Math.abs(totalPercentage - 100) > 0.0001) {
+          return res.status(400).json({
+            success: false,
+            message: 'A soma dos percentuais da premiação deve ser 100%.'
+          });
+        }
+      }
+
+      lockUpdates.prizeZone = {
+        positions,
+        totalAmount,
+        distribution
+      };
+      shouldRecalculate = true;
+    }
+
+    if (req.body.rankingRules && typeof req.body.rankingRules === 'object') {
+      const requested = Array.isArray(req.body.rankingRules.tieBreakers)
+        ? req.body.rankingRules.tieBreakers
+        : [];
+
+      if (requested.length > 3) {
+        return res.status(400).json({
+          success: false,
+          message: 'São permitidos no máximo 3 critérios de desempate.'
+        });
+      }
+
+      const allowed = [
+        'exactScorePoints',
+        'podiumPoints',
+        'extraPoints',
+        'knockoutPoints'
+      ];
+
+      const currentChampionship =
+        lockUpdates.championshipRules ||
+        currentSettingsForRules?.championshipRules ||
+        {};
+
+      const scoring =
+        lockUpdates.scoringRules ||
+        currentSettingsForRules?.scoringRules ||
+        {};
+
+      const available = new Set([
+        ...(Number(scoring.exactScore || 0) > 0 ? ['exactScorePoints'] : []),
+        ...(Array.isArray(scoring.podiumPoints) &&
+          scoring.podiumPoints.some(v => Number(v) > 0)
+          ? ['podiumPoints']
+          : []),
+        ...(
+          ['topScorer', 'bestAttack', 'worstDefense', 'upset']
+            .some(key => Number(scoring[key] || 0) > 0)
+            ? ['extraPoints']
+            : []
+        ),
+        ...(currentChampionship.hasKnockoutPhase === true
+          ? ['knockoutPoints']
+          : [])
+      ]);
+
+      const unique = [];
+      for (const value of requested) {
+        if (!allowed.includes(value) || !available.has(value)) {
+          return res.status(400).json({
+            success: false,
+            message: `Critério de desempate indisponível: ${value}`
+          });
+        }
+        if (unique.includes(value)) {
+          return res.status(400).json({
+            success: false,
+            message: 'Os critérios de desempate não podem se repetir.'
+          });
+        }
+        unique.push(value);
+      }
+
+      lockUpdates.rankingRules = {
+        tieBreakers: unique
+      };
+      shouldRecalculate = true;
+    }
+
     /*
      * ============================================================
      * 4. SALVA AS CONFIGURAÇÕES DA LIGA

@@ -118,7 +118,33 @@ const SettingsSchema = new mongoose.Schema(
     championshipRules: {
       drawIncludesExtraTime: { type: Boolean, default: false },
       winnerFromScore:      { type: Boolean, default: true },
-      podiumSize:            { type: Number, default: 4 }
+      podiumSize:            { type: Number, default: 4 },
+      hasKnockoutPhase:     { type: Boolean, default: false }
+    },
+
+    prizeZone: {
+      positions: { type: Number, default: 0, min: 0 },
+      totalAmount: { type: Number, default: 0, min: 0 },
+      distribution: {
+        type: [{
+          position: { type: Number, required: true, min: 1 },
+          percentage: { type: Number, required: true, min: 0, max: 100 }
+        }],
+        default: []
+      }
+    },
+
+    rankingRules: {
+      tieBreakers: {
+        type: [String],
+        enum: [
+          'exactScorePoints',
+          'podiumPoints',
+          'extraPoints',
+          'knockoutPoints'
+        ],
+        default: []
+      }
     },
 
     // 🏆 RESULTADOS OFICIAIS DO CAMPEONATO (para cálculo de extras)

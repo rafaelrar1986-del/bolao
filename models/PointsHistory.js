@@ -30,6 +30,12 @@ const pointsHistorySchema = new mongoose.Schema(
       required: true
     },
 
+    // 📊 Componentes acumulados usados pelo ranking esportivo e desempates
+    exactScorePoints: { type: Number, default: 0 },
+    podiumPoints: { type: Number, default: 0 },
+    extraPoints: { type: Number, default: 0 },
+    knockoutPoints: { type: Number, default: 0 },
+
     // 🏅 Posição do usuário no ranking naquele dia (opcional, mas ótimo para o gráfico de linha de posição)
     position: {
       type: Number

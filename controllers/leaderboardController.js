@@ -7,6 +7,13 @@ const {
 
 
 const { toLeagueId } = require('../utils/leagueId');
+const {
+  normalizeTieBreakers,
+  getTieBreakerMetrics,
+  compareBySportsRanking,
+  assignSportsPositions,
+  calculatePrizeAllocation
+} = require('../services/rankingService');
 
 async function getLeaderboard(req, res) {
   try {
@@ -53,23 +60,52 @@ async function getLeaderboard(req, res) {
     extrasPoints: computed.extrasPoints,
 
     bonusPoints: computed.bonusPoints,
-    lastUpdate: computed.lastUpdate
+    lastUpdate: computed.lastUpdate,
+    __bet: b
   };
 });
 
-    ranked.sort((a, b) => b.totalPoints - a.totalPoints || (a.user?.name || "").localeCompare(b.user?.name || ""));
+    const tieBreakers = normalizeTieBreakers(
+      settings?.rankingRules?.tieBreakers,
+      settings
+    );
 
-    let lastPoints = null;
-    let position = 0;
-    const finalData = ranked.map((item, index) => {
-      if (lastPoints === null || item.totalPoints !== lastPoints) {
-        position = index + 1;
-        lastPoints = item.totalPoints;
-      }
-      return { ...item, position };
+    ranked.forEach(item => {
+      item.tieBreakerMetrics = getTieBreakerMetrics(item.__bet, item);
+      item.__rankingTieKey = JSON.stringify(
+        tieBreakers.map(key => Number(item.tieBreakerMetrics[key] || 0))
+      );
+      delete item.__bet;
     });
 
-    res.json({ success: true, data: finalData, leagueId: lIdNum });
+    ranked.sort((a, b) => {
+      const result = compareBySportsRanking(a, b, tieBreakers);
+      if (result !== 0) return result;
+      return String(a.user?.name || '').localeCompare(
+        String(b.user?.name || ''),
+        'pt-BR'
+      );
+    });
+
+    const finalData = calculatePrizeAllocation(
+      assignSportsPositions(ranked),
+      settings?.prizeZone
+    ).map(item => {
+      const { tieBreakerMetrics, __rankingTieKey, ...publicItem } = item;
+      return publicItem;
+    });
+
+    res.json({
+      success: true,
+      data: finalData,
+      leagueId: lIdNum,
+      rankingRules: { tieBreakers },
+      prizeZone: settings?.prizeZone || {
+        positions: 0,
+        totalAmount: 0,
+        distribution: []
+      }
+    });
   } catch (e) {
     console.error('Leaderboard Error:', e);
     res.status(500).json({ success: false, message: 'Erro ao processar ranking' });

@@ -25,7 +25,9 @@ function assertChampionshipRulesEditable(settings) {
 function isChangingChampionshipRules(body) {
   return Boolean(
     (body?.scoringRules && typeof body.scoringRules === 'object') ||
-    (body?.championshipRules && typeof body.championshipRules === 'object')
+    (body?.championshipRules && typeof body.championshipRules === 'object') ||
+    (body?.prizeZone && typeof body.prizeZone === 'object') ||
+    (body?.rankingRules && typeof body.rankingRules === 'object')
   );
 }
 

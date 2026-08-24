@@ -205,6 +205,12 @@ async function getRules(req, res) {
         scoringRules: settings.scoringRules || {},
             betLockMode: settings.betLockMode || 'grade',
         championshipRules: settings.championshipRules || {},
+        prizeZone: settings.prizeZone || {
+          positions: 0,
+          totalAmount: 0,
+          distribution: []
+        },
+        rankingRules: settings.rankingRules || { tieBreakers: [] },
         podium: settings.podium || [],
         championshipResults:
           settings.status === 'finished'

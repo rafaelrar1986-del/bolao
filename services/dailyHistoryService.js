@@ -8,7 +8,13 @@ const {
   calculateMatchPoints,
   calculatePodiumPoints,
   calculateExtrasPoints
-} = require('./pointsService');
+}
+  = require('./pointsService');
+const {
+  normalizeTieBreakers,
+  compareBySportsRanking,
+  assignSportsPositions
+} = require('./rankingService');
 
 /**
  * 🔁 Normaliza QUALQUER entrada de data para Date UTC 00:00
@@ -186,6 +192,10 @@ async function saveDailySnapshot(historyDate, leagueId, options = {}) {
     const userId = bet.user._id.toString();
 
     let points = 0;
+    let exactScorePoints = 0;
+    let knockoutPoints = 0;
+    let podiumPoints = 0;
+    let extraPoints = 0;
 
     if (bet.hasSubmitted) {
       for (const betMatch of bet.groupMatches || []) {
@@ -204,6 +214,12 @@ async function saveDailySnapshot(historyDate, leagueId, options = {}) {
         );
 
         points += Number(result.points) || 0;
+        exactScorePoints += Number(result.breakdown?.exactScore || 0);
+
+        const phase = String(realMatch.phase || '').toLowerCase();
+        if (phase === 'knockout' || phase === 'mata-mata') {
+          knockoutPoints += Number(result.points) || 0;
+        }
       }
 
       if (podiumEvent?.type === 'podium_defined') {
@@ -215,6 +231,7 @@ async function saveDailySnapshot(historyDate, leagueId, options = {}) {
         );
 
         points += Number(podiumResult.points) || 0;
+        podiumPoints += Number(podiumResult.points) || 0;
       }
 
       const extrasResult = calculateExtrasPoints(
@@ -224,13 +241,18 @@ async function saveDailySnapshot(historyDate, leagueId, options = {}) {
       );
 
       points += Number(extrasResult.points) || 0;
+      extraPoints += Number(extrasResult.points) || 0;
     }
 
     snapshotsMap.set(userId, {
       user: bet.user._id,
       leagueId: id,
       date: historyDate,
-      points
+      points,
+      exactScorePoints,
+      podiumPoints,
+      extraPoints,
+      knockoutPoints
     });
   }
 
@@ -238,27 +260,36 @@ async function saveDailySnapshot(historyDate, leagueId, options = {}) {
     snapshotsMap.values()
   );
 
-  snapshots.sort(
-    (a, b) =>
-      Number(b.points || 0) -
-      Number(a.points || 0)
+  const tieBreakers = normalizeTieBreakers(
+    settings?.rankingRules?.tieBreakers,
+    settings
   );
 
-  let lastPoints = null;
-  let position = 0;
+  const rankedSnapshots = positionedSnapshots.map(snapshot => ({
+    ...snapshot,
+    totalPoints: snapshot.points,
+    tieBreakerMetrics: {
+      exactScorePoints: snapshot.exactScorePoints,
+      podiumPoints: snapshot.podiumPoints,
+      extraPoints: snapshot.extraPoints,
+      knockoutPoints: snapshot.knockoutPoints
+    },
+    __rankingTieKey: JSON.stringify(
+      tieBreakers.map(key => Number(
+        snapshot[key] || 0
+      ))
+    )
+  }));
 
-  snapshots.forEach((snapshot, index) => {
-    const points = Number(snapshot.points || 0);
+  rankedSnapshots.sort((a, b) =>
+    compareBySportsRanking(a, b, tieBreakers)
+  );
 
-    if (
-      lastPoints === null ||
-      points < lastPoints
-    ) {
-      position = index + 1;
-      lastPoints = points;
-    }
-
-    snapshot.position = position;
+  const positionedSnapshots = assignSportsPositions(rankedSnapshots);
+  positionedSnapshots.forEach(snapshot => {
+    delete snapshot.totalPoints;
+    delete snapshot.tieBreakerMetrics;
+    delete snapshot.__rankingTieKey;
   });
 
   if (!snapshots.length) {
@@ -276,7 +307,11 @@ async function saveDailySnapshot(historyDate, leagueId, options = {}) {
         update: {
           $set: {
             points: snapshot.points,
-            position: snapshot.position
+            position: snapshot.position,
+            exactScorePoints: snapshot.exactScorePoints,
+            podiumPoints: snapshot.podiumPoints,
+            extraPoints: snapshot.extraPoints,
+            knockoutPoints: snapshot.knockoutPoints
           }
         },
         upsert: true

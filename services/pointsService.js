@@ -24,7 +24,8 @@ const DEFAULT_SCORING = Object.freeze({
 const DEFAULT_CHAMPIONSHIP_RULES = Object.freeze({
   drawIncludesExtraTime: false,
   winnerFromScore: true,
-  podiumSize: 4
+  podiumSize: 4,
+  hasKnockoutPhase: false
 });
 
 /**
@@ -86,6 +87,7 @@ function sanitizeChampionshipRules(rawRules) {
   };
 
   rules.drawIncludesExtraTime = Boolean(rules.drawIncludesExtraTime);
+  rules.hasKnockoutPhase = Boolean(rules.hasKnockoutPhase);
 
   const podiumSize = Number(rules.podiumSize);
   rules.podiumSize = Number.isFinite(podiumSize)
