@@ -62,14 +62,16 @@ async function getLeadershipPath(req, res) {
     const officialPodium = settings.podium || [];
     const podiumSize = champRules.podiumSize ?? 4;
     const podiumPointsArr = scoringRules.podiumPoints || [];
-    // Mantém exatamente a regra usada pelo leadership-path antes da refatoração.
-    // O valor é usado como teto por partida nos cálculos de margem/ghost points.
-    const maxPointsPerMatch =
-      (scoringRules.exactScore || 0) +
-      (scoringRules.scoreTeamA || 0) +
-      (scoringRules.scoreTeamB || 0) +
-      (scoringRules.winner || 0) +
-      (scoringRules.qualifier || 0);
+    // Teto máximo de pontuação por partida.
+    // O leadership-path usa esse valor nos ghost points e nas margens de
+    // perigo. Como o teto máximo possível precisa contemplar também a
+    // pontuação de classificado, calculamos sobre uma partida de mata-mata.
+    // A regra fica centralizada no pointsService.
+    const maxPointsPerMatch = getMaxPointsPerMatch(
+      scoringRules,
+      champRules,
+      'knockout'
+    );
 
     let parsedSimulations = {};
     if (mode === 'simulacao' && simulations && simulations.length < 50000) {
