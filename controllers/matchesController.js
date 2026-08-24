@@ -203,6 +203,7 @@ async function getRules(req, res) {
       data: {
         status: settings.status,
         scoringRules: settings.scoringRules || {},
+            betLockMode: settings.betLockMode || 'grade',
         championshipRules: settings.championshipRules || {},
         podium: settings.podium || [],
         championshipResults:
