@@ -11,6 +11,7 @@ const { getMoreAccess } = require('../controllers/accessController');
 
 const router = express.Router();
 
+const { sortMatchesChronologically } = require('../utils/matchSort');
 /* ================================================================
    🛠️ HELPERS & CONSTANTES
    ================================================================ */
@@ -35,7 +36,6 @@ const getQualifiedSide = (match, matchResult) => {
   return matchResult && matchResult !== 'draw' ? matchResult : null;
 };
 
-const { sortMatchesChronologically } = require('../utils/matchSort');
 
 /* ================================================================
    🚀 GET /leadership-path
