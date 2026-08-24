@@ -185,42 +185,37 @@ async function getMatchTechnical(req, res) {
 }
 
 
-async function getRules(req, res) {
+async function getRules(ctx) {
+
   try {
-    const leagueId = requireLeagueId(req.params.leagueId);
+    const leagueId = requireLeagueId(ctx.req.params.leagueId);
+    if (!leagueId) return ctx.res.status(400).json({ success: false, message: 'leagueId é obrigatório' });
 
     const settings = await Settings.findById(leagueId).lean();
 
     if (!settings) {
-      return res.status(404).json({
-        success: false,
-        message: 'Configurações não encontradas para esta liga'
-      });
+      return ctx.res.status(404).json({ success: false, message: 'Configurações não encontradas para esta liga' });
     }
 
-    return res.json({
+    ctx.res.json({
       success: true,
       data: {
         status: settings.status,
         scoringRules: settings.scoringRules || {},
         championshipRules: settings.championshipRules || {},
         podium: settings.podium || [],
-        championshipResults:
-          settings.status === 'finished'
-            ? (settings.championshipResults || {})
-            : null
+        championshipResults: settings.status === 'finished'
+          ? (settings.championshipResults || {})
+          : null
       }
     });
-
   } catch (err) {
     console.error('Erro ao buscar regras da liga:', err);
-
-    return res.status(500).json({
-      success: false,
-      message: 'Erro ao buscar regras da liga'
-    });
+    ctx.res.status(500).json({ success: false, message: 'Erro ao buscar regras da liga' });
   }
+
 }
+
 
 async function getStats(req, res) {
   return matchStatsService.getStats({ req, res });
