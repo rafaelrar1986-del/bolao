@@ -233,6 +233,7 @@ async function saveBets(req, res) {
     // 4. Valida TODOS os palpites antes de alterar o gmMap.
     //    Se um único palpite for inválido, o lote inteiro é rejeitado.
     for (const [matchId, data] of Object.entries(groupMatches || {})) {
+    const matchData = matchMap.get(idNum);
       const idNum = Number(matchId);
 
       if (!validMatchIds.has(idNum)) {

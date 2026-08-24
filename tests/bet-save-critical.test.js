@@ -57,6 +57,9 @@ function makeBetModel(existing, gradeCheckEnabled) {
       };
     }
 
+  recalculateTotals() { return this; }
+
+
     static validatePodiumSize(podium, size) {
       if (!Array.isArray(podium)) return { valid: false, error: 'Pódio inválido' };
       if (podium.length !== size) {
