@@ -8,10 +8,10 @@ const { getMyBets } = require('../controllers/myBetsController');
 const { getAllBets } = require('../controllers/allBetsController');
 const { getMatchesForFilter, getUsersForFilter } = require('../controllers/filtersController');
 const { getMoreAccess } = require('../controllers/accessController');
+const { sortMatchesChronologically } = require('../utils/matchSort');
 
 const router = express.Router();
 
-const { sortMatchesChronologically } = require('../utils/matchSort');
 /* ================================================================
    🛠️ HELPERS & CONSTANTES
    ================================================================ */
@@ -35,7 +35,6 @@ const getQualifiedSide = (match, matchResult) => {
   }
   return matchResult && matchResult !== 'draw' ? matchResult : null;
 };
-
 
 /* ================================================================
    🚀 GET /leadership-path

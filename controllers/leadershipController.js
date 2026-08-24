@@ -6,8 +6,16 @@ const User = require('../models/User');
 const Settings = require('../models/Settings');
 const { protect, admin, checkPaid } = require('../middleware/auth');
 const { blockStatsIfLocked } = require('../middleware/blockStats');
+const {
+  DEFAULT_SCORING,
+  DEFAULT_CHAMPIONSHIP_RULES,
+  getMaxPointsPerMatch,
+  calculateBetTotal
+} = require('../services/pointsService');
+const {
+  sortMatchesChronologically
+} = require('../utils/matchSort');
 
-const { sortMatchesChronologically } = require('../utils/matchSort');
 function strMatch(a, b) {
   if (a == null || b == null) return false;
   return String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
@@ -57,7 +65,8 @@ async function getLeadershipPath(req, res) {
     const podiumPointsArr = scoringRules.podiumPoints || [];
     const maxPointsPerMatch = getMaxPointsPerMatch(
       scoringRules,
-      champRules
+      champRules,
+      'knockout'
     );
 
     let parsedSimulations = {};
