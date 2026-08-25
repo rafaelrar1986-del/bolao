@@ -67,6 +67,22 @@ const SettingsSchema = new mongoose.Schema(
     unlockedGroupRounds: { type: [Number], default: [] },
     lockedGroupRounds: { type: [Number], default: [] },
 
+    pointsRunBetAvailabilityMode: {
+      type: String,
+      enum: ['all', 'round'],
+      default: 'all'
+    },
+    unlockedPointsRunRounds: { type: [Number], default: [] },
+    lockedPointsRunRounds: { type: [Number], default: [] },
+
+    knockoutBetAvailabilityMode: {
+      type: String,
+      enum: ['all', 'round'],
+      default: 'all'
+    },
+    unlockedKnockoutRounds: { type: [Number], default: [] },
+    lockedKnockoutRounds: { type: [Number], default: [] },
+
     blockSaveKnockout: {
       type: Boolean,
       default: false

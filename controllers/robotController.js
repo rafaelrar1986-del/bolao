@@ -150,7 +150,7 @@ exports.fetchAndSyncMatches = async (req, res) => {
     try {
         // 🔥 CORRIGIDO: Captura o leagueName do Frontend para não ser perdido
         const { leagueId, leagueName, dateFrom, dateTo, phaseType, knockoutPhase, unifyGroups } = req.body;
-        const normalizedPhaseType = phaseType === 'points_run' ? 'pontos_corridos' : (phaseType || 'group');
+        const normalizedPhaseType = phaseType === 'points_run' ? 'pontos_corridos' : (phaseType || 'auto');
         const isPointsRun = normalizedPhaseType === 'pontos_corridos' || unifyGroups === true;
         const API_KEY = process.env.API_FOOTBALL_KEY;
 
@@ -218,12 +218,57 @@ exports.fetchAndSyncMatches = async (req, res) => {
             // LÓGICA DE AGRUPAMENTO E RODADAS
             // =========================================
 
+            // A API já informa a etapa do mata-mata em round_name.
+            // Não exigimos mais que o administrador escolha manualmente
+            // a etapa durante a importação, mas preservamos exatamente
+            // os nomes internos que o sistema já utiliza.
+            const knockoutRoundMap = {
+                'Round of 32': '16-avos de final',
+                'Round of 16': 'Oitavas de final',
+                'Quarterfinals': 'Quartas de final',
+                'Semifinals': 'Semifinal',
+                'Match for 3rd place': '3º lugar',
+                'Final': 'Final'
+            };
+
+            const apiRoundName = item.round_name
+                ? String(item.round_name).trim()
+                : '';
+
             let groupValue;
             let phaseNameValue = null;
 
-            if (normalizedPhaseType === 'knockout') {
-                groupValue = knockoutPhase;
-                phaseNameValue = knockoutPhase;
+            const detectedKnockoutRound =
+                knockoutRoundMap[apiRoundName] || null;
+
+            // group_name preenchido é a fonte para identificar grupos.
+            // Quando group_name é nulo e round_name é reconhecido,
+            // a própria API identifica o mata-mata.
+            const isApiKnockout =
+                !item.group_name &&
+                Boolean(detectedKnockoutRound);
+
+            const isApiPointsRun =
+                !item.group_name &&
+                !apiRoundName &&
+                !isApiKnockout;
+
+            const autoDetectedPhase =
+                isApiKnockout
+                    ? 'knockout'
+                    : (isApiPointsRun ? 'pontos_corridos' : 'group');
+
+            if (normalizedPhaseType === 'knockout' || isApiKnockout) {
+                if (detectedKnockoutRound) {
+                    groupValue = detectedKnockoutRound;
+                    phaseNameValue = detectedKnockoutRound;
+                } else {
+                    // Se o administrador explicitamente selecionou mata-mata
+                    // para uma fonte que não trouxe round_name reconhecido,
+                    // preservamos a configuração existente.
+                    groupValue = knockoutPhase;
+                    phaseNameValue = knockoutPhase;
+                }
             } else if (isPointsRun) {
                 // Pontos corridos
                 groupValue = knockoutPhase || currentLeagueName || 'Classificação Geral';
@@ -253,14 +298,16 @@ exports.fetchAndSyncMatches = async (req, res) => {
                 teamA: translateTeamName(item.home_team),
                 teamB: translateTeamName(item.away_team),
                 group: groupValue,
-                phase: normalizedPhaseType,
+                phase: isApiKnockout
+                    ? 'knockout'
+                    : (normalizedPhaseType === 'auto'
+                        ? autoDetectedPhase
+                        : normalizedPhaseType),
                 phaseName: phaseNameValue,
                 roundNumber: Number.isFinite(Number(item.round_number))
                     ? Number(item.round_number)
                     : null,
-                roundName: item.round_name
-                    ? String(item.round_name).trim()
-                    : (item.round_number ? `Rodada ${item.round_number}` : null),
+                roundName: apiRoundName || null,
                 date: dateStr,
                 time: timeStr,
                 status: mapStatus(item.status),

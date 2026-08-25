@@ -270,6 +270,54 @@ router.post('/global', protect, admin, async (req, res) => {
       lockUpdates.betLockMode = req.body.betLockMode;
     }
 
+    if (req.body.knockoutBetAvailabilityMode !== undefined) {
+      if (!['all', 'round'].includes(req.body.knockoutBetAvailabilityMode)) {
+        return res.status(400).json({
+          success: false,
+          message: 'knockoutBetAvailabilityMode inválido. Use "all" ou "round".'
+        });
+      }
+      lockUpdates.knockoutBetAvailabilityMode = req.body.knockoutBetAvailabilityMode;
+    }
+
+    for (const field of ['unlockedKnockoutRounds', 'lockedKnockoutRounds']) {
+      if (req.body[field] !== undefined) {
+        if (!Array.isArray(req.body[field])) {
+          return res.status(400).json({
+            success: false,
+            message: `${field} deve ser um array.`
+          });
+        }
+        lockUpdates[field] = [...new Set(
+          req.body[field].map(Number).filter(n => Number.isInteger(n) && n > 0)
+        )].sort((a,b) => a-b);
+      }
+    }
+
+    if (req.body.pointsRunBetAvailabilityMode !== undefined) {
+      if (!['all', 'round'].includes(req.body.pointsRunBetAvailabilityMode)) {
+        return res.status(400).json({
+          success: false,
+          message: 'pointsRunBetAvailabilityMode inválido. Use "all" ou "round".'
+        });
+      }
+      lockUpdates.pointsRunBetAvailabilityMode = req.body.pointsRunBetAvailabilityMode;
+    }
+
+    for (const field of ['unlockedPointsRunRounds', 'lockedPointsRunRounds']) {
+      if (req.body[field] !== undefined) {
+        if (!Array.isArray(req.body[field])) {
+          return res.status(400).json({
+            success: false,
+            message: `${field} deve ser um array.`
+          });
+        }
+        lockUpdates[field] = [...new Set(
+          req.body[field].map(Number).filter(n => Number.isInteger(n) && n > 0)
+        )].sort((a,b) => a-b);
+      }
+    }
+
     if (req.body.groupBetAvailabilityMode !== undefined) {
       if (!['all', 'round'].includes(req.body.groupBetAvailabilityMode)) {
         return res.status(400).json({

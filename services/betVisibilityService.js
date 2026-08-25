@@ -54,17 +54,33 @@ function getVisibilityLockState(match, settings, isAdmin, getBetLockState) {
       ? settings.unlockedPhases
       : [];
 
-  if (
-    match?.phase === 'group' &&
-    settings?.groupBetAvailabilityMode === 'round'
-  ) {
+  const visibilityPhase = String(match?.phase || '').toLowerCase();
+  const isGroup = visibilityPhase === 'group';
+  const isPointsRun =
+    visibilityPhase === 'pontos_corridos' ||
+    visibilityPhase === 'points_run';
+  const isKnockout = visibilityPhase === 'knockout';
+
+  const roundMode = isGroup
+    ? settings?.groupBetAvailabilityMode === 'round'
+    : isPointsRun
+      ? settings?.pointsRunBetAvailabilityMode === 'round'
+      : isKnockout
+        ? settings?.knockoutBetAvailabilityMode === 'round'
+        : false;
+
+  if (roundMode) {
     const round = Number(match.roundNumber);
-    const unlockedRounds = Array.isArray(settings?.unlockedGroupRounds)
-      ? settings.unlockedGroupRounds.map(Number)
-      : [];
-    const lockedRounds = Array.isArray(settings?.lockedGroupRounds)
-      ? settings.lockedGroupRounds.map(Number)
-      : [];
+    const unlockedRounds = isGroup
+      ? (Array.isArray(settings?.unlockedGroupRounds) ? settings.unlockedGroupRounds.map(Number) : [])
+      : isPointsRun
+        ? (Array.isArray(settings?.unlockedPointsRunRounds) ? settings.unlockedPointsRunRounds.map(Number) : [])
+        : (Array.isArray(settings?.unlockedKnockoutRounds) ? settings.unlockedKnockoutRounds.map(Number) : []);
+    const lockedRounds = isGroup
+      ? (Array.isArray(settings?.lockedGroupRounds) ? settings.lockedGroupRounds.map(Number) : [])
+      : isPointsRun
+        ? (Array.isArray(settings?.lockedPointsRunRounds) ? settings.lockedPointsRunRounds.map(Number) : [])
+        : (Array.isArray(settings?.lockedKnockoutRounds) ? settings.lockedKnockoutRounds.map(Number) : []);
 
     if (!Number.isInteger(round) || round <= 0) {
       return { locked: true, reason: 'round_not_defined' };

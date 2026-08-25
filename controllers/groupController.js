@@ -62,18 +62,11 @@ const getGroupStandings = async (req, res) => {
       return res.json({});
     }
 
-    // A tabela oficial deve existir assim que as partidas forem cadastradas.
-    // Partidas ainda não iniciadas entram na estrutura para que seus times
-    // apareçam com 0 PJ/GP/GC/SG/PTS; somente partidas com placar numérico
-    // efetivamente alteram a classificação.
-    //
-    // No modo parcial, mantemos apenas partidas que já começaram/terminaram,
-    // como antes.
     const activeMatches = allMatches
       .filter(m =>
         isLiveRequest
           ? m.status !== 'scheduled'
-          : true
+          : m.status === 'finished'
       )
       .map(m => ({
         ...m,
@@ -144,9 +137,6 @@ const getGroupStandings = async (req, res) => {
     }
 
     let additionalQualifiedNames = new Set();
-    const hasOfficialResults = activeMatches.some(m =>
-      typeof m.scoreA === 'number' && typeof m.scoreB === 'number'
-    );
 
     const rankCandidatesAtPosition = position => Object.values(groupedResults)
       .map(group => group[position - 1])
@@ -158,11 +148,7 @@ const getGroupStandings = async (req, res) => {
         return a.name.localeCompare(b.name);
       });
 
-    if (
-      hasOfficialResults &&
-      qualificationMode === 'configured' &&
-      additionalQualifiedCount > 0
-    ) {
+    if (qualificationMode === 'configured' && additionalQualifiedCount > 0) {
       additionalQualifiedNames = new Set(
         rankCandidatesAtPosition(additionalQualificationPosition)
           .slice(0, additionalQualifiedCount)
@@ -173,12 +159,11 @@ const getGroupStandings = async (req, res) => {
     const groupKeys = Object.keys(groupedResults);
     for (const g of groupKeys) {
       groupedResults[g].forEach((t, i) => {
-        t.qualified = hasOfficialResults && (
+        t.qualified =
           i < baseQualifiedPerGroup ||
           (additionalQualificationPosition !== null &&
             i === additionalQualificationPosition - 1 &&
-            additionalQualifiedNames.has(t.name))
-        );
+            additionalQualifiedNames.has(t.name));
       });
     }
 

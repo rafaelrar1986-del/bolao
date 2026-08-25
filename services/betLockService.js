@@ -78,10 +78,22 @@ function getMatchGrade(match) {
 }
 
 function getGroupRoundLockState(match, settings) {
-  if (!match || match.phase !== 'group') {
+  const phase = String(match?.phase || '').toLowerCase();
+  const isGroup = phase === 'group';
+  const isPointsRun = phase === 'pontos_corridos' || phase === 'points_run';
+  const isKnockout = phase === 'knockout';
+
+  if (!isGroup && !isPointsRun && !isKnockout) {
     return { applicable: false, locked: false, reason: null };
   }
-  if (settings?.groupBetAvailabilityMode !== 'round') {
+
+  const mode = isGroup
+    ? settings?.groupBetAvailabilityMode
+    : isPointsRun
+      ? settings?.pointsRunBetAvailabilityMode
+      : settings?.knockoutBetAvailabilityMode;
+
+  if (mode !== 'round') {
     return { applicable: true, locked: false, reason: null };
   }
 
@@ -90,12 +102,17 @@ function getGroupRoundLockState(match, settings) {
     return { applicable: true, locked: true, reason: 'round_not_defined' };
   }
 
-  const unlocked = Array.isArray(settings?.unlockedGroupRounds)
-    ? settings.unlockedGroupRounds.map(Number)
-    : [];
-  const locked = Array.isArray(settings?.lockedGroupRounds)
-    ? settings.lockedGroupRounds.map(Number)
-    : [];
+  const unlocked = isGroup
+    ? (Array.isArray(settings?.unlockedGroupRounds) ? settings.unlockedGroupRounds.map(Number) : [])
+    : isPointsRun
+      ? (Array.isArray(settings?.unlockedPointsRunRounds) ? settings.unlockedPointsRunRounds.map(Number) : [])
+      : (Array.isArray(settings?.unlockedKnockoutRounds) ? settings.unlockedKnockoutRounds.map(Number) : []);
+
+  const locked = isGroup
+    ? (Array.isArray(settings?.lockedGroupRounds) ? settings.lockedGroupRounds.map(Number) : [])
+    : isPointsRun
+      ? (Array.isArray(settings?.lockedPointsRunRounds) ? settings.lockedPointsRunRounds.map(Number) : [])
+      : (Array.isArray(settings?.lockedKnockoutRounds) ? settings.lockedKnockoutRounds.map(Number) : []);
 
   if (locked.includes(round)) {
     return { applicable: true, locked: true, reason: 'round_locked' };
