@@ -71,7 +71,7 @@ async function saveBets(req, res) {
 
     const [settings, dbMatches] = await Promise.all([
       Settings.findById(configId).lean(),
-      Match.find({ leagueId: toLeagueId(leagueId) }).select('matchId group phaseName teamA teamB date time status').lean()
+      Match.find({ leagueId: toLeagueId(leagueId) }).select('matchId group phase phaseName roundNumber roundName teamA teamB date time status').lean()
     ]);
 
     // 🛡️ Verificação de bloqueio global de apostas
@@ -146,9 +146,13 @@ async function saveBets(req, res) {
         const groupCount = Number(qualification.groupCount || 0);
         const totalQualified = Number(qualification.totalQualified || 0);
         const additionalCount =
-          totalTeams > 0 && groupCount > 0 && totalQualified > 0 && totalTeams % groupCount === 0
+          totalTeams > 0 &&
+          groupCount > 0 &&
+          totalQualified > 0 &&
+          totalTeams % groupCount === 0 &&
+          totalQualified <= totalTeams
             ? totalQualified % groupCount
-            : 8;
+            : 0;
 
         const predictionsByGroup = new Map(
           normalizedGroupPredictions.map(p => [p.group, p])
@@ -182,9 +186,13 @@ async function saveBets(req, res) {
             }
 
             const baseQualified =
-              totalTeams > 0 && groupCount > 0 && totalQualified > 0 && totalTeams % groupCount === 0
+              totalTeams > 0 &&
+              groupCount > 0 &&
+              totalQualified > 0 &&
+              totalTeams % groupCount === 0 &&
+              totalQualified <= totalTeams
                 ? Math.floor(totalQualified / groupCount)
-                : 2;
+                : 0;
             const additionalPosition = baseQualified + 1;
             const predictedAtAdditionalPosition = prediction.positions
               .find(p => Number(p.position) === additionalPosition)?.team;

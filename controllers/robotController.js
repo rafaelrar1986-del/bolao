@@ -229,15 +229,12 @@ exports.fetchAndSyncMatches = async (req, res) => {
                 groupValue = knockoutPhase || currentLeagueName || 'Classificação Geral';
                 phaseNameValue = item.round_number ? `Rodada ${item.round_number}` : null;
             } else {
-                // Fase de grupos
-                let apiGroup = item.group_name || `Rodada ${item.round_number}`;
-                groupValue = apiGroup.replace(/^Group\s+/i, 'GRUPO ');
-
-                if (item.group_name) {
-                    phaseNameValue = 'FASE DE GRUPOS';
-                } else {
-                    phaseNameValue = item.round_number ? `Rodada ${item.round_number}` : null;
-                }
+                // Fase de grupos: grupo e rodada são dimensões independentes.
+                const apiGroup = item.group_name || '';
+                groupValue = apiGroup
+                    ? apiGroup.replace(/^Group\s+/i, 'GRUPO ')
+                    : 'FASE DE GRUPOS';
+                phaseNameValue = 'FASE DE GRUPOS';
             }
 
             // =========================================
@@ -258,6 +255,12 @@ exports.fetchAndSyncMatches = async (req, res) => {
                 group: groupValue,
                 phase: normalizedPhaseType,
                 phaseName: phaseNameValue,
+                roundNumber: Number.isFinite(Number(item.round_number))
+                    ? Number(item.round_number)
+                    : null,
+                roundName: item.round_name
+                    ? String(item.round_name).trim()
+                    : (item.round_number ? `Rodada ${item.round_number}` : null),
                 date: dateStr,
                 time: timeStr,
                 status: mapStatus(item.status),

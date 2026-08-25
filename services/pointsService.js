@@ -756,6 +756,29 @@ function calculateGroupQualificationPoints(
     return { points: 0, breakdown: [], byGroup: [] };
   }
 
+  const qualificationConfig = championshipRules?.groupQualification || {};
+  const configuredTotalTeams = Number(qualificationConfig.totalTeams || 0);
+  const configuredGroupCount = Number(qualificationConfig.groupCount || 0);
+  const configuredTotalQualified = Number(qualificationConfig.totalQualified || 0);
+  const validQualificationConfig =
+    configuredTotalTeams > 0 &&
+    configuredGroupCount > 0 &&
+    configuredTotalQualified > 0 &&
+    configuredTotalTeams % configuredGroupCount === 0 &&
+    configuredTotalQualified <= configuredTotalTeams;
+
+  // Sem configuração não presumimos quem está/não está classificado.
+  // Portanto as condições teamQualified/teamNotQualified não pontuam.
+  if (!validQualificationConfig) {
+    const hasQualificationStatusCondition = rules.some(rule =>
+      rule.conditions.includes('teamQualified') ||
+      rule.conditions.includes('teamNotQualified')
+    );
+    if (hasQualificationStatusCondition) {
+      return { points: 0, breakdown: [], byGroup: [] };
+    }
+  }
+
   const matches = (groupMatches || []).filter(m =>
     String(m.phase || '').toLowerCase() === 'group' &&
     (!isPartial ? m.status === 'finished' : m.status !== 'scheduled')
@@ -796,15 +819,21 @@ function calculateGroupQualificationPoints(
   const totalQualified = Number(qualification.totalQualified || 0);
 
   const groups = Object.keys(teamRows);
-  const basePerGroup =
-    totalTeams > 0 && groupCount > 0 && totalQualified > 0 && totalTeams % groupCount === 0
-      ? Math.floor(totalQualified / groupCount)
-      : 2;
-  const additionalCount =
-    totalTeams > 0 && groupCount > 0 && totalQualified > 0 && totalTeams % groupCount === 0
-      ? totalQualified % groupCount
-      : 8;
-  const additionalPosition = additionalCount > 0 ? basePerGroup + 1 : null;
+  const configurationIsValid =
+    totalTeams > 0 &&
+    groupCount > 0 &&
+    totalQualified > 0 &&
+    totalTeams % groupCount === 0 &&
+    totalQualified <= totalTeams;
+
+  const basePerGroup = configurationIsValid
+    ? Math.floor(totalQualified / groupCount)
+    : 0;
+  const additionalCount = configurationIsValid
+    ? totalQualified % groupCount
+    : 0;
+  const additionalPosition =
+    additionalCount > 0 ? basePerGroup + 1 : null;
 
   /*
    * A classificação oficial é a mesma do groupController.
@@ -888,7 +917,10 @@ function calculateGroupQualificationPoints(
         actualPosition: actualPosition.get(team) || null,
         predictedQualified:
           Number(p.position) <= basePerGroup ||
-          predictedAdditional.has(team),
+          (
+            additionalCount > 0 &&
+            predictedAdditional.has(team)
+          ),
         actualQualified: actualQualified.has(team)
       };
 

@@ -54,6 +54,27 @@ function getVisibilityLockState(match, settings, isAdmin, getBetLockState) {
       ? settings.unlockedPhases
       : [];
 
+  if (
+    match?.phase === 'group' &&
+    settings?.groupBetAvailabilityMode === 'round'
+  ) {
+    const round = Number(match.roundNumber);
+    const unlockedRounds = Array.isArray(settings?.unlockedGroupRounds)
+      ? settings.unlockedGroupRounds.map(Number)
+      : [];
+    const lockedRounds = Array.isArray(settings?.lockedGroupRounds)
+      ? settings.lockedGroupRounds.map(Number)
+      : [];
+
+    if (!Number.isInteger(round) || round <= 0) {
+      return { locked: true, reason: 'round_not_defined' };
+    }
+
+    if (lockedRounds.includes(round) || !unlockedRounds.includes(round)) {
+      return { locked: true, reason: 'round_not_released' };
+    }
+  }
+
   if (!match) {
     return {
       locked: true,

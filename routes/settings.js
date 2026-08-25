@@ -270,6 +270,30 @@ router.post('/global', protect, admin, async (req, res) => {
       lockUpdates.betLockMode = req.body.betLockMode;
     }
 
+    if (req.body.groupBetAvailabilityMode !== undefined) {
+      if (!['all', 'round'].includes(req.body.groupBetAvailabilityMode)) {
+        return res.status(400).json({
+          success: false,
+          message: 'groupBetAvailabilityMode inválido. Use "all" ou "round".'
+        });
+      }
+      lockUpdates.groupBetAvailabilityMode = req.body.groupBetAvailabilityMode;
+    }
+
+    for (const field of ['unlockedGroupRounds', 'lockedGroupRounds']) {
+      if (req.body[field] !== undefined) {
+        if (!Array.isArray(req.body[field])) {
+          return res.status(400).json({
+            success: false,
+            message: `${field} deve ser um array.`
+          });
+        }
+        lockUpdates[field] = [...new Set(
+          req.body[field].map(Number).filter(n => Number.isInteger(n) && n > 0)
+        )].sort((a,b) => a-b);
+      }
+    }
+
     booleanFields.forEach(field => {
 
       if (req.body[field] !== undefined) {

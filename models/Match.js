@@ -16,6 +16,11 @@ const MatchSchema = new Schema(
 
     phaseName: { type: String, required: false, trim: true },
 
+    // Rodada é independente de fase e grupo.
+    // Ex.: phase=group, group=GRUPO K, roundNumber=3.
+    roundNumber: { type: Number, required: false, min: 1, index: true },
+    roundName: { type: String, required: false, trim: true },
+
     teamA: { type: String, required: true, trim: true },
     teamB: { type: String, required: true, trim: true },
 

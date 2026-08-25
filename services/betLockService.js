@@ -77,6 +77,37 @@ function getMatchGrade(match) {
   return match.phaseName || match.group || null;
 }
 
+function getGroupRoundLockState(match, settings) {
+  if (!match || match.phase !== 'group') {
+    return { applicable: false, locked: false, reason: null };
+  }
+  if (settings?.groupBetAvailabilityMode !== 'round') {
+    return { applicable: true, locked: false, reason: null };
+  }
+
+  const round = Number(match.roundNumber);
+  if (!Number.isInteger(round) || round <= 0) {
+    return { applicable: true, locked: true, reason: 'round_not_defined' };
+  }
+
+  const unlocked = Array.isArray(settings?.unlockedGroupRounds)
+    ? settings.unlockedGroupRounds.map(Number)
+    : [];
+  const locked = Array.isArray(settings?.lockedGroupRounds)
+    ? settings.lockedGroupRounds.map(Number)
+    : [];
+
+  if (locked.includes(round)) {
+    return { applicable: true, locked: true, reason: 'round_locked' };
+  }
+
+  return {
+    applicable: true,
+    locked: !unlocked.includes(round),
+    reason: !unlocked.includes(round) ? 'round_not_released' : null
+  };
+}
+
 function isGradeLocked(match, settings) {
   const grade = getMatchGrade(match);
 
@@ -103,6 +134,11 @@ function getBetLockState(match, settings, now = new Date()) {
 
   const mode = getBetLockMode(settings);
   const started = isMatchStarted(match, now);
+
+  const groupRoundState = getGroupRoundLockState(match, settings);
+  if (groupRoundState.applicable && groupRoundState.locked) {
+    return { mode: 'group-round', locked: true, reason: groupRoundState.reason };
+  }
 
   if (mode === 'match') {
     return {
@@ -135,6 +171,7 @@ module.exports = {
   isMatchStarted,
   getMatchGrade,
   isGradeLocked,
+  getGroupRoundLockState,
   getBetLockState,
   isBetLocked
 };

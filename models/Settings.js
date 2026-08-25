@@ -59,6 +59,14 @@ const SettingsSchema = new mongoose.Schema(
       enum: ['grade', 'match'],
       default: 'grade'
     },
+    groupBetAvailabilityMode: {
+      type: String,
+      enum: ['all', 'round'],
+      default: 'all'
+    },
+    unlockedGroupRounds: { type: [Number], default: [] },
+    lockedGroupRounds: { type: [Number], default: [] },
+
     blockSaveKnockout: {
       type: Boolean,
       default: false

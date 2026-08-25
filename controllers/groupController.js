@@ -93,10 +93,7 @@ const getGroupStandings = async (req, res) => {
      * championshipRules.groupQualification define: total de times,
      * número de grupos e total de classificados.
      *
-     * Ex.: 48 / 12 / 32 => 2 por grupo + 8 melhores terceiros.
-     *
-     * Se ainda não houver configuração, preservamos a lógica legada
-     * da Copa atual para não quebrar campeonatos já existentes.
+         * Sem configuração válida, nenhuma estrutura de classificação é presumida.
      */
     const settings = await Settings.findById(leagueId).lean();
     const qualification = !isPointsRun
@@ -107,31 +104,35 @@ const getGroupStandings = async (req, res) => {
     const configuredGroupCount = Number(qualification.groupCount || 0);
     const configuredTotalQualified = Number(qualification.totalQualified || 0);
 
-    let baseQualifiedPerGroup = isPointsRun ? 0 : 2;
+    // Estrutura 100% configurável. Sem configuração válida, não há fallback.
+    let baseQualifiedPerGroup = 0;
     let additionalQualifiedCount = 0;
     let additionalQualificationPosition = null;
-    let qualificationMode = isPointsRun ? 'points_run' : 'legacy';
+    let qualificationMode = isPointsRun ? 'points_run' : 'unconfigured';
 
-    if (configuredTotalTeams > 0 && configuredGroupCount > 0 && configuredTotalQualified > 0) {
-      if (configuredTotalTeams % configuredGroupCount === 0) {
-        const teamsPerGroup = configuredTotalTeams / configuredGroupCount;
-        baseQualifiedPerGroup = Math.floor(configuredTotalQualified / configuredGroupCount);
-        additionalQualifiedCount = configuredTotalQualified % configuredGroupCount;
-        additionalQualificationPosition = additionalQualifiedCount > 0
-          ? baseQualifiedPerGroup + 1
-          : null;
+    if (
+      configuredTotalTeams > 0 &&
+      configuredGroupCount > 0 &&
+      configuredTotalQualified > 0 &&
+      configuredTotalTeams % configuredGroupCount === 0 &&
+      configuredTotalQualified <= configuredTotalTeams
+    ) {
+      const teamsPerGroup = configuredTotalTeams / configuredGroupCount;
+      const calculatedBase = Math.floor(
+        configuredTotalQualified / configuredGroupCount
+      );
+      const calculatedAdditional =
+        configuredTotalQualified % configuredGroupCount;
 
-        if (
-          baseQualifiedPerGroup <= teamsPerGroup &&
-          configuredTotalQualified <= configuredTotalTeams &&
-          (additionalQualifiedCount === 0 || baseQualifiedPerGroup < teamsPerGroup)
-        ) {
-          qualificationMode = 'configured';
-        } else {
-          baseQualifiedPerGroup = 2;
-          additionalQualifiedCount = 8;
-          additionalQualificationPosition = 3;
-        }
+      if (
+        calculatedBase <= teamsPerGroup &&
+        (calculatedAdditional === 0 || calculatedBase < teamsPerGroup)
+      ) {
+        baseQualifiedPerGroup = calculatedBase;
+        additionalQualifiedCount = calculatedAdditional;
+        additionalQualificationPosition =
+          calculatedAdditional > 0 ? calculatedBase + 1 : null;
+        qualificationMode = 'configured';
       }
     }
 
@@ -153,12 +154,6 @@ const getGroupStandings = async (req, res) => {
           .slice(0, additionalQualifiedCount)
           .map(t => t.name)
       );
-    } else if (qualificationMode === 'legacy') {
-      additionalQualifiedNames = new Set(
-        rankCandidatesAtPosition(3)
-          .slice(0, 8)
-          .map(t => t.name)
-      );
     }
 
     const groupKeys = Object.keys(groupedResults);
@@ -176,9 +171,8 @@ const getGroupStandings = async (req, res) => {
     const qualificationMeta = {
       mode: qualificationMode,
       totalTeams: configuredTotalTeams || null,
-      groupCount: configuredGroupCount || groupKeys.length,
-      totalQualified: configuredTotalQualified ||
-        (baseQualifiedPerGroup * groupKeys.length + additionalQualifiedNames.size),
+      groupCount: configuredGroupCount || null,
+      totalQualified: configuredTotalQualified || null,
       teamsPerGroup: configuredTotalTeams && configuredGroupCount
         ? configuredTotalTeams / configuredGroupCount
         : null,
