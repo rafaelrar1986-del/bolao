@@ -110,7 +110,33 @@ const SettingsSchema = new mongoose.Schema(
       bestAttack:    { type: Number, default: 10 },
       worstDefense:  { type: Number, default: 10 },
       upset:         { type: Number, default: 15 },
-      podiumPoints:  { type: [Number], default: [20, 15, 10, 5] }
+      podiumPoints:  { type: [Number], default: [20, 15, 10, 5] },
+
+      // Novo construtor de regras de pontuação.
+      // Cada item é uma regra; condições dentro da mesma regra são E.
+      // Regras diferentes são avaliadas em ordem e funcionam como OU:
+      // somente a primeira regra satisfeita concede pontos.
+      matchRules: {
+        type: [{
+          points: { type: Number, required: true, min: 0 },
+          conditions: {
+            type: [String],
+            enum: [
+              'exactScore',
+              'result',
+              'scoreTeamA',
+              'scoreTeamB',
+              'scoreWinner',
+              'scoreLoser',
+              'totalGoals',
+              'goalDifference',
+              'qualifier'
+            ],
+            required: true
+          }
+        }],
+        default: []
+      }
     },
 
     // 🏆 REGRAS DO CAMPEONATO (configurações adicionais)

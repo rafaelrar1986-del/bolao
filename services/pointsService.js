@@ -34,6 +34,108 @@ const DEFAULT_CHAMPIONSHIP_RULES = Object.freeze({
  */
 const DEFAULT_SCORING_RULES = DEFAULT_SCORING;
 
+
+const MATCH_RULE_CONDITIONS = Object.freeze([
+  'exactScore',
+  'result',
+  'scoreTeamA',
+  'scoreTeamB',
+  'scoreWinner',
+  'scoreLoser',
+  'totalGoals',
+  'goalDifference',
+  'qualifier'
+]);
+
+function sanitizeMatchRules(rawRules, championshipRules = DEFAULT_CHAMPIONSHIP_RULES) {
+  if (!Array.isArray(rawRules)) return [];
+
+  const hasKnockout = Boolean(championshipRules?.hasKnockoutPhase);
+
+  return rawRules
+    .slice(0, 50)
+    .map(rule => {
+      const points = Number(rule?.points);
+      const conditions = Array.isArray(rule?.conditions)
+        ? [...new Set(rule.conditions.filter(c => MATCH_RULE_CONDITIONS.includes(c)))]
+        : [];
+
+      // Classificado só é uma condição válida quando a competição tem mata-mata.
+      const filteredConditions = hasKnockout
+        ? conditions
+        : conditions.filter(c => c !== 'qualifier');
+
+      return {
+        points: Number.isFinite(points) ? Math.max(0, points) : 0,
+        conditions: filteredConditions
+      };
+    })
+    .filter(rule => rule.points > 0 && rule.conditions.length > 0);
+}
+
+function evaluateMatchRuleCondition(
+  condition,
+  betMatch,
+  refA,
+  refB,
+  refWinner,
+  refQualifier,
+  effectiveBetWinner
+) {
+  const betA = Number(betMatch?.scoreA);
+  const betB = Number(betMatch?.scoreB);
+  const validA = Number.isFinite(betA);
+  const validB = Number.isFinite(betB);
+
+  switch (condition) {
+    case 'exactScore':
+      return validA && validB && betA === Number(refA) && betB === Number(refB);
+
+    case 'result':
+      return Boolean(effectiveBetWinner) && effectiveBetWinner === refWinner;
+
+    case 'scoreTeamA':
+      return validA && betA === Number(refA);
+
+    case 'scoreTeamB':
+      return validB && betB === Number(refB);
+
+    case 'scoreWinner': {
+      if (refWinner !== 'A' && refWinner !== 'B') return false;
+      const predictedWinner = effectiveBetWinner;
+      if (predictedWinner !== refWinner) return false;
+      const predictedGoals = refWinner === 'A' ? betA : betB;
+      const actualGoals = refWinner === 'A' ? Number(refA) : Number(refB);
+      return Number.isFinite(predictedGoals) && predictedGoals === actualGoals;
+    }
+
+    case 'scoreLoser': {
+      if (refWinner !== 'A' && refWinner !== 'B') return false;
+      const predictedWinner = effectiveBetWinner;
+      if (predictedWinner !== refWinner) return false;
+      const predictedGoals = refWinner === 'A' ? betB : betA;
+      const actualGoals = refWinner === 'A' ? Number(refB) : Number(refA);
+      return Number.isFinite(predictedGoals) && predictedGoals === actualGoals;
+    }
+
+    case 'totalGoals':
+      return validA && validB &&
+        betA + betB === Number(refA) + Number(refB);
+
+    case 'goalDifference':
+      return validA && validB &&
+        Math.abs(betA - betB) === Math.abs(Number(refA) - Number(refB));
+
+    case 'qualifier':
+      return Boolean(refQualifier) &&
+        Boolean(betMatch?.qualifier) &&
+        String(betMatch.qualifier) === String(refQualifier);
+
+    default:
+      return false;
+  }
+}
+
 function strMatch(a, b) {
   if (a == null || b == null) return false;
   return String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
@@ -71,7 +173,9 @@ function sanitizeScoringRules(rawRules) {
   if (!Array.isArray(rules.podiumPoints)) {
     rules.podiumPoints = [...DEFAULT_SCORING.podiumPoints];
   } else {
-    rules.podiumPoints = rules.podiumPoints.map(value => {
+    rules.matchRules = Array.isArray(rules.matchRules) ? rules.matchRules : [];
+
+  rules.podiumPoints = rules.podiumPoints.map(value => {
       const number = Number(value);
       return Number.isFinite(number) ? Math.max(0, number) : 0;
     });
@@ -249,6 +353,15 @@ function getMaxPointsPerMatch(
 
   void champRules;
 
+  const matchRules = sanitizeMatchRules(rules.matchRules, {
+    ...champRules,
+    hasKnockoutPhase: isKnockout
+  });
+
+  if (matchRules.length > 0) {
+    return Math.max(...matchRules.map(rule => Number(rule.points) || 0), 0);
+  }
+
   if (rules.scoringMode === 'dependent') {
     return rules.exactScore + (isKnockout ? rules.qualifier : 0);
   }
@@ -380,85 +493,95 @@ function calculateMatchPoints(
     ? (betA > betB ? 'A' : betB > betA ? 'B' : 'draw')
     : betMatch.winner;
 
-  if (rules.scoringMode === 'dependent') {
-    // Modo dependente:
-    // - se acertou o placar exato, pontua o placar exato;
-    // - neste caso, gols A, gols B e vencedor NÃO pontuam;
-    // - o classificado continua independente e pode pontuar.
+  const matchRules = sanitizeMatchRules(rules.matchRules, champRules);
+
+  let matchedRuleIndex = null;
+  let matchedRulePoints = 0;
+  let matchedConditions = [];
+
+  if (matchRules.length > 0) {
+    // Regras diferentes = OU. A primeira regra satisfeita vence.
+    for (let i = 0; i < matchRules.length; i++) {
+      const rule = matchRules[i];
+      const satisfied = rule.conditions.every(condition =>
+        evaluateMatchRuleCondition(
+          condition,
+          betMatch,
+          refA,
+          refB,
+          refWinner,
+          refQualifier,
+          effectiveBetWinner
+        )
+      );
+
+      if (satisfied) {
+        matchedRuleIndex = i;
+        matchedRulePoints = rule.points;
+        matchedConditions = [...rule.conditions];
+        break;
+      }
+    }
+
+    // Mantemos o breakdown legado preenchido de forma informativa,
+    // sem alterar o valor total da nova regra.
+    for (const condition of matchedConditions) {
+      if (condition === 'exactScore') breakdown.exactScore = matchedRulePoints;
+      if (condition === 'scoreTeamA') breakdown.scoreTeamA = matchedRulePoints;
+      if (condition === 'scoreTeamB') breakdown.scoreTeamB = matchedRulePoints;
+      if (condition === 'result' || condition === 'scoreWinner' || condition === 'scoreLoser') {
+        breakdown.winner = matchedRulePoints;
+      }
+      if (condition === 'qualifier') breakdown.qualifier = matchedRulePoints;
+    }
+  } else if (rules.scoringMode === 'dependent') {
+    // Compatibilidade com campeonatos que ainda usam o modelo antigo.
     if (rules.exactScore > 0 && isExact) {
       breakdown.exactScore = rules.exactScore;
     } else {
-      if (
-        rules.scoreTeamA > 0 &&
-        validBetA &&
-        betA === Number(refA)
-      ) {
+      if (rules.scoreTeamA > 0 && validBetA && betA === Number(refA)) {
         breakdown.scoreTeamA = rules.scoreTeamA;
       }
-
-      if (
-        rules.scoreTeamB > 0 &&
-        validBetB &&
-        betB === Number(refB)
-      ) {
+      if (rules.scoreTeamB > 0 && validBetB && betB === Number(refB)) {
         breakdown.scoreTeamB = rules.scoreTeamB;
       }
-
-      if (
-        rules.winner > 0 &&
-        effectiveBetWinner &&
-        effectiveBetWinner === refWinner
-      ) {
+      if (rules.winner > 0 && effectiveBetWinner && effectiveBetWinner === refWinner) {
         breakdown.winner = rules.winner;
       }
     }
+
+    if (
+      rules.qualifier > 0 &&
+      refQualifier &&
+      betMatch.qualifier &&
+      betMatch.qualifier === refQualifier
+    ) {
+      breakdown.qualifier = rules.qualifier;
+    }
   } else {
-    // Modo independente: todos os acertos aplicáveis acumulam.
-    if (rules.exactScore > 0 && isExact) {
-      breakdown.exactScore = rules.exactScore;
-    }
-
-    if (
-      rules.scoreTeamA > 0 &&
-      validBetA &&
-      betA === Number(refA)
-    ) {
-      breakdown.scoreTeamA = rules.scoreTeamA;
-    }
-
-    if (
-      rules.scoreTeamB > 0 &&
-      validBetB &&
-      betB === Number(refB)
-    ) {
-      breakdown.scoreTeamB = rules.scoreTeamB;
-    }
-
-    if (
-      rules.winner > 0 &&
-      effectiveBetWinner &&
-      effectiveBetWinner === refWinner
-    ) {
-      breakdown.winner = rules.winner;
+    // Compatibilidade com o modelo antigo independente.
+    if (rules.exactScore > 0 && isExact) breakdown.exactScore = rules.exactScore;
+    if (rules.scoreTeamA > 0 && validBetA && betA === Number(refA)) breakdown.scoreTeamA = rules.scoreTeamA;
+    if (rules.scoreTeamB > 0 && validBetB && betB === Number(refB)) breakdown.scoreTeamB = rules.scoreTeamB;
+    if (rules.winner > 0 && effectiveBetWinner && effectiveBetWinner === refWinner) breakdown.winner = rules.winner;
+    if (rules.qualifier > 0 && refQualifier && betMatch.qualifier && betMatch.qualifier === refQualifier) {
+      breakdown.qualifier = rules.qualifier;
     }
   }
 
-  // O classificado é sempre independente do modo de pontuação.
-  if (
-    rules.qualifier > 0 &&
-    refQualifier &&
-    betMatch.qualifier &&
-    betMatch.qualifier === refQualifier
-  ) {
-    breakdown.qualifier = rules.qualifier;
-  }
+  const points = matchRules.length > 0
+    ? matchedRulePoints
+    : (
+        Number(breakdown.exactScore) +
+        Number(breakdown.scoreTeamA) +
+        Number(breakdown.scoreTeamB) +
+        Number(breakdown.winner) +
+        Number(breakdown.qualifier)
+      );
 
-  const points =
-    Number(breakdown.exactScore) +
-    Number(breakdown.scoreTeamA) +
-    Number(breakdown.scoreTeamB) +
-    Number(breakdown.winner) +
-    Number(breakdown.qualifier);
+  breakdown.matchRuleIndex = matchedRuleIndex;
+  breakdown.matchRulePoints = matchedRulePoints;
+  breakdown.matchedConditions = matchedConditions;
 
   return {
     points,
@@ -601,7 +724,12 @@ function calculateBetTotal(
     );
 
     groupPoints += result.points;
-    exactScorePoints += Number(result.breakdown?.exactScore || 0);
+    if (Array.isArray(result.breakdown?.matchedConditions) &&
+        result.breakdown.matchedConditions.includes('exactScore')) {
+      exactScorePoints += Number(result.breakdown?.matchRulePoints || 0);
+    } else {
+      exactScorePoints += Number(result.breakdown?.exactScore || 0);
+    }
 
     if (
       match.phase === 'group' ||
@@ -1022,6 +1150,8 @@ module.exports = {
   DEFAULT_SCORING,
   DEFAULT_SCORING_RULES,
   DEFAULT_CHAMPIONSHIP_RULES,
+  MATCH_RULE_CONDITIONS,
+  sanitizeMatchRules,
   sanitizeScoringRules,
   sanitizeChampionshipRules,
   getScoringRules,

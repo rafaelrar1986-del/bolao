@@ -277,6 +277,99 @@ router.post('/global', protect, admin, async (req, res) => {
 
       const incomingScoring = { ...req.body.scoringRules };
 
+      if (incomingScoring.matchRules !== undefined) {
+        if (!Array.isArray(incomingScoring.matchRules)) {
+          return res.status(400).json({
+            success: false,
+            message: 'matchRules deve ser um array de regras.'
+          });
+        }
+
+        if (incomingScoring.matchRules.length > 50) {
+          return res.status(400).json({
+            success: false,
+            message: 'São permitidas no máximo 50 regras de pontuação.'
+          });
+        }
+
+        const allowedConditions = [
+          'exactScore',
+          'result',
+          'scoreTeamA',
+          'scoreTeamB',
+          'scoreWinner',
+          'scoreLoser',
+          'totalGoals',
+          'goalDifference',
+          'qualifier'
+        ];
+
+        const championshipForRules =
+          lockUpdates.championshipRules ||
+          currentSettingsForRules?.championshipRules ||
+          {};
+
+        const seenRuleSignatures = new Set();
+
+        for (let i = 0; i < incomingScoring.matchRules.length; i++) {
+          const rule = incomingScoring.matchRules[i];
+
+          if (!rule || typeof rule !== 'object') {
+            return res.status(400).json({
+              success: false,
+              message: `Regra ${i + 1} inválida.`
+            });
+          }
+
+          const points = Number(rule.points);
+          const conditions = Array.isArray(rule.conditions)
+            ? [...new Set(rule.conditions)]
+            : [];
+
+          if (!Number.isFinite(points) || points < 0) {
+            return res.status(400).json({
+              success: false,
+              message: `A pontuação da regra ${i + 1} é inválida.`
+            });
+          }
+
+          if (conditions.length === 0) {
+            return res.status(400).json({
+              success: false,
+              message: `A regra ${i + 1} precisa ter pelo menos uma condição.`
+            });
+          }
+
+          for (const condition of conditions) {
+            if (!allowedConditions.includes(condition)) {
+              return res.status(400).json({
+                success: false,
+                message: `Condição inválida na regra ${i + 1}: ${condition}`
+              });
+            }
+
+            if (
+              condition === 'qualifier' &&
+              championshipForRules.hasKnockoutPhase !== true
+            ) {
+              return res.status(400).json({
+                success: false,
+                message: 'A condição Classificado só pode ser usada em campeonatos com fase mata-mata.'
+              });
+            }
+          }
+
+          const signature = conditions.slice().sort().join('|');
+          if (seenRuleSignatures.has(signature)) {
+            return res.status(400).json({
+              success: false,
+              message: `A regra ${i + 1} repete exatamente as mesmas condições de outra regra.`
+            });
+          }
+          seenRuleSignatures.add(signature);
+        }
+      }
+
       if (incomingScoring.scoringMode !== undefined) {
         if (!['independent', 'dependent'].includes(incomingScoring.scoringMode)) {
           return res.status(400).json({
@@ -533,6 +626,26 @@ router.post('/global', protect, admin, async (req, res) => {
      * mesmo quando rankingRules não veio no payload.
      */
     if (lockUpdates.championshipRules?.hasKnockoutPhase === false) {
+      const currentMatchRules = Array.isArray(
+        currentSettingsForRules?.scoringRules?.matchRules
+      )
+        ? currentSettingsForRules.scoringRules.matchRules
+        : [];
+
+      if (currentMatchRules.length > 0) {
+        lockUpdates.scoringRules = {
+          ...(currentSettingsForRules?.scoringRules || {}),
+          ...(lockUpdates.scoringRules || {}),
+          matchRules: currentMatchRules.map(rule => ({
+            ...rule,
+            conditions: Array.isArray(rule.conditions)
+              ? rule.conditions.filter(condition => condition !== 'qualifier')
+              : []
+          })).filter(rule => Array.isArray(rule.conditions) && rule.conditions.length > 0)
+        };
+        shouldRecalculate = true;
+      }
+
       const currentTieBreakers = Array.isArray(
         currentSettingsForRules?.rankingRules?.tieBreakers
       )
