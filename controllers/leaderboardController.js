@@ -47,6 +47,7 @@ async function getLeaderboard(req, res) {
     user: b.user,
     totalPoints: computed.totalPoints,
     groupPhasePoints: computed.groupPhasePoints,
+    exactScorePoints: Number(computed.exactScorePoints || 0),
     knockoutPoints: computed.knockoutPoints,
     podiumPoints: computed.podiumPoints,
 
