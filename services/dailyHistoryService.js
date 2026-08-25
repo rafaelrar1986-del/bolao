@@ -265,7 +265,7 @@ async function saveDailySnapshot(historyDate, leagueId, options = {}) {
     settings
   );
 
-  const rankedSnapshots = positionedSnapshots.map(snapshot => ({
+  const rankedSnapshots = snapshots.map(snapshot => ({
     ...snapshot,
     totalPoints: snapshot.points,
     tieBreakerMetrics: {
@@ -297,7 +297,7 @@ async function saveDailySnapshot(historyDate, leagueId, options = {}) {
   }
 
   await PointsHistory.bulkWrite(
-    snapshots.map(snapshot => ({
+    positionedSnapshots.map(snapshot => ({
       updateOne: {
         filter: {
           user: snapshot.user,
