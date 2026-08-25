@@ -136,6 +136,22 @@ const SettingsSchema = new mongoose.Schema(
           }
         }],
         default: []
+      },
+      groupQualificationRules: {
+        type: [{
+          points: { type: Number, required: true, min: 0 },
+          conditions: {
+            type: [String],
+            enum: [
+              'positionCorrect',
+              'positionIncorrect',
+              'teamQualified',
+              'teamNotQualified'
+            ],
+            required: true
+          }
+        }],
+        default: []
       }
     },
 
@@ -145,7 +161,16 @@ const SettingsSchema = new mongoose.Schema(
       drawIncludesExtraTime: { type: Boolean, default: false },
       winnerFromScore:      { type: Boolean, default: true },
       podiumSize:            { type: Number, default: 4 },
-      hasKnockoutPhase:     { type: Boolean, default: false }
+      hasKnockoutPhase:     { type: Boolean, default: false },
+
+      // Estrutura genérica da classificação da fase de grupos.
+      // Ex.: 48 times / 12 grupos / 32 classificados =>
+      // 2 classificados por grupo + 8 melhores terceiros.
+      groupQualification: {
+        totalTeams: { type: Number, default: 0, min: 0 },
+        groupCount: { type: Number, default: 0, min: 0 },
+        totalQualified: { type: Number, default: 0, min: 0 }
+      }
     },
 
     prizeZone: {

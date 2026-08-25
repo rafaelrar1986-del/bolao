@@ -2,6 +2,7 @@ const Bet = require('../models/Bet');
 const Match = require('../models/Match');
 const Settings = require('../models/Settings');
 const mongoose = require('mongoose');
+const { calculateGroupStandings } = require('./groupStandingsService');
 
 // ================================================================
 // CONFIGURAÇÕES / DEFAULTS
@@ -101,18 +102,18 @@ function evaluateMatchRuleCondition(
       return validB && betB === Number(refB);
 
     case 'scoreWinner': {
+      // Condição independente: usa APENAS o vencedor real da partida para
+      // descobrir qual lado é o "vencedor". Não exige acerto do resultado.
       if (refWinner !== 'A' && refWinner !== 'B') return false;
-      const predictedWinner = effectiveBetWinner;
-      if (predictedWinner !== refWinner) return false;
       const predictedGoals = refWinner === 'A' ? betA : betB;
       const actualGoals = refWinner === 'A' ? Number(refA) : Number(refB);
       return Number.isFinite(predictedGoals) && predictedGoals === actualGoals;
     }
 
     case 'scoreLoser': {
+      // Condição independente: usa APENAS o perdedor real da partida para
+      // descobrir qual lado é o "perdedor". Não exige acerto do resultado.
       if (refWinner !== 'A' && refWinner !== 'B') return false;
-      const predictedWinner = effectiveBetWinner;
-      if (predictedWinner !== refWinner) return false;
       const predictedGoals = refWinner === 'A' ? betB : betA;
       const actualGoals = refWinner === 'A' ? Number(refB) : Number(refA);
       return Number.isFinite(predictedGoals) && predictedGoals === actualGoals;
@@ -486,8 +487,7 @@ function calculateMatchPoints(
   // Quando habilitado e houver pontuação por placar, o winner do palpite
   // é derivado dos próprios gols. Quando desabilitado, o winner salvo pelo
   // usuário permanece independente do placar.
-  const winnerFromScore = champRules.winnerFromScore !== false &&
-    (rules.exactScore > 0 || rules.scoreTeamA > 0 || rules.scoreTeamB > 0);
+  const winnerFromScore = champRules.winnerFromScore !== false;
 
   const effectiveBetWinner = winnerFromScore && validBetA && validBetB
     ? (betA > betB ? 'A' : betB > betA ? 'B' : 'draw')
@@ -689,6 +689,234 @@ function calculateExtrasPoints(
   };
 }
 
+
+function sanitizeGroupQualificationRules(rawRules) {
+  if (!Array.isArray(rawRules)) return [];
+  const allowed = new Set([
+    'positionCorrect',
+    'positionIncorrect',
+    'teamQualified',
+    'teamNotQualified'
+  ]);
+
+  return rawRules.map((rule, index) => ({
+    index,
+    points: Math.max(0, Number(rule?.points) || 0),
+    conditions: [...new Set(
+      Array.isArray(rule?.conditions)
+        ? rule.conditions.filter(c => allowed.has(c))
+        : []
+    )]
+  })).filter(rule => rule.conditions.length > 0);
+}
+
+function groupQualificationConditionMatches(condition, item) {
+  switch (condition) {
+    case 'positionCorrect':
+      return item.predictedPosition === item.actualPosition;
+    case 'positionIncorrect':
+      return item.predictedPosition !== item.actualPosition;
+    case 'teamQualified':
+      return item.predictedQualified === true && item.actualQualified === true;
+    case 'teamNotQualified':
+      return item.predictedQualified === false && item.actualQualified === false;
+    default:
+      return false;
+  }
+}
+
+/**
+ * Pontuação do Extra "Classificação para o mata-mata".
+ *
+ * Cada equipe é avaliada separadamente:
+ * - condições da mesma regra = E
+ * - regras = OU / primeira regra satisfeita
+ * Os pontos de equipes diferentes são somados.
+ *
+ * A classificação oficial é derivada somente das partidas finalizadas.
+ */
+function calculateGroupQualificationPoints(
+  groupPredictions,
+  groupMatches,
+  scoringRules = {},
+  championshipRules = {},
+  isPartial = false
+) {
+  const rules = sanitizeGroupQualificationRules(
+    scoringRules?.groupQualificationRules
+  );
+
+  if (!rules.length || !Array.isArray(groupPredictions) || !groupPredictions.length) {
+    return { points: 0, breakdown: [], byGroup: [] };
+  }
+
+  const matches = (groupMatches || []).filter(m =>
+    String(m.phase || '').toLowerCase() === 'group' &&
+    (!isPartial ? m.status === 'finished' : m.status !== 'scheduled')
+  );
+
+  const grouped = {};
+  const teamRows = {};
+
+  for (const m of matches) {
+    const group = String(m.group || '').trim();
+    if (!group || !m.teamA || !m.teamB) continue;
+    grouped[group] ||= [];
+
+    for (const t of [m.teamA, m.teamB]) {
+      if (!teamRows[group]) teamRows[group] = {};
+      if (!teamRows[group][t]) {
+        teamRows[group][t] = {
+          name: t, pts: 0, gp: 0, gc: 0, sg: 0
+        };
+      }
+    }
+
+    const a = teamRows[group][m.teamA];
+    const b = teamRows[group][m.teamB];
+    const sa = Number(m.scoreA), sb = Number(m.scoreB);
+    if (!Number.isFinite(sa) || !Number.isFinite(sb)) continue;
+
+    a.gp += sa; a.gc += sb; a.sg = a.gp - a.gc;
+    b.gp += sb; b.gc += sa; b.sg = b.gp - b.gc;
+    if (sa > sb) a.pts += 3;
+    else if (sb > sa) b.pts += 3;
+    else { a.pts += 1; b.pts += 1; }
+  }
+
+  const qualification = championshipRules?.groupQualification || {};
+  const totalTeams = Number(qualification.totalTeams || 0);
+  const groupCount = Number(qualification.groupCount || 0);
+  const totalQualified = Number(qualification.totalQualified || 0);
+
+  const groups = Object.keys(teamRows);
+  const basePerGroup =
+    totalTeams > 0 && groupCount > 0 && totalQualified > 0 && totalTeams % groupCount === 0
+      ? Math.floor(totalQualified / groupCount)
+      : 2;
+  const additionalCount =
+    totalTeams > 0 && groupCount > 0 && totalQualified > 0 && totalTeams % groupCount === 0
+      ? totalQualified % groupCount
+      : 8;
+  const additionalPosition = additionalCount > 0 ? basePerGroup + 1 : null;
+
+  /*
+   * A classificação oficial é a mesma do groupController.
+   * Reutilizamos a mesma função em vez de duplicar a regra.
+   *
+   * Observação importante: o groupController só consegue aplicar
+   * confronto direto/saldo/gols quando há placares numéricos. Isso é
+   * intencional: é a regra oficial da classificação.
+   */
+  const standingsMatches = matches.map(m => ({
+    ...m,
+    group: String(m.group || '').trim()
+  }));
+
+  const groupedResults = calculateGroupStandings(standingsMatches);
+
+  const rankedByGroup = {};
+  Object.entries(groupedResults).forEach(([group, teams]) => {
+    rankedByGroup[group] = teams;
+  });
+
+  const additionalCandidates = additionalPosition
+    ? groups
+        .map(g => rankedByGroup[g]?.[additionalPosition - 1])
+        .filter(Boolean)
+        .sort((a, b) => {
+          if (b.pts !== a.pts) return b.pts - a.pts;
+          if (b.sg !== a.sg) return b.sg - a.sg;
+          if (b.gp !== a.gp) return b.gp - a.gp;
+          return a.name.localeCompare(b.name);
+        })
+    : [];
+
+  const additionalNames = new Set(
+    additionalCandidates
+      .slice(0, additionalCount)
+      .map(t => t.name)
+  );
+
+  const qualified = {};
+  for (const group of groups) {
+    qualified[group] = new Set(
+      (rankedByGroup[group] || [])
+        .filter((team, idx) =>
+          idx < basePerGroup ||
+          (
+            additionalPosition &&
+            idx === additionalPosition - 1 &&
+            additionalNames.has(team.name)
+          )
+        )
+        .map(team => team.name)
+    );
+  }
+
+  const breakdown = [];
+  let total = 0;
+  const byGroup = [];
+
+  for (const prediction of groupPredictions) {
+    const group = String(prediction?.group || '').trim();
+    const ranked = rankedByGroup[group] || [];
+    if (!ranked.length) continue;
+
+    const actualPosition = new Map(ranked.map((team, idx) => [team.name, idx + 1]));
+    const actualQualified = qualified[group] || new Set();
+
+    let groupPoints = 0;
+    const predictedAdditional = new Set(
+      Array.isArray(prediction.additionalQualifiedTeams)
+        ? prediction.additionalQualifiedTeams.map(String)
+        : []
+    );
+
+    for (const p of prediction.positions || []) {
+      const team = String(p.team || '').trim();
+      const item = {
+        group,
+        team,
+        predictedPosition: Number(p.position),
+        actualPosition: actualPosition.get(team) || null,
+        predictedQualified:
+          Number(p.position) <= basePerGroup ||
+          predictedAdditional.has(team),
+        actualQualified: actualQualified.has(team)
+      };
+
+      if (!item.actualPosition) continue;
+
+      let matched = null;
+      for (const rule of rules) {
+        if (rule.conditions.every(c => groupQualificationConditionMatches(c, item))) {
+          matched = rule;
+          break;
+        }
+      }
+
+      const pts = matched ? matched.points : 0;
+      groupPoints += pts;
+      breakdown.push({
+        team: item.team,
+        group,
+        predictedPosition: item.predictedPosition,
+        actualPosition: item.actualPosition,
+        predictedQualified: item.predictedQualified,
+        actualQualified: item.actualQualified,
+        points: pts,
+        matchedRuleIndex: matched ? matched.index : null
+      });
+    }
+
+    total += groupPoints;
+    byGroup.push({ group, points: groupPoints });
+  }
+
+  return { points: total, breakdown, byGroup };
+}
+
 /**
  * Calcula a pontuação total de uma aposta em memória.
  *
@@ -754,11 +982,20 @@ function calculateBetTotal(
     rules
   );
 
+  const groupQualificationResult = calculateGroupQualificationPoints(
+    bet?.groupPredictions || [],
+    [...(matchMap?.values?.() || [])],
+    rules,
+    champRules,
+    isPartial
+  );
+
   const bonusPoints = Number(bet?.bonusPoints) || 0;
   const totalPoints =
     groupPoints +
     podiumResult.points +
     extrasResult.points +
+    groupQualificationResult.points +
     bonusPoints;
 
   return {
@@ -768,7 +1005,9 @@ function calculateBetTotal(
     knockoutPoints,
     exactScorePoints,
     podiumPoints: podiumResult.points,
-    extrasPoints: extrasResult.points,
+    extrasPoints: extrasResult.points + groupQualificationResult.points,
+    groupQualificationPoints: groupQualificationResult.points,
+    groupQualificationBreakdown: groupQualificationResult.breakdown,
     bonusPoints,
     podiumBreakdown: podiumResult.breakdown,
     extrasBreakdown: extrasResult.breakdown,
@@ -860,8 +1099,11 @@ async function recalculateAllPoints(
           topScorer: 0,
           bestAttack: 0,
           worstDefense: 0,
-          upset: 0
+          upset: 0,
+          groupQualification: 0
         };
+        bet.groupPredictionPoints = 0;
+        bet.groupPredictionBreakdown = [];
 
         bet.lastUpdate = new Date();
         bet.recalculateTotals();
@@ -918,7 +1160,24 @@ async function recalculateAllPoints(
         scoringRules
       );
 
-      bet.extrasBreakdown = extrasResult.breakdown;
+      bet.extrasBreakdown = {
+        ...extrasResult.breakdown,
+        groupQualification: 0
+      };
+
+      // ------------------------------------------------------------
+      // CLASSIFICAÇÃO PARA O MATA-MATA
+      // ------------------------------------------------------------
+      const groupQualificationResult = calculateGroupQualificationPoints(
+        bet.groupPredictions || [],
+        finishedMatches,
+        scoringRules,
+        champRules,
+        false
+      );
+      bet.groupPredictionPoints = groupQualificationResult.points;
+      bet.groupPredictionBreakdown = groupQualificationResult.byGroup;
+      bet.extrasBreakdown.groupQualification = groupQualificationResult.points;
 
       // ------------------------------------------------------------
       // TOTAIS
@@ -929,6 +1188,8 @@ async function recalculateAllPoints(
       bet.markModified('groupMatches');
       bet.markModified('podiumBreakdown');
       bet.markModified('extrasBreakdown');
+      bet.markModified('groupPredictions');
+      bet.markModified('groupPredictionBreakdown');
 
       await bet.save({ session });
 
@@ -1154,6 +1415,8 @@ module.exports = {
   sanitizeMatchRules,
   sanitizeScoringRules,
   sanitizeChampionshipRules,
+  sanitizeGroupQualificationRules,
+  calculateGroupQualificationPoints,
   getScoringRules,
   getChampionshipRules,
   getMatchReferenceScore,

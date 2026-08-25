@@ -370,6 +370,74 @@ router.post('/global', protect, admin, async (req, res) => {
         }
       }
 
+      if (incomingScoring.groupQualificationRules !== undefined) {
+        if (!Array.isArray(incomingScoring.groupQualificationRules)) {
+          return res.status(400).json({
+            success: false,
+            message: 'groupQualificationRules deve ser um array de regras.'
+          });
+        }
+        if (incomingScoring.groupQualificationRules.length > 50) {
+          return res.status(400).json({
+            success: false,
+            message: 'São permitidas no máximo 50 regras de classificação para o mata-mata.'
+          });
+        }
+
+        const allowedGroupConditions = [
+          'positionCorrect',
+          'positionIncorrect',
+          'teamQualified',
+          'teamNotQualified'
+        ];
+        const seenGroupRuleSignatures = new Set();
+
+        for (let i = 0; i < incomingScoring.groupQualificationRules.length; i++) {
+          const rule = incomingScoring.groupQualificationRules[i];
+          if (!rule || typeof rule !== 'object') {
+            return res.status(400).json({
+              success: false,
+              message: `Regra de classificação ${i + 1} inválida.`
+            });
+          }
+
+          const points = Number(rule.points);
+          const conditions = Array.isArray(rule.conditions)
+            ? [...new Set(rule.conditions)]
+            : [];
+
+          if (!Number.isFinite(points) || points < 0) {
+            return res.status(400).json({
+              success: false,
+              message: `A pontuação da regra de classificação ${i + 1} é inválida.`
+            });
+          }
+          if (!conditions.length) {
+            return res.status(400).json({
+              success: false,
+              message: `A regra de classificação ${i + 1} precisa ter pelo menos uma condição.`
+            });
+          }
+          for (const condition of conditions) {
+            if (!allowedGroupConditions.includes(condition)) {
+              return res.status(400).json({
+                success: false,
+                message: `Condição inválida na regra de classificação ${i + 1}: ${condition}`
+              });
+            }
+          }
+
+          const signature=conditions.slice().sort().join('|');
+          if (seenGroupRuleSignatures.has(signature)) {
+            return res.status(400).json({
+              success: false,
+              message: `A regra de classificação ${i + 1} repete exatamente as mesmas condições de outra regra.`
+            });
+          }
+          seenGroupRuleSignatures.add(signature);
+        }
+      }
+
       if (incomingScoring.scoringMode !== undefined) {
         if (!['independent', 'dependent'].includes(incomingScoring.scoringMode)) {
           return res.status(400).json({
@@ -403,9 +471,84 @@ router.post('/global', protect, admin, async (req, res) => {
       const currentChamp =
         settings?.championshipRules || {};
 
+      const incomingChampionshipRules = {
+        ...req.body.championshipRules
+      };
+
+      if (incomingChampionshipRules.groupQualification !== undefined) {
+        const q = incomingChampionshipRules.groupQualification;
+        if (!q || typeof q !== 'object') {
+          return res.status(400).json({
+            success: false,
+            message: 'groupQualification deve ser um objeto.'
+          });
+        }
+
+        const totalTeams = Math.floor(Number(q.totalTeams || 0));
+        const groupCount = Math.floor(Number(q.groupCount || 0));
+        const totalQualified = Math.floor(Number(q.totalQualified || 0));
+
+        if (totalTeams < 0 || groupCount < 0 || totalQualified < 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'Os valores da classificação por grupos não podem ser negativos.'
+          });
+        }
+
+        if (totalTeams || groupCount || totalQualified) {
+          if (!totalTeams || !groupCount || !totalQualified) {
+            return res.status(400).json({
+              success: false,
+              message: 'Informe número de times, número de grupos e número de classificados.'
+            });
+          }
+          if (totalTeams % groupCount !== 0) {
+            return res.status(400).json({
+              success: false,
+              message: 'O número de times deve ser divisível pelo número de grupos.'
+            });
+          }
+          if (totalQualified > totalTeams) {
+            return res.status(400).json({
+              success: false,
+              message: 'O número de classificados não pode ser maior que o número de times.'
+            });
+          }
+
+          const teamsPerGroup = totalTeams / groupCount;
+          const qualifiedPerGroup = Math.floor(totalQualified / groupCount);
+          const additional = totalQualified % groupCount;
+
+          if (qualifiedPerGroup > teamsPerGroup) {
+            return res.status(400).json({
+              success: false,
+              message: 'A configuração exige mais classificados por grupo do que existem times no grupo.'
+            });
+          }
+          if (additional > 0 && qualifiedPerGroup >= teamsPerGroup) {
+            return res.status(400).json({
+              success: false,
+              message: 'Não há uma posição seguinte disponível para os classificados adicionais.'
+            });
+          }
+
+          incomingChampionshipRules.groupQualification = {
+            totalTeams,
+            groupCount,
+            totalQualified
+          };
+        } else {
+          incomingChampionshipRules.groupQualification = {
+            totalTeams: 0,
+            groupCount: 0,
+            totalQualified: 0
+          };
+        }
+      }
+
       lockUpdates.championshipRules = {
         ...currentChamp,
-        ...req.body.championshipRules
+        ...incomingChampionshipRules
       };
 
       shouldRecalculate = true;

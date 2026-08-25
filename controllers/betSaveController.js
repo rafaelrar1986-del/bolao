@@ -26,9 +26,28 @@ const {
 
 const { toLeagueId } = require('../utils/leagueId');
 
+
+function normalizeGroupPredictionsInput(input) {
+  if (!Array.isArray(input)) return [];
+  return input.map(item => ({
+    group: String(item?.group || '').trim(),
+    positions: Array.isArray(item?.positions)
+      ? item.positions
+          .map(p => ({
+            position: Number(p?.position),
+            team: String(p?.team || '').trim()
+          }))
+          .filter(p => Number.isInteger(p.position) && p.position > 0 && p.team)
+      : [],
+    additionalQualifiedTeams: Array.isArray(item?.additionalQualifiedTeams)
+      ? [...new Set(item.additionalQualifiedTeams.map(t => String(t).trim()).filter(Boolean))]
+      : []
+  })).filter(item => item.group && item.positions.length);
+}
+
 async function saveBets(req, res) {
   try {
-    const { groupMatches, podium, extras, leagueId } = req.body;
+    const { groupMatches, podium, extras, groupPredictions, leagueId } = req.body;
 
     const submittedGroupMatches = groupMatches && typeof groupMatches === 'object'
       ? Object.values(groupMatches)
@@ -69,6 +88,123 @@ async function saveBets(req, res) {
       const validation = Bet.validatePodiumSize(podium, podiumSize);
       if (!validation.valid) {
         return res.status(400).json({ success: false, message: validation.error });
+      }
+    }
+
+
+    const normalizedGroupPredictions = normalizeGroupPredictionsInput(groupPredictions);
+
+    // A previsão de classificação pertence somente à fase de grupos.
+    // Não aceitamos grupos inventados pelo cliente: eles precisam existir
+    // nas partidas da própria liga.
+    const validGroupNames = new Set(
+      dbMatches
+        .filter(m => String(m.phase || '').toLowerCase() === 'group')
+        .map(m => String(m.group || '').trim())
+        .filter(Boolean)
+    );
+
+    for (const prediction of normalizedGroupPredictions) {
+      if (!validGroupNames.has(prediction.group)) {
+        return res.status(400).json({
+          success: false,
+          message: `Grupo inválido na previsão de classificação: ${prediction.group}`
+        });
+      }
+
+      const uniqueTeams = new Set(prediction.positions.map(p => p.team.toLowerCase()));
+      if (uniqueTeams.size !== prediction.positions.length) {
+        return res.status(400).json({
+          success: false,
+          message: `Há equipes repetidas na previsão do grupo ${prediction.group}.`
+        });
+      }
+    }
+
+
+    // 🛡️ requireAllBets também considera a previsão da classificação dos grupos.
+    // O rascunho local nunca passa por esta validação; ela só ocorre no envio oficial.
+    if (settings?.requireAllBets) {
+      const groupRules = Array.isArray(settings?.scoringRules?.groupQualificationRules)
+        ? settings.scoringRules.groupQualificationRules
+        : [];
+
+      if (groupRules.length > 0) {
+        const groupTeams = {};
+        dbMatches
+          .filter(m => String(m.phase || '').toLowerCase() === 'group')
+          .forEach(m => {
+            const group = String(m.group || '').trim();
+            if (!group) return;
+            groupTeams[group] ||= new Set();
+            if (m.teamA) groupTeams[group].add(String(m.teamA).trim());
+            if (m.teamB) groupTeams[group].add(String(m.teamB).trim());
+          });
+
+        const qualification = settings?.championshipRules?.groupQualification || {};
+        const totalTeams = Number(qualification.totalTeams || 0);
+        const groupCount = Number(qualification.groupCount || 0);
+        const totalQualified = Number(qualification.totalQualified || 0);
+        const additionalCount =
+          totalTeams > 0 && groupCount > 0 && totalQualified > 0 && totalTeams % groupCount === 0
+            ? totalQualified % groupCount
+            : 8;
+
+        const predictionsByGroup = new Map(
+          normalizedGroupPredictions.map(p => [p.group, p])
+        );
+
+        for (const [group, teams] of Object.entries(groupTeams)) {
+          const prediction = predictionsByGroup.get(group);
+          if (!prediction || prediction.positions.length !== teams.size) {
+            return res.status(400).json({
+              success: false,
+              message: `Complete a classificação prevista do grupo ${group} antes de enviar as apostas.`
+            });
+          }
+
+          const predictedTeams = new Set(prediction.positions.map(p => p.team.toLowerCase()));
+          if (predictedTeams.size !== teams.size ||
+              [...teams].some(team => !predictedTeams.has(String(team).toLowerCase()))) {
+            return res.status(400).json({
+              success: false,
+              message: `A classificação prevista do grupo ${group} precisa conter todas as equipes uma única vez.`
+            });
+          }
+
+          if (additionalCount > 0) {
+            const selectedAdditional = [...new Set(prediction.additionalQualifiedTeams || [])];
+            if (selectedAdditional.length !== additionalCount) {
+              return res.status(400).json({
+                success: false,
+                message: `Defina exatamente ${additionalCount} classificados adicionais antes de enviar as apostas.`
+              });
+            }
+
+            const baseQualified =
+              totalTeams > 0 && groupCount > 0 && totalQualified > 0 && totalTeams % groupCount === 0
+                ? Math.floor(totalQualified / groupCount)
+                : 2;
+            const additionalPosition = baseQualified + 1;
+            const predictedAtAdditionalPosition = prediction.positions
+              .find(p => Number(p.position) === additionalPosition)?.team;
+
+            // A previsão adicional deve apontar somente para equipes que
+            // o próprio usuário colocou na posição que disputa as vagas extras.
+            const allowedAdditional = new Set(
+              prediction.positions
+                .filter(p => Number(p.position) === additionalPosition)
+                .map(p => p.team.toLowerCase())
+            );
+
+            if (selectedAdditional.some(team => !allowedAdditional.has(String(team).toLowerCase()))) {
+              return res.status(400).json({
+                success: false,
+                message: `Os classificados adicionais do grupo ${group} devem corresponder às posições que disputam as vagas extras.`
+              });
+            }
+          }
+        }
       }
     }
 
@@ -357,6 +493,12 @@ async function saveBets(req, res) {
       lastUpdate: now,
       firstSubmission: bet?.firstSubmission || now,
     };
+
+    // 4b. Trata a previsão da classificação dos grupos.
+    // O cálculo oficial dos pontos ocorre no pointsService.
+    if (groupPredictions !== undefined) {
+      payload.groupPredictions = normalizedGroupPredictions;
+    }
 
     // 5. Trata o pódio (array)
     if (podium && Array.isArray(podium)) {

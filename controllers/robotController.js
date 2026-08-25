@@ -150,6 +150,8 @@ exports.fetchAndSyncMatches = async (req, res) => {
     try {
         // 🔥 CORRIGIDO: Captura o leagueName do Frontend para não ser perdido
         const { leagueId, leagueName, dateFrom, dateTo, phaseType, knockoutPhase, unifyGroups } = req.body;
+        const normalizedPhaseType = phaseType === 'points_run' ? 'pontos_corridos' : (phaseType || 'group');
+        const isPointsRun = normalizedPhaseType === 'pontos_corridos' || unifyGroups === true;
         const API_KEY = process.env.API_FOOTBALL_KEY;
 
         if (!leagueId || !dateFrom || !dateTo) {
@@ -219,10 +221,10 @@ exports.fetchAndSyncMatches = async (req, res) => {
             let groupValue;
             let phaseNameValue = null;
 
-            if (phaseType === 'knockout') {
+            if (normalizedPhaseType === 'knockout') {
                 groupValue = knockoutPhase;
                 phaseNameValue = knockoutPhase;
-            } else if (unifyGroups) {
+            } else if (isPointsRun) {
                 // Pontos corridos
                 groupValue = knockoutPhase || currentLeagueName || 'Classificação Geral';
                 phaseNameValue = item.round_number ? `Rodada ${item.round_number}` : null;
@@ -254,7 +256,7 @@ exports.fetchAndSyncMatches = async (req, res) => {
                 teamA: translateTeamName(item.home_team),
                 teamB: translateTeamName(item.away_team),
                 group: groupValue,
-                phase: phaseType || 'group',
+                phase: normalizedPhaseType,
                 phaseName: phaseNameValue,
                 date: dateStr,
                 time: timeStr,

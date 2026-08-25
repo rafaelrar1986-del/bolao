@@ -1,4 +1,5 @@
 const Match = require('../models/Match');
+const Settings = require('../models/Settings');
 
 // Caches organizados por LeagueID para a Fase de Grupos
 let cacheOficial = {};
@@ -15,121 +16,129 @@ const CACHE_DURATION = 30000;
 /**
  * 1. CLASSIFICAÇÃO DA FASE DE GRUPOS (Sua lógica original mantida)
  */
+const { calculateGroupStandings } = require('../services/groupStandingsService');
+
 const getGroupStandings = async (req, res) => {
   const now = Date.now();
   const isLiveRequest = req.query.live === 'true';
-  
-  // 🆕 CORREÇÃO: leagueId é String no schema Match
-  const leagueId = req.query.leagueId ? String(req.query.leagueId).trim() : 'default';
 
-  if (!isLiveRequest && cacheOficial[leagueId] && (now - lastCacheOficial[leagueId] < CACHE_DURATION)) {
-    return res.json(cacheOficial[leagueId]);
+  const leagueId = req.query.leagueId
+    ? String(req.query.leagueId).trim()
+    : 'default';
+  const requestedPhase =
+    req.query.phase === 'pontos_corridos'
+      ? 'pontos_corridos'
+      : 'group';
+
+  const cacheKey = `${leagueId}:${requestedPhase}`;
+
+  if (
+    !isLiveRequest &&
+    cacheOficial[cacheKey] &&
+    now - lastCacheOficial[cacheKey] < CACHE_DURATION
+  ) {
+    return res.json(cacheOficial[cacheKey]);
   }
-  if (isLiveRequest && cacheParcial[leagueId] && (now - lastCacheParcial[leagueId] < CACHE_DURATION)) {
-    return res.json(cacheParcial[leagueId]);
+
+  if (
+    isLiveRequest &&
+    cacheParcial[cacheKey] &&
+    now - lastCacheParcial[cacheKey] < CACHE_DURATION
+  ) {
+    return res.json(cacheParcial[cacheKey]);
   }
 
   try {
-    console.log(`[Standings] Calculando liga: ${leagueId} | Live: ${isLiveRequest}`);
+    console.log(
+      `[Standings] Calculando liga: ${leagueId} | Live: ${isLiveRequest}`
+    );
 
-    const allMatches = await Match.find({ leagueId, phase: 'group' }).lean();
-    
+    const allMatches = await Match.find({
+      leagueId,
+      phase: requestedPhase
+    }).lean();
+
     if (!allMatches || allMatches.length === 0) {
       return res.json({});
     }
 
-    const standings = {};
+    const activeMatches = allMatches
+      .filter(m =>
+        isLiveRequest
+          ? m.status !== 'scheduled'
+          : m.status === 'finished'
+      )
+      .map(m => ({
+        ...m,
+        // Pontos corridos sempre têm uma única classificação lógica.
+        group:
+          requestedPhase === 'pontos_corridos'
+            ? (m.group || m.leagueName || 'Classificação Geral')
+            : m.group
+      }));
 
-    allMatches.forEach(m => {
-      [m.teamA, m.teamB].forEach(t => {
-        if (t && !standings[t]) {
-          standings[t] = { 
-            name: t, 
-            group: m.group, 
-            pj: 0, v: 0, e: 0, d: 0, 
-            gp: 0, gc: 0, sg: 0, pts: 0, 
-            qualified: false 
-          };
-        }
-      });
-    });
+    const isPointsRun = requestedPhase === 'pontos_corridos';
 
-    const activeMatches = allMatches.filter(m => 
-      isLiveRequest ? m.status !== 'scheduled' : m.status === 'finished'
-    );
+    // ============================================================
+    // FONTE ÚNICA DA VERDADE DA CLASSIFICAÇÃO
+    // ============================================================
+    // O algoritmo está em groupStandingsService.js e é compartilhado
+    // pelo controller e pelo cálculo de pontuação.
+    const groupedResults = calculateGroupStandings(activeMatches);
 
-    activeMatches.forEach(m => {
-      const { teamA, teamB, scoreA, scoreB } = m;
-      if (typeof scoreA === 'number' && typeof scoreB === 'number') {
-        const sA = standings[teamA];
-        const sB = standings[teamB];
-        
-        if (sA && sB) {
-          sA.pj++; sB.pj++;
-          sA.gp += scoreA; sA.gc += scoreB;
-          sB.gp += scoreB; sB.gc += scoreA;
-          
-          if (scoreA > scoreB) { 
-            sA.v++; sA.pts += 3; sB.d++; 
-          } else if (scoreB > scoreA) { 
-            sB.v++; sB.pts += 3; sA.d++; 
-          } else { 
-            sA.e++; sA.pts += 1; sB.e++; sB.pts += 1; 
-          }
-          sA.sg = sA.gp - sA.gc; 
-          sB.sg = sB.gp - sB.gc;
+    /*
+     * ============================================================
+     * CLASSIFICAÇÃO GENÉRICA PARA O MATA-MATA
+     * ============================================================
+     * championshipRules.groupQualification define: total de times,
+     * número de grupos e total de classificados.
+     *
+     * Ex.: 48 / 12 / 32 => 2 por grupo + 8 melhores terceiros.
+     *
+     * Se ainda não houver configuração, preservamos a lógica legada
+     * da Copa atual para não quebrar campeonatos já existentes.
+     */
+    const settings = await Settings.findById(leagueId).lean();
+    const qualification = !isPointsRun
+      ? (settings?.championshipRules?.groupQualification || {})
+      : {};
+
+    const configuredTotalTeams = Number(qualification.totalTeams || 0);
+    const configuredGroupCount = Number(qualification.groupCount || 0);
+    const configuredTotalQualified = Number(qualification.totalQualified || 0);
+
+    let baseQualifiedPerGroup = isPointsRun ? 0 : 2;
+    let additionalQualifiedCount = 0;
+    let additionalQualificationPosition = null;
+    let qualificationMode = isPointsRun ? 'points_run' : 'legacy';
+
+    if (configuredTotalTeams > 0 && configuredGroupCount > 0 && configuredTotalQualified > 0) {
+      if (configuredTotalTeams % configuredGroupCount === 0) {
+        const teamsPerGroup = configuredTotalTeams / configuredGroupCount;
+        baseQualifiedPerGroup = Math.floor(configuredTotalQualified / configuredGroupCount);
+        additionalQualifiedCount = configuredTotalQualified % configuredGroupCount;
+        additionalQualificationPosition = additionalQualifiedCount > 0
+          ? baseQualifiedPerGroup + 1
+          : null;
+
+        if (
+          baseQualifiedPerGroup <= teamsPerGroup &&
+          configuredTotalQualified <= configuredTotalTeams &&
+          (additionalQualifiedCount === 0 || baseQualifiedPerGroup < teamsPerGroup)
+        ) {
+          qualificationMode = 'configured';
+        } else {
+          baseQualifiedPerGroup = 2;
+          additionalQualifiedCount = 8;
+          additionalQualificationPosition = 3;
         }
       }
-    });
-
-    const groupedResults = {};
-    Object.values(standings).forEach(t => {
-      if (!groupedResults[t.group]) groupedResults[t.group] = [];
-      groupedResults[t.group].push(t);
-    });
-
-    for (const groupName in groupedResults) {
-      groupedResults[groupName].sort((a, b) => {
-        if (b.pts !== a.pts) return b.pts - a.pts;
-
-        const h2hMatches = activeMatches.filter(m => 
-          (m.teamA === a.name && m.teamB === b.name) || 
-          (m.teamA === b.name && m.teamB === a.name)
-        );
-
-        let h2hPtsA = 0, h2hPtsB = 0;
-        let h2hSgA = 0, h2hSgB = 0;
-        let h2hGpA = 0, h2hGpB = 0;
-
-        h2hMatches.forEach(m => {
-          if (typeof m.scoreA === 'number' && typeof m.scoreB === 'number') {
-            const golsA = m.teamA === a.name ? m.scoreA : m.scoreB;
-            const golsB = m.teamA === b.name ? m.scoreA : m.scoreB;
-
-            h2hGpA += golsA;
-            h2hGpB += golsB;
-
-            h2hSgA += (golsA - golsB);
-            h2hSgB += (golsB - golsA);
-
-            if (golsA > golsB) h2hPtsA += 3;
-            else if (golsB > golsA) h2hPtsB += 3;
-            else { h2hPtsA += 1; h2hPtsB += 1; }
-          }
-        });
-
-        if (h2hPtsB !== h2hPtsA) return h2hPtsB - h2hPtsA;
-        if (h2hSgB !== h2hSgA) return h2hSgB - h2hSgA;
-        if (h2hGpB !== h2hGpA) return h2hGpB - h2hGpA;
-        if (b.sg !== a.sg) return b.sg - a.sg;
-        if (b.gp !== a.gp) return b.gp - a.gp;
-
-        return a.name.localeCompare(b.name);
-      });
     }
 
-    const allThirdPlaces = Object.values(groupedResults)
-      .map(g => g[2])
+    let additionalQualifiedNames = new Set();
+
+    const rankCandidatesAtPosition = position => Object.values(groupedResults)
+      .map(group => group[position - 1])
       .filter(Boolean)
       .sort((a, b) => {
         if (b.pts !== a.pts) return b.pts - a.pts;
@@ -138,20 +147,57 @@ const getGroupStandings = async (req, res) => {
         return a.name.localeCompare(b.name);
       });
 
-    const best8Names = allThirdPlaces.slice(0, 8).map(t => t.name);
+    if (qualificationMode === 'configured' && additionalQualifiedCount > 0) {
+      additionalQualifiedNames = new Set(
+        rankCandidatesAtPosition(additionalQualificationPosition)
+          .slice(0, additionalQualifiedCount)
+          .map(t => t.name)
+      );
+    } else if (qualificationMode === 'legacy') {
+      additionalQualifiedNames = new Set(
+        rankCandidatesAtPosition(3)
+          .slice(0, 8)
+          .map(t => t.name)
+      );
+    }
 
-    for (const g in groupedResults) {
+    const groupKeys = Object.keys(groupedResults);
+    for (const g of groupKeys) {
       groupedResults[g].forEach((t, i) => {
-        t.qualified = (i < 2 || (i === 2 && best8Names.includes(t.name)));
+        t.qualified =
+          i < baseQualifiedPerGroup ||
+          (additionalQualificationPosition !== null &&
+            i === additionalQualificationPosition - 1 &&
+            additionalQualifiedNames.has(t.name));
       });
     }
 
-    if (isLiveRequest) { 
-      cacheParcial[leagueId] = groupedResults; 
-      lastCacheParcial[leagueId] = now; 
-    } else { 
-      cacheOficial[leagueId] = groupedResults; 
-      lastCacheOficial[leagueId] = now; 
+    // Metadados não fazem parte de um grupo e são removidos antes do cache/JSON.
+    const qualificationMeta = {
+      mode: qualificationMode,
+      totalTeams: configuredTotalTeams || null,
+      groupCount: configuredGroupCount || groupKeys.length,
+      totalQualified: configuredTotalQualified ||
+        (baseQualifiedPerGroup * groupKeys.length + additionalQualifiedNames.size),
+      teamsPerGroup: configuredTotalTeams && configuredGroupCount
+        ? configuredTotalTeams / configuredGroupCount
+        : null,
+      baseQualifiedPerGroup,
+      additionalQualifiedCount,
+      additionalQualificationPosition
+    };
+    Object.defineProperty(groupedResults, '__qualification', {
+      value: qualificationMeta,
+      enumerable: false,
+      configurable: true
+    });
+
+    if (isLiveRequest) {
+      cacheParcial[cacheKey] = groupedResults;
+      lastCacheParcial[cacheKey] = now;
+    } else {
+      cacheOficial[cacheKey] = groupedResults;
+      lastCacheOficial[cacheKey] = now;
     }
 
     res.json(groupedResults);
@@ -168,6 +214,7 @@ const getKnockoutMatches = async (req, res) => {
   const now = Date.now();
   // 🆕 CORREÇÃO: leagueId é String no schema Match
   const leagueId = req.query.leagueId ? String(req.query.leagueId).trim() : 'default';
+  const requestedPhase = req.query.phase === 'pontos_corridos' ? 'pontos_corridos' : 'group';
 
   if (cacheKnockout[leagueId] && (now - lastCacheKnockout[leagueId] < CACHE_DURATION)) {
     return res.json(cacheKnockout[leagueId]);

@@ -86,6 +86,7 @@ function makeBetModel(existing, gradeCheckEnabled) {
         set(payload) {
           Object.assign(this, clone(payload));
         },
+        recalculateTotals() { return this; },
         save: async function() {
           FakeBet.saved = clone(this);
         }

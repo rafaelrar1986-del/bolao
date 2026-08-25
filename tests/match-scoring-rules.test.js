@@ -16,10 +16,10 @@ function evaluateCondition(condition, bet, real) {
     case 'scoreTeamA': return a === ra;
     case 'scoreTeamB': return b === rb;
     case 'scoreWinner':
-      return winner !== 'draw' && betWinner === winner &&
+      return winner !== 'draw' &&
         (winner === 'A' ? a === ra : b === rb);
     case 'scoreLoser':
-      return winner !== 'draw' && betWinner === winner &&
+      return winner !== 'draw' &&
         (winner === 'A' ? b === rb : a === ra);
     case 'totalGoals': return a + b === ra + rb;
     case 'goalDifference': return Math.abs(a - b) === Math.abs(ra - rb);
@@ -52,13 +52,26 @@ result = calculate([
 ], {scoreA:3,scoreB:2}, {scoreA:3,scoreB:1});
 assert.deepStrictEqual(result, {points:6,rule:1});
 
-// 4x1 vs 3x2: resultado + gols do perdedor não é suficiente se o perdedor
-// do palpite não coincidir.
+// Gols do perdedor é independente do resultado previsto:
+// real 3x1, palpite 4x1 -> perdedor real marcou 1 e a condição é satisfeita.
 result = calculate([
-  { points: 4, conditions: ['result', 'scoreLoser'] },
+  { points: 4, conditions: ['scoreLoser'] },
   { points: 2, conditions: ['result'] }
-], {scoreA:4,scoreB:1}, {scoreA:3,scoreB:1});
+], {scoreA:0,scoreB:1}, {scoreA:3,scoreB:1});
 assert.deepStrictEqual(result, {points:4,rule:0});
+
+// Gols do vencedor também é independente do resultado previsto:
+// real 3x1, palpite 0x3 -> vencedor real marcou 3, então a condição é satisfeita.
+result = calculate([
+  { points: 4, conditions: ['scoreWinner'] }
+], {scoreA:3,scoreB:4}, {scoreA:3,scoreB:1});
+assert.deepStrictEqual(result, {points:4,rule:0});
+
+// Quando o administrador combina com Resultado, o E continua exigindo ambos.
+result = calculate([
+  { points: 6, conditions: ['result', 'scoreWinner'] }
+], {scoreA:3,scoreB:4}, {scoreA:3,scoreB:1});
+assert.deepStrictEqual(result, {points:0,rule:null});
 
 // Empate: gols do vencedor/perdedor não podem ser satisfeitos.
 result = calculate([

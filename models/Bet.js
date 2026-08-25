@@ -101,8 +101,39 @@ const ExtrasBreakdownSchema = new mongoose.Schema({
   upset: {
     type: Number,
     default: 0
+  },
+
+  groupQualification: {
+    type: Number,
+    default: 0
   }
 
+}, { _id: false });
+
+// 🏆 SUB-SCHEMA: Palpite da classificação de um grupo
+const GroupPredictionSchema = new mongoose.Schema({
+  group: { type: String, required: true, trim: true },
+  positions: [{
+    position: { type: Number, required: true, min: 1 },
+    team: { type: String, required: true, trim: true }
+  }],
+  additionalQualifiedTeams: {
+    type: [String],
+    default: []
+  },
+  points: { type: Number, default: 0 },
+  pointsBreakdown: {
+    type: [{
+      team: String,
+      predictedPosition: Number,
+      actualPosition: Number,
+      predictedQualified: Boolean,
+      actualQualified: Boolean,
+      points: Number,
+      matchedRuleIndex: Number
+    }],
+    default: []
+  }
 }, { _id: false });
 
 // 📋 SCHEMA PRINCIPAL: Aposta / Bolão do Usuário
@@ -137,6 +168,11 @@ const BetSchema = new mongoose.Schema({
 
   groupMatches: {
     type: [GroupMatchSchema],
+    default: []
+  },
+
+  groupPredictions: {
+    type: [GroupPredictionSchema],
     default: []
   },
 
@@ -179,6 +215,19 @@ const BetSchema = new mongoose.Schema({
   extrasPoints: {
     type: Number,
     default: 0
+  },
+
+  groupPredictionPoints: {
+    type: Number,
+    default: 0
+  },
+
+  groupPredictionBreakdown: {
+    type: [{
+      group: String,
+      points: Number
+    }],
+    default: []
   },
 
   extrasBreakdown: {
@@ -323,34 +372,32 @@ BetSchema.methods.recalculateTotals =
 
       (Number(
         eb?.upset
+      ) || 0) +
+
+      (Number(
+        eb?.groupQualification
       ) || 0);
 
     // ==========================================================
-    // 4. TOTAL GERAL
+    // 4. PONTOS DA CLASSIFICAÇÃO PARA O MATA-MATA
+    // ==========================================================
+    this.groupPredictionPoints =
+      Number(this.groupPredictionPoints) || 0;
+
+    // 5. TOTAL GERAL
     // ==========================================================
     this.totalPoints =
       (
-        Number(
-          this.groupPoints
-        ) || 0
+        Number(this.groupPoints) || 0
       ) +
-
       (
-        Number(
-          this.podiumPoints
-        ) || 0
+        Number(this.podiumPoints) || 0
       ) +
-
       (
-        Number(
-          this.extrasPoints
-        ) || 0
+        Number(this.extrasPoints) || 0
       ) +
-
       (
-        Number(
-          this.bonusPoints
-        ) || 0
+        Number(this.bonusPoints) || 0
       );
 
     return this;

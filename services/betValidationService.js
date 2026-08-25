@@ -8,6 +8,38 @@
  */
 
 function scoresAreEnabled(scoringRules = {}) {
+  /*
+   * Quando o campeonato usa o novo criador de regras, a necessidade de
+   * placar vem das condições efetivamente configuradas.
+   *
+   * Estas condições precisam de scoreA/scoreB:
+   *   exactScore, scoreTeamA, scoreTeamB, scoreWinner, scoreLoser,
+   *   totalGoals, goalDifference
+   *
+   * Estas NÃO precisam de placar:
+   *   result, qualifier
+   *
+   * Se não houver matchRules, preservamos a compatibilidade com o modelo
+   * antigo baseado nos campos exactScore/scoreTeamA/scoreTeamB.
+   */
+  if (Array.isArray(scoringRules.matchRules)) {
+    const scoreConditions = new Set([
+      'exactScore',
+      'scoreTeamA',
+      'scoreTeamB',
+      'scoreWinner',
+      'scoreLoser',
+      'totalGoals',
+      'goalDifference'
+    ]);
+
+    return scoringRules.matchRules.some(rule =>
+      Array.isArray(rule?.conditions) &&
+      rule.conditions.some(condition => scoreConditions.has(condition)) &&
+      Number(rule?.points) > 0
+    );
+  }
+
   return (
     (Number(scoringRules.exactScore) || 0) > 0 ||
     (Number(scoringRules.scoreTeamA) || 0) > 0 ||
