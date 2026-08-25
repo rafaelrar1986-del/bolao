@@ -8,7 +8,7 @@ function hasChampionshipStarted(settings) {
 }
 
 function canEditChampionshipRules(settings) {
-  return !hasChampionshipStarted(settings);
+  return Boolean(settings?.testMode) || !hasChampionshipStarted(settings);
 }
 
 function assertChampionshipRulesEditable(settings) {

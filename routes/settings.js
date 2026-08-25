@@ -39,6 +39,127 @@ const {
   isChangingChampionshipRules
 } = require('../services/championshipRulesService');
 
+
+/**
+ * ================================================================
+ * 🧪 POST /api/settings/test-mode
+ * ================================================================
+ *
+ * Modo temporário de testes do administrador.
+ * Não apaga firstMatchStartedAt nem altera status das partidas.
+ * Ao ativar, guarda as travas atuais e limpa locked/unlocked phases.
+ * Ao desativar, restaura exatamente o estado anterior.
+ */
+router.post('/test-mode', protect, admin, async (req, res) => {
+  try {
+    const leagueId = toLeagueId(
+      req.body?.leagueId || req.query?.leagueId || '1'
+    );
+
+    const enabled = req.body?.enabled === true;
+    const settings = await Settings.findById(leagueId);
+
+    if (!settings) {
+      return res.status(404).json({
+        success: false,
+        message: 'Configuração da liga não encontrada.'
+      });
+    }
+
+    if (enabled) {
+      if (settings.testMode === true) {
+        return res.json({
+          success: true,
+          testMode: true,
+          data: settings
+        });
+      }
+
+      const backup = {
+        lockedPhases: Array.isArray(settings.lockedPhases)
+          ? [...settings.lockedPhases]
+          : [],
+        unlockedPhases: Array.isArray(settings.unlockedPhases)
+          ? [...settings.unlockedPhases]
+          : [],
+        blockSaveBets: Boolean(settings.blockSaveBets),
+        blockSaveKnockout: Boolean(settings.blockSaveKnockout),
+        betLockMode: settings.betLockMode || 'grade',
+        lockedReason: settings.lockedReason ?? null,
+        unlockAt: settings.unlockAt ?? null
+      };
+
+      settings.testModeBackup = backup;
+      settings.testMode = true;
+
+      // Durante o teste, as fases não ficam presas por nenhuma trava.
+      settings.lockedPhases = [];
+      settings.unlockedPhases = [];
+
+      // O botão de teste deve conseguir salvar apostas.
+      settings.blockSaveBets = false;
+      settings.blockSaveKnockout = false;
+
+      // Metadados de trava não devem induzir o frontend a bloquear.
+      settings.lockedReason = null;
+      settings.unlockAt = null;
+
+      await settings.save();
+
+      return res.json({
+        success: true,
+        testMode: true,
+        message: 'Modo de teste ativado. Bloqueios temporários foram liberados.',
+        data: settings
+      });
+    }
+
+    if (settings.testMode !== true) {
+      return res.json({
+        success: true,
+        testMode: false,
+        message: 'O modo de teste já estava desativado.',
+        data: settings
+      });
+    }
+
+    const backup = settings.testModeBackup || {};
+
+    settings.lockedPhases = Array.isArray(backup.lockedPhases)
+      ? backup.lockedPhases
+      : [];
+    settings.unlockedPhases = Array.isArray(backup.unlockedPhases)
+      ? backup.unlockedPhases
+      : [];
+    settings.blockSaveBets = Boolean(backup.blockSaveBets);
+    settings.blockSaveKnockout = Boolean(backup.blockSaveKnockout);
+    settings.betLockMode =
+      backup.betLockMode === 'match' ? 'match' : 'grade';
+    settings.lockedReason = backup.lockedReason ?? null;
+    settings.unlockAt = backup.unlockAt
+      ? new Date(backup.unlockAt)
+      : null;
+
+    settings.testMode = false;
+    settings.testModeBackup = null;
+
+    await settings.save();
+
+    return res.json({
+      success: true,
+      testMode: false,
+      message: 'Modo de teste encerrado. Configuração anterior restaurada.',
+      data: settings
+    });
+  } catch (err) {
+    console.error('Erro ao alternar modo de teste:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro ao alterar modo de teste.'
+    });
+  }
+});
+
 router.get('/global', async (req, res) => {
   try {
     const leagueId =

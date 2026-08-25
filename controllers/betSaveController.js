@@ -75,7 +75,7 @@ async function saveBets(req, res) {
     ]);
 
     // 🛡️ Verificação de bloqueio global de apostas
-    if (settings?.blockSaveBets) {
+    if (settings?.blockSaveBets && settings?.testMode !== true) {
       return res.status(403).json({
         success: false,
         message: 'O administrador bloqueou novas apostas nesta liga.'
@@ -774,7 +774,7 @@ async function saveSingleBet(req, res) {
     }
 
     // 🛡️ Verificação de bloqueio global de apostas
-    if (settings?.blockSaveBets) {
+    if (settings?.blockSaveBets && settings?.testMode !== true) {
       return res.status(403).json({
         success: false,
         message: 'O administrador bloqueou novas apostas nesta liga.'

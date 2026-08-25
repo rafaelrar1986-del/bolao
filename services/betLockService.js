@@ -91,6 +91,16 @@ function isGradeLocked(match, settings) {
  * Retorna o motivo do bloqueio sem aplicar blockSaveBets.
  */
 function getBetLockState(match, settings, now = new Date()) {
+  // 🧪 Modo de teste: permite apostar inclusive em partidas finalizadas,
+  // sem alterar o status oficial da partida.
+  if (settings?.testMode === true) {
+    return {
+      mode: 'test',
+      locked: false,
+      reason: null
+    };
+  }
+
   const mode = getBetLockMode(settings);
   const started = isMatchStarted(match, now);
 

@@ -37,6 +37,18 @@ const SettingsSchema = new mongoose.Schema(
       default: false
     },
 
+    // 🧪 MODO DE TESTE TEMPORÁRIO
+    // Permite ao administrador testar regras/apostas sem alterar o
+    // firstMatchStartedAt ou o status oficial das partidas.
+    testMode: {
+      type: Boolean,
+      default: false
+    },
+    testModeBackup: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null
+    },
+
     /**
      * 🔒 MODO DE BLOQUEIO AUTOMÁTICO DAS APOSTAS
      * grade = primeira partida da grade bloqueia toda a grade
