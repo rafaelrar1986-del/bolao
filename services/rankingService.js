@@ -36,9 +36,12 @@ function normalizeTieBreakers(raw, settings = {}) {
 }
 
 function getTieBreakerMetrics(bet, computed) {
-  const exactScorePoints = (bet?.groupMatches || []).reduce(
-    (sum, item) => sum + Number(item?.pointsBreakdown?.exactScore || 0),
-    0
+  const exactScorePoints = Number(
+    computed?.exactScorePoints ??
+    (bet?.groupMatches || []).reduce(
+      (sum, item) => sum + Number(item?.pointsBreakdown?.exactScore || 0),
+      0
+    )
   );
 
   const podiumPoints = Number(

@@ -527,6 +527,33 @@ router.post('/global', protect, admin, async (req, res) => {
       };
       shouldRecalculate = true;
     }
+    /*
+     * Se o ADM desativar a fase mata-mata, o critério
+     * knockoutPoints deixa de ser válido. A limpeza é feita
+     * mesmo quando rankingRules não veio no payload.
+     */
+    if (lockUpdates.championshipRules?.hasKnockoutPhase === false) {
+      const currentTieBreakers = Array.isArray(
+        currentSettingsForRules?.rankingRules?.tieBreakers
+      )
+        ? currentSettingsForRules.rankingRules.tieBreakers
+        : [];
+
+      const requestedTieBreakers = Array.isArray(
+        lockUpdates.rankingRules?.tieBreakers
+      )
+        ? lockUpdates.rankingRules.tieBreakers
+        : currentTieBreakers;
+
+      lockUpdates.rankingRules = {
+        ...(currentSettingsForRules?.rankingRules || {}),
+        ...(lockUpdates.rankingRules || {}),
+        tieBreakers: requestedTieBreakers.filter(
+          value => value !== 'knockoutPoints'
+        )
+      };
+    }
+
 
     /*
      * ============================================================

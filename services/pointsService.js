@@ -586,6 +586,7 @@ function calculateBetTotal(
   let groupPoints = 0;
   let groupPhasePoints = 0;
   let knockoutPoints = 0;
+  let exactScorePoints = 0;
 
   for (const betMatch of bet?.groupMatches || []) {
     const match = matchMap?.get(String(betMatch.matchId));
@@ -600,6 +601,7 @@ function calculateBetTotal(
     );
 
     groupPoints += result.points;
+    exactScorePoints += Number(result.breakdown?.exactScore || 0);
 
     if (
       match.phase === 'group' ||
@@ -636,6 +638,7 @@ function calculateBetTotal(
     groupPoints,
     groupPhasePoints,
     knockoutPoints,
+    exactScorePoints,
     podiumPoints: podiumResult.points,
     extrasPoints: extrasResult.points,
     bonusPoints,
