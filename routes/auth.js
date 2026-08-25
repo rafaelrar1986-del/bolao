@@ -101,7 +101,8 @@ router.post('/register', async (req, res) => {
         email: user.email,
         isAdmin: user.isAdmin,
         hasPaid: user.hasPaid,
-        createdAt: user.createdAt
+        createdAt: user.createdAt,
+        avatar: user.avatar || null
       },
       token
     });
@@ -140,7 +141,8 @@ router.post('/login', async (req, res) => {
         email: user.email,
         isAdmin: user.isAdmin,
         hasPaid: user.hasPaid,
-        createdAt: user.createdAt
+        createdAt: user.createdAt,
+        avatar: user.avatar || null
       },
       token
     });
@@ -204,11 +206,77 @@ router.get('/me', protect, async (req, res) => {
         email: user.email,
         isAdmin: user.isAdmin,
         hasPaid: user.hasPaid,
-        createdAt: user.createdAt
+        createdAt: user.createdAt,
+        avatar: user.avatar || null
       }
     });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Erro ao buscar dados' });
+  }
+});
+
+
+// ======================
+// 🖼️ AVATAR DO PRÓPRIO PERFIL
+// ======================
+// Recebe uma imagem já reduzida pelo frontend como data URL.
+// O usuário só pode alterar o próprio avatar.
+router.put('/me/avatar', protect, async (req, res) => {
+  try {
+    const { avatar } = req.body || {};
+
+    if (typeof avatar !== 'string' || !avatar) {
+      return res.status(400).json({
+        success: false,
+        message: 'Imagem de perfil não informada'
+      });
+    }
+
+    // Aceita somente imagens em data URL.
+    const match = avatar.match(/^data:image\/(jpeg|jpg|png|webp);base64,([A-Za-z0-9+/=]+)$/i);
+    if (!match) {
+      return res.status(400).json({
+        success: false,
+        message: 'Formato de imagem inválido'
+      });
+    }
+
+    // Limite de 1,5 MB para a representação final armazenada.
+    if (Buffer.byteLength(avatar, 'utf8') > 1.5 * 1024 * 1024) {
+      return res.status(413).json({
+        success: false,
+        message: 'A imagem final é muito grande'
+      });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { $set: { avatar } },
+      { new: true, runValidators: true }
+    ).select('_id name avatar');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Usuário não encontrado'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Foto de perfil atualizada',
+      user: {
+        _id: user._id,
+        name: user.name,
+        avatar: user.avatar || null
+      }
+    });
+  } catch (error) {
+    console.error('❌ Erro ao atualizar avatar:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao atualizar foto de perfil'
+    });
   }
 });
 

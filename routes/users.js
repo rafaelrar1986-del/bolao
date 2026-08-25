@@ -23,7 +23,7 @@ router.get('/:id/profile', protect, async (req, res) => {
 
     // 🔎 Usuário básico
     const user = await User.findById(userId)
-      .select('name createdAt')
+      .select('name createdAt avatar')
       .lean();
 
     if (!user) {
@@ -49,7 +49,8 @@ router.get('/:id/profile', protect, async (req, res) => {
         user: {
           _id: user._id,
           name: user.name,
-          createdAt: user.createdAt
+          createdAt: user.createdAt,
+          avatar: user.avatar || null
         },
         stats: bet
           ? {
