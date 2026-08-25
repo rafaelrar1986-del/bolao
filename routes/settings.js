@@ -1021,7 +1021,9 @@ router.post('/global', protect, admin, async (req, res) => {
             success: false,
             error:
               recalculateError.message ||
-              'Erro desconhecido'
+              'Erro desconhecido',
+            name: recalculateError.name || 'Error',
+            code: recalculateError.code || null
           }
         });
       }

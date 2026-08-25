@@ -345,6 +345,7 @@ async function saveBets(req, res) {
     for (const matchId of matchIdsEnviados) {
       const matchData = matchMap.get(Number(matchId));
       if (
+        settings?.testMode !== true &&
         matchData &&
         isMatchStarted(matchData, checkNow) &&
         !matchesReenvioPermitido.has(Number(matchId))
@@ -730,7 +731,10 @@ async function saveSingleBet(req, res) {
     // ============================================================
     const matchDate = parseMatchDate(match.date, match.time);
 
-    if (match.status !== 'scheduled' || (matchDate && matchDate <= now)) {
+    if (
+      settings?.testMode !== true &&
+      (match.status !== 'scheduled' || (matchDate && matchDate <= now))
+    ) {
       return res.status(403).json({
         success: false,
         message: 'Aposta bloqueada: Esta partida já começou ou foi encerrada.'

@@ -173,14 +173,20 @@ function sanitizeScoringRules(rawRules) {
 
   if (!Array.isArray(rules.podiumPoints)) {
     rules.podiumPoints = [...DEFAULT_SCORING.podiumPoints];
-  } else {
-    rules.matchRules = Array.isArray(rules.matchRules) ? rules.matchRules : [];
+  }
+
+  // matchRules é independente de podiumPoints e precisa ser normalizado
+  // sempre. A versão anterior só fazia isso dentro do else acima.
+  rules.matchRules = Array.isArray(rules.matchRules) ? rules.matchRules : [];
+  rules.groupQualificationRules =
+    Array.isArray(rules.groupQualificationRules)
+      ? rules.groupQualificationRules
+      : [];
 
   rules.podiumPoints = rules.podiumPoints.map(value => {
-      const number = Number(value);
-      return Number.isFinite(number) ? Math.max(0, number) : 0;
-    });
-  }
+    const number = Number(value);
+    return Number.isFinite(number) ? Math.max(0, number) : 0;
+  });
 
   return rules;
 }
