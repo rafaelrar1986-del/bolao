@@ -885,7 +885,7 @@ async function unfinishMatches(ctx) {
 
 
   try {
-    const { matchId, leagueId, leagueName, groupName } = ctx.req.body;
+    const { matchId, matchIds, leagueId, leagueName, groupName, roundNumber, phase } = ctx.req.body;
     const normalizedLeagueId = requireLeagueId(leagueId);
 
     if (!normalizedLeagueId) {
@@ -897,7 +897,16 @@ async function unfinishMatches(ctx) {
 
     let filter = {};
 
-    if (matchId !== undefined && matchId !== null && String(matchId).trim() !== '') {
+    const normalizedMatchIds = Array.isArray(matchIds)
+      ? [...new Set(matchIds.map(parsePositiveInteger).filter(v => v !== null))]
+      : [];
+
+    if (normalizedMatchIds.length > 0) {
+      filter = {
+        matchId: { $in: normalizedMatchIds },
+        leagueId: normalizedLeagueId
+      };
+    } else if (matchId !== undefined && matchId !== null && String(matchId).trim() !== '') {
       const normalizedMatchId = parsePositiveInteger(matchId);
 
       if (normalizedMatchId === null) {
@@ -911,6 +920,23 @@ async function unfinishMatches(ctx) {
         matchId: normalizedMatchId,
         leagueId: normalizedLeagueId
       };
+    } else if (roundNumber !== undefined && roundNumber !== null && String(roundNumber).trim() !== '') {
+      const normalizedRoundNumber = parsePositiveInteger(roundNumber);
+      if (normalizedRoundNumber === null) {
+        return ctx.res.status(400).json({
+          success: false,
+          message: 'roundNumber deve ser um número inteiro positivo'
+        });
+      }
+
+      filter = {
+        leagueId: normalizedLeagueId,
+        roundNumber: normalizedRoundNumber
+      };
+
+      if (phase) {
+        filter.phase = String(phase);
+      }
     } else {
       if (leagueName && groupName) {
         filter = {
@@ -973,7 +999,7 @@ async function deleteMatches(ctx) {
 
 
   try {
-    const { matchId, leagueId, leagueName, groupName } = ctx.req.body;
+    const { matchId, matchIds, leagueId, leagueName, groupName, roundNumber, phase } = ctx.req.body;
     const normalizedLeagueId = requireLeagueId(leagueId);
 
     if (!normalizedLeagueId) {
@@ -985,7 +1011,16 @@ async function deleteMatches(ctx) {
 
     let filter = {};
 
-    if (matchId !== undefined && matchId !== null && String(matchId).trim() !== '') {
+    const normalizedMatchIds = Array.isArray(matchIds)
+      ? [...new Set(matchIds.map(parsePositiveInteger).filter(v => v !== null))]
+      : [];
+
+    if (normalizedMatchIds.length > 0) {
+      filter = {
+        matchId: { $in: normalizedMatchIds },
+        leagueId: normalizedLeagueId
+      };
+    } else if (matchId !== undefined && matchId !== null && String(matchId).trim() !== '') {
       const normalizedMatchId = parsePositiveInteger(matchId);
 
       if (normalizedMatchId === null) {
@@ -999,6 +1034,23 @@ async function deleteMatches(ctx) {
         matchId: normalizedMatchId,
         leagueId: normalizedLeagueId
       };
+    } else if (roundNumber !== undefined && roundNumber !== null && String(roundNumber).trim() !== '') {
+      const normalizedRoundNumber = parsePositiveInteger(roundNumber);
+      if (normalizedRoundNumber === null) {
+        return ctx.res.status(400).json({
+          success: false,
+          message: 'roundNumber deve ser um número inteiro positivo'
+        });
+      }
+
+      filter = {
+        leagueId: normalizedLeagueId,
+        roundNumber: normalizedRoundNumber
+      };
+
+      if (phase) {
+        filter.phase = String(phase);
+      }
     } else {
       if (leagueName && groupName) {
         filter = {
