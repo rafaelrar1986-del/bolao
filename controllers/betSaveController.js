@@ -92,7 +92,9 @@ async function saveBets(req, res) {
     }
 
 
-    const normalizedGroupPredictions = normalizeGroupPredictionsInput(groupPredictions);
+    const normalizedGroupPredictions = settings?.championshipRules?.hasGroupPhase === false
+      ? []
+      : normalizeGroupPredictionsInput(groupPredictions);
 
     // A previsão de classificação pertence somente à fase de grupos.
     // Não aceitamos grupos inventados pelo cliente: eles precisam existir
@@ -124,7 +126,7 @@ async function saveBets(req, res) {
 
     // 🛡️ requireAllBets também considera a previsão da classificação dos grupos.
     // O rascunho local nunca passa por esta validação; ela só ocorre no envio oficial.
-    if (settings?.requireAllBets) {
+    if (settings?.requireAllBets && settings?.championshipRules?.hasGroupPhase !== false) {
       const groupRules = Array.isArray(settings?.scoringRules?.groupQualificationRules)
         ? settings.scoringRules.groupQualificationRules
         : [];

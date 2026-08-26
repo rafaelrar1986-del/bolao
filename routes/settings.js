@@ -497,10 +497,11 @@ router.post('/global', protect, admin, async (req, res) => {
           'qualifier'
         ];
 
-        const championshipForRules =
-          lockUpdates.championshipRules ||
-          currentSettingsForRules?.championshipRules ||
-          {};
+        const championshipForRules = {
+          ...(currentSettingsForRules?.championshipRules || {}),
+          ...(req.body.championshipRules || {}),
+          ...(lockUpdates.championshipRules || {})
+        };
 
         const seenRuleSignatures = new Set();
 
@@ -583,6 +584,17 @@ router.post('/global', protect, admin, async (req, res) => {
           'teamQualified',
           'teamNotQualified'
         ];
+        const championshipForGroupRules = {
+          ...(currentSettingsForRules?.championshipRules || {}),
+          ...(req.body.championshipRules || {}),
+          ...(lockUpdates.championshipRules || {})
+        };
+        if (championshipForGroupRules.hasGroupPhase === false && incomingScoring.groupQualificationRules.length > 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'Regras de classificação dos grupos não podem ser usadas em um campeonato sem fase de grupos.'
+          });
+        }
         const seenGroupRuleSignatures = new Set();
 
         for (let i = 0; i < incomingScoring.groupQualificationRules.length; i++) {
@@ -616,6 +628,15 @@ router.post('/global', protect, admin, async (req, res) => {
               return res.status(400).json({
                 success: false,
                 message: `Condição inválida na regra de classificação ${i + 1}: ${condition}`
+              });
+            }
+            if (
+              (condition === 'teamQualified' || condition === 'teamNotQualified') &&
+              championshipForGroupRules.hasKnockoutPhase !== true
+            ) {
+              return res.status(400).json({
+                success: false,
+                message: 'As condições de classificação/não classificação só podem ser usadas quando houver fase mata-mata.'
               });
             }
           }
@@ -668,37 +689,61 @@ router.post('/global', protect, admin, async (req, res) => {
         ...req.body.championshipRules
       };
 
-      if (incomingChampionshipRules.groupQualification !== undefined) {
-        const q = incomingChampionshipRules.groupQualification;
-        if (!q || typeof q !== 'object') {
+      const hasGroupPhase = incomingChampionshipRules.hasGroupPhase !== undefined
+        ? Boolean(incomingChampionshipRules.hasGroupPhase)
+        : currentChamp.hasGroupPhase !== false;
+      const hasKnockoutPhase = incomingChampionshipRules.hasKnockoutPhase !== undefined
+        ? Boolean(incomingChampionshipRules.hasKnockoutPhase)
+        : currentChamp.hasKnockoutPhase === true;
+
+      // A combinação dos dois booleanos define o formato:
+      // grupos, mata-mata, grupos + mata-mata ou pontos corridos.
+      incomingChampionshipRules.hasGroupPhase = hasGroupPhase;
+      incomingChampionshipRules.hasKnockoutPhase = hasKnockoutPhase;
+
+      const rawQualification = incomingChampionshipRules.groupQualification !== undefined
+        ? incomingChampionshipRules.groupQualification
+        : (currentChamp.groupQualification || {});
+
+      if (!rawQualification || typeof rawQualification !== 'object') {
+        return res.status(400).json({
+          success: false,
+          message: 'groupQualification deve ser um objeto.'
+        });
+      }
+
+      const totalTeams = hasGroupPhase ? Math.floor(Number(rawQualification.totalTeams || 0)) : 0;
+      const groupCount = hasGroupPhase ? Math.floor(Number(rawQualification.groupCount || 0)) : 0;
+      const totalQualified = hasGroupPhase && hasKnockoutPhase
+        ? Math.floor(Number(rawQualification.totalQualified || 0))
+        : 0;
+
+      if (totalTeams < 0 || groupCount < 0 || totalQualified < 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Os valores da classificação por grupos não podem ser negativos.'
+        });
+      }
+
+      if (hasGroupPhase) {
+        if (!totalTeams || !groupCount) {
           return res.status(400).json({
             success: false,
-            message: 'groupQualification deve ser um objeto.'
+            message: 'Informe número de times e número de grupos para uma fase de grupos.'
+          });
+        }
+        if (totalTeams % groupCount !== 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'O número de times deve ser divisível pelo número de grupos.'
           });
         }
 
-        const totalTeams = Math.floor(Number(q.totalTeams || 0));
-        const groupCount = Math.floor(Number(q.groupCount || 0));
-        const totalQualified = Math.floor(Number(q.totalQualified || 0));
-
-        if (totalTeams < 0 || groupCount < 0 || totalQualified < 0) {
-          return res.status(400).json({
-            success: false,
-            message: 'Os valores da classificação por grupos não podem ser negativos.'
-          });
-        }
-
-        if (totalTeams || groupCount || totalQualified) {
-          if (!totalTeams || !groupCount || !totalQualified) {
+        if (hasKnockoutPhase) {
+          if (!totalQualified) {
             return res.status(400).json({
               success: false,
-              message: 'Informe número de times, número de grupos e número de classificados.'
-            });
-          }
-          if (totalTeams % groupCount !== 0) {
-            return res.status(400).json({
-              success: false,
-              message: 'O número de times deve ser divisível pelo número de grupos.'
+              message: 'Informe o número de classificados para o mata-mata.'
             });
           }
           if (totalQualified > totalTeams) {
@@ -724,25 +769,52 @@ router.post('/global', protect, admin, async (req, res) => {
               message: 'Não há uma posição seguinte disponível para os classificados adicionais.'
             });
           }
-
-          incomingChampionshipRules.groupQualification = {
-            totalTeams,
-            groupCount,
-            totalQualified
-          };
-        } else {
-          incomingChampionshipRules.groupQualification = {
-            totalTeams: 0,
-            groupCount: 0,
-            totalQualified: 0
-          };
         }
       }
 
+      // Sem grupos, ou com grupos sem mata-mata, não existe o conceito
+      // de classificados para o mata-mata.
+      incomingChampionshipRules.groupQualification = {
+        totalTeams,
+        groupCount,
+        totalQualified
+      };
       lockUpdates.championshipRules = {
         ...currentChamp,
         ...incomingChampionshipRules
       };
+
+      // Se a fase de grupos foi desativada, regras antigas de classificação
+      // não podem continuar válidas de forma invisível.
+      if (hasGroupPhase === false) {
+        const currentScoring = {
+          ...(currentSettingsForRules?.scoringRules || {}),
+          ...(lockUpdates.scoringRules || {})
+        };
+        if (Array.isArray(currentScoring.groupQualificationRules) && currentScoring.groupQualificationRules.length) {
+          lockUpdates.scoringRules = {
+            ...currentScoring,
+            groupQualificationRules: []
+          };
+        }
+      } else if (hasKnockoutPhase === false) {
+        const currentScoring = {
+          ...(currentSettingsForRules?.scoringRules || {}),
+          ...(lockUpdates.scoringRules || {})
+        };
+        if (Array.isArray(currentScoring.groupQualificationRules)) {
+          const filtered = currentScoring.groupQualificationRules.map(rule => ({
+            ...rule,
+            conditions: Array.isArray(rule.conditions)
+              ? rule.conditions.filter(c => c !== 'teamQualified' && c !== 'teamNotQualified')
+              : []
+          })).filter(rule => Array.isArray(rule.conditions) && rule.conditions.length);
+          lockUpdates.scoringRules = {
+            ...currentScoring,
+            groupQualificationRules: filtered
+          };
+        }
+      }
 
       shouldRecalculate = true;
     }
