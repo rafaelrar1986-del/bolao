@@ -66,6 +66,7 @@ const DEFAULT_CHAMPIONSHIP_RULES = {
   drawIncludesExtraTime: false,
   winnerFromScore: true,
   podiumSize: 4,
+  hasGroupPhase: true,
   hasKnockoutPhase: false,
   groupQualification: {
     totalTeams: 0,
@@ -106,7 +107,8 @@ async function loadLeagueSettings() {
         'independent';
       CurrentSettings.championshipRules = {
         ...DEFAULT_CHAMPIONSHIP_RULES,
-        ...(res.data.championshipRules || {})
+        ...(res.data.championshipRules || {}),
+        hasGroupPhase: res.data.championshipRules?.hasGroupPhase !== false
       };
       CurrentSettings.championshipResults = {
         topScorer: null, bestAttack: null, worstDefense: null, upset: null,
@@ -733,6 +735,8 @@ async function openScoringRulesModal() {
 
   const r = CurrentSettings.scoringRules || { ...DEFAULT_SCORING };
   const pp = Array.isArray(r.podiumPoints) ? r.podiumPoints : [20,15,10,5];
+  const podiumSize = getConfiguredPodiumSize();
+  const hasGroup = CurrentSettings.championshipRules?.hasGroupPhase !== false;
   const hasKnockout = CurrentSettings.championshipRules?.hasKnockoutPhase === true;
 
   const conditionOptions = [
@@ -851,8 +855,9 @@ async function openScoringRulesModal() {
             </small>
           </div>
 
+          ${hasGroup ? `
           <div id="group-qualification-extra-panel" style="background:linear-gradient(135deg,rgba(255,180,0,.08),rgba(0,190,255,.05)); padding:12px; border-radius:10px; border:1px solid rgba(255,190,0,.16);">
-            <h4 style="margin:0 0 5px; color:#ffd34d;">🏆 Classificação para o mata-mata</h4>
+            <h4 style="margin:0 0 5px; color:#ffd34d;">🏆 Classificação da fase de grupos</h4>
             <p style="margin:0 0 10px; color:#aaa; font-size:.72rem; line-height:1.45;">
               Dentro de uma regra, as condições são ligadas por <b>E</b>.
               Regras diferentes funcionam como <b>OU</b>. A primeira regra satisfeita concede os pontos.
@@ -862,17 +867,20 @@ async function openScoringRulesModal() {
               + Adicionar regra
             </button>
             <small style="display:block; color:#777; margin-top:7px;">
-              Condições: Posição correta • Posição incorreta • Time classificado • Time não classificado
+              Condições: Posição correta • Posição incorreta${hasKnockout ? ' • Time classificado • Time não classificado' : ''}
             </small>
           </div>
+          ` : ''}
 
           <div style="background:rgba(0,0,0,.20); padding:10px; border-radius:8px; border:1px solid rgba(255,255,255,.08);">
-            <h4 style="margin:0 0 8px; font-size:.85rem; color:#ffda44;">Pódio</h4>
-            <div class="form-row">
-              <div class="form-group"><label>1º</label><input type="number" id="sr-podium-0" value="${pp[0] ?? 20}" min="0" style="width:60px;"></div>
-              <div class="form-group"><label>2º</label><input type="number" id="sr-podium-1" value="${pp[1] ?? 15}" min="0" style="width:60px;"></div>
-              <div class="form-group"><label>3º</label><input type="number" id="sr-podium-2" value="${pp[2] ?? 10}" min="0" style="width:60px;"></div>
-              <div class="form-group"><label>4º</label><input type="number" id="sr-podium-3" value="${pp[3] ?? 5}" min="0" style="width:60px;"></div>
+            <h4 style="margin:0 0 8px; font-size:.85rem; color:#ffda44;">Pódio — ${podiumSize} ${podiumSize === 1 ? 'posição' : 'posições'}</h4>
+            <div style="display:grid; grid-template-columns:repeat(${podiumSize},minmax(0,1fr)); gap:14px; align-items:start;">
+              ${getPodiumFieldConfig().slice(0, podiumSize).map((field, index) => `
+                <div class="form-group" style="min-width:0; display:flex; flex-direction:column;">
+                  <label style="min-height:2.2em; display:flex; align-items:flex-start;">${index + 1}º</label>
+                  <input type="number" id="sr-podium-${index}" value="${pp[index] ?? [20,15,10,5][index]}" min="0" style="width:100%; max-width:100%; box-sizing:border-box;">
+                </div>
+              `).join('')}
             </div>
           </div>
 
@@ -920,8 +928,12 @@ async function openScoringRulesModal() {
   const groupQualificationConditionOptions = [
     ['positionCorrect', 'Posição correta'],
     ['positionIncorrect', 'Posição incorreta'],
-    ['teamQualified', 'Time classificado'],
-    ['teamNotQualified', 'Time não classificado']
+    ...(hasKnockout
+      ? [
+          ['teamQualified', 'Time classificado'],
+          ['teamNotQualified', 'Time não classificado']
+        ]
+      : [])
   ];
 
   const existingGroupQualificationRules =
@@ -1162,9 +1174,13 @@ async function saveScoringRules(e) {
     rule.conditions.includes('teamNotQualified')
   );
 
-  if (qualificationStatusRules && !validGroupQualificationConfig) {
+  if (qualificationStatusRules && (
+    CurrentSettings.championshipRules?.hasGroupPhase === false ||
+    CurrentSettings.championshipRules?.hasKnockoutPhase !== true ||
+    !validGroupQualificationConfig
+  )) {
     toast(
-      'Antes de usar “Time classificado” ou “Time não classificado”, configure a estrutura da fase de grupos nas Regras do Campeonato.',
+      '“Time classificado” e “Time não classificado” exigem fase de grupos + mata-mata e uma estrutura de grupos válida.',
       'error'
     );
     return;
@@ -1175,12 +1191,9 @@ async function saveScoringRules(e) {
     ...(CurrentSettings.scoringRules || {}),
     matchRules,
     groupQualificationRules,
-    podiumPoints: [
-      Number(document.getElementById('sr-podium-0').value) || 0,
-      Number(document.getElementById('sr-podium-1').value) || 0,
-      Number(document.getElementById('sr-podium-2').value) || 0,
-      Number(document.getElementById('sr-podium-3').value) || 0
-    ],
+    podiumPoints: Array.from({ length: getConfiguredPodiumSize() }, (_, index) =>
+      Number(document.getElementById(`sr-podium-${index}`)?.value || 0)
+    ),
     topScorer: Number(document.getElementById('sr-topScorer').value) || 0,
     bestAttack: Number(document.getElementById('sr-bestAttack').value) || 0,
     worstDefense: Number(document.getElementById('sr-worstDefense').value) || 0,
@@ -1291,17 +1304,22 @@ async function openChampionshipRulesModal() {
             <h4 style="margin:0 0 10px; color:#ffda44;">⚽ Estrutura do Campeonato</h4>
 
             <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+              <input type="checkbox" id="cr-hasGroupPhase" ${cr.hasGroupPhase !== false ? 'checked' : ''}>
+              <strong>Este campeonato possui fase de grupos</strong>
+            </label>
+
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-top:8px;">
               <input type="checkbox" id="cr-hasKnockoutPhase" ${cr.hasKnockoutPhase ? 'checked' : ''}>
               <strong>Este campeonato possui fase de mata-mata</strong>
             </label>
             <small style="display:block; margin-top:5px; color:#888;">
-              Essa configuração também determina se “Maior pontuação em mata-mata” pode ser usado no desempate.
+              Se nenhuma das duas fases existir, o campeonato será tratado automaticamente como <strong>pontos corridos</strong>.
             </small>
 
-            <div style="margin-top:14px; padding:10px; border-radius:9px; border:1px solid rgba(255,255,255,.08); background:rgba(0,0,0,.12);">
+            <div id="cr-group-structure-panel" style="margin-top:14px; padding:10px; border-radius:9px; border:1px solid rgba(255,255,255,.08); background:rgba(0,0,0,.12);">
               <strong style="display:block; color:#ffda44; margin-bottom:8px;">📊 Estrutura da fase de grupos</strong>
               <small style="display:block; color:#888; margin-bottom:10px;">
-                Não há formato padrão. Informe os valores reais deste campeonato.
+                Informe os valores reais deste campeonato.
               </small>
               <div class="form-row">
                 <div class="form-group">
@@ -1316,7 +1334,7 @@ async function openChampionshipRulesModal() {
                          value="${Number(cr.groupQualification?.groupCount) || 0}"
                          min="0" step="1" placeholder="Ex.: 12">
                 </div>
-                <div class="form-group">
+                <div class="form-group" id="cr-totalQualified-group" style="${cr.hasKnockoutPhase ? '' : 'display:none;'}">
                   <label>Classificados para o mata-mata</label>
                   <input type="number" id="cr-totalQualified"
                          value="${Number(cr.groupQualification?.totalQualified) || 0}"
@@ -1401,45 +1419,60 @@ async function openChampionshipRulesModal() {
   document.body.insertAdjacentHTML('beforeend', html);
 
   const updateGroupQualificationSummary = () => {
+    const hasGroupPhase = document.getElementById('cr-hasGroupPhase')?.checked === true;
+    const hasKnockoutPhase = document.getElementById('cr-hasKnockoutPhase')?.checked === true;
+    const panel = document.getElementById('cr-group-structure-panel');
+    const qualifiedGroup = document.getElementById('cr-totalQualified-group');
+    const target = document.getElementById('cr-group-qualification-summary');
+
+    if (panel) panel.style.display = hasGroupPhase ? '' : 'none';
+    if (qualifiedGroup) qualifiedGroup.style.display = hasGroupPhase && hasKnockoutPhase ? '' : 'none';
+
+    if (!hasGroupPhase) {
+      if (target) target.textContent = hasKnockoutPhase
+        ? 'Este campeonato possui somente fase de mata-mata.'
+        : 'Nenhuma fase de grupos ou mata-mata: o campeonato será tratado como pontos corridos.';
+      return;
+    }
+
     const total = Number(document.getElementById('cr-totalTeams')?.value || 0);
     const groups = Number(document.getElementById('cr-groupCount')?.value || 0);
     const qualified = Number(document.getElementById('cr-totalQualified')?.value || 0);
-    const target = document.getElementById('cr-group-qualification-summary');
-    if (!target) return;
 
-    if (!total || !groups || !qualified) {
-      target.textContent = 'Preencha os três valores para calcular a estrutura.';
+    if (!total || !groups || (hasKnockoutPhase && !qualified)) {
+      if (target) target.textContent = hasKnockoutPhase
+        ? 'Preencha total de times, número de grupos e classificados para o mata-mata.'
+        : 'Preencha total de times e número de grupos.';
       return;
     }
     if (total % groups !== 0) {
       target.textContent = '⚠️ O total de times deve ser divisível pelo número de grupos.';
       return;
     }
-    if (qualified > total) {
+    if (hasKnockoutPhase && qualified > total) {
       target.textContent = '⚠️ O número de classificados não pode ser maior que o total de times.';
+      return;
+    }
+
+    if (!hasKnockoutPhase) {
+      target.textContent = `${total / groups} times por grupo • fase de grupos sem mata-mata.`;
       return;
     }
 
     const teamsPerGroup = total / groups;
     const direct = Math.floor(qualified / groups);
     const additional = qualified % groups;
-
-    if (
-      direct > teamsPerGroup ||
-      (additional > 0 && direct >= teamsPerGroup)
-    ) {
+    if (direct > teamsPerGroup || (additional > 0 && direct >= teamsPerGroup)) {
       target.textContent = '⚠️ Essa configuração não permite distribuir os classificados entre os grupos.';
       return;
     }
     const extraPosition = additional > 0 ? direct + 1 : null;
-
     target.textContent =
       `${teamsPerGroup} times por grupo • ${direct} classificados por grupo` +
       (additional > 0
         ? ` • ${additional} classificados adicionais entre os ${extraPosition}º colocados`
         : ' • sem classificados adicionais');
   };
-
   ['cr-totalTeams','cr-groupCount','cr-totalQualified'].forEach(id => {
     document.getElementById(id)?.addEventListener('input', updateGroupQualificationSummary);
   });
@@ -1556,7 +1589,14 @@ async function openChampionshipRulesModal() {
   distribution.addEventListener('input', updateDistributionTotal);
   document.getElementById('tr-count').addEventListener('change', renderTieBreakers);
 
+  const groupCheckbox = document.getElementById('cr-hasGroupPhase');
   const knockoutCheckbox = document.getElementById('cr-hasKnockoutPhase');
+
+  groupCheckbox?.addEventListener('change', () => {
+    updateGroupQualificationSummary();
+    renderTieBreakers();
+  });
+
   knockoutCheckbox?.addEventListener('change', () => {
     const container = document.getElementById('tr-selects');
     const current = Array.from(
@@ -1570,10 +1610,12 @@ async function openChampionshipRulesModal() {
       });
     }
 
+    updateGroupQualificationSummary();
     renderTieBreakers();
   });
 
   renderDistribution();
+  updateGroupQualificationSummary();
   renderTieBreakers();
 
   document.getElementById('championship-rules-form')
@@ -1630,31 +1672,30 @@ async function saveChampionshipRules(e) {
     return;
   }
 
-  const totalTeams = Math.floor(Number(document.getElementById('cr-totalTeams')?.value || 0));
-  const groupCount = Math.floor(Number(document.getElementById('cr-groupCount')?.value || 0));
-  const totalQualified = Math.floor(Number(document.getElementById('cr-totalQualified')?.value || 0));
+  const hasGroupPhase = document.getElementById('cr-hasGroupPhase')?.checked === true;
+  const hasKnockoutPhase = document.getElementById('cr-hasKnockoutPhase')?.checked === true;
+  const totalTeams = hasGroupPhase ? Math.floor(Number(document.getElementById('cr-totalTeams')?.value || 0)) : 0;
+  const groupCount = hasGroupPhase ? Math.floor(Number(document.getElementById('cr-groupCount')?.value || 0)) : 0;
+  const totalQualified = hasGroupPhase && hasKnockoutPhase ? Math.floor(Number(document.getElementById('cr-totalQualified')?.value || 0)) : 0;
 
-  const hasAnyGroupQualificationRule =
-    Array.isArray(CurrentSettings.scoringRules?.groupQualificationRules) &&
-    CurrentSettings.scoringRules.groupQualificationRules.length > 0;
-
-  const anyStructureValue = totalTeams || groupCount || totalQualified;
-  if (hasAnyGroupQualificationRule && (!totalTeams || !groupCount || !totalQualified)) {
-    toast('Configure total de times, número de grupos e classificados para usar regras de classificação dos grupos.', 'error');
-    return;
-  }
-  if (anyStructureValue) {
-    if (!totalTeams || !groupCount || !totalQualified) {
-      toast('Informe os três valores da estrutura da fase de grupos.', 'error');
+  if (hasGroupPhase) {
+    if (!totalTeams || !groupCount) {
+      toast('Informe total de times e número de grupos.', 'error');
       return;
     }
     if (totalTeams % groupCount !== 0) {
       toast('O número de times deve ser divisível pelo número de grupos.', 'error');
       return;
     }
-    if (totalQualified > totalTeams) {
-      toast('O número de classificados não pode ser maior que o número de times.', 'error');
-      return;
+    if (hasKnockoutPhase) {
+      if (!totalQualified) {
+        toast('Informe o número de classificados para o mata-mata.', 'error');
+        return;
+      }
+      if (totalQualified > totalTeams) {
+        toast('O número de classificados não pode ser maior que o número de times.', 'error');
+        return;
+      }
     }
   }
 
@@ -1667,8 +1708,8 @@ async function saveChampionshipRules(e) {
         document.getElementById('cr-winnerFromScore').checked,
       podiumSize:
         Number(document.getElementById('cr-podiumSize').value) || 4,
-      hasKnockoutPhase:
-        document.getElementById('cr-hasKnockoutPhase').checked,
+      hasGroupPhase,
+      hasKnockoutPhase,
       groupQualification: {
         totalTeams,
         groupCount,
@@ -1693,16 +1734,9 @@ async function saveChampionshipRules(e) {
 
     CurrentSettings.championshipRules = {
       ...CurrentSettings.championshipRules,
-      ...payload.championshipRules
+      ...payload.championshipRules,
+      hasGroupPhase
     };
-    // O backend pode limpar regras de classificação antigas quando a fase
-    // de grupos/mata-mata é desativada. Mantemos o estado local alinhado.
-    if (res.data?.scoringRules) {
-      CurrentSettings.scoringRules = res.data.scoringRules;
-    }
-    if (res.data?.rankingRules) {
-      CurrentSettings.rankingRules = res.data.rankingRules;
-    }
     CurrentSettings.prizeZone = payload.prizeZone;
     CurrentSettings.rankingRules = payload.rankingRules;
 
