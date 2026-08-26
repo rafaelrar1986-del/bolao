@@ -37,16 +37,33 @@ router.post('/robot/sync', protect, admin, robotController.fetchAndSyncMatches);
  */
 router.get('/users', protect, admin, async (req, res) => {
   try {
-    // Buscamos os campos necessários, incluindo o hasPaid que estava faltando antes
-        const leagueId = String(req.query?.leagueId || '').trim();
-    const users = await User.find({}, 'name email isAdmin hasPaid leagues leagueAccess createdAt').sort({ createdAt: -1 });
+    // O painel administrativo é contextual ao campeonato selecionado.
+    // Sem leagueId não existe uma lista de pagamentos/participações válida.
+    const leagueId = String(req.query?.leagueId || '').trim();
+
+    if (!leagueId) {
+      return res.status(400).json({
+        success: false,
+        message: 'leagueId é obrigatório para listar os usuários do campeonato.'
+      });
+    }
+
+    // IMPORTANTE:
+    // Buscar somente usuários que possuem uma participação naquele campeonato.
+    // Assim, um pedido pendente do Campeonato A não aparece no painel do B.
+    const users = await User.find(
+      { 'leagueAccess.leagueId': leagueId },
+      'name email isAdmin hasPaid leagues leagueAccess createdAt'
+    ).sort({ createdAt: -1 });
+
     const mappedUsers = users.map(user => {
       const obj = user.toObject();
-      const access = leagueId ? user.getLeagueAccess(leagueId) : null;
+      const access = user.getLeagueAccess(leagueId);
+
       return {
         ...obj,
         leagueAccessStatus: access?.status || null,
-        selectedLeagueId: leagueId || null
+        selectedLeagueId: leagueId
       };
     });
 
