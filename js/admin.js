@@ -3240,20 +3240,31 @@ export async function loadAdminUsers() {
             return;
         }
 
-        container.innerHTML = users.map(user => `
-            <div class="user-row" style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #222; border-radius: 8px; margin-bottom: 8px; border-left: 4px solid ${user.leagueAccessStatus === 'approved' ? '#00ff00' : '#ffcc00'};">
-                <div style="display: flex; flex-direction: column;">
-                    <strong style="color: #fff;">${user.name || 'Sem Nome'}</strong>
-                    <span style="font-size: 12px; color: #888;">${user.email}</span>
+        container.innerHTML = users.map(user => {
+            const status = user.leagueAccessStatus;
+
+            // A API já filtra por participação no campeonato.
+            // Este fallback evita que um registro inconsistente vire
+            // acidentalmente um botão de aprovação.
+            if (status !== 'approved' && status !== 'pending') {
+                return '';
+            }
+
+            const borderColor = status === 'approved' ? '#00ff00' : '#ffcc00';
+            const action = status === 'approved'
+                ? '<span style="color: #00ff00; font-weight: bold;">✅ PAGO NESTE CAMPEONATO</span>'
+                : `<button class="btn btn-success btn-sm" onclick="handleApproveUser('${user._id}', '${user.name}')">Aprovar PIX</button>`;
+
+            return `
+                <div class="user-row" style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #222; border-radius: 8px; margin-bottom: 8px; border-left: 4px solid ${borderColor};">
+                    <div style="display: flex; flex-direction: column;">
+                        <strong style="color: #fff;">${user.name || 'Sem Nome'}</strong>
+                        <span style="font-size: 12px; color: #888;">${user.email}</span>
+                    </div>
+                    <div>${action}</div>
                 </div>
-                <div>
-                    ${user.leagueAccessStatus === 'approved'
-                        ? '<span style="color: #00ff00; font-weight: bold;">✅ PAGO NESTE CAMPEONATO</span>'
-                        : `<button class="btn btn-success btn-sm" onclick="handleApproveUser('${user._id}', '${user.name}')">Aprovar PIX</button>`
-                    }
-                </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
     } catch (err) {
         console.error("Erro ao carregar usuários:", err);
         toast("Erro ao carregar usuários", "error");
