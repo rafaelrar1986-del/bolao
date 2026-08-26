@@ -72,19 +72,44 @@ const protect = async (req, res, next) => {
   }
 };
 
+const getRequestedLeagueId = (req) => {
+  const fromBody = req.body && req.body.leagueId;
+  const fromQuery = req.query && req.query.leagueId;
+  const fromParams = req.params && req.params.leagueId;
+  return String(fromBody ?? fromQuery ?? fromParams ?? '').trim();
+};
+
 const checkPaid = (req, res, next) => {
   if (!req.user) {
     return res.status(401).json({ success: false, message: 'Autenticação necessária.' });
   }
 
-  if (req.user.isAdmin || req.user.hasPaid) {
-    return next();
+  // Administradores continuam tendo acesso global.
+  if (req.user.isAdmin) return next();
+
+  const leagueId = getRequestedLeagueId(req);
+  if (!leagueId) {
+    return res.status(400).json({
+      success: false,
+      message: 'leagueId é obrigatório para acessar este campeonato.',
+      requiresLeagueSelection: true
+    });
   }
+
+  const access = typeof req.user.getLeagueAccess === 'function'
+    ? req.user.getLeagueAccess(leagueId)
+    : (req.user.leagueAccess || []).find(item => String(item.leagueId) === leagueId);
+
+  if (access?.status === 'approved') return next();
 
   return res.status(402).json({
     success: false,
-    message: 'Acesso bloqueado: Pagamento da cota pendente.',
-    requiresPayment: true
+    message: access?.status === 'pending'
+      ? 'Participação pendente de aprovação neste campeonato.'
+      : 'Participação não autorizada neste campeonato.',
+    requiresPayment: true,
+    leagueId,
+    leagueAccessStatus: access?.status || 'not_requested'
   });
 };
 

@@ -63,6 +63,25 @@ const userSchema = new mongoose.Schema({
     default: []
   },
 
+  // 🔐 STATUS DE PARTICIPAÇÃO POR CAMPEONATO
+  // Mantemos `leagues` intacto por compatibilidade e armazenamos
+  // o estado de acesso separadamente por leagueId.
+  leagueAccess: {
+    type: [{
+      _id: false,
+      leagueId: { type: String, required: true },
+      status: {
+        type: String,
+        enum: ['pending', 'approved'],
+        default: 'pending'
+      },
+      requestedAt: { type: Date, default: Date.now },
+      approvedAt: { type: Date, default: null },
+      approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }
+    }],
+    default: []
+  },
+
   // 🖼️ AVATAR DO USUÁRIO (usado no leaderboard e perfil)
   avatar: {
     type: String,
@@ -119,10 +138,48 @@ userSchema.pre('save', async function(next) {
 // MÉTODOS DE INSTÂNCIA
 // ======================
 
-// 🔥 NOVO MÉTODO: Aprovar pagamento do usuário
+// 🔥 LEGADO: mantém aprovação global para compatibilidade com dados antigos.
+// A autorização de campeonato usa approveLeagueAccess().
 userSchema.methods.approvePayment = async function() {
   this.hasPaid = true;
   return await this.save();
+};
+
+userSchema.methods.getLeagueAccess = function(leagueId) {
+  const id = String(leagueId ?? '').trim();
+  if (!id) return null;
+  return this.leagueAccess.find(item => String(item.leagueId) === id) || null;
+};
+
+userSchema.methods.ensureLeagueAccess = async function(leagueId) {
+  const id = String(leagueId ?? '').trim();
+  if (!id) throw new Error('leagueId é obrigatório.');
+
+  const existing = this.getLeagueAccess(id);
+  if (existing) return existing;
+
+  this.leagueAccess.push({ leagueId: id, status: 'pending', requestedAt: new Date() });
+  await this.save();
+  return this.getLeagueAccess(id);
+};
+
+userSchema.methods.approveLeagueAccess = async function(leagueId, approvedBy = null) {
+  const id = String(leagueId ?? '').trim();
+  if (!id) throw new Error('leagueId é obrigatório.');
+
+  let access = this.getLeagueAccess(id);
+  if (!access) {
+    this.leagueAccess.push({ leagueId: id, status: 'approved', requestedAt: new Date() });
+    access = this.getLeagueAccess(id);
+  } else {
+    access.status = 'approved';
+    access.approvedAt = new Date();
+    access.approvedBy = approvedBy || null;
+  }
+
+  if (!this.leagues.includes(id)) this.leagues.push(id);
+  await this.save();
+  return this.getLeagueAccess(id);
 };
 
 userSchema.methods.comparePassword = async function(candidatePassword) {

@@ -101,6 +101,15 @@ router.post('/register', async (req, res) => {
         email: user.email,
         isAdmin: user.isAdmin,
         hasPaid: user.hasPaid,
+        leagues: user.leagues || [],
+        leagueAccess: user.leagueAccess || [],
+        leagueAccessStatus: (() => {
+          const leagueId = String(req.query.leagueId || '').trim();
+          if (user.isAdmin) return 'approved';
+          const access = leagueId ? user.getLeagueAccess(leagueId) : null;
+          return access?.status || null;
+        })(),
+        selectedLeagueId: String(req.query.leagueId || '').trim() || null,
         createdAt: user.createdAt,
         avatar: user.avatar || null
       },
@@ -187,6 +196,67 @@ router.get('/whitelist', protect, async (req, res) => {
     res.json({ success: true, emails: list });
   } catch (error) {
     res.status(500).json({ success: false });
+  }
+});
+
+// ======================
+// 🏆 PARTICIPAÇÃO POR CAMPEONATO
+// ======================
+router.get('/league-access', protect, async (req, res) => {
+  try {
+    const leagueId = String(req.query.leagueId || '').trim();
+    if (!leagueId) {
+      return res.status(400).json({ success: false, message: 'leagueId é obrigatório.' });
+    }
+
+    if (req.user.isAdmin) {
+      return res.json({ success: true, leagueId, status: 'approved', isAdmin: true });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ success: false, message: 'Usuário não encontrado.' });
+
+    let access = user.getLeagueAccess(leagueId);
+    if (!access) access = await user.ensureLeagueAccess(leagueId);
+
+    return res.json({
+      success: true,
+      leagueId,
+      status: access.status,
+      requestedAt: access.requestedAt || null,
+      approvedAt: access.approvedAt || null
+    });
+  } catch (error) {
+    console.error('❌ Erro ao consultar participação:', error);
+    return res.status(500).json({ success: false, message: 'Erro ao consultar participação.' });
+  }
+});
+
+router.post('/league-access/select', protect, async (req, res) => {
+  try {
+    const leagueId = String(req.body?.leagueId || '').trim();
+    const leagueName = String(req.body?.leagueName || '').trim();
+    if (!leagueId) return res.status(400).json({ success: false, message: 'leagueId é obrigatório.' });
+
+    if (req.user.isAdmin) {
+      return res.json({ success: true, leagueId, leagueName, status: 'approved', isAdmin: true });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ success: false, message: 'Usuário não encontrado.' });
+
+    const access = await user.ensureLeagueAccess(leagueId);
+    return res.json({
+      success: true,
+      leagueId,
+      leagueName,
+      status: access.status,
+      requestedAt: access.requestedAt || null,
+      approvedAt: access.approvedAt || null
+    });
+  } catch (error) {
+    console.error('❌ Erro ao registrar participação:', error);
+    return res.status(500).json({ success: false, message: 'Erro ao registrar participação.' });
   }
 });
 
