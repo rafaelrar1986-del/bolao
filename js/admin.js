@@ -84,6 +84,7 @@ let CurrentSettings = {
   podium: [],
   prizeZone: { positions: 0, totalAmount: 0, distribution: [] },
   rankingRules: { tieBreakers: [] },
+  payment: { pixKey: '', pixQrCode: '' },
   betLockMode: 'grade'
 };
 
@@ -124,6 +125,10 @@ async function loadLeagueSettings() {
       CurrentSettings.rankingRules = {
         tieBreakers: [],
         ...(res.data.rankingRules || {})
+      };
+      CurrentSettings.payment = {
+        pixKey: String(res.data.pixKey || ''),
+        pixQrCode: String(res.data.pixQrCode || '')
       };
       CurrentSettings.betLockMode =
         res.data.betLockMode || CurrentSettings.betLockMode;
@@ -1380,6 +1385,47 @@ async function openChampionshipRulesModal() {
           </div>
 
           <div style="background:rgba(0,0,0,.18); padding:12px; border-radius:10px; border:1px solid rgba(255,255,255,.08);">
+            <h4 style="margin:0 0 10px; color:#ffda44;">💰 Pagamento / PIX</h4>
+            <small style="display:block; color:#888; margin-bottom:10px;">
+              Configure o pagamento deste campeonato. O QR Code e a chave PIX são exclusivos desta liga.
+            </small>
+
+            <div class="form-group">
+              <label>Chave PIX</label>
+              <input type="text" id="cr-pixKey"
+                     value="${String(CurrentSettings.payment?.pixKey || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}"
+                     maxlength="200" placeholder="Digite a chave PIX">
+            </div>
+
+            <div style="margin-top:12px;">
+              <label style="display:block; margin-bottom:7px; font-weight:600;">QR Code PIX</label>
+              <div id="cr-pix-preview"
+                   style="min-height:150px; display:flex; align-items:center; justify-content:center; border:1px dashed rgba(255,255,255,.18); border-radius:8px; padding:10px; background:rgba(0,0,0,.12);">
+                ${CurrentSettings.payment?.pixQrCode
+                  ? `<img src="${CurrentSettings.payment.pixQrCode}" alt="QR Code PIX" style="max-width:180px; max-height:180px; object-fit:contain;">`
+                  : '<span style="color:#888;">Nenhum QR Code configurado</span>'}
+              </div>
+
+              <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:9px;">
+                <label class="btn btn-outline-secondary" style="margin:0; cursor:pointer;">
+                  📷 Tirar foto
+                  <input type="file" id="cr-pix-camera" accept="image/*" capture="environment" style="display:none;">
+                </label>
+                <label class="btn btn-outline-secondary" style="margin:0; cursor:pointer;">
+                  🖼️ Enviar imagem
+                  <input type="file" id="cr-pix-upload" accept="image/png,image/jpeg,image/webp" style="display:none;">
+                </label>
+                <button type="button" id="cr-pix-clear" class="btn btn-outline-danger" style="display:${CurrentSettings.payment?.pixQrCode ? '' : 'none'};">
+                  Remover QR
+                </button>
+              </div>
+              <small style="display:block; margin-top:7px; color:#888;">
+                A imagem será redimensionada antes de ser armazenada no campeonato.
+              </small>
+            </div>
+          </div>
+
+          <div style="background:rgba(0,0,0,.18); padding:12px; border-radius:10px; border:1px solid rgba(255,255,255,.08);">
             <h4 style="margin:0 0 10px; color:#ffda44;">🏆 Zona de Premiação</h4>
 
             <div class="form-row">
@@ -1652,6 +1698,76 @@ async function openChampionshipRulesModal() {
   updateGroupQualificationSummary();
   renderTieBreakers();
 
+  // 📷 QR Code: permite câmera/upload e redimensiona a imagem antes do armazenamento.
+  let paymentQrCode = String(CurrentSettings.payment?.pixQrCode || '');
+  const pixPreview = document.getElementById('cr-pix-preview');
+  const pixClear = document.getElementById('cr-pix-clear');
+
+  const renderPixPreview = () => {
+    if (!pixPreview) return;
+    pixPreview.innerHTML = paymentQrCode
+      ? `<img src="${paymentQrCode}" alt="QR Code PIX" style="max-width:180px; max-height:180px; object-fit:contain;">`
+      : '<span style="color:#888;">Nenhum QR Code configurado</span>';
+    if (pixClear) pixClear.style.display = paymentQrCode ? '' : 'none';
+  };
+
+  const processPixImage = file => new Promise((resolve, reject) => {
+    if (!file) return resolve('');
+    if (!file.type || !file.type.startsWith('image/')) {
+      return reject(new Error('Selecione uma imagem válida para o QR Code.'));
+    }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Não foi possível ler a imagem.'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Não foi possível processar a imagem.'));
+      img.onload = () => {
+        const maxSize = 800;
+        const sourceW = img.naturalWidth || img.width;
+        const sourceH = img.naturalHeight || img.height;
+        const scale = Math.min(1, maxSize / Math.max(sourceW, sourceH));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(sourceW * scale));
+        canvas.height = Math.max(1, Math.round(sourceH * scale));
+        const ctx = canvas.getContext('2d', { alpha: false });
+        if (!ctx) return reject(new Error('Seu navegador não suporta processamento de imagens.'));
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/png');
+        if (dataUrl.length > 1500000) {
+          return reject(new Error('A imagem do QR Code continua muito grande. Use uma imagem menor.'));
+        }
+        resolve(dataUrl);
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  const handlePixFile = async file => {
+    try {
+      paymentQrCode = await processPixImage(file);
+      renderPixPreview();
+      toast('QR Code carregado. Clique em salvar para gravar.', 'success');
+    } catch (err) {
+      toast(err.message || 'Erro ao carregar QR Code.', 'error');
+    }
+  };
+
+  document.getElementById('cr-pix-camera')?.addEventListener('change', e => {
+    handlePixFile(e.target.files?.[0]);
+    e.target.value = '';
+  });
+  document.getElementById('cr-pix-upload')?.addEventListener('change', e => {
+    handlePixFile(e.target.files?.[0]);
+    e.target.value = '';
+  });
+  pixClear?.addEventListener('click', () => {
+    paymentQrCode = '';
+    renderPixPreview();
+  });
+
   document.getElementById('championship-rules-form')
     .addEventListener('submit', saveChampionshipRules);
 }
@@ -1757,7 +1873,9 @@ async function saveChampionshipRules(e) {
     },
     rankingRules: {
       tieBreakers
-    }
+    },
+    pixKey: String(document.getElementById('cr-pixKey')?.value || '').trim(),
+    pixQrCode: paymentQrCode
   };
 
   try {
@@ -1773,6 +1891,10 @@ async function saveChampionshipRules(e) {
     };
     CurrentSettings.prizeZone = payload.prizeZone;
     CurrentSettings.rankingRules = payload.rankingRules;
+    CurrentSettings.payment = {
+      pixKey: payload.pixKey,
+      pixQrCode: payload.pixQrCode
+    };
 
     toast('Regras do campeonato salvas!', 'success');
     closeModal('championship-rules-modal');
@@ -3231,8 +3353,7 @@ export async function loadAdminUsers() {
     container.innerHTML = '<p style="text-align:center; color:#888; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Carregando...</p>';
 
     try {
-        const leagueId = localStorage.getItem('selectedLeagueId') || '1';
-        const response = await api.get(`/api/admin/users?leagueId=${encodeURIComponent(leagueId)}`);
+        const response = await api.get('/api/admin/users');
         const users = response.users || [];
 
         if (!users || users.length === 0) {
@@ -3240,31 +3361,20 @@ export async function loadAdminUsers() {
             return;
         }
 
-        container.innerHTML = users.map(user => {
-            const status = user.leagueAccessStatus;
-
-            // A API já filtra por participação no campeonato.
-            // Este fallback evita que um registro inconsistente vire
-            // acidentalmente um botão de aprovação.
-            if (status !== 'approved' && status !== 'pending') {
-                return '';
-            }
-
-            const borderColor = status === 'approved' ? '#00ff00' : '#ffcc00';
-            const action = status === 'approved'
-                ? '<span style="color: #00ff00; font-weight: bold;">✅ PAGO NESTE CAMPEONATO</span>'
-                : `<button class="btn btn-success btn-sm" onclick="handleApproveUser('${user._id}', '${user.name}')">Aprovar PIX</button>`;
-
-            return `
-                <div class="user-row" style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #222; border-radius: 8px; margin-bottom: 8px; border-left: 4px solid ${borderColor};">
-                    <div style="display: flex; flex-direction: column;">
-                        <strong style="color: #fff;">${user.name || 'Sem Nome'}</strong>
-                        <span style="font-size: 12px; color: #888;">${user.email}</span>
-                    </div>
-                    <div>${action}</div>
+        container.innerHTML = users.map(user => `
+            <div class="user-row" style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #222; border-radius: 8px; margin-bottom: 8px; border-left: 4px solid ${user.hasPaid ? '#00ff00' : '#ffcc00'};">
+                <div style="display: flex; flex-direction: column;">
+                    <strong style="color: #fff;">${user.name || 'Sem Nome'}</strong>
+                    <span style="font-size: 12px; color: #888;">${user.email}</span>
                 </div>
-            `;
-        }).join('');
+                <div>
+                    ${user.hasPaid 
+                        ? '<span style="color: #00ff00; font-weight: bold;">✅ PAGO</span>' 
+                        : `<button class="btn btn-success btn-sm" onclick="handleApproveUser('${user._id}', '${user.name}')">Aprovar PIX</button>`
+                    }
+                </div>
+            </div>
+        `).join('');
     } catch (err) {
         console.error("Erro ao carregar usuários:", err);
         toast("Erro ao carregar usuários", "error");
@@ -3275,8 +3385,7 @@ export async function loadAdminUsers() {
 window.handleApproveUser = async (id, name) => {
     if (!confirm(`Confirmar pagamento de ${name}?`)) return;
     try {
-        const leagueId = localStorage.getItem('selectedLeagueId') || '1';
-        const res = await api.approvePayment(id, leagueId);
+        const res = await api.put(`/api/admin/approve-user/${id}`);
         if (res.success || res.message) {
             toast(`Acesso liberado para ${name}!`, "success");
             loadAdminUsers();
