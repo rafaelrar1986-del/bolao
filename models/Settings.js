@@ -197,8 +197,8 @@ const SettingsSchema = new mongoose.Schema(
       drawIncludesExtraTime: { type: Boolean, default: false },
       winnerFromScore:      { type: Boolean, default: true },
       podiumSize:            { type: Number, default: 4 },
-      // Compatibilidade: campeonatos antigos sem este campo continuam sendo
-      // tratados como campeonatos com fase de grupos.
+      // Estrutura explícita: sem grupos e sem mata-mata = pontos corridos.
+      // Default true preserva o comportamento dos campeonatos antigos.
       hasGroupPhase:        { type: Boolean, default: true },
       hasKnockoutPhase:     { type: Boolean, default: false },
 
@@ -280,6 +280,17 @@ const SettingsSchema = new mongoose.Schema(
         }
       }],
       default: []
+    },
+
+    // 💰 PAGAMENTO / PIX ESPECÍFICO DESTA LIGA
+    // O QR Code é armazenado como Data URL após compressão/redimensionamento.
+    pixKey: {
+      type: String,
+      default: ''
+    },
+    pixQrCode: {
+      type: String,
+      default: ''
     },
 
     // 📋 STATUS DA LIGA
