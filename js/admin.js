@@ -1344,7 +1344,13 @@ async function openChampionshipRulesModal() {
               <div id="cr-group-qualification-summary" style="font-size:.78rem; color:#aaa; margin-top:6px;"></div>
             </div>
 
-            <div class="form-group" style="margin-top:12px;">
+            <div id="cr-championship-type" style="margin-top:12px; padding:9px 10px; border-radius:8px; background:rgba(0,102,179,.12); border:1px solid rgba(0,102,179,.25); font-size:.86rem;"></div>
+          </div>
+
+          <div style="background:rgba(0,0,0,.18); padding:12px; border-radius:10px; border:1px solid rgba(255,255,255,.08);">
+            <h4 style="margin:0 0 10px; color:#ffda44;">⚙️ Configurações do Campeonato</h4>
+
+            <div class="form-group">
               <label>Tamanho do Pódio</label>
               <select id="cr-podiumSize">
                 <option value="4" ${Number(cr.podiumSize) === 4 ? 'selected' : ''}>4 posições (1º ao 4º)</option>
@@ -1354,12 +1360,20 @@ async function openChampionshipRulesModal() {
               </select>
             </div>
 
-            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-top:10px;">
-              <input type="checkbox" id="cr-drawIncludesExtraTime" ${cr.drawIncludesExtraTime ? 'checked' : ''}>
-              <span>Empate inclui prorrogação</span>
-            </label>
+            <div style="margin-top:12px;">
+              <label style="display:block; margin-bottom:7px; font-weight:600;">Período considerado na validação dos palpites</label>
+              <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer; margin-bottom:6px;">
+                <input type="radio" name="cr-bet-validation-period" value="90" ${!cr.drawIncludesExtraTime ? 'checked' : ''}>
+                <span>90 minutos (tempo regulamentar)</span>
+              </label>
+              <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer;">
+                <input type="radio" name="cr-bet-validation-period" value="extra" ${cr.drawIncludesExtraTime ? 'checked' : ''}>
+                <span>Após a prorrogação</span>
+              </label>
+              <small style="display:block; margin-top:6px; color:#888;">Define qual período será usado para validar o resultado e o placar do palpite.</small>
+            </div>
 
-            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-top:10px;">
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-top:12px;">
               <input type="checkbox" id="cr-winnerFromScore" ${cr.winnerFromScore !== false ? 'checked' : ''}>
               <span>Vencedor deriva do placar</span>
             </label>
@@ -1417,6 +1431,23 @@ async function openChampionshipRulesModal() {
   `;
 
   document.body.insertAdjacentHTML('beforeend', html);
+
+  const updateChampionshipType = () => {
+    const hasGroupPhase = document.getElementById('cr-hasGroupPhase')?.checked === true;
+    const hasKnockoutPhase = document.getElementById('cr-hasKnockoutPhase')?.checked === true;
+    const target = document.getElementById('cr-championship-type');
+    if (!target) return;
+
+    let label = '🏁 Tipo do campeonato: <strong>Pontos corridos</strong>';
+    if (hasGroupPhase && hasKnockoutPhase) {
+      label = '🏆 Tipo do campeonato: <strong>Grupos + Mata-mata</strong>';
+    } else if (hasGroupPhase) {
+      label = '⚽ Tipo do campeonato: <strong>Fase de grupos</strong>';
+    } else if (hasKnockoutPhase) {
+      label = '🥊 Tipo do campeonato: <strong>Mata-mata</strong>';
+    }
+    target.innerHTML = label;
+  };
 
   const updateGroupQualificationSummary = () => {
     const hasGroupPhase = document.getElementById('cr-hasGroupPhase')?.checked === true;
@@ -1477,6 +1508,7 @@ async function openChampionshipRulesModal() {
     document.getElementById(id)?.addEventListener('input', updateGroupQualificationSummary);
   });
   updateGroupQualificationSummary();
+  updateChampionshipType();
 
   const distribution = document.getElementById('pz-distribution');
   const distributionTotal = document.getElementById('pz-distribution-total');
@@ -1594,10 +1626,12 @@ async function openChampionshipRulesModal() {
 
   groupCheckbox?.addEventListener('change', () => {
     updateGroupQualificationSummary();
+    updateChampionshipType();
     renderTieBreakers();
   });
 
   knockoutCheckbox?.addEventListener('change', () => {
+    updateChampionshipType();
     const container = document.getElementById('tr-selects');
     const current = Array.from(
       container?.querySelectorAll('select[data-tie-index]') || []
@@ -1703,7 +1737,7 @@ async function saveChampionshipRules(e) {
     leagueId,
     championshipRules: {
       drawIncludesExtraTime:
-        document.getElementById('cr-drawIncludesExtraTime').checked,
+        document.querySelector('input[name="cr-bet-validation-period"]:checked')?.value === 'extra',
       winnerFromScore:
         document.getElementById('cr-winnerFromScore').checked,
       podiumSize:
