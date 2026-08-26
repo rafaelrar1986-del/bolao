@@ -79,7 +79,7 @@ export const api = {
     request('POST', '/api/auth/login', { email, password }),
   register: (name, email, password) =>
     request('POST', '/api/auth/register', { name, email, password }),
-  me: () => request('GET', '/api/auth/me'),
+  me: (leagueId) => request('GET', `/api/auth/me${leagueId ? `?leagueId=${encodeURIComponent(leagueId)}` : ''}`),
   updateMyAvatar: (avatar) =>
     request('PUT', '/api/auth/me/avatar', { avatar }),
 
@@ -93,14 +93,13 @@ export const api = {
   // ================================================================
   // 💰 ADMIN: USUÁRIOS & PAGAMENTOS
   // ================================================================
-  getAdminUsers: (leagueId) =>
-    request('GET', `/api/admin/users?leagueId=${encodeURIComponent(leagueId || '')}`),
+  getAdminUsers: () => request('GET', '/api/admin/users'),
   approvePayment: (userId, leagueId) =>
     request('PUT', `/api/admin/approve-user/${userId}`, { leagueId }),
+  selectLeagueAccess: (leagueId) =>
+    request('POST', '/api/auth/league-access/select', { leagueId }),
   getLeagueAccess: (leagueId) =>
-    request('GET', `/api/auth/league-access?leagueId=${encodeURIComponent(leagueId || '')}`),
-  selectLeague: (leagueId, leagueName) =>
-    request('POST', '/api/auth/league-access/select', { leagueId, leagueName }),
+    request('GET', `/api/auth/league-access?leagueId=${encodeURIComponent(leagueId)}`),
   getSecurityStats: () =>
     request('GET', '/api/admin/security-stats'),
 

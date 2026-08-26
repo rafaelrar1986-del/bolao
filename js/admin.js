@@ -3231,12 +3231,7 @@ export async function loadAdminUsers() {
     container.innerHTML = '<p style="text-align:center; color:#888; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Carregando...</p>';
 
     try {
-        const leagueId = localStorage.getItem('selectedLeagueId') || '';
-        if (!leagueId) {
-            container.innerHTML = '<p style="text-align:center; color:#ffc107; padding:20px;">Selecione um campeonato para gerenciar as participações.</p>';
-            return;
-        }
-
+        const leagueId = localStorage.getItem('selectedLeagueId') || '1';
         const response = await api.get(`/api/admin/users?leagueId=${encodeURIComponent(leagueId)}`);
         const users = response.users || [];
 
@@ -3245,27 +3240,20 @@ export async function loadAdminUsers() {
             return;
         }
 
-        const statusMeta = {
-            approved: { label: '✅ APROVADO', color: '#00ff00' },
-            pending: { label: '⏳ PENDENTE', color: '#ffcc00' },
-            not_requested: { label: '— NÃO SOLICITADO', color: '#888' }
-        };
-
-        container.innerHTML = users.map(user => {
-            const meta = statusMeta[user.leagueAccessStatus] || statusMeta.not_requested;
-            const action = user.leagueAccessStatus === 'approved'
-                ? `<span style="color: ${meta.color}; font-weight: bold;">${meta.label}</span>`
-                : `<button class="btn btn-success btn-sm" onclick="handleApproveUser('${user._id}', '${String(user.name || '').replace(/'/g, "\\'")}')">Aprovar acesso</button>`;
-            return `
-            <div class="user-row" style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #222; border-radius: 8px; margin-bottom: 8px; border-left: 4px solid ${meta.color};">
+        container.innerHTML = users.map(user => `
+            <div class="user-row" style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #222; border-radius: 8px; margin-bottom: 8px; border-left: 4px solid ${user.leagueAccessStatus === 'approved' ? '#00ff00' : '#ffcc00'};">
                 <div style="display: flex; flex-direction: column;">
                     <strong style="color: #fff;">${user.name || 'Sem Nome'}</strong>
                     <span style="font-size: 12px; color: #888;">${user.email}</span>
-                    <span style="font-size: 11px; color: ${meta.color}; margin-top: 3px;">${meta.label}</span>
                 </div>
-                <div>${action}</div>
-            </div>`;
-        }).join('');
+                <div>
+                    ${user.leagueAccessStatus === 'approved'
+                        ? '<span style="color: #00ff00; font-weight: bold;">✅ PAGO NESTE CAMPEONATO</span>'
+                        : `<button class="btn btn-success btn-sm" onclick="handleApproveUser('${user._id}', '${user.name}')">Aprovar PIX</button>`
+                    }
+                </div>
+            </div>
+        `).join('');
     } catch (err) {
         console.error("Erro ao carregar usuários:", err);
         toast("Erro ao carregar usuários", "error");
@@ -3274,20 +3262,16 @@ export async function loadAdminUsers() {
 }
 
 window.handleApproveUser = async (id, name) => {
-    const leagueId = localStorage.getItem('selectedLeagueId') || '';
-    if (!leagueId) {
-        toast('Selecione um campeonato antes de aprovar.', 'error');
-        return;
-    }
-    if (!confirm(`Aprovar o acesso de ${name} neste campeonato?`)) return;
+    if (!confirm(`Confirmar pagamento de ${name}?`)) return;
     try {
-        const res = await api.put(`/api/admin/approve-user/${id}`, { leagueId });
+        const leagueId = localStorage.getItem('selectedLeagueId') || '1';
+        const res = await api.approvePayment(id, leagueId);
         if (res.success || res.message) {
-            toast(`Acesso de ${name} liberado neste campeonato!`, 'success');
+            toast(`Acesso liberado para ${name}!`, "success");
             loadAdminUsers();
         }
     } catch (err) {
-        toast(err.message || 'Erro na aprovação', 'error');
+        toast(err.message || "Erro na aprovação", "error");
     }
 };
 
