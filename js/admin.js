@@ -878,11 +878,23 @@ async function openScoringRulesModal() {
 
           <div style="background:rgba(0,0,0,.20); padding:10px; border-radius:8px; border:1px solid rgba(255,255,255,.08);">
             <h4 style="margin:0 0 8px; font-size:.85rem; color:#ffda44;">Extras</h4>
-            <div class="form-row">
-              <div class="form-group"><label>Artilheiro</label><input type="number" id="sr-topScorer" value="${r.topScorer ?? 10}" min="0" style="width:70px;"></div>
-              <div class="form-group"><label>Melhor Ataque</label><input type="number" id="sr-bestAttack" value="${r.bestAttack ?? 10}" min="0" style="width:70px;"></div>
-              <div class="form-group"><label>Pior Defesa</label><input type="number" id="sr-worstDefense" value="${r.worstDefense ?? 10}" min="0" style="width:70px;"></div>
-              <div class="form-group"><label>Zebra</label><input type="number" id="sr-upset" value="${r.upset ?? 15}" min="0" style="width:70px;"></div>
+            <div style="display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; align-items:start;">
+              <div class="form-group" style="min-width:0; display:flex; flex-direction:column;">
+                <label style="min-height:2.8em; display:flex; align-items:flex-start;">Artilheiro</label>
+                <input type="number" id="sr-topScorer" value="${r.topScorer ?? 10}" min="0" style="width:100%; max-width:100%; box-sizing:border-box;">
+              </div>
+              <div class="form-group" style="min-width:0; display:flex; flex-direction:column;">
+                <label style="min-height:2.8em; display:flex; align-items:flex-start;">Melhor Ataque</label>
+                <input type="number" id="sr-bestAttack" value="${r.bestAttack ?? 10}" min="0" style="width:100%; max-width:100%; box-sizing:border-box;">
+              </div>
+              <div class="form-group" style="min-width:0; display:flex; flex-direction:column;">
+                <label style="min-height:2.8em; display:flex; align-items:flex-start;">Pior Defesa</label>
+                <input type="number" id="sr-worstDefense" value="${r.worstDefense ?? 10}" min="0" style="width:100%; max-width:100%; box-sizing:border-box;">
+              </div>
+              <div class="form-group" style="min-width:0; display:flex; flex-direction:column;">
+                <label style="min-height:2.8em; display:flex; align-items:flex-start;">Zebra</label>
+                <input type="number" id="sr-upset" value="${r.upset ?? 15}" min="0" style="width:100%; max-width:100%; box-sizing:border-box;">
+              </div>
             </div>
           </div>
 
