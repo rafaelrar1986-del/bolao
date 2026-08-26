@@ -26,7 +26,6 @@ const DEFAULT_CHAMPIONSHIP_RULES = Object.freeze({
   drawIncludesExtraTime: false,
   winnerFromScore: true,
   podiumSize: 4,
-  hasGroupPhase: true,
   hasKnockoutPhase: false
 });
 
@@ -753,8 +752,6 @@ function calculateGroupQualificationPoints(
     scoringRules?.groupQualificationRules
   );
 
-  // Sem fase de grupos não existe classificação prevista nem pontuação
-  // de classificação, mesmo que regras antigas ainda estejam armazenadas.
   if (championshipRules?.hasGroupPhase === false) {
     return { points: 0, breakdown: [], byGroup: [] };
   }

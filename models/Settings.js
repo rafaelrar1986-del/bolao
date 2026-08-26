@@ -197,8 +197,8 @@ const SettingsSchema = new mongoose.Schema(
       drawIncludesExtraTime: { type: Boolean, default: false },
       winnerFromScore:      { type: Boolean, default: true },
       podiumSize:            { type: Number, default: 4 },
-      // Estrutura explícita: sem grupos e sem mata-mata = pontos corridos.
-      // Default true preserva o comportamento dos campeonatos antigos.
+      // Compatibilidade: campeonatos antigos sem este campo continuam sendo
+      // tratados como campeonatos com fase de grupos.
       hasGroupPhase:        { type: Boolean, default: true },
       hasKnockoutPhase:     { type: Boolean, default: false },
 

@@ -53,11 +53,6 @@ const getGroupStandings = async (req, res) => {
       `[Standings] Calculando liga: ${leagueId} | Live: ${isLiveRequest}`
     );
 
-    const settings = await Settings.findById(leagueId).lean();
-    if (requestedPhase === 'group' && settings?.championshipRules?.hasGroupPhase === false) {
-      return res.json({});
-    }
-
     const allMatches = await Match.find({
       leagueId,
       phase: requestedPhase
@@ -100,6 +95,13 @@ const getGroupStandings = async (req, res) => {
      *
          * Sem configuração válida, nenhuma estrutura de classificação é presumida.
      */
+    const settings = await Settings.findById(leagueId).lean();
+    const hasGroupPhase = settings?.championshipRules?.hasGroupPhase !== false;
+
+    if (!isPointsRun && !hasGroupPhase) {
+      return res.json({});
+    }
+
     const qualification = !isPointsRun
       ? (settings?.championshipRules?.groupQualification || {})
       : {};
