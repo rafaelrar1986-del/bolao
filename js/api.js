@@ -265,8 +265,9 @@ export const api = {
   // ================================================================
   // 🏟️ GROUPS
   // ================================================================
-  getGroupStandings: (leagueId, live) => {
-    let url = `/api/groups/standings?leagueId=${leagueId || '1'}`;
+  getGroupStandings: (leagueId, live, phase = 'group') => {
+    const normalizedPhase = phase === 'pontos_corridos' ? 'pontos_corridos' : 'group';
+    let url = `/api/groups/standings?leagueId=${leagueId || '1'}&phase=${normalizedPhase}`;
     if (live) url += '&live=true';
     return request('GET', url);
   },

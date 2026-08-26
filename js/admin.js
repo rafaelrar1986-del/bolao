@@ -1695,6 +1695,14 @@ async function saveChampionshipRules(e) {
       ...CurrentSettings.championshipRules,
       ...payload.championshipRules
     };
+    // O backend pode limpar regras de classificação antigas quando a fase
+    // de grupos/mata-mata é desativada. Mantemos o estado local alinhado.
+    if (res.data?.scoringRules) {
+      CurrentSettings.scoringRules = res.data.scoringRules;
+    }
+    if (res.data?.rankingRules) {
+      CurrentSettings.rankingRules = res.data.rankingRules;
+    }
     CurrentSettings.prizeZone = payload.prizeZone;
     CurrentSettings.rankingRules = payload.rankingRules;
 

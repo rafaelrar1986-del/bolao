@@ -764,6 +764,7 @@ function isGroupMatchBetFilled(match) {
 }
 
 export function getMissingGroupQualificationBets() {
+  if (STATE.championshipRules?.hasGroupPhase === false) return [];
   const rules = STATE.scoringRules?.groupQualificationRules;
   if (!Array.isArray(rules) || rules.length === 0) return [];
 
@@ -1613,6 +1614,16 @@ function renderFilterHeader() {
    🏆 CLASSIFICAÇÃO PREVISTA DOS GRUPOS
 ===================== */
 function getGroupQualificationConfig() {
+  if (STATE.championshipRules?.hasGroupPhase === false) {
+    return {
+      baseQualifiedPerGroup: 0,
+      additionalQualifiedCount: 0,
+      additionalQualificationPosition: null,
+      teamsPerGroup: 0,
+      totalQualified: 0,
+      configured: false
+    };
+  }
   const q = STATE.championshipRules?.groupQualification || {};
   const totalTeams = Number(q.totalTeams || 0);
   const groupCount = Number(q.groupCount || 0);
@@ -1869,6 +1880,7 @@ function getSavedGroupPrediction(groupName, standings, groupGames = []) {
 }
 
 function renderGroupPredictionSection(groupName, groupGames) {
+  if (STATE.championshipRules?.hasGroupPhase === false) return '';
   const config=getGroupQualificationConfig();
   const rules=STATE.scoringRules?.groupQualificationRules;
   if(!Array.isArray(rules)||rules.length===0) return '';
@@ -1957,6 +1969,7 @@ function refreshPredictedGroupForMatch(matchId) {
   const group = String(match.group || '').trim();
   if (!group) return;
 
+  if (STATE.championshipRules?.hasGroupPhase === false) return;
   const rules = STATE.scoringRules?.groupQualificationRules;
   if (!Array.isArray(rules) || rules.length === 0) return;
 
