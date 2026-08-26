@@ -187,6 +187,11 @@ window.currentUser = null;
 let rankingInitialized = false;
 let isInitialLoading = true;
 
+function isCurrentLeagueApproved(user = window.currentUser || currentUser) {
+  if (user?.isAdmin === true) return true;
+  return user?.leagueAccessStatus === 'approved';
+}
+
 /* =====================
    Logica de Protecao (Paywall)
 ===================== */
@@ -195,10 +200,9 @@ function verificarBloqueio(err) {
     if (err?.message) console.error("Erro de API:", err.message);
     return;
   }
-  const isPaid = window.currentUser?.hasPaid === true || window.currentUser?.hasPaid === 1;
-  const isAdmin = window.currentUser?.isAdmin === true;
+  const hasAccess = isCurrentLeagueApproved();
 
-  if (isAdmin || isPaid) {
+  if (hasAccess) {
     const paywall = document.getElementById('paywall-wrapper');
     if (paywall) paywall.remove();
     document.body.style.overflow = '';
@@ -339,10 +343,22 @@ async function showLeagueSelection() {
   }
 }
 
-function selectLeague(id, name) {
-  localStorage.setItem('selectedLeagueId', id);
-  localStorage.setItem('selectedLeagueName', name);
-  afterLogin();
+async function selectLeague(id, name) {
+  try {
+    const result = await api.selectLeague(String(id), name);
+    localStorage.setItem('selectedLeagueId', String(id));
+    localStorage.setItem('selectedLeagueName', name);
+
+    if (result?.status === 'pending') {
+      toast('Participação registrada. Aguardando aprovação neste campeonato.', 'info');
+    }
+
+    await fetchMe();
+    await afterLogin();
+  } catch (err) {
+    console.error('Erro ao selecionar campeonato:', err);
+    toast(err.message || 'Não foi possível selecionar o campeonato.', 'error');
+  }
 }
 
 /* =====================
@@ -359,8 +375,8 @@ window.refreshUserSession = async () => {
   if (me) {
     currentUser = me;
     window.currentUser = me;
-    const isPaid = me.hasPaid === true || me.hasPaid === 1;
-    if (isPaid || me.isAdmin) {
+    const hasAccess = isCurrentLeagueApproved(me);
+    if (hasAccess) {
       const paywall = document.getElementById('paywall-wrapper');
       if (paywall) paywall.remove();
       document.body.style.overflow = '';
@@ -375,7 +391,8 @@ window.refreshUserSession = async () => {
 
 async function fetchMe() {
   try {
-    const res = await api.get('/api/auth/me');
+    const leagueId = localStorage.getItem('selectedLeagueId') || '';
+    const res = await api.get(`/api/auth/me${leagueId ? `?leagueId=${encodeURIComponent(leagueId)}` : ''}`);
     if (res?.success && res.user) {
       currentUser = res.user;
       window.currentUser = res.user;
@@ -581,18 +598,18 @@ function wireAuthForms() {
 }
 
 async function afterLogin() {
-  const isPaid = currentUser?.hasPaid === true || currentUser?.hasPaid === 1;
+  const hasAccess = isCurrentLeagueApproved();
   const hasSubmitted = window.STATE?.hasSubmitted === true;
   const jaAceitou = localStorage.getItem('regulamento_aceito') === 'true';
 
-  if (!jaAceitou && !isPaid && !hasSubmitted) {
+  if (!jaAceitou && !hasAccess && !hasSubmitted) {
     initRegulamentoModal();
     const modal = document.getElementById('modal-regulamento');
     if (modal) modal.style.display = 'flex';
     return;
   }
 
-  if (isPaid || currentUser?.isAdmin) {
+  if (hasAccess) {
     const p = document.getElementById('paywall-wrapper');
     if (p) p.remove();
     document.body.style.overflow = '';

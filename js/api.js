@@ -93,9 +93,14 @@ export const api = {
   // ================================================================
   // 💰 ADMIN: USUÁRIOS & PAGAMENTOS
   // ================================================================
-  getAdminUsers: () => request('GET', '/api/admin/users'),
-  approvePayment: (userId) =>
-    request('PUT', `/api/admin/approve-user/${userId}`),
+  getAdminUsers: (leagueId) =>
+    request('GET', `/api/admin/users?leagueId=${encodeURIComponent(leagueId || '')}`),
+  approvePayment: (userId, leagueId) =>
+    request('PUT', `/api/admin/approve-user/${userId}`, { leagueId }),
+  getLeagueAccess: (leagueId) =>
+    request('GET', `/api/auth/league-access?leagueId=${encodeURIComponent(leagueId || '')}`),
+  selectLeague: (leagueId, leagueName) =>
+    request('POST', '/api/auth/league-access/select', { leagueId, leagueName }),
   getSecurityStats: () =>
     request('GET', '/api/admin/security-stats'),
 
@@ -265,9 +270,8 @@ export const api = {
   // ================================================================
   // 🏟️ GROUPS
   // ================================================================
-  getGroupStandings: (leagueId, live, phase = 'group') => {
-    const normalizedPhase = phase === 'pontos_corridos' ? 'pontos_corridos' : 'group';
-    let url = `/api/groups/standings?leagueId=${leagueId || '1'}&phase=${normalizedPhase}`;
+  getGroupStandings: (leagueId, live) => {
+    let url = `/api/groups/standings?leagueId=${leagueId || '1'}`;
     if (live) url += '&live=true';
     return request('GET', url);
   },

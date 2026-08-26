@@ -52,9 +52,9 @@ export function toast(message, type = 'info', timeout = 3000) {
 // 💰 INTERFACE DE PAYWALL (BLOQUEIO)
 // =======================
 export function showPaywall() {
-  // ✅ TRAVA DE SEGURANÇA: Não mostra o paywall se for Admin ou já tiver pago
-  if (window.currentUser && (window.currentUser.isAdmin || window.currentUser.hasPaid)) {
-    console.log("Acesso verificado: Usuário isento de bloqueio.");
+  // ✅ TRAVA DE SEGURANÇA: o acesso é por campeonato, não pelo hasPaid global.
+  if (window.currentUser && (window.currentUser.isAdmin || window.currentUser.leagueAccessStatus === 'approved')) {
+    console.log("Acesso ao campeonato verificado.");
     return;
   }
 

@@ -91,9 +91,16 @@ export async function showLeagueSelection() {
   }
 }
 
-export function selectLeague(id, name) {
-  localStorage.setItem('selectedLeagueId', id);
-  localStorage.setItem('selectedLeagueName', name);
-  // Dispara evento para o app4.js capturar e chamar afterLogin()
-  window.dispatchEvent(new CustomEvent('league-selected', { detail: { id, name } }));
+export async function selectLeague(id, name) {
+  try {
+    const result = await api.selectLeague(String(id), name);
+    localStorage.setItem('selectedLeagueId', String(id));
+    localStorage.setItem('selectedLeagueName', name);
+    // Dispara evento para o app4.js capturar e atualizar o contexto do campeonato.
+    window.dispatchEvent(new CustomEvent('league-selected', {
+      detail: { id: String(id), name, status: result?.status || 'pending' }
+    }));
+  } catch (err) {
+    console.error('Erro ao registrar participação no campeonato:', err);
+  }
 }
