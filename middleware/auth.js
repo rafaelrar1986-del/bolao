@@ -72,44 +72,40 @@ const protect = async (req, res, next) => {
   }
 };
 
-const getRequestedLeagueId = (req) => {
-  const fromBody = req.body && req.body.leagueId;
-  const fromQuery = req.query && req.query.leagueId;
-  const fromParams = req.params && req.params.leagueId;
-  return String(fromBody ?? fromQuery ?? fromParams ?? '').trim();
-};
-
 const checkPaid = (req, res, next) => {
   if (!req.user) {
     return res.status(401).json({ success: false, message: 'Autenticação necessária.' });
   }
 
-  // Administradores continuam tendo acesso global.
+  // Administrador possui acesso a todos os campeonatos.
   if (req.user.isAdmin) return next();
 
-  const leagueId = getRequestedLeagueId(req);
+  // O campeonato deve vir do contexto da requisição.
+  const leagueId = String(
+    req.query?.leagueId ||
+    req.body?.leagueId ||
+    req.params?.leagueId ||
+    ''
+  ).trim();
+
   if (!leagueId) {
     return res.status(400).json({
       success: false,
-      message: 'leagueId é obrigatório para acessar este campeonato.',
-      requiresLeagueSelection: true
+      message: 'leagueId é obrigatório para verificar o acesso ao campeonato.'
     });
   }
 
-  const access = typeof req.user.getLeagueAccess === 'function'
-    ? req.user.getLeagueAccess(leagueId)
-    : (req.user.leagueAccess || []).find(item => String(item.leagueId) === leagueId);
-
+  const access = req.user.getLeagueAccess(leagueId);
   if (access?.status === 'approved') return next();
 
   return res.status(402).json({
     success: false,
     message: access?.status === 'pending'
-      ? 'Participação pendente de aprovação neste campeonato.'
-      : 'Participação não autorizada neste campeonato.',
+      ? 'Acesso bloqueado: pagamento deste campeonato está pendente.'
+      : 'Acesso bloqueado: você ainda não possui participação aprovada neste campeonato.',
     requiresPayment: true,
     leagueId,
-    leagueAccessStatus: access?.status || 'not_requested'
+    leagueAccessStatus: access?.status || null
   });
 };
 
