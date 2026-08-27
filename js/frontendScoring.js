@@ -371,13 +371,6 @@ export function calculateMatchPoints(betMatch, match, settings = {}, isPartial =
     breakdown.winner = Number(rules.winner) || 0;
   }
 
-  const knockoutMatchExtras = getMatchExtrasRules(settings);
-
-  if (knockout && knockoutMatchExtras.qualifier > 0 && betMatch.qualifier && referenceQualifier &&
-      String(betMatch.qualifier) === String(referenceQualifier)) {
-    breakdown.qualifier = knockoutMatchExtras.qualifier;
-  }
-
   const points =
     Number(breakdown.exactScore) +
     Number(breakdown.scoreTeamA) +
