@@ -308,10 +308,10 @@ export function calculateMatchPoints(betMatch, match, settings = {}, isPartial =
     }))
     .filter(rule => rule.conditions.length > 0);
 
-  const matchExtras = getMatchExtrasRules(settings);
-  if (knockout && matchExtras.qualifier > 0 && betMatch.qualifier && referenceQualifier &&
+  const knockoutMatchExtras = getMatchExtrasRules(settings);
+  if (knockout && knockoutMatchExtras.qualifier > 0 && betMatch.qualifier && referenceQualifier &&
       String(betMatch.qualifier) === String(referenceQualifier)) {
-    breakdown.qualifier = matchExtras.qualifier;
+    breakdown.qualifier = knockoutMatchExtras.qualifier;
   }
 
   if (matchRules.length > 0) {
@@ -371,11 +371,11 @@ export function calculateMatchPoints(betMatch, match, settings = {}, isPartial =
     breakdown.winner = Number(rules.winner) || 0;
   }
 
-  const matchExtras = getMatchExtrasRules(settings);
+  const knockoutMatchExtras = getMatchExtrasRules(settings);
 
-  if (knockout && matchExtras.qualifier > 0 && betMatch.qualifier && referenceQualifier &&
+  if (knockout && knockoutMatchExtras.qualifier > 0 && betMatch.qualifier && referenceQualifier &&
       String(betMatch.qualifier) === String(referenceQualifier)) {
-    breakdown.qualifier = matchExtras.qualifier;
+    breakdown.qualifier = knockoutMatchExtras.qualifier;
   }
 
   const points =
