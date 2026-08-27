@@ -1164,7 +1164,7 @@ async function saveScoringRules(e) {
 
     return {
       points: Math.max(0, Number(ruleEl.querySelector('.sr-rule-points')?.value || 0)),
-      conditions: [...new Set(conditions)].filter(condition => condition !== 'qualifier').filter(condition => condition !== 'qualifier')
+      conditions: [...new Set(conditions)].filter(condition => condition !== 'qualifier')
     };
   }).filter(rule => rule.points > 0 && rule.conditions.length > 0);
 
@@ -1227,7 +1227,9 @@ async function saveScoringRules(e) {
   try {
     const res = await api.post('/api/settings/global', {
       leagueId,
-      scoringRules
+      scoringRules,
+      // A pontuação é consequência da estrutura definida no campeonato.
+      championshipRules: CurrentSettings.championshipRules || {}
     });
 
     if (!res?.success) throw new Error(res?.message || 'Erro ao salvar');
