@@ -673,6 +673,11 @@ router.post('/global', protect, admin, async (req, res) => {
 
          // Sem grupos, ou com grupos sem mata-mata, não existe o conceito
       // de classificados para o mata-mata.
+      lockUpdates.scoringRules = {
+        ...currentScoring,
+        ...incomingScoring
+      };
+
       shouldRecalculate = true;
     }
 
