@@ -224,8 +224,20 @@ function winnerDerivesFromScore() {
 }
 
 function deriveWinnerFromScoreData(scoreData) {
-  const a = Number(scoreData?.scoreA);
-  const b = Number(scoreData?.scoreB);
+  // Placar parcial não define vencedor. A e B precisam estar preenchidos.
+  const rawA = scoreData?.scoreA;
+  const rawB = scoreData?.scoreB;
+
+  if (
+    rawA == null || rawB == null ||
+    rawA === '' || rawB === ''
+  ) {
+    return null;
+  }
+
+  const a = Number(rawA);
+  const b = Number(rawB);
+
   if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
   return a > b ? 'A' : b > a ? 'B' : 'draw';
 }
@@ -1258,7 +1270,20 @@ function updateGroupProgressUI() {
       let filled = 0;
 
       if (!STATE.hasSubmitted) {
-        filled = item.querySelectorAll('.bet-option.selected').length;
+        const groupKey = item.dataset.group ||
+          item.querySelector('.accordion-title')?.textContent
+            .replace(/\d+\s*pts/i, '').trim();
+
+        const games = STATE.matches.filter(m => {
+          const matchGroup = (m.group || '').trim().toUpperCase();
+          const currentKey = (groupKey || '').trim().toUpperCase();
+          return matchGroup === currentKey &&
+            m.status !== 'cancelled' &&
+            !isKnockoutMatch(m) &&
+            isMatchEditable(m);
+        });
+
+        filled = games.filter(m => isGroupMatchBetFilled(m)).length;
       } else {
         filled = item.querySelectorAll('.match-card[data-status="finished"], .match-card.finished').length;
 
