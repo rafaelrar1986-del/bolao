@@ -282,17 +282,6 @@ const SettingsSchema = new mongoose.Schema(
       default: []
     },
 
-    // 💰 PAGAMENTO / PIX ESPECÍFICO DESTA LIGA
-    // O QR Code é armazenado como Data URL após compressão/redimensionamento.
-    pixKey: {
-      type: String,
-      default: ''
-    },
-    pixQrCode: {
-      type: String,
-      default: ''
-    },
-
     // 📋 STATUS DA LIGA
     status: {
       type: String,

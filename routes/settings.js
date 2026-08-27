@@ -396,43 +396,6 @@ router.post('/global', protect, admin, async (req, res) => {
     }
 
     /*
-     * ============================================================
-     * 💰 3B. CONFIGURAÇÃO DE PAGAMENTO / PIX
-     * ============================================================
-     * Os dados são específicos da liga.
-     */
-    if (req.body.pixKey !== undefined) {
-      const pixKey = String(req.body.pixKey ?? '').trim();
-      if (pixKey.length > 200) {
-        return res.status(400).json({
-          success: false,
-          message: 'A chave PIX deve ter no máximo 200 caracteres.'
-        });
-      }
-      lockUpdates.pixKey = pixKey;
-    }
-
-    if (req.body.pixQrCode !== undefined) {
-      const pixQrCode = String(req.body.pixQrCode ?? '').trim();
-
-      if (pixQrCode && !/^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=]+$/i.test(pixQrCode)) {
-        return res.status(400).json({
-          success: false,
-          message: 'QR Code inválido. Envie uma imagem PNG, JPG ou WebP.'
-        });
-      }
-
-      if (pixQrCode.length > 1500000) {
-        return res.status(400).json({
-          success: false,
-          message: 'A imagem do QR Code é muito grande. Reduza a imagem e tente novamente.'
-        });
-      }
-
-      lockUpdates.pixQrCode = pixQrCode;
-    }
-
-    /*
      * Status da liga
      */
     if (

@@ -77,35 +77,14 @@ const checkPaid = (req, res, next) => {
     return res.status(401).json({ success: false, message: 'Autenticação necessária.' });
   }
 
-  // Administrador possui acesso a todos os campeonatos.
-  if (req.user.isAdmin) return next();
-
-  // O campeonato deve vir do contexto da requisição.
-  const leagueId = String(
-    req.query?.leagueId ||
-    req.body?.leagueId ||
-    req.params?.leagueId ||
-    ''
-  ).trim();
-
-  if (!leagueId) {
-    return res.status(400).json({
-      success: false,
-      message: 'leagueId é obrigatório para verificar o acesso ao campeonato.'
-    });
+  if (req.user.isAdmin || req.user.hasPaid) {
+    return next();
   }
-
-  const access = req.user.getLeagueAccess(leagueId);
-  if (access?.status === 'approved') return next();
 
   return res.status(402).json({
     success: false,
-    message: access?.status === 'pending'
-      ? 'Acesso bloqueado: pagamento deste campeonato está pendente.'
-      : 'Acesso bloqueado: você ainda não possui participação aprovada neste campeonato.',
-    requiresPayment: true,
-    leagueId,
-    leagueAccessStatus: access?.status || null
+    message: 'Acesso bloqueado: Pagamento da cota pendente.',
+    requiresPayment: true
   });
 };
 

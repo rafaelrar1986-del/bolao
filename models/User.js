@@ -63,20 +63,6 @@ const userSchema = new mongoose.Schema({
     default: []
   },
 
-  // 🔐 ACESSO POR CAMPEONATO
-  // Cada campeonato possui seu próprio status de participação/pagamento.
-  // `hasPaid` permanece somente para compatibilidade com dados antigos.
-  leagueAccess: [{
-    leagueId: { type: String, required: true },
-    status: {
-      type: String,
-      enum: ['pending', 'approved'],
-      default: 'pending'
-    },
-    requestedAt: { type: Date, default: Date.now },
-    approvedAt: { type: Date, default: null }
-  }],
-
   // 🖼️ AVATAR DO USUÁRIO (usado no leaderboard e perfil)
   avatar: {
     type: String,
@@ -133,47 +119,7 @@ userSchema.pre('save', async function(next) {
 // MÉTODOS DE INSTÂNCIA
 // ======================
 
-// 🔐 Acesso por campeonato
-userSchema.methods.getLeagueAccess = function(leagueId) {
-  const id = String(leagueId || '').trim();
-  if (!id) return null;
-  return this.leagueAccess?.find(item => String(item.leagueId) === id) || null;
-};
-
-userSchema.methods.ensureLeagueAccess = async function(leagueId) {
-  const id = String(leagueId || '').trim();
-  if (!id) throw new Error('leagueId é obrigatório');
-
-  let access = this.getLeagueAccess(id);
-  if (!access) {
-    this.leagueAccess.push({
-      leagueId: id,
-      status: 'pending',
-      requestedAt: new Date()
-    });
-    this.leagues = Array.from(new Set([...(this.leagues || []).map(String), id]));
-    await this.save();
-    access = this.getLeagueAccess(id);
-  }
-  return access;
-};
-
-userSchema.methods.approveLeagueAccess = async function(leagueId) {
-  const id = String(leagueId || '').trim();
-  if (!id) throw new Error('leagueId é obrigatório');
-
-  let access = this.getLeagueAccess(id);
-  if (!access) {
-    this.leagueAccess.push({ leagueId: id, status: 'approved', requestedAt: new Date(), approvedAt: new Date() });
-  } else {
-    access.status = 'approved';
-    access.approvedAt = new Date();
-  }
-  this.leagues = Array.from(new Set([...(this.leagues || []).map(String), id]));
-  return await this.save();
-};
-
-// 🔥 MÉTODO LEGADO: mantém compatibilidade com o fluxo antigo
+// 🔥 NOVO MÉTODO: Aprovar pagamento do usuário
 userSchema.methods.approvePayment = async function() {
   this.hasPaid = true;
   return await this.save();

@@ -37,41 +37,13 @@ router.post('/robot/sync', protect, admin, robotController.fetchAndSyncMatches);
  */
 router.get('/users', protect, admin, async (req, res) => {
   try {
-    // O painel administrativo é contextual ao campeonato selecionado.
-    // Sem leagueId não existe uma lista de pagamentos/participações válida.
-    const leagueId = String(req.query?.leagueId || '').trim();
-
-    if (!leagueId) {
-      return res.status(400).json({
-        success: false,
-        message: 'leagueId é obrigatório para listar os usuários do campeonato.'
-      });
-    }
-
-    // IMPORTANTE:
-    // Buscar somente usuários que possuem uma participação naquele campeonato.
-    // Assim, um pedido pendente do Campeonato A não aparece no painel do B.
-    const users = await User.find(
-      { 'leagueAccess.leagueId': leagueId },
-      'name email isAdmin hasPaid leagues leagueAccess createdAt'
-    ).sort({ createdAt: -1 });
-
-    const mappedUsers = users.map(user => {
-      const obj = user.toObject();
-      const access = user.getLeagueAccess(leagueId);
-
-      return {
-        ...obj,
-        leagueAccessStatus: access?.status || null,
-        selectedLeagueId: leagueId
-      };
-    });
-
+    // Buscamos os campos necessários, incluindo o hasPaid que estava faltando antes
+    const users = await User.find({}, 'name email isAdmin hasPaid createdAt').sort({ createdAt: -1 });
     
     // IMPORTANTE: O frontend espera um objeto com a propriedade "users"
     res.json({
       success: true,
-      users: mappedUsers 
+      users: users 
     });
   } catch (error) {
     console.error('❌ Erro ao buscar usuários:', error);
@@ -86,21 +58,17 @@ router.get('/users', protect, admin, async (req, res) => {
 router.put('/approve-user/:id', protect, admin, async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
+
     if (!user) {
       return res.status(404).json({ success: false, message: 'Usuário não encontrado.' });
     }
 
-    const leagueId = String(req.body?.leagueId || req.query?.leagueId || '').trim();
-    if (!leagueId) {
-      return res.status(400).json({ success: false, message: 'leagueId é obrigatório para aprovar o campeonato.' });
-    }
+    user.hasPaid = true; 
+    await user.save();
 
-    await user.approveLeagueAccess(leagueId);
-
-    console.log(`💰 Usuário aprovado no campeonato ${leagueId}: ${user.email}`);
-    res.json({ success: true, message: `Acesso de ${user.name} aprovado neste campeonato!`, leagueId });
+    console.log(`💰 Usuário aprovado: ${user.email}`);
+    res.json({ success: true, message: `Pagamento de ${user.name} aprovado!` });
   } catch (error) {
-    console.error('❌ Erro ao aprovar acesso:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
