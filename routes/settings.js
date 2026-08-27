@@ -673,7 +673,12 @@ router.post('/global', protect, admin, async (req, res) => {
 
          // Sem grupos, ou com grupos sem mata-mata, não existe o conceito
       // de classificados para o mata-mata.
-      incomingChampionshipRules.groupQualification = {
+      const incomingChampionshipRules = {
+  ...(currentChampionship || {}),
+  ...(req.body.championshipRules || {})
+};
+
+incomingChampionshipRules.groupQualification = {
         totalTeams,
         groupCount,
         totalQualified
