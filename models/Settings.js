@@ -133,20 +133,20 @@ const SettingsSchema = new mongoose.Schema(
     // 🏆 REGRAS DE PONTUAÇÃO DO CAMPEONATO
     // Alinhado com pointsService.js e bets.js
     scoringRules: {
-      // 'independent': cada categoria pontua de forma independente.
-      // 'dependent': acerto do placar exato bloqueia gols A/B e vencedor;
-      // apenas o placar exato e o classificado podem pontuar.
-      scoringMode:   { type: String, enum: ['independent', 'dependent'], default: 'independent' },
       exactScore:    { type: Number, default: 5 },
       scoreTeamA:    { type: Number, default: 1 },
       scoreTeamB:    { type: Number, default: 1 },
       winner:        { type: Number, default: 2 },
-      qualifier:     { type: Number, default: 3 },
       topScorer:     { type: Number, default: 10 },
       bestAttack:    { type: Number, default: 10 },
       worstDefense:  { type: Number, default: 10 },
       upset:         { type: Number, default: 15 },
       podiumPoints:  { type: [Number], default: [20, 15, 10, 5] },
+
+      // Extras independentes por partida, exclusivos do mata-mata.
+      matchExtras: {
+        qualifier: { type: Number, default: 3, min: 0 }
+      },
 
       // Novo construtor de regras de pontuação.
       // Cada item é uma regra; condições dentro da mesma regra são E.
@@ -165,8 +165,7 @@ const SettingsSchema = new mongoose.Schema(
               'scoreWinner',
               'scoreLoser',
               'totalGoals',
-              'goalDifference',
-              'qualifier'
+              'goalDifference'
             ],
             required: true
           }

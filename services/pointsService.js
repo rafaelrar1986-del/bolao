@@ -8,13 +8,11 @@ const { calculateGroupStandings } = require('./groupStandingsService');
 // CONFIGURAÇÕES / DEFAULTS
 // ================================================================
 
-const DEFAULT_SCORING = Object.freeze({
-  scoringMode: 'independent',
-  exactScore: 5,
+const DEFAULT_SCORING = Object.freeze({  exactScore: 5,
   scoreTeamA: 1,
   scoreTeamB: 1,
   winner: 2,
-  qualifier: 3,
+  matchExtras: Object.freeze({ qualifier: 3 }),
   topScorer: 10,
   bestAttack: 10,
   worstDefense: 10,
@@ -45,8 +43,7 @@ const MATCH_RULE_CONDITIONS = Object.freeze([
   'scoreWinner',
   'scoreLoser',
   'totalGoals',
-  'goalDifference',
-  'qualifier'
+  'goalDifference'
 ]);
 
 function sanitizeMatchRules(rawRules, championshipRules = DEFAULT_CHAMPIONSHIP_RULES) {
@@ -127,12 +124,6 @@ function evaluateMatchRuleCondition(
     case 'goalDifference':
       return validA && validB &&
         Math.abs(betA - betB) === Math.abs(Number(refA) - Number(refB));
-
-    case 'qualifier':
-      return Boolean(refQualifier) &&
-        Boolean(betMatch?.qualifier) &&
-        String(betMatch.qualifier) === String(refQualifier);
-
     default:
       return false;
   }
@@ -148,17 +139,18 @@ function sanitizeScoringRules(rawRules) {
     ...DEFAULT_SCORING,
     ...(rawRules || {})
   };
-
-  rules.scoringMode = rules.scoringMode === 'dependent'
-    ? 'dependent'
-    : 'independent';
+  const configuredMatchQualifier = Number(rules?.matchExtras?.qualifier);
+  rules.matchExtras = {
+    qualifier: Number.isFinite(configuredMatchQualifier)
+      ? Math.max(0, configuredMatchQualifier)
+      : Number(DEFAULT_SCORING.matchExtras?.qualifier || 0)
+  };
 
   const numericKeys = [
     'exactScore',
     'scoreTeamA',
     'scoreTeamB',
     'winner',
-    'qualifier',
     'topScorer',
     'bestAttack',
     'worstDefense',
@@ -366,20 +358,20 @@ function getMaxPointsPerMatch(
     hasKnockoutPhase: isKnockout
   });
 
+  const matchExtraQualifier = isKnockout
+    ? Number(rules.matchExtras?.qualifier || 0)
+    : 0;
+
   if (matchRules.length > 0) {
-    return Math.max(...matchRules.map(rule => Number(rule.points) || 0), 0);
+    const maxMatchRule = Math.max(...matchRules.map(rule => Number(rule.points) || 0), 0);
+    return maxMatchRule + matchExtraQualifier;
   }
-
-  if (rules.scoringMode === 'dependent') {
-    return rules.exactScore + (isKnockout ? rules.qualifier : 0);
-  }
-
   return (
     rules.exactScore +
     rules.scoreTeamA +
     rules.scoreTeamB +
     rules.winner +
-    (isKnockout ? rules.qualifier : 0)
+    matchExtraQualifier
   );
 }
 
@@ -397,6 +389,15 @@ function getMaxPointsPerMatch(
  *   reference: { refA, refB, refWinner, refQualifier }
  * }
  */
+function getMatchExtraQualifierPoints(scoringRules, championshipRules, realMatch) {
+  if (!championshipRules?.hasKnockoutPhase) return 0;
+  if (!realMatch) return 0;
+  const phase = String(realMatch.phase || '').trim().toLowerCase();
+  if (phase !== 'knockout' && phase !== 'mata-mata') return 0;
+  const value = Number(scoringRules?.matchExtras?.qualifier);
+  return Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
 function calculateMatchPoints(
   betMatch,
   realMatch,
@@ -480,6 +481,17 @@ function calculateMatchPoints(
     hasReference
   );
 
+  // Classificado é um extra independente da matchRule e exclusivo do mata-mata.
+  const matchQualifierPoints = getMatchExtraQualifierPoints(rules, champRules, realMatch);
+  if (
+    matchQualifierPoints > 0 &&
+    betMatch.qualifier != null &&
+    refQualifier != null &&
+    String(betMatch.qualifier) === String(refQualifier)
+  ) {
+    breakdown.qualifier = matchQualifierPoints;
+  }
+
   const betA = Number(betMatch.scoreA);
   const betB = Number(betMatch.scoreB);
   const validBetA = Number.isFinite(betA);
@@ -539,52 +551,35 @@ function calculateMatchPoints(
       if (condition === 'result' || condition === 'scoreWinner' || condition === 'scoreLoser') {
         breakdown.winner = matchedRulePoints;
       }
-      if (condition === 'qualifier') breakdown.qualifier = matchedRulePoints;
-    }
-  } else if (rules.scoringMode === 'dependent') {
-    // Compatibilidade com campeonatos que ainda usam o modelo antigo.
-    if (rules.exactScore > 0 && isExact) {
-      breakdown.exactScore = rules.exactScore;
-    } else {
-      if (rules.scoreTeamA > 0 && validBetA && betA === Number(refA)) {
-        breakdown.scoreTeamA = rules.scoreTeamA;
-      }
-      if (rules.scoreTeamB > 0 && validBetB && betB === Number(refB)) {
-        breakdown.scoreTeamB = rules.scoreTeamB;
-      }
-      if (rules.winner > 0 && effectiveBetWinner && effectiveBetWinner === refWinner) {
-        breakdown.winner = rules.winner;
-      }
-    }
-
-    if (
-      rules.qualifier > 0 &&
-      refQualifier &&
-      betMatch.qualifier &&
-      betMatch.qualifier === refQualifier
-    ) {
-      breakdown.qualifier = rules.qualifier;
     }
   } else {
-    // Compatibilidade com o modelo antigo independente.
     if (rules.exactScore > 0 && isExact) breakdown.exactScore = rules.exactScore;
     if (rules.scoreTeamA > 0 && validBetA && betA === Number(refA)) breakdown.scoreTeamA = rules.scoreTeamA;
     if (rules.scoreTeamB > 0 && validBetB && betB === Number(refB)) breakdown.scoreTeamB = rules.scoreTeamB;
     if (rules.winner > 0 && effectiveBetWinner && effectiveBetWinner === refWinner) breakdown.winner = rules.winner;
-    if (rules.qualifier > 0 && refQualifier && betMatch.qualifier && betMatch.qualifier === refQualifier) {
-      breakdown.qualifier = rules.qualifier;
-    }
   }
 
-  const points = matchRules.length > 0
+  const qualifierPoints = getMatchExtraQualifierPoints(rules, champRules, realMatch);
+
+  if (
+    qualifierPoints > 0 &&
+    refQualifier &&
+    betMatch.qualifier &&
+    String(betMatch.qualifier) === String(refQualifier)
+  ) {
+    breakdown.qualifier = qualifierPoints;
+  }
+
+  const matchRulePoints = matchRules.length > 0
     ? matchedRulePoints
     : (
         Number(breakdown.exactScore) +
         Number(breakdown.scoreTeamA) +
         Number(breakdown.scoreTeamB) +
-        Number(breakdown.winner) +
-        Number(breakdown.qualifier)
+        Number(breakdown.winner)
       );
+
+  const points = matchRulePoints + Number(breakdown.qualifier || 0);
 
   breakdown.matchRuleIndex = matchedRuleIndex;
   breakdown.matchRulePoints = matchedRulePoints;
@@ -982,6 +977,8 @@ function calculateBetTotal(
   let groupPoints = 0;
   let groupPhasePoints = 0;
   let knockoutPoints = 0;
+  let knockoutMatchPoints = 0;
+  let knockoutQualifierPoints = 0;
   let exactScorePoints = 0;
 
   for (const betMatch of bet?.groupMatches || []) {
@@ -1009,8 +1006,15 @@ function calculateBetTotal(
       match.phase === 'pontos_corridos'
     ) {
       groupPhasePoints += result.points;
-    } else {
-      knockoutPoints += result.points;
+    } else if (
+      match.phase === 'knockout' ||
+      match.phase === 'mata-mata'
+    ) {
+      const qualifierPoints = Number(result.breakdown?.qualifier || 0);
+      const matchOnlyPoints = Math.max(0, Number(result.points || 0) - qualifierPoints);
+      knockoutMatchPoints += matchOnlyPoints;
+      knockoutQualifierPoints += qualifierPoints;
+      knockoutPoints += Number(result.points || 0);
     }
   }
 
@@ -1048,6 +1052,8 @@ function calculateBetTotal(
     groupPoints,
     groupPhasePoints,
     knockoutPoints,
+    knockoutMatchPoints,
+    knockoutQualifierPoints,
     exactScorePoints,
     podiumPoints: podiumResult.points,
     extrasPoints: extrasResult.points + groupQualificationResult.points,

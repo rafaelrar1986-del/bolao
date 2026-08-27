@@ -81,6 +81,14 @@ const ExtrasSchema = new mongoose.Schema({
 
 }, { _id: false });
 
+// 🎯 SUB-SCHEMA: Breakdown dos extras avaliados por partida
+const MatchExtrasBreakdownSchema = new mongoose.Schema({
+  qualifier: {
+    type: Number,
+    default: 0
+  }
+}, { _id: false });
+
 // 🏆 SUB-SCHEMA: Breakdown de pontos dos extras
 const ExtrasBreakdownSchema = new mongoose.Schema({
   topScorer: {
@@ -101,6 +109,16 @@ const ExtrasBreakdownSchema = new mongoose.Schema({
   upset: {
     type: Number,
     default: 0
+  },
+
+  // Pontos de extras avaliados por partida (ex.: Classificado).
+  // Não entram como categoria separada no ranking; os pontos são agregados
+  // ao total de Mata-mata.
+  matchExtras: {
+    qualifier: {
+      type: Number,
+      default: 0
+    }
   },
 
   groupQualification: {
@@ -228,6 +246,11 @@ const BetSchema = new mongoose.Schema({
       points: Number
     }],
     default: []
+  },
+
+  matchExtrasBreakdown: {
+    type: MatchExtrasBreakdownSchema,
+    default: () => ({ qualifier: 0 })
   },
 
   extrasBreakdown: {

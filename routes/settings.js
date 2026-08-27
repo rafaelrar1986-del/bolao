@@ -493,8 +493,7 @@ router.post('/global', protect, admin, async (req, res) => {
           'scoreWinner',
           'scoreLoser',
           'totalGoals',
-          'goalDifference',
-          'qualifier'
+          'goalDifference'
         ];
 
         const championshipForRules = {
@@ -539,16 +538,6 @@ router.post('/global', protect, admin, async (req, res) => {
               return res.status(400).json({
                 success: false,
                 message: `Condição inválida na regra ${i + 1}: ${condition}`
-              });
-            }
-
-            if (
-              condition === 'qualifier' &&
-              championshipForRules.hasKnockoutPhase !== true
-            ) {
-              return res.status(400).json({
-                success: false,
-                message: 'A condição Classificado só pode ser usada em campeonatos com fase mata-mata.'
               });
             }
           }
@@ -652,127 +641,7 @@ router.post('/global', protect, admin, async (req, res) => {
         }
       }
 
-      if (incomingScoring.scoringMode !== undefined) {
-        if (!['independent', 'dependent'].includes(incomingScoring.scoringMode)) {
-          return res.status(400).json({
-            success: false,
-            message: 'scoringMode deve ser independent ou dependent.'
-          });
-        }
-      }
-
-      lockUpdates.scoringRules = {
-        ...currentScoring,
-        ...incomingScoring
-      };
-
-      shouldRecalculate = true;
-    }
-
-    /*
-     * Regras adicionais do campeonato
-     */
-    if (
-      req.body.championshipRules &&
-      typeof req.body.championshipRules === 'object'
-    ) {
-
-      const settings =
-        await Settings
-          .findById(configId)
-          .lean();
-
-      const currentChamp =
-        settings?.championshipRules || {};
-
-      const incomingChampionshipRules = {
-        ...req.body.championshipRules
-      };
-
-      const hasGroupPhase = incomingChampionshipRules.hasGroupPhase !== undefined
-        ? Boolean(incomingChampionshipRules.hasGroupPhase)
-        : currentChamp.hasGroupPhase !== false;
-      const hasKnockoutPhase = incomingChampionshipRules.hasKnockoutPhase !== undefined
-        ? Boolean(incomingChampionshipRules.hasKnockoutPhase)
-        : currentChamp.hasKnockoutPhase === true;
-
-      // A combinação dos dois booleanos define o formato:
-      // grupos, mata-mata, grupos + mata-mata ou pontos corridos.
-      incomingChampionshipRules.hasGroupPhase = hasGroupPhase;
-      incomingChampionshipRules.hasKnockoutPhase = hasKnockoutPhase;
-
-      const rawQualification = incomingChampionshipRules.groupQualification !== undefined
-        ? incomingChampionshipRules.groupQualification
-        : (currentChamp.groupQualification || {});
-
-      if (!rawQualification || typeof rawQualification !== 'object') {
-        return res.status(400).json({
-          success: false,
-          message: 'groupQualification deve ser um objeto.'
-        });
-      }
-
-      const totalTeams = hasGroupPhase ? Math.floor(Number(rawQualification.totalTeams || 0)) : 0;
-      const groupCount = hasGroupPhase ? Math.floor(Number(rawQualification.groupCount || 0)) : 0;
-      const totalQualified = hasGroupPhase && hasKnockoutPhase
-        ? Math.floor(Number(rawQualification.totalQualified || 0))
-        : 0;
-
-      if (totalTeams < 0 || groupCount < 0 || totalQualified < 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'Os valores da classificação por grupos não podem ser negativos.'
-        });
-      }
-
-      if (hasGroupPhase) {
-        if (!totalTeams || !groupCount) {
-          return res.status(400).json({
-            success: false,
-            message: 'Informe número de times e número de grupos para uma fase de grupos.'
-          });
-        }
-        if (totalTeams % groupCount !== 0) {
-          return res.status(400).json({
-            success: false,
-            message: 'O número de times deve ser divisível pelo número de grupos.'
-          });
-        }
-
-        if (hasKnockoutPhase) {
-          if (!totalQualified) {
-            return res.status(400).json({
-              success: false,
-              message: 'Informe o número de classificados para o mata-mata.'
-            });
-          }
-          if (totalQualified > totalTeams) {
-            return res.status(400).json({
-              success: false,
-              message: 'O número de classificados não pode ser maior que o número de times.'
-            });
-          }
-
-          const teamsPerGroup = totalTeams / groupCount;
-          const qualifiedPerGroup = Math.floor(totalQualified / groupCount);
-          const additional = totalQualified % groupCount;
-
-          if (qualifiedPerGroup > teamsPerGroup) {
-            return res.status(400).json({
-              success: false,
-              message: 'A configuração exige mais classificados por grupo do que existem times no grupo.'
-            });
-          }
-          if (additional > 0 && qualifiedPerGroup >= teamsPerGroup) {
-            return res.status(400).json({
-              success: false,
-              message: 'Não há uma posição seguinte disponível para os classificados adicionais.'
-            });
-          }
-        }
-      }
-
-      // Sem grupos, ou com grupos sem mata-mata, não existe o conceito
+         // Sem grupos, ou com grupos sem mata-mata, não existe o conceito
       // de classificados para o mata-mata.
       incomingChampionshipRules.groupQualification = {
         totalTeams,
