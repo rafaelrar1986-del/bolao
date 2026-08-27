@@ -53,7 +53,6 @@ const DEFAULT_SCORING = {
   scoreTeamA: 1,
   scoreTeamB: 1,
   winner: 2,
-  qualifier: 3,
   topScorer: 10,
   bestAttack: 10,
   worstDefense: 10,
@@ -79,7 +78,6 @@ const DEFAULT_CHAMPIONSHIP_RULES = {
 let paymentQrCode = '';
 let CurrentSettings = {
   scoringRules: { ...DEFAULT_SCORING, groupQualificationRules: [] },
-  scoringMode: 'independent',
   championshipRules: { ...DEFAULT_CHAMPIONSHIP_RULES },
   championshipResults: { topScorer: null, bestAttack: null, worstDefense: null, upset: null },
   podium: [],
@@ -102,11 +100,6 @@ async function loadLeagueSettings() {
         groupQualificationRules: [],
         ...(res.data.scoringRules || {})
       };
-      CurrentSettings.scoringMode =
-        res.data.scoringMode ||
-        res.data.scoringRules?.scoringMode ||
-        CurrentSettings.scoringMode ||
-        'independent';
       CurrentSettings.championshipRules = {
         ...DEFAULT_CHAMPIONSHIP_RULES,
         ...(res.data.championshipRules || {}),
@@ -753,8 +746,7 @@ async function openScoringRulesModal() {
     ['scoreWinner', 'Gols do vencedor'],
     ['scoreLoser', 'Gols do perdedor'],
     ['totalGoals', 'Total de gols'],
-    ['goalDifference', 'Diferença de gols'],
-    ...(hasKnockout ? [['qualifier', 'Classificado']] : [])
+    ['goalDifference', 'Diferença de gols']
   ];
 
   const existingRules = Array.isArray(r.matchRules)
@@ -777,7 +769,7 @@ async function openScoringRulesModal() {
 
   const renderRule = (rule, index) => {
     const conditions = Array.isArray(rule.conditions) && rule.conditions.length
-      ? rule.conditions
+      ? rule.conditions.filter(condition => condition !== 'qualifier')
       : [conditionOptions[0][0]];
 
     return `
@@ -843,10 +835,10 @@ async function openScoringRulesModal() {
           <div style="background:linear-gradient(135deg,rgba(0,190,255,.08),rgba(120,70,255,.06)); padding:12px; border-radius:10px; border:1px solid rgba(0,210,255,.16);">
             <h4 style="margin:0 0 5px; color:#2ee8ff;">🎯 Regras das partidas</h4>
             <p style="margin:0 0 10px; color:#aaa; font-size:.72rem; line-height:1.45;">
-              Dentro de uma regra, as condições são ligadas por <b>E</b>.
-              As regras são avaliadas de cima para baixo e funcionam como <b>OU</b>.
-              A primeira regra satisfeita concede os pontos.
-            </p>
+               Primeiro defina em <b>Regras do Campeonato</b> quais fases e características existem.
+               Depois configure aqui <b>o que pontua</b> dentro dessa estrutura.
+               Dentro de uma regra, as condições são ligadas por <b>E</b>; regras diferentes funcionam como <b>OU</b>.
+             </p>
 
             <div id="match-rules-builder">${initialRulesHtml}</div>
 
@@ -860,6 +852,23 @@ async function openScoringRulesModal() {
               ${conditionOptions.map(([,label]) => label).join(' • ')}
             </small>
           </div>
+
+          ${hasKnockout ? `
+          <div id="match-extras-panel" style="background:linear-gradient(135deg,rgba(255,180,0,.08),rgba(0,190,255,.05)); padding:12px; border-radius:10px; border:1px solid rgba(255,190,0,.16);">
+            <h4 style="margin:0 0 5px; color:#ffd34d;">🎯 Extras por partida do mata-mata</h4>
+            <p style="margin:0 0 10px; color:#aaa; font-size:.72rem; line-height:1.45;">
+              Estes extras são avaliados <b>em cada confronto</b> do mata-mata. A pontuação entra no total de <b>Mata-mata</b>.
+            </p>
+            <div class="form-group" style="max-width:180px; margin:0;">
+              <label>Classificado</label>
+              <input type="number" id="sr-match-extra-qualifier"
+                     value="${r.matchExtras?.qualifier ?? 3}"
+                     min="0" step="1"
+                     style="width:100%; box-sizing:border-box;">
+              <small style="display:block; color:#777; margin-top:5px;">Pontos por classificado acertado</small>
+            </div>
+          </div>
+          ` : ''}
 
           ${hasGroup ? `
           <div id="group-qualification-extra-panel" style="background:linear-gradient(135deg,rgba(255,180,0,.08),rgba(0,190,255,.05)); padding:12px; border-radius:10px; border:1px solid rgba(255,190,0,.16);">
@@ -1149,12 +1158,13 @@ async function saveScoringRules(e) {
 
   const matchRules = [...builder.querySelectorAll('.scoring-builder-rule')].map(ruleEl => {
     const conditions = [...ruleEl.querySelectorAll('.sr-rule-condition')]
+
       .map(select => select.value)
       .filter(Boolean);
 
     return {
       points: Math.max(0, Number(ruleEl.querySelector('.sr-rule-points')?.value || 0)),
-      conditions: [...new Set(conditions)]
+      conditions: [...new Set(conditions)].filter(condition => condition !== 'qualifier').filter(condition => condition !== 'qualifier')
     };
   }).filter(rule => rule.points > 0 && rule.conditions.length > 0);
 
@@ -1193,9 +1203,17 @@ async function saveScoringRules(e) {
   }
 
   const scoringRules = {
-    // Os campos antigos continuam salvos para compatibilidade com versões anteriores.
+    // Mantém as configurações atuais, mas Classificado pertence exclusivamente a matchExtras.
     ...(CurrentSettings.scoringRules || {}),
-    matchRules,
+    matchRules: matchRules.filter(rule =>
+      !rule.conditions.includes('qualifier')
+    ),
+    matchExtras: {
+      qualifier: Math.max(
+        0,
+        Number(document.getElementById('sr-match-extra-qualifier')?.value || 0)
+      )
+    },
     groupQualificationRules,
     podiumPoints: Array.from({ length: getConfiguredPodiumSize() }, (_, index) =>
       Number(document.getElementById(`sr-podium-${index}`)?.value || 0)

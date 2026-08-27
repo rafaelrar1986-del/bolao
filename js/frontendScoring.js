@@ -8,7 +8,7 @@ export const DEFAULT_SCORING = Object.freeze({
   scoreTeamA: 1,
   scoreTeamB: 1,
   winner: 2,
-  qualifier: 3,
+  matchExtras: Object.freeze({ qualifier: 3 }),
   podiumPoints: [20, 15, 10, 5],
   topScorer: 10,
   bestAttack: 10,
@@ -29,6 +29,16 @@ function num(v) {
 
 export function getScoringRules(settings = {}) {
   return { ...DEFAULT_SCORING, ...(settings?.scoringRules || {}) };
+}
+
+export function getMatchExtrasRules(settings = {}) {
+  const scoring = settings?.scoringRules || {};
+  const configured = scoring.matchExtras?.qualifier;
+  return {
+    qualifier: Number.isFinite(Number(configured))
+      ? Math.max(0, Number(configured))
+      : 0
+  };
 }
 
 export function getChampionshipRules(settings = {}) {
@@ -250,10 +260,6 @@ function evaluateMatchRuleCondition(
         Math.abs(betA - betB) ===
         Math.abs(Number(ref.scoreA) - Number(ref.scoreB));
 
-    case 'qualifier':
-      return Boolean(referenceQualifier) &&
-        Boolean(betMatch?.qualifier) &&
-        String(betMatch.qualifier) === String(referenceQualifier);
 
     default:
       return false;
@@ -295,7 +301,19 @@ export function calculateMatchPoints(betMatch, match, settings = {}, isPartial =
     : null;
 
   const betWinner = getEffectiveBetWinner(betMatch, settings);
-  const matchRules = getMatchRules(settings, match);
+  const knockout = isKnockoutMatch(match);
+  const matchRules = getMatchRules(settings, match)
+    .map(rule => ({
+      ...rule,
+      conditions: (rule.conditions || []).filter(c => c !== 'qualifier')
+    }))
+    .filter(rule => rule.conditions.length > 0);
+
+  const matchExtras = getMatchExtrasRules(settings);
+  if (knockout && matchExtras.qualifier > 0 && betMatch.qualifier && referenceQualifier &&
+      String(betMatch.qualifier) === String(referenceQualifier)) {
+    breakdown.qualifier = matchExtras.qualifier;
+  }
 
   if (matchRules.length > 0) {
     for (let index = 0; index < matchRules.length; index++) {
@@ -317,7 +335,7 @@ export function calculateMatchPoints(betMatch, match, settings = {}, isPartial =
       breakdown.matchedConditions = [...rule.conditions];
 
       return {
-        points: rule.points,
+        points: rule.points + Number(breakdown.qualifier || 0),
         breakdown,
         matchedRule: {
           index,
@@ -327,7 +345,7 @@ export function calculateMatchPoints(betMatch, match, settings = {}, isPartial =
       };
     }
 
-    return { points: 0, breakdown };
+    return { points: Number(breakdown.qualifier || 0), breakdown };
   }
 
   const betA = num(betMatch.scoreA ?? betMatch.betScoreA);
@@ -336,36 +354,29 @@ export function calculateMatchPoints(betMatch, match, settings = {}, isPartial =
     betA != null && betB != null &&
     betA === ref.scoreA && betB === ref.scoreB;
 
-  const scoringMode =
-    settings?.scoringMode ||
-    settings?.scoringRules?.scoringMode ||
-    'independent';
-
-  const dependent = scoringMode === 'dependent';
-
+  // Todas as categorias configuradas são independentes.
+  // Não existe mais modo dependent/independent no campeonato.
   if (exactHit && rules.exactScore > 0) {
     breakdown.exactScore = Number(rules.exactScore) || 0;
   }
 
-  const useIndependentSubcategories = !dependent || !exactHit;
-
-  if (useIndependentSubcategories) {
-    if (rules.scoreTeamA > 0 && betA != null && betA === ref.scoreA) {
-      breakdown.scoreTeamA = Number(rules.scoreTeamA) || 0;
-    }
-
-    if (rules.scoreTeamB > 0 && betB != null && betB === ref.scoreB) {
-      breakdown.scoreTeamB = Number(rules.scoreTeamB) || 0;
-    }
-
-    if (rules.winner > 0 && betWinner && ref.winner && betWinner === ref.winner) {
-      breakdown.winner = Number(rules.winner) || 0;
-    }
+  if (rules.scoreTeamA > 0 && betA != null && betA === ref.scoreA) {
+    breakdown.scoreTeamA = Number(rules.scoreTeamA) || 0;
   }
 
-  if (knockout && rules.qualifier > 0 && betMatch.qualifier && referenceQualifier &&
-      betMatch.qualifier === referenceQualifier) {
-    breakdown.qualifier = Number(rules.qualifier) || 0;
+  if (rules.scoreTeamB > 0 && betB != null && betB === ref.scoreB) {
+    breakdown.scoreTeamB = Number(rules.scoreTeamB) || 0;
+  }
+
+  if (rules.winner > 0 && betWinner && ref.winner && betWinner === ref.winner) {
+    breakdown.winner = Number(rules.winner) || 0;
+  }
+
+  const matchExtras = getMatchExtrasRules(settings);
+
+  if (knockout && matchExtras.qualifier > 0 && betMatch.qualifier && referenceQualifier &&
+      String(betMatch.qualifier) === String(referenceQualifier)) {
+    breakdown.qualifier = matchExtras.qualifier;
   }
 
   const points =
@@ -380,51 +391,54 @@ export function calculateMatchPoints(betMatch, match, settings = {}, isPartial =
 
 export function getMatchPointStatus(betMatch, match, settings = {}, isPartial = false) {
   const result = calculateMatchPoints(betMatch, match, settings, isPartial);
-  const matchRules = getMatchRules(settings, match);
+  const matchRules = getMatchRules(settings, match)
+    .map(rule => ({
+      ...rule,
+      conditions: (rule.conditions || []).filter(c => c !== 'qualifier')
+    }))
+    .filter(rule => rule.conditions.length > 0);
 
   if (matchRules.length > 0) {
-    const maxPoints = Math.max(...matchRules.map(rule => rule.points), 0);
+    const matchExtraQualifier = knockout
+      ? getMatchExtrasRules(settings).qualifier
+      : 0;
+    const maxMatchRulePoints = Math.max(...matchRules.map(rule => Number(rule.points) || 0), 0);
+    const maxPoints = maxMatchRulePoints + matchExtraQualifier;
     let category = 'wrong';
     if (result.points > 0 && result.points === maxPoints) category = 'full';
     else if (result.points > 0) category = 'partial';
+
+    const activeCategories = [...(result.breakdown?.matchedConditions || [])];
+    if (matchExtraQualifier > 0 && result.breakdown?.qualifier > 0) {
+      activeCategories.push('qualifier');
+    }
 
     return {
       ...result,
       category,
       maxPoints,
-      activeCategories: result.breakdown?.matchedConditions || []
+      activeCategories
     };
   }
 
   const rules = getScoringRules(settings);
   const knockout = isKnockoutMatch(match);
-  const dependent =
-    (settings?.scoringMode || settings?.scoringRules?.scoringMode || 'independent') === 'dependent';
-
-  const betA = num(betMatch?.scoreA ?? betMatch?.betScoreA);
-  const betB = num(betMatch?.scoreB ?? betMatch?.betScoreB);
-  const ref = getReferenceScore(match, settings, isPartial);
-  const exactHit = ref.scoreA != null && ref.scoreB != null &&
-    betA != null && betB != null && betA === ref.scoreA && betB === ref.scoreB;
 
   const active = [];
+  if (rules.exactScore > 0) active.push('exactScore');
+  if (rules.scoreTeamA > 0) active.push('scoreTeamA');
+  if (rules.scoreTeamB > 0) active.push('scoreTeamB');
+  if (rules.winner > 0) active.push('winner');
 
-  if (!dependent) {
-    if (rules.exactScore > 0) active.push('exactScore');
-    if (rules.scoreTeamA > 0) active.push('scoreTeamA');
-    if (rules.scoreTeamB > 0) active.push('scoreTeamB');
-    if (rules.winner > 0) active.push('winner');
-  } else if (exactHit && rules.exactScore > 0) {
-    active.push('exactScore');
-  } else {
-    if (rules.scoreTeamA > 0) active.push('scoreTeamA');
-    if (rules.scoreTeamB > 0) active.push('scoreTeamB');
-    if (rules.winner > 0) active.push('winner');
-  }
+  const matchExtraQualifier = knockout
+    ? getMatchExtrasRules(settings).qualifier
+    : 0;
+  if (matchExtraQualifier > 0) active.push('qualifier');
 
-  if (knockout && rules.qualifier > 0) active.push('qualifier');
-
-  const maxPoints = active.reduce((sum, key) => sum + (Number(rules[key]) || 0), 0);
+  const maxPoints = active.reduce((sum, key) => {
+    if (key === 'qualifier') return sum + matchExtraQualifier;
+    return sum + (Number(rules[key]) || 0);
+  }, 0);
   const points = result.points;
 
   let category = 'wrong';
@@ -437,10 +451,20 @@ export function getMatchPointStatus(betMatch, match, settings = {}, isPartial = 
 export function getMaxPointsPerMatch(settings = {}, match = null) {
   const rules = getScoringRules(settings);
   const knockout = isKnockoutMatch(match);
-  const matchRules = getMatchRules(settings, match);
+  const matchRules = getMatchRules(settings, match)
+    .map(rule => ({
+      ...rule,
+      conditions: (rule.conditions || []).filter(c => c !== 'qualifier')
+    }))
+    .filter(rule => rule.conditions.length > 0);
+
+  const matchExtraQualifier = knockout
+    ? getMatchExtrasRules(settings).qualifier
+    : 0;
 
   if (matchRules.length > 0) {
-    return Math.max(...matchRules.map(rule => Number(rule.points) || 0), 0);
+    return Math.max(...matchRules.map(rule => Number(rule.points) || 0), 0)
+      + matchExtraQualifier;
   }
 
   return (
@@ -448,6 +472,6 @@ export function getMaxPointsPerMatch(settings = {}, match = null) {
     (Number(rules.scoreTeamA) || 0) +
     (Number(rules.scoreTeamB) || 0) +
     (Number(rules.winner) || 0) +
-    (knockout ? (Number(rules.qualifier) || 0) : 0)
+    matchExtraQualifier
   );
 }

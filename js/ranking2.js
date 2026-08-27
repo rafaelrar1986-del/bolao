@@ -1007,7 +1007,15 @@ function attachMobileCardEvents(entries, mobileRoot) {
                 },
                 {
                     points: entry.knockoutPoints,
-                    label: 'Mata-mata'
+                    label: 'Mata-mata',
+                    details: [
+                        ...(Number(entry.knockoutMatchPoints || 0) > 0
+                            ? [{ label: 'Partidas', points: Number(entry.knockoutMatchPoints || 0) }]
+                            : []),
+                        ...(Number(entry.knockoutQualifierPoints || 0) > 0
+                            ? [{ label: 'Classificados', points: Number(entry.knockoutQualifierPoints || 0) }]
+                            : [])
+                    ]
                 },
                 {
                     points: entry.podiumPoints,
@@ -1075,6 +1083,16 @@ function attachMobileCardEvents(entries, mobileRoot) {
                         <div class="user-score-item">
                             <strong>${item.points}</strong>
                             <span>${item.label}</span>
+                            ${Array.isArray(item.details) && item.details.length ? `
+                                <div class="user-score-item-details" style="margin:6px 0 0 8px; padding-left:8px; border-left:1px solid rgba(255,255,255,.12);">
+                                    ${item.details.map(detail => `
+                                        <div class="user-score-detail" style="display:flex; justify-content:space-between; gap:12px; font-size:.78rem; opacity:.85; margin-top:3px;">
+                                            <span>${detail.label}</span>
+                                            <strong>${detail.points}</strong>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            ` : ''}
                         </div>
                     `).join('')}
                 </div>

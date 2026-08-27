@@ -14,7 +14,6 @@ const MATCH_CONDITION_LABELS = {
   scoreLoser: 'Gols do perdedor',
   totalGoals: 'Total de gols',
   goalDifference: 'Diferença de gols',
-  qualifier: 'Classificado'
 };
 
 const GROUP_CONDITION_LABELS = {
@@ -33,7 +32,6 @@ const CONDITION_ICONS = {
   scoreLoser: '⚽',
   totalGoals: '⚽',
   goalDifference: '📊',
-  qualifier: '➡️'
 };
 
 const EXTRA_LABELS = {
@@ -126,6 +124,25 @@ function renderRuleItems(rules, labels, category, defaultIcon = '📌') {
     })
     .filter(Boolean)
     .join('');
+}
+
+function renderMatchExtras(scoringRules, championshipRules) {
+  if (championshipRules?.hasKnockoutPhase !== true) return '';
+
+  const points = Number(
+    scoringRules?.matchExtras?.qualifier ??
+    0
+  );
+
+  if (!(points > 0)) return '';
+
+  return `
+    <div class="profile-rule-item profile-rule-extra">
+      <span class="profile-rule-icon" aria-hidden="true">➡️</span>
+      <span class="rule-label">Classificado</span>
+      <span class="profile-rule-points">${points}<small>pts</small></span>
+    </div>
+  `;
 }
 
 function renderExtras(scoringRules) {
@@ -283,13 +300,15 @@ export function buildChampionshipRulesContent(data = {}, options = {}) {
       )
     : '';
 
+  const matchExtrasHtml = renderMatchExtras(scoringRules, championshipRules);
   const extrasHtml = renderExtras(scoringRules);
   const podiumHtml = renderPodium(scoringRules, championshipRules);
 
   const groups = [
     renderGroup('Pontuação das partidas', '⚽', matchHtml, 'match'),
     renderGroup('Classificação da fase de grupos', '🏅', groupHtml, 'qualification'),
-    renderGroup('Extras', '✨', extrasHtml, 'extra'),
+    renderGroup('Extras por partida', '🎯', matchExtrasHtml, 'match-extra'),
+    renderGroup('Extras do campeonato', '✨', extrasHtml, 'extra'),
     renderGroup('Pódio', '🏆', podiumHtml, 'podium')
   ].filter(Boolean);
 

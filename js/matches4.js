@@ -428,8 +428,11 @@ function hasWinnerBet() {
 }
 
 function hasQualifierBet() {
-  if (hasCustomMatchRules()) return customRulesHaveCondition('qualifier');
-  return getScoringRules().qualifier > 0;
+  const match = arguments.length ? arguments[0] : null;
+  const phase = String(match?.phase || '').toLowerCase();
+  if (phase !== 'knockout') return false;
+  const rules = getScoringRules?.() || {};
+  return Number(rules?.matchExtras?.qualifier || 0) > 0;
 }
 
 function hasPodium() {
@@ -664,9 +667,7 @@ function calcLivePoints(match) {
 
   const settings = {
     scoringRules: STATE.scoringRules || {},
-    championshipRules: STATE.championshipRules || {},
-    scoringMode: STATE.scoringMode || 'independent'
-  };
+    championshipRules: STATE.championshipRules || {},  };
 
   const betMatch = {
     scoreA: scoreData.scoreA,
@@ -727,7 +728,6 @@ const STATE = {
   // 🆕 Regras de pontuação dinâmicas do admin
   scoringRules: null,
   championshipRules: null,
-  scoringMode: 'independent',
   scoresMap: new Map(), // matchId -> { scoreA, scoreB }
   knockoutQualifiers: new Map(), // matchId -> 'A' | 'B'
   extras: { topScorer:'', bestAttack:'', worstDefense:'', upset:'' },
@@ -1341,9 +1341,7 @@ async function loadGlobalSettings() {
     const res = await api.get(`/api/matches/rules/${leagueId}`);
     if (res?.success && res.data) {
       STATE.scoringRules = res.data.scoringRules || null;
-      STATE.championshipRules = res.data.championshipRules || null;
-      STATE.scoringMode = res.data.scoringMode || res.data.scoringRules?.scoringMode || 'independent';
-      if (res.data.championshipResults) {
+      STATE.championshipRules = res.data.championshipRules || null;      if (res.data.championshipResults) {
         STATE.officialExtras = res.data.championshipResults;
       }
     } else {
@@ -1353,9 +1351,7 @@ async function loadGlobalSettings() {
   } catch (err) {
     console.error("Erro ao carregar configurações globais:", err);
     STATE.scoringRules = null;
-    STATE.championshipRules = null;
-    STATE.scoringMode = 'independent';
-  }
+    STATE.championshipRules = null;  }
 
   // 🔒 Carrega travas de fase (lockedPhases / unlockedPhases) do backend
   try {
@@ -4038,11 +4034,7 @@ async function fetchAndRenderBets(matchObj) {
 
             const modalSettings = {
                 scoringRules: settingsRes?.success ? (settingsRes.data?.scoringRules || STATE.scoringRules || {}) : (STATE.scoringRules || {}),
-                championshipRules: settingsRes?.success ? (settingsRes.data?.championshipRules || STATE.championshipRules || {}) : (STATE.championshipRules || {}),
-                scoringMode: settingsRes?.success
-                    ? (settingsRes.data?.scoringMode || settingsRes.data?.scoringRules?.scoringMode || STATE.scoringMode || 'independent')
-                    : (STATE.scoringMode || 'independent')
-            };
+                championshipRules: settingsRes?.success ? (settingsRes.data?.championshipRules || STATE.championshipRules || {}) : (STATE.championshipRules || {}),            };
 
             const toBackendChoice = (value) => {
                 if (value == null) return null;
