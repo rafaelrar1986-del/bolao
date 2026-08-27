@@ -3450,6 +3450,10 @@ function fillPodiumSelects() {
       if(!STATE.podium) STATE.podium = {};
       STATE.podium[p] = el.value;
       updatePodiumIndicator(p);
+
+      if (typeof updateBetsCounters === 'function') {
+        updateBetsCounters();
+      }
     };
 
     updatePodiumIndicator(p);
@@ -3730,7 +3734,12 @@ function fillExtrasInputs() {
       bestAttack: '',
       worstDefense: '',
       upset: ''
-    };
+    
+
+  if (typeof updateBetsCounters === 'function') {
+    updateBetsCounters();
+  }
+};
   }
 
   STATE.extras[key] = el.value;
