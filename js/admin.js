@@ -76,6 +76,7 @@ const DEFAULT_CHAMPIONSHIP_RULES = {
 };
 
 // Estado em memória das configurações da liga atual
+let paymentQrCode = '';
 let CurrentSettings = {
   scoringRules: { ...DEFAULT_SCORING, groupQualificationRules: [] },
   scoringMode: 'independent',
@@ -1699,7 +1700,7 @@ async function openChampionshipRulesModal() {
   renderTieBreakers();
 
   // 📷 QR Code: permite câmera/upload e redimensiona a imagem antes do armazenamento.
-  let paymentQrCode = String(CurrentSettings.payment?.pixQrCode || '');
+  paymentQrCode = String(CurrentSettings.payment?.pixQrCode || '');
   const pixPreview = document.getElementById('cr-pix-preview');
   const pixClear = document.getElementById('cr-pix-clear');
 
