@@ -821,8 +821,7 @@ export function getMissingGroupQualificationBets() {
 
 export function getMissingGroupBets() {
   return STATE.matches
-    .filter(m => !isKnockoutMatch(m))
-    .filter(m => isMatchEditable(m))
+    .filter(m => isMatchAvailableForBetting(m))
     .filter(m => !isGroupMatchBetFilled(m));
 }
 
@@ -852,6 +851,32 @@ function isMatchStartedByTime(match, now = new Date()) {
   return matchDate.getTime() <= now.getTime();
 }
 
+function isMatchAvailableForBetting(match) {
+  if (!match || isKnockoutMatch(match)) return false;
+  if (match.status === 'cancelled') return false;
+  if (isMatchStartedByStatus(match) || isMatchStartedByTime(match)) return false;
+
+  const phase = String(match.phase || '').toLowerCase();
+  const isGroup = phase === 'group';
+  const isPointsRun = phase === 'pontos_corridos' || phase === 'points_run';
+
+  if (isGroup && STATE.groupBetAvailabilityMode === 'round') {
+    const round = Number(match.roundNumber);
+    if (!Number.isInteger(round) || round <= 0) return false;
+    return STATE.unlockedGroupRounds.has(round) &&
+           !STATE.lockedGroupRounds.has(round);
+  }
+
+  if (isPointsRun && STATE.pointsRunBetAvailabilityMode === 'round') {
+    const round = Number(match.roundNumber);
+    if (!Number.isInteger(round) || round <= 0) return false;
+    return STATE.unlockedPointsRunRounds.has(round) &&
+           !STATE.lockedPointsRunRounds.has(round);
+  }
+
+  return true;
+}
+
 export function isMatchEditable(match, now = new Date()) {
   if (!match) return false;
 
@@ -872,11 +897,7 @@ export function isMatchEditable(match, now = new Date()) {
   const lockMode = STATE.betLockMode || 'grade';
 
   if (match.phase === 'group' && STATE.groupBetAvailabilityMode === 'round') {
-    const round = Number(match.roundNumber);
-    if (!Number.isInteger(round) || round <= 0) return false;
-    if (STATE.lockedGroupRounds.has(round)) return false;
-    if (!STATE.unlockedGroupRounds.has(round)) return false;
-    return true;
+    return isMatchAvailableForBetting(match);
   }
 
   // No modo por partida, o horário/status da própria partida é a regra.
@@ -890,11 +911,7 @@ export function isMatchEditable(match, now = new Date()) {
   const isPointsRun =
     matchPhase === 'pontos_corridos' || matchPhase === 'points_run';
   if (isPointsRun && STATE.pointsRunBetAvailabilityMode === 'round') {
-    const round = Number(match.roundNumber);
-    if (!Number.isInteger(round) || round <= 0) return false;
-    if (STATE.lockedPointsRunRounds.has(round)) return false;
-    if (!STATE.unlockedPointsRunRounds.has(round)) return false;
-    return true;
+    return isMatchAvailableForBetting(match);
   }
   if (matchPhase === 'knockout' && STATE.knockoutBetAvailabilityMode === 'round') {
     const round = Number(match.roundNumber);
@@ -1278,9 +1295,7 @@ function updateGroupProgressUI() {
           const matchGroup = (m.group || '').trim().toUpperCase();
           const currentKey = (groupKey || '').trim().toUpperCase();
           return matchGroup === currentKey &&
-            m.status !== 'cancelled' &&
-            !isKnockoutMatch(m) &&
-            isMatchEditable(m);
+            isMatchAvailableForBetting(m);
         });
 
         filled = games.filter(m => isGroupMatchBetFilled(m)).length;
