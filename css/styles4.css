@@ -16390,3 +16390,19 @@ body:has(#admin) .modal-content .setting-section {
   justify-content: center !important;
   flex: 0 0 58px !important;
 }
+
+/* FIX DEFINITIVO — placar da lista de partidas do Admin.
+   padding horizontal causava a quebra do placar (ex.: "1 x" / "0"). */
+#admin-matches-list .score-box {
+  background: rgba(34, 211, 238, 0.07) !important;
+  border: 1px solid rgba(34, 211, 238, 0.3) !important;
+  color: #22d3ee !important;
+  text-shadow: 0 0 10px rgba(34, 211, 238, 0.4) !important;
+  border-radius: 6px !important;
+  padding: 4px 0 !important;
+  font-weight: 700 !important;
+  font-size: 15px !important;
+  letter-spacing: 1px !important;
+  white-space: nowrap !important;
+  box-sizing: border-box !important;
+}
