@@ -490,9 +490,9 @@ function getChampionshipRules() {
 
 function getPodiumSize() {
   const rules = getChampionshipRules();
-  // 🟡 CORREÇÃO: Operador ?? para aceitar podiumSize === 0
-  const size = rules.podiumSize ?? 4;
-  return Math.max(0, Number(size) || 4);
+  const rawSize = rules?.podiumSize;
+  const size = rawSize == null ? 4 : Number(rawSize);
+  return Number.isFinite(size) && size >= 0 ? Math.floor(size) : 4;
 }
 
 function getPodiumPositions() {
@@ -1336,30 +1336,21 @@ function getMissingPodiumBets() {
 
   if (!podiumEnabled) return [];
 
-  const positions = Number(
-    rules.podiumPositions ??
-    rules.podium?.positions ??
-    rules.podiumCount ??
-    4
-  );
-
-  if (!Number.isInteger(positions) || positions <= 0) return [];
+  // O tamanho oficial do pódio já é centralizado em getPodiumSize().
+  // Não usar fallback 4 aqui: campeonatos com 2 posições devem cobrar
+  // exatamente first + second, e nunca third + fourth.
+  const positions = getPodiumPositions();
+  if (!positions.length) return [];
 
   const podium = STATE.podium || {};
-  const missing = [];
-
-  for (let position = 1; position <= positions; position++) {
+  return positions.filter(position => {
     const value =
       podium[position] ??
       podium[String(position)] ??
       podium[`position${position}`];
 
-    if (value == null || String(value).trim() === '') {
-      missing.push(position);
-    }
-  }
-
-  return missing;
+    return value == null || String(value).trim() === '';
+  });
 }
 
 function getMissingRequiredBetsTotal() {
