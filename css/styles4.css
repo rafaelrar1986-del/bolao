@@ -15966,26 +15966,7 @@ body:has(#login-section:not([hidden])){
 #admin .admin-team-away {justify-content:flex-start;text-align:left;}
 #admin .admin-team span {overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 #admin .admin-team img, #admin .admin-team .team-logo {width:28px!important;height:28px!important;object-fit:contain;flex:none;}
-#admin .score-box {
-  width:58px !important;
-  min-width:58px !important;
-  max-width:58px !important;
-  box-sizing:border-box !important;
-  display:inline-flex !important;
-  align-items:center !important;
-  justify-content:center !important;
-  white-space:nowrap !important;
-  overflow:visible !important;
-  flex:0 0 58px !important;
-  text-align:center !important;
-  padding:6px 4px !important;
-  border-radius:8px;
-  background:rgba(34,211,238,.06)!important;
-  border:1px solid rgba(34,211,238,.22)!important;
-  color:#e2e8f0!important;
-  font-weight:900!important;
-  font-size:13px;
-}
+
 #admin .admin-match-meta {display:flex;align-items:center;gap:6px;padding-bottom:8px;font-size:9px;}
 #admin .admin-status {padding:4px 7px;border-radius:999px;background:rgba(255,255,255,.06);color:#cbd5e1;font-weight:800;}
 #admin .admin-status.finished {background:rgba(22,101,52,.35);color:#86efac;}
@@ -16387,4 +16368,25 @@ body:has(#admin) .modal-content .setting-section {
   body:has(#admin) .modal-content .modal-footer button {
     flex: 1;
   }
+}
+
+#admin-matches-list .score-box {
+  background: rgba(34, 211, 238, 0.07) !important;
+  border: 1px solid rgba(34, 211, 238, 0.3) !important;
+  color: #22d3ee !important;
+  text-shadow: 0 0 10px rgba(34, 211, 238, 0.4) !important;
+  border-radius: 6px !important;
+  padding: 4px 0 !important;
+  font-weight: 700 !important;
+  font-size: 15px !important;
+  letter-spacing: 1px;
+  white-space: nowrap !important;
+  min-width: 58px !important;
+  width: 58px !important;
+  max-width: 58px !important;
+  box-sizing: border-box !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 58px !important;
 }
