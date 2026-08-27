@@ -663,9 +663,9 @@ async function afterLogin() {
 
   Promise.all([
     loadGlobalSaveLocks().catch(err => console.error("Erro ao carregar locks:", err)),
-    initMyBets().catch(err => console.error("Erro ao carregar minhas apostas:", err)),
-    initAllBets().catch(err => console.error("Erro ao carregar palpites gerais:", err)),
-    syncMoreMenuVisibility().catch(err => console.error("Erro ao verificar menu mais:", err))
+    Promise.resolve(typeof initMyBets === 'function' ? initMyBets() : null).catch(err => console.error("Erro ao carregar minhas apostas:", err)),
+    Promise.resolve(typeof initAllBets === 'function' ? initAllBets() : null).catch(err => console.error("Erro ao carregar palpites gerais:", err)),
+    Promise.resolve(typeof syncMoreMenuVisibility === 'function' ? syncMoreMenuVisibility() : null).catch(err => console.error("Erro ao verificar menu mais:", err))
   ]).then(() => {
     if (currentUser?.isAdmin) initAdmin();
   });

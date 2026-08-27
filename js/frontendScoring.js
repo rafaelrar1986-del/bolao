@@ -301,7 +301,6 @@ export function calculateMatchPoints(betMatch, match, settings = {}, isPartial =
     : null;
 
   const betWinner = getEffectiveBetWinner(betMatch, settings);
-  const knockout = isKnockoutMatch(match);
   const matchRules = getMatchRules(settings, match)
     .map(rule => ({
       ...rule,
@@ -422,7 +421,6 @@ export function getMatchPointStatus(betMatch, match, settings = {}, isPartial = 
   }
 
   const rules = getScoringRules(settings);
-  const knockout = isKnockoutMatch(match);
 
   const active = [];
   if (rules.exactScore > 0) active.push('exactScore');
