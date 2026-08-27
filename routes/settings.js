@@ -553,6 +553,36 @@ router.post('/global', protect, admin, async (req, res) => {
         }
       }
 
+      if (incomingScoring.matchExtras !== undefined) {
+        if (!incomingScoring.matchExtras || typeof incomingScoring.matchExtras !== 'object') {
+          return res.status(400).json({
+            success: false,
+            message: 'matchExtras deve ser um objeto.'
+          });
+        }
+
+        const qualifierPoints = Number(incomingScoring.matchExtras.qualifier || 0);
+        if (!Number.isFinite(qualifierPoints) || qualifierPoints < 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'A pontuação de Classificado é inválida.'
+          });
+        }
+
+        const championshipForExtras = {
+          ...(currentSettingsForRules?.championshipRules || {}),
+          ...(req.body.championshipRules || {}),
+          ...(lockUpdates.championshipRules || {})
+        };
+
+        if (qualifierPoints > 0 && championshipForExtras.hasKnockoutPhase !== true) {
+          return res.status(400).json({
+            success: false,
+            message: 'O Extra Classificado só pode ser configurado quando o campeonato possui fase de mata-mata.'
+          });
+        }
+      }
+
       if (incomingScoring.groupQualificationRules !== undefined) {
         if (!Array.isArray(incomingScoring.groupQualificationRules)) {
           return res.status(400).json({
