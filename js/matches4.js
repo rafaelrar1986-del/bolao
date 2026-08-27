@@ -232,14 +232,11 @@ function deriveWinnerFromScoreData(scoreData) {
 
 function getDisplayWinner(choice, scoreData) {
   if (!winnerDerivesFromScore()) return choice;
-
-  // Sem A e B preenchidos, ainda não existe vencedor derivado.
   const scoreA = scoreData?.scoreA;
   const scoreB = scoreData?.scoreB;
   if (scoreA == null || scoreB == null || scoreA === '' || scoreB === '') {
     return null;
   }
-
   return deriveWinnerFromScoreData(scoreData);
 }
 
@@ -813,8 +810,7 @@ export function getMissingGroupQualificationBets() {
 export function getMissingGroupBets() {
   return STATE.matches
     .filter(m => !isKnockoutMatch(m))
-    .filter(m => !isMatchStartedByStatus(m))
-    .filter(m => !isMatchStartedByTime(m))
+    .filter(m => isMatchEditable(m))
     .filter(m => !isGroupMatchBetFilled(m));
 }
 
@@ -1262,25 +1258,7 @@ function updateGroupProgressUI() {
       let filled = 0;
 
       if (!STATE.hasSubmitted) {
-        // Se o vencedor deriva do placar, a partida só conta como preenchida
-        // quando os DOIS placares foram informados.
-        if (winnerDerivesFromScore()) {
-          const groupKey = item.dataset.group ||
-            item.querySelector('.accordion-title')?.textContent
-              .replace(/\d+\s*pts/i, '').trim();
-
-          const groupGames = STATE.matches.filter(m => {
-            const matchGroup = (m.group || '').trim().toUpperCase();
-            const currentKey = (groupKey || '').trim().toUpperCase();
-            return matchGroup === currentKey &&
-              m.status !== 'cancelled' &&
-              !isKnockoutMatch(m);
-          });
-
-          filled = groupGames.filter(m => isGroupMatchBetFilled(m)).length;
-        } else {
-          filled = item.querySelectorAll('.bet-option.selected').length;
-        }
+        filled = item.querySelectorAll('.bet-option.selected').length;
       } else {
         filled = item.querySelectorAll('.match-card[data-status="finished"], .match-card.finished').length;
 
@@ -1890,6 +1868,34 @@ function getSavedGroupPrediction(groupName, standings, groupGames = []) {
   };
 }
 
+function getAllAdditionalQualifiedTeams() {
+  const all = new Set();
+  STATE.groupPredictions.forEach(prediction => {
+    (prediction?.additionalQualifiedTeams || []).forEach(team => {
+      const value = String(team || '').trim();
+      if (value) all.add(value);
+    });
+  });
+  return all;
+}
+
+function getGlobalAdditionalQualifiedCount() {
+  return getAllAdditionalQualifiedTeams().size;
+}
+
+function refreshAllGroupThirdCounters() {
+  const config = getGroupQualificationConfig();
+  const limit = Number(config.additionalQualifiedCount || 0);
+  if (limit <= 0) return;
+  const count = getGlobalAdditionalQualifiedCount();
+  document.querySelectorAll('.group-prediction-section').forEach(section => {
+    const counter = section.querySelector('.group-third-counter');
+    if (!counter) return;
+    counter.textContent = `${count} de ${limit}`;
+    counter.style.color = count === limit ? '#6ee7b7' : '#ffd34d';
+  });
+}
+
 function renderGroupPredictionSection(groupName, groupGames) {
   const config=getGroupQualificationConfig();
   const rules=STATE.scoringRules?.groupQualificationRules;
@@ -1912,6 +1918,7 @@ function renderGroupPredictionSection(groupName, groupGames) {
   // STATE.groupPredictions fica reservado para uma escolha manual do usuário.
   const candidatePosition=config.additionalQualificationPosition;
   const selected=new Set(prediction.additionalQualifiedTeams||[]);
+  const globalSelectedCount=getGlobalAdditionalQualifiedCount();
   const teams=getGroupTeams(groupGames);
   const complete=standings.every(r=>r.completed>=groupGames.length/2);
   const limit=Number(config.additionalQualifiedCount||0);
@@ -1931,7 +1938,7 @@ function renderGroupPredictionSection(groupName, groupGames) {
   return `<section class="group-prediction-section" data-group="${encodeURIComponent(groupName)}" style="margin-top:12px;padding:12px;border-top:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.025);border-radius:10px;">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
       <div><strong style="font-size:.9rem;">🏆 Classificação prevista</strong><div style="font-size:.68rem;color:#999;">Montada automaticamente pelos seus palpites.</div></div>
-      ${limit>0?`<span class="group-third-counter" style="font-size:.68rem;color:${selected.size===limit?'#6ee7b7':'#ffd34d'};">${selected.size} de ${limit}</span>`:''}
+      ${limit>0?`<span class="group-third-counter" style="font-size:.68rem;color:${globalSelectedCount===limit?'#6ee7b7':'#ffd34d'};">${globalSelectedCount} de ${limit}</span>`:''}
     </div>
     ${rows}
     ${limit>0?`<div style="font-size:.68rem;color:#888;margin-top:6px;">Toque no 🏆 do ${candidatePosition}º colocado para indicar que ele avançará.</div>`:''}
@@ -2003,14 +2010,15 @@ function bindGroupPredictionSection(section) {
       const config=getGroupQualificationConfig(), limit=Number(config.additionalQualifiedCount||0);
       if(selected.has(team)) selected.delete(team);
       else {
-        if(selected.size>=limit){toast(`Você já definiu ${limit} palpites de ${config.additionalQualificationPosition}º lugar classificados.`,'warning');return;}
+        if(getGlobalAdditionalQualifiedCount()>=limit){toast(`Você já definiu ${limit} palpites de ${config.additionalQualificationPosition}º lugar classificados no campeonato.`,'warning');return;}
         selected.add(team);
       }
       prediction.additionalQualifiedTeams=[...selected];
        prediction.manual=true;
        STATE.groupPredictions.set(group,prediction);
       rerenderGroupPrediction(group);
-      toast(`${selected.size} de ${limit} palpites de ${config.additionalQualificationPosition}° lugar classificado${selected.size===1?'':'s'} definido${selected.size===1?'':'s'}.`,'success');
+      refreshAllGroupThirdCounters();
+      toast(`${getGlobalAdditionalQualifiedCount()} de ${limit} palpites de ${config.additionalQualificationPosition}° lugar classificado${getGlobalAdditionalQualifiedCount()===1?'':'s'} definido${getGlobalAdditionalQualifiedCount()===1?'':'s'}.`,'success');
     });
   });
 }
