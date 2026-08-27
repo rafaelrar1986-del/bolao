@@ -6276,7 +6276,7 @@ input:checked + .slider-antenna .antenna-icon {
 .admin-row-match .score-box {
   background-color: #f0f0f0; /* Fundo cinza claro para destacar */
   color: #333;               /* Texto escuro (números) */
-  padding: 6px 14px;
+  padding: 4px 0 !important;
   border-radius: 6px;
   font-weight: bold;
   min-width: 70px;
@@ -12681,7 +12681,7 @@ body:has(#login-section:not([hidden])){
   background: #f8f9fa !important;
   border: 1px solid #ddd !important;
   border-radius: 6px !important;
-  padding: 4px 12px !important;
+  padding: 4px 0 !important;
   min-width: 55px !important;
 }
 
@@ -12895,7 +12895,7 @@ body:has(#login-section:not([hidden])){
   color: #22d3ee !important;
   text-shadow: 0 0 10px rgba(34, 211, 238, 0.4) !important;
   border-radius: 6px !important;
-  padding: 4px 14px !important;
+  padding: 4px 0 !important;
   font-weight: 700 !important;
   font-size: 15px !important;
   letter-spacing: 1px;
