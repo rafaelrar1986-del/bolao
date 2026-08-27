@@ -148,8 +148,23 @@ export async function initProfile(profileUserId = null) {
       api.get(`/api/matches/stats?leagueId=${encodeURIComponent(leagueId)}`)
     ]);
 
-    const ranking = lbRes?.data || [];
-    const rankedUser = ranking.find(r => r.user?._id === user._id);
+    const ranking = Array.isArray(lbRes?.data) ? lbRes.data : [];
+    const rankedUserFromLeaderboard = ranking.find(
+      r => String(r.user?._id ?? '') === String(user._id ?? '')
+    );
+
+    // O card do perfil deve existir mesmo quando o usuário ainda não
+    // aparece no leaderboard (ex.: nenhuma aposta enviada).
+    const rankedUser = rankedUserFromLeaderboard || {
+      user,
+      totalPoints: 0,
+      groupPhasePoints: 0,
+      knockoutPoints: 0,
+      podiumPoints: 0,
+      bonusPoints: 0,
+      extrasPoints: 0,
+      position: null
+    };
 
     // ✅ getMatchRules() retorna { success, data }
     const rules = rulesRes?.data?.scoringRules || {};

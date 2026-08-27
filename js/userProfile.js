@@ -166,15 +166,32 @@ export async function initUserProfile(userId) {
            RANKING
         ============================================================ */
         const ranking =
-            lbRes?.data || [];
+            Array.isArray(lbRes?.data)
+                ? lbRes.data
+                : [];
 
 
-        const rankedUser =
+        const rankedUserFromLeaderboard =
             ranking.find(
                 r =>
-                    r.user?._id ===
-                    user._id
+                    String(r.user?._id ?? '') ===
+                    String(user._id ?? '')
             );
+
+
+        // O scorecard é uma parte fixa do perfil. Mesmo sem apostas
+        // submetidas, mostramos o card com zero pontos.
+        const rankedUser =
+            rankedUserFromLeaderboard || {
+                user,
+                totalPoints: 0,
+                groupPhasePoints: 0,
+                knockoutPoints: 0,
+                podiumPoints: 0,
+                bonusPoints: 0,
+                extrasPoints: 0,
+                position: null
+            };
 
 
         /* ============================================================
@@ -256,7 +273,7 @@ export async function initUserProfile(userId) {
         /* ============================================================
            SCORE CARD
         ============================================================ */
-        if (rankedUser) {
+        {
 
             const breakdown = {
 
