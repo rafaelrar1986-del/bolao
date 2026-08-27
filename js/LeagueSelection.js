@@ -91,14 +91,9 @@ export async function showLeagueSelection() {
   }
 }
 
-export async function selectLeague(id, name) {
+export function selectLeague(id, name) {
   localStorage.setItem('selectedLeagueId', id);
   localStorage.setItem('selectedLeagueName', name);
-  try {
-    await api.selectLeagueAccess(id);
-  } catch (err) {
-    console.error('Erro ao registrar participação no campeonato:', err);
-  }
-  // Dispara evento para o app4.js capturar e atualizar o contexto da liga.
+  // Dispara evento para o app4.js capturar e chamar afterLogin()
   window.dispatchEvent(new CustomEvent('league-selected', { detail: { id, name } }));
 }

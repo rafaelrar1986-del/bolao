@@ -7,8 +7,7 @@ export let currentUser = null;
 /** Verifica token e retorna usuário logado */
 export async function verifyToken() {
   try {
-    const leagueId = localStorage.getItem('selectedLeagueId');
-    const res = await api.me(leagueId);
+    const res = await api.me();
     if (res?.success && res.user) {
       currentUser = res.user;
       return currentUser;

@@ -29,6 +29,7 @@ async function resetPassword(email, recoveryCode, newPassword) {
    Imports SPA
 ===================== */
 import { api, setToken } from './api.js';
+import { buildChampionshipRulesContent } from './championshipRulesView.js';
 
 // Stubs para modulos que podem nao existir na nova versao
 let initAuthTabs = () => {};
@@ -195,7 +196,7 @@ function verificarBloqueio(err) {
     if (err?.message) console.error("Erro de API:", err.message);
     return;
   }
-  const isPaid = window.currentUser?.leagueAccessStatus === 'approved';
+  const isPaid = window.currentUser?.hasPaid === true || window.currentUser?.hasPaid === 1;
   const isAdmin = window.currentUser?.isAdmin === true;
 
   if (isAdmin || isPaid) {
@@ -229,23 +230,43 @@ function getTimeRemaining(dateString) {
 /* =====================
    REGULAMENTO MODAL
 ===================== */
-function initRegulamentoModal() {
+async function initRegulamentoModal() {
   if (document.getElementById('modal-regulamento')) return;
+
+  const leagueId = localStorage.getItem('selectedLeagueId');
+
+  let rulesData = {};
+  try {
+    if (leagueId) {
+      const res = await api.getMatchRules(leagueId);
+      rulesData = res?.data || {};
+    }
+  } catch (err) {
+    console.warn('Não foi possível carregar as regras do campeonato:', err);
+  }
+
+  const view = buildChampionshipRulesContent(rulesData, { includeHelp: false });
+
   const modalHTML = `
-    <div id="modal-regulamento" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:999999; align-items:center; justify-content:center; padding: 20px;">
-      <div style="background:#fff; padding:30px; max-width:600px; border-radius:12px; color:#333; text-align:center; max-height: 85vh; overflow-y: auto;">
-        <h2>REGULAMENTO OFICIAL</h2>
-        <div style="text-align: left; font-size: 14px; line-height: 1.6; margin: 20px 0;">
-           <p><strong>1. FASE DE GRUPOS:</strong> Cada acerto vale 01 ponto (Vencedor ou Empate).</p>
-           <p><strong>2. MATA-MATA (2 pontos):</strong> 1 ponto caso acerte (Vencedor ou Empate) nos 120 min; 1 ponto caso acerte a selecao classificada.</p>
-           <p><strong>4. PRAZOS:</strong> Apostas ate antes do inicio da fase. Ausencia = 0 pontos.</p>
-           <p><strong>5. PREMIACAO:</strong> 1o: 90% | 2o: 10% | do valor arrecadado.</p>
+    <div id="modal-regulamento" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.9);z-index:999999;align-items:center;justify-content:center;padding:20px;">
+      <div style="background:#fff;padding:30px;max-width:600px;width:100%;border-radius:12px;color:#333;text-align:left;max-height:85vh;overflow-y:auto;">
+        <h2 style="text-align:center;margin-top:0;">REGULAMENTO OFICIAL</h2>
+
+        <div style="font-size:14px;line-height:1.6;margin:20px 0;">
+          ${view.html}
+
+          <p><strong>PRAZOS:</strong> as apostas devem ser realizadas antes do bloqueio definido para cada partida/fase. Aposta não realizada = 0 pontos.</p>
         </div>
-        <button id="btn-concordo" style="padding:12px 30px; background:#4caf50; color:#fff; border:none; border-radius:5px; cursor:pointer; font-weight:bold;">Li e estou ciente</button>
+
+        <button id="btn-concordo" style="display:block;width:100%;padding:12px 30px;background:#4caf50;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:bold;">
+          Li e estou ciente
+        </button>
       </div>
     </div>
   `;
+
   document.body.insertAdjacentHTML('beforeend', modalHTML);
+
   document.getElementById('btn-concordo').onclick = () => {
     localStorage.setItem('regulamento_aceito', 'true');
     document.getElementById('modal-regulamento').style.display = 'none';
@@ -339,16 +360,10 @@ async function showLeagueSelection() {
   }
 }
 
-async function selectLeague(id, name) {
+function selectLeague(id, name) {
   localStorage.setItem('selectedLeagueId', id);
   localStorage.setItem('selectedLeagueName', name);
-  try {
-    await api.selectLeagueAccess(id);
-  } catch (err) {
-    console.error('Erro ao registrar participação:', err);
-  }
-  await fetchMe();
-  await afterLogin();
+  afterLogin();
 }
 
 /* =====================
@@ -365,7 +380,7 @@ window.refreshUserSession = async () => {
   if (me) {
     currentUser = me;
     window.currentUser = me;
-    const isPaid = me.leagueAccessStatus === 'approved';
+    const isPaid = me.hasPaid === true || me.hasPaid === 1;
     if (isPaid || me.isAdmin) {
       const paywall = document.getElementById('paywall-wrapper');
       if (paywall) paywall.remove();
@@ -381,8 +396,7 @@ window.refreshUserSession = async () => {
 
 async function fetchMe() {
   try {
-    const leagueId = localStorage.getItem('selectedLeagueId');
-    const res = await api.me(leagueId);
+    const res = await api.get('/api/auth/me');
     if (res?.success && res.user) {
       currentUser = res.user;
       window.currentUser = res.user;
@@ -588,7 +602,7 @@ function wireAuthForms() {
 }
 
 async function afterLogin() {
-  const isPaid = currentUser?.leagueAccessStatus === 'approved';
+  const isPaid = currentUser?.hasPaid === true || currentUser?.hasPaid === 1;
   const hasSubmitted = window.STATE?.hasSubmitted === true;
   const jaAceitou = localStorage.getItem('regulamento_aceito') === 'true';
 

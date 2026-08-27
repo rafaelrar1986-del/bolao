@@ -77,20 +77,6 @@ async function fetchAndRenderStandings(targetElement, isParcial, leagueId) {
     targetElement.innerHTML = `<div class="loading" style="padding: 60px; text-align: center;"><i class="fas fa-circle-notch fa-spin fa-2x"></i><p>Carregando modo ${loadingState}...</p></div>`;
 
     try {
-        // 0. A estrutura do campeonato define qual classificação deve ser exibida.
-        const settingsRes = await api.getSettings(leagueId);
-        const championshipRules = settingsRes?.data?.championshipRules || {};
-        const hasGroupPhase = championshipRules.hasGroupPhase !== false;
-        const hasKnockoutPhase = championshipRules.hasKnockoutPhase === true;
-        const standingsPhase = hasGroupPhase
-            ? 'group'
-            : (!hasKnockoutPhase ? 'pontos_corridos' : null);
-
-        if (!standingsPhase) {
-            targetElement.innerHTML = '<p style="text-align:center; padding:40px; color:#888;">Este campeonato não possui fase de grupos para exibir.</p>';
-            return;
-        }
-
         // 1. BUSCA OS LOGOS das partidas da liga
         const logoMap = new Map();
         try {
@@ -106,7 +92,7 @@ async function fetchAndRenderStandings(targetElement, isParcial, leagueId) {
         }
 
         // 2. BUSCA OS DADOS DA TABELA
-        const groups = await api.getGroupStandings(leagueId, isParcial, standingsPhase);
+        const groups = await api.getGroupStandings(leagueId, isParcial);
 
         if (!groups || typeof groups !== 'object' || Object.keys(groups).length === 0) {
             targetElement.innerHTML = `<p style="text-align:center; padding: 40px; color: #888;">Sem dados para esta liga.</p>`;
