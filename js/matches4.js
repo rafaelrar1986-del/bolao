@@ -3728,22 +3728,25 @@ function fillExtrasInputs() {
     el.value = val;
 
     const saveExtraValue = () => {
-  if (!STATE.extras) {
-    STATE.extras = {
-      topScorer: '',
-      bestAttack: '',
-      worstDefense: '',
-      upset: ''
-    
+        if (!STATE.extras) {
+            STATE.extras = {
+                topScorer: '',
+                bestAttack: '',
+                worstDefense: '',
+                upset: ''
+            };
+        }
 
-  if (typeof updateBetsCounters === 'function') {
-    updateBetsCounters();
-  }
-};
-  }
+        STATE.extras[key] = el.value;
 
-  STATE.extras[key] = el.value;
-};
+        // Extras fazem parte das pendências obrigatórias.
+        // Atualiza imediatamente após cada alteração.
+        if (typeof updateBetsCounters === 'function') {
+            updateBetsCounters();
+        }
+
+        updateExtrasIndicator(key);
+    };
 
 if (el.tagName === 'SELECT') {
   el.onchange = saveExtraValue;
