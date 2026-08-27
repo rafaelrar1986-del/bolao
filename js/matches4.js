@@ -232,6 +232,14 @@ function deriveWinnerFromScoreData(scoreData) {
 
 function getDisplayWinner(choice, scoreData) {
   if (!winnerDerivesFromScore()) return choice;
+
+  // Sem A e B preenchidos, ainda não existe vencedor derivado.
+  const scoreA = scoreData?.scoreA;
+  const scoreB = scoreData?.scoreB;
+  if (scoreA == null || scoreB == null || scoreA === '' || scoreB === '') {
+    return null;
+  }
+
   return deriveWinnerFromScoreData(scoreData);
 }
 
@@ -1254,7 +1262,25 @@ function updateGroupProgressUI() {
       let filled = 0;
 
       if (!STATE.hasSubmitted) {
-        filled = item.querySelectorAll('.bet-option.selected').length;
+        // Se o vencedor deriva do placar, a partida só conta como preenchida
+        // quando os DOIS placares foram informados.
+        if (winnerDerivesFromScore()) {
+          const groupKey = item.dataset.group ||
+            item.querySelector('.accordion-title')?.textContent
+              .replace(/\d+\s*pts/i, '').trim();
+
+          const groupGames = STATE.matches.filter(m => {
+            const matchGroup = (m.group || '').trim().toUpperCase();
+            const currentKey = (groupKey || '').trim().toUpperCase();
+            return matchGroup === currentKey &&
+              m.status !== 'cancelled' &&
+              !isKnockoutMatch(m);
+          });
+
+          filled = groupGames.filter(m => isGroupMatchBetFilled(m)).length;
+        } else {
+          filled = item.querySelectorAll('.bet-option.selected').length;
+        }
       } else {
         filled = item.querySelectorAll('.match-card[data-status="finished"], .match-card.finished').length;
 
