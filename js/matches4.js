@@ -1328,16 +1328,70 @@ function updateGroupProgressUI() {
 /* =====================
     CONTADORES
 ===================== */
+function getMissingPodiumBets() {
+  const rules = STATE.championshipRules || {};
+  const podiumEnabled =
+    rules.podiumEnabled !== false &&
+    rules.podium?.enabled !== false;
+
+  if (!podiumEnabled) return [];
+
+  const positions = Number(
+    rules.podiumPositions ??
+    rules.podium?.positions ??
+    rules.podiumCount ??
+    4
+  );
+
+  if (!Number.isInteger(positions) || positions <= 0) return [];
+
+  const podium = STATE.podium || {};
+  const missing = [];
+
+  for (let position = 1; position <= positions; position++) {
+    const value =
+      podium[position] ??
+      podium[String(position)] ??
+      podium[`position${position}`];
+
+    if (value == null || String(value).trim() === '') {
+      missing.push(position);
+    }
+  }
+
+  return missing;
+}
+
+function getMissingRequiredBetsTotal() {
+  const group = typeof getMissingGroupBets === 'function'
+    ? getMissingGroupBets().length
+    : 0;
+
+  const extras = typeof getMissingExtrasBets === 'function'
+    ? getMissingExtrasBets().length
+    : 0;
+
+  const podium = getMissingPodiumBets().length;
+
+  return {
+    group,
+    extras,
+    podium,
+    total: group + extras + podium
+  };
+}
+
 function updateBetsCounters() {
   const groupsEl = document.getElementById('groups-counter');
   const knockoutEl = document.getElementById('knockout-counter');
 
-  const checkKO = typeof isKnockoutMatch === 'function' ? isKnockoutMatch : (m) => m.isKnockout;
+  const missing = getMissingRequiredBetsTotal();
 
+  // O contador de grupos representa tudo que é obrigatório antes do envio:
+  // partidas disponíveis + extras + posições do pódio.
   if (groupsEl) {
-    const missingGroups = typeof getMissingGroupBets === 'function' ? getMissingGroupBets().length : 0;
-    if (missingGroups > 0) {
-      groupsEl.textContent = `Pendentes: ${missingGroups}`;
+    if (missing.total > 0) {
+      groupsEl.textContent = `Pendentes: ${missing.total}`;
       groupsEl.style.display = 'block';
     } else {
       groupsEl.textContent = '';
@@ -1346,18 +1400,23 @@ function updateBetsCounters() {
   }
 
   if (knockoutEl) {
+    const checkKO =
+      typeof isKnockoutMatch === 'function'
+        ? isKnockoutMatch
+        : (m) => m.isKnockout;
+
     const scheduledKnockouts = (STATE.matches || [])
       .filter(checkKO)
-      .filter(m => !isMatchStartedByStatus(m))
-      .filter(m => !isMatchStartedByTime(m));
+      .filter(m => isMatchAvailableForBetting(m));
 
     if (!scheduledKnockouts.length) {
       knockoutEl.textContent = '';
       knockoutEl.style.display = 'none';
     } else {
-      const missingKnockout = typeof getMissingKnockoutDecisionsCount === 'function' 
-        ? getMissingKnockoutDecisionsCount() 
-        : 0;
+      const missingKnockout =
+        typeof getMissingKnockoutDecisionsCount === 'function'
+          ? getMissingKnockoutDecisionsCount()
+          : 0;
 
       if (missingKnockout > 0) {
         knockoutEl.textContent = `Pendentes: ${missingKnockout}`;
