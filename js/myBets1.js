@@ -328,6 +328,198 @@ function ensureMyBetsStyles() {
       .mybets-extra-label { font-size:.61rem; } .mybets-extra-value { font-size:.78rem; }
       .mybets-extra-points { font-size:.66rem; }
     }
+  
+  #mybets-group-predictions-inner .mybets-group-predictions-grid {
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:10px;
+    align-items:start;
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-card {
+    min-width:0;
+    overflow:hidden;
+    border:1px solid rgba(96,165,250,.18);
+    border-radius:14px;
+    background:linear-gradient(145deg,rgba(18,36,78,.68),rgba(8,20,48,.84));
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.03);
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-card-header {
+    padding:9px 10px 7px;
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-card-header h2 {
+    margin:0;
+    font-size:.86rem;
+    font-weight:900;
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-card-header p {
+    margin:2px 0 0;
+    font-size:.62rem;
+    opacity:.55;
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-table {
+    margin:0 7px;
+    overflow:hidden;
+    border:1px solid rgba(255,255,255,.07);
+    border-radius:9px;
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-row {
+    min-height:31px;
+    box-sizing:border-box;
+    display:grid;
+    grid-template-columns:27px 30px minmax(0,1fr) 43px;
+    align-items:center;
+    gap:4px;
+    padding:3px 5px;
+    border-bottom:1px solid rgba(255,255,255,.055);
+    background:rgba(255,255,255,.012);
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-row:last-child {
+    border-bottom:0;
+  }
+
+  /* Faixa verde para TODOS os times que o palpite indica como classificados. */
+  #mybets-group-predictions-inner .mybets-group-prediction-row.is-qualified-candidate {
+    background:linear-gradient(
+      90deg,
+      rgba(34,197,94,.25),
+      rgba(34,197,94,.16)
+    );
+    box-shadow:inset 3px 0 0 rgba(74,222,128,.85);
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-position {
+    font-size:.72rem;
+    font-weight:900;
+    text-align:center;
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-team-flag {
+    width:28px;
+    height:24px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-team-flag img {
+    width:22px !important;
+    height:22px !important;
+    object-fit:contain;
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-team-flag .team-emoji {
+    font-size:19px;
+    line-height:1;
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-qualification {
+    min-width:0;
+    overflow:hidden;
+    font-size:.52rem;
+    font-weight:900;
+    letter-spacing:.2px;
+    color:#86efac;
+    white-space:nowrap;
+    text-overflow:ellipsis;
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-points,
+  #mybets-group-predictions-inner .mybets-group-prediction-row > .mybets-group-prediction-points {
+    text-align:right;
+    font-size:.67rem;
+    font-weight:900;
+    white-space:nowrap;
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-points.is-positive {
+    color:#6ee7b7;
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-points.is-zero {
+    color:#f87171;
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-points.is-pending {
+    color:#777;
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-total {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    padding:7px 10px 9px;
+    font-size:.64rem;
+    font-weight:800;
+    color:rgba(226,232,240,.72);
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-total strong {
+    color:#4ade80;
+    font-size:.8rem;
+  }
+
+  @media (max-width:700px) {
+    #mybets-group-predictions-inner .mybets-group-predictions-grid {
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:8px;
+    }
+
+    #mybets-group-predictions-inner .mybets-group-prediction-row {
+      grid-template-columns:24px 27px minmax(0,1fr) 38px;
+      gap:3px;
+      min-height:29px;
+      padding:2px 4px;
+    }
+
+    #mybets-group-predictions-inner .mybets-group-prediction-team-flag {
+      width:25px;
+      height:22px;
+    }
+
+    #mybets-group-predictions-inner .mybets-group-prediction-team-flag img {
+      width:20px !important;
+      height:20px !important;
+    }
+
+    #mybets-group-predictions-inner .mybets-group-prediction-team-flag .team-emoji {
+      font-size:17px;
+    }
+
+    #mybets-group-predictions-inner .mybets-group-prediction-qualification {
+      font-size:.47rem;
+    }
+
+    #mybets-group-predictions-inner .mybets-group-prediction-points {
+      font-size:.6rem;
+    }
+  }
+
+  @media (max-width:380px) {
+    #mybets-group-predictions-inner .mybets-group-prediction-card-header {
+      padding:8px 8px 6px;
+    }
+
+    #mybets-group-predictions-inner .mybets-group-prediction-card-header h2 {
+      font-size:.78rem;
+    }
+
+    #mybets-group-predictions-inner .mybets-group-prediction-row {
+      grid-template-columns:21px 24px minmax(0,1fr) 34px;
+    }
+
+    #mybets-group-predictions-inner .mybets-group-prediction-qualification {
+      display:none;
+    }
+  }
+
   `;
   document.head.appendChild(style);
 }
@@ -1031,195 +1223,3 @@ export async function reloadMyBets() {
 
 
 
-<style id="mybets-group-predictions-v52">
-  #mybets-group-predictions-inner .mybets-group-predictions-grid {
-    display:grid;
-    grid-template-columns:repeat(2,minmax(0,1fr));
-    gap:10px;
-    align-items:start;
-  }
-
-  #mybets-group-predictions-inner .mybets-group-prediction-card {
-    min-width:0;
-    overflow:hidden;
-    border:1px solid rgba(96,165,250,.18);
-    border-radius:14px;
-    background:linear-gradient(145deg,rgba(18,36,78,.68),rgba(8,20,48,.84));
-    box-shadow:inset 0 1px 0 rgba(255,255,255,.03);
-  }
-
-  #mybets-group-predictions-inner .mybets-group-prediction-card-header {
-    padding:9px 10px 7px;
-  }
-
-  #mybets-group-predictions-inner .mybets-group-prediction-card-header h2 {
-    margin:0;
-    font-size:.86rem;
-    font-weight:900;
-  }
-
-  #mybets-group-predictions-inner .mybets-group-prediction-card-header p {
-    margin:2px 0 0;
-    font-size:.62rem;
-    opacity:.55;
-  }
-
-  #mybets-group-predictions-inner .mybets-group-prediction-table {
-    margin:0 7px;
-    overflow:hidden;
-    border:1px solid rgba(255,255,255,.07);
-    border-radius:9px;
-  }
-
-  #mybets-group-predictions-inner .mybets-group-prediction-row {
-    min-height:31px;
-    box-sizing:border-box;
-    display:grid;
-    grid-template-columns:27px 30px minmax(0,1fr) 43px;
-    align-items:center;
-    gap:4px;
-    padding:3px 5px;
-    border-bottom:1px solid rgba(255,255,255,.055);
-    background:rgba(255,255,255,.012);
-  }
-
-  #mybets-group-predictions-inner .mybets-group-prediction-row:last-child {
-    border-bottom:0;
-  }
-
-  /* Faixa verde para TODOS os times que o palpite indica como classificados. */
-  #mybets-group-predictions-inner .mybets-group-prediction-row.is-qualified-candidate {
-    background:linear-gradient(
-      90deg,
-      rgba(34,197,94,.25),
-      rgba(34,197,94,.16)
-    );
-    box-shadow:inset 3px 0 0 rgba(74,222,128,.85);
-  }
-
-  #mybets-group-predictions-inner .mybets-group-prediction-position {
-    font-size:.72rem;
-    font-weight:900;
-    text-align:center;
-  }
-
-  #mybets-group-predictions-inner .mybets-group-prediction-team-flag {
-    width:28px;
-    height:24px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-  }
-
-  #mybets-group-predictions-inner .mybets-group-prediction-team-flag img {
-    width:22px !important;
-    height:22px !important;
-    object-fit:contain;
-  }
-
-  #mybets-group-predictions-inner .mybets-group-prediction-team-flag .team-emoji {
-    font-size:19px;
-    line-height:1;
-  }
-
-  #mybets-group-predictions-inner .mybets-group-prediction-qualification {
-    min-width:0;
-    overflow:hidden;
-    font-size:.52rem;
-    font-weight:900;
-    letter-spacing:.2px;
-    color:#86efac;
-    white-space:nowrap;
-    text-overflow:ellipsis;
-  }
-
-  #mybets-group-predictions-inner .mybets-group-prediction-points,
-  #mybets-group-predictions-inner .mybets-group-prediction-row > .mybets-group-prediction-points {
-    text-align:right;
-    font-size:.67rem;
-    font-weight:900;
-    white-space:nowrap;
-  }
-
-  #mybets-group-predictions-inner .mybets-group-prediction-points.is-positive {
-    color:#6ee7b7;
-  }
-
-  #mybets-group-predictions-inner .mybets-group-prediction-points.is-zero {
-    color:#f87171;
-  }
-
-  #mybets-group-predictions-inner .mybets-group-prediction-points.is-pending {
-    color:#777;
-  }
-
-  #mybets-group-predictions-inner .mybets-group-prediction-total {
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:8px;
-    padding:7px 10px 9px;
-    font-size:.64rem;
-    font-weight:800;
-    color:rgba(226,232,240,.72);
-  }
-
-  #mybets-group-predictions-inner .mybets-group-prediction-total strong {
-    color:#4ade80;
-    font-size:.8rem;
-  }
-
-  @media (max-width:700px) {
-    #mybets-group-predictions-inner .mybets-group-predictions-grid {
-      grid-template-columns:repeat(2,minmax(0,1fr));
-      gap:8px;
-    }
-
-    #mybets-group-predictions-inner .mybets-group-prediction-row {
-      grid-template-columns:24px 27px minmax(0,1fr) 38px;
-      gap:3px;
-      min-height:29px;
-      padding:2px 4px;
-    }
-
-    #mybets-group-predictions-inner .mybets-group-prediction-team-flag {
-      width:25px;
-      height:22px;
-    }
-
-    #mybets-group-predictions-inner .mybets-group-prediction-team-flag img {
-      width:20px !important;
-      height:20px !important;
-    }
-
-    #mybets-group-predictions-inner .mybets-group-prediction-team-flag .team-emoji {
-      font-size:17px;
-    }
-
-    #mybets-group-predictions-inner .mybets-group-prediction-qualification {
-      font-size:.47rem;
-    }
-
-    #mybets-group-predictions-inner .mybets-group-prediction-points {
-      font-size:.6rem;
-    }
-  }
-
-  @media (max-width:380px) {
-    #mybets-group-predictions-inner .mybets-group-prediction-card-header {
-      padding:8px 8px 6px;
-    }
-
-    #mybets-group-predictions-inner .mybets-group-prediction-card-header h2 {
-      font-size:.78rem;
-    }
-
-    #mybets-group-predictions-inner .mybets-group-prediction-row {
-      grid-template-columns:21px 24px minmax(0,1fr) 34px;
-    }
-
-    #mybets-group-predictions-inner .mybets-group-prediction-qualification {
-      display:none;
-    }
-  }
-</style>

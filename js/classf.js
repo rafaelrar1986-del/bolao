@@ -39,11 +39,7 @@ export default async function ClassificacaoPage() {
     const container = document.getElementById('classificacao');
     if (!container) return;
 
-    const selectedLeagueId = String(
-        localStorage.getItem('selectedLeagueId') ||
-        localStorage.getItem('leagueId') ||
-        '1'
-    ).trim();
+    const selectedLeagueId = localStorage.getItem('selectedLeagueId') || 'default';
 
     container.innerHTML = `
         <div class="filter-container-tabela">
@@ -78,7 +74,6 @@ export default async function ClassificacaoPage() {
 
 async function fetchAndRenderStandings(targetElement, isParcial, leagueId) {
     const loadingState = isParcial ? 'Parcial (Live)' : 'Oficial';
-    console.debug(`[Classificacao] Liga selecionada: ${leagueId} | modo: ${loadingState}`);
     targetElement.innerHTML = `<div class="loading" style="padding: 60px; text-align: center;"><i class="fas fa-circle-notch fa-spin fa-2x"></i><p>Carregando modo ${loadingState}...</p></div>`;
 
     try {
@@ -97,20 +92,9 @@ async function fetchAndRenderStandings(targetElement, isParcial, leagueId) {
         }
 
         // 2. BUSCA OS DADOS DA TABELA
-        const groupsResponse = await api.getGroupStandings(leagueId, isParcial);
-
-        // O endpoint atual retorna diretamente o objeto de grupos.
-        // Mantemos compatibilidade caso alguma versão do backend o encapsule
-        // em { success, data }.
-        const groups =
-            groupsResponse?.success === true && groupsResponse?.data
-                ? groupsResponse.data
-                : groupsResponse?.data && typeof groupsResponse.data === 'object'
-                    ? groupsResponse.data
-                    : groupsResponse;
+        const groups = await api.getGroupStandings(leagueId, isParcial);
 
         if (!groups || typeof groups !== 'object' || Object.keys(groups).length === 0) {
-
             targetElement.innerHTML = `<p style="text-align:center; padding: 40px; color: #888;">Sem dados para esta liga.</p>`;
             return;
         }
