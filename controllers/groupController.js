@@ -17,6 +17,9 @@ const CACHE_DURATION = 30000;
  * 1. CLASSIFICAÇÃO DA FASE DE GRUPOS (Sua lógica original mantida)
  */
 const { calculateGroupStandings } = require('../services/groupStandingsService');
+const {
+  calculateGroupQualificationPoints
+} = require('../services/pointsService');
 
 const getGroupStandings = async (req, res) => {
   const now = Date.now();
@@ -205,6 +208,86 @@ const getGroupStandings = async (req, res) => {
   }
 };
 
+
+/**
+ * Calcula a pontuação da classificação prevista de um usuário.
+ *
+ * live=true  -> situação atual, incluindo partidas iniciadas.
+ * live=false -> somente partidas finalizadas (pontuação oficial).
+ *
+ * A regra de pontuação é a mesma do pointsService, sem duplicação no frontend.
+ */
+const getGroupPredictionPoints = async (req, res) => {
+  try {
+    const leagueId = req.query.leagueId
+      ? String(req.query.leagueId).trim()
+      : '';
+
+    if (!leagueId) {
+      return res.status(400).json({ error: 'leagueId é obrigatório.' });
+    }
+
+    const settings = await Settings.findById(leagueId).lean();
+    if (settings?.championshipRules?.hasGroupPhase === false) {
+      return res.json({ points: 0, breakdown: [], byGroup: [], startedGroups: [] });
+    }
+
+    const predictions = Array.isArray(req.body?.groupPredictions)
+      ? req.body.groupPredictions
+      : [];
+
+    if (!predictions.length) {
+      return res.json({ points: 0, breakdown: [], byGroup: [], startedGroups: [] });
+    }
+
+    const live = req.query.live === 'true';
+
+    const matches = await Match.find({
+      leagueId,
+      phase: 'group'
+    }).lean();
+
+    const relevantMatches = matches.filter(m =>
+      live ? m.status !== 'scheduled' : m.status === 'finished'
+    );
+
+    const result = calculateGroupQualificationPoints(
+      predictions,
+      relevantMatches,
+      settings?.scoringRules || {},
+      settings?.championshipRules || {},
+      live
+    );
+
+    const startedGroups = [...new Set(
+      relevantMatches
+        .filter(m => m.status !== 'scheduled')
+        .map(m => String(m.group || '').trim())
+        .filter(Boolean)
+    )];
+
+    return res.json({
+      points: Number(result.points || 0),
+      breakdown: Array.isArray(result.breakdown) ? result.breakdown : [],
+      byGroup: Array.isArray(result.byGroup) ? result.byGroup : [],
+      startedGroups
+    });
+  } catch (error) {
+    console.error('[Prediction Points] Erro:', error);
+    return res.status(500).json({
+      error: 'Erro ao calcular pontuação da classificação prevista.'
+    });
+  }
+};
+
+
+/**
+ * Pontuação da classificação prevista.
+ * live=true: inclui partidas iniciadas (situação ao vivo).
+ * live=false: somente partidas finalizadas (pontuação oficial).
+ */
+
+
 /**
  * 2. FUNÇÃO CORRIGIDA: RETORNA AS CHAVES DO MATA-MATA (Alinhado ao Select e ao Match Schema)
  */
@@ -270,4 +353,4 @@ const getKnockoutMatches = async (req, res) => {
   }
 };
 
-module.exports = { getGroupStandings, getKnockoutMatches };
+module.exports = { getGroupStandings, getGroupPredictionPoints, getKnockoutMatches };

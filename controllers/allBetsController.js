@@ -354,6 +354,10 @@ async function getAllBets(req, res) {
         bets:
           viewBets,
 
+        groupPredictions:
+          b.groupPredictions || [],
+
+
         podium:
           finalPodium,
 

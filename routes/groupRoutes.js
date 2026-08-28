@@ -1,7 +1,11 @@
 const express = require('express');
 const router = express.Router();
 // Ajuste: Importando também a nova função getKnockoutMatches do seu controller
-const { getGroupStandings, getKnockoutMatches } = require('../controllers/groupController');
+const {
+    getGroupStandings,
+    getGroupPredictionPoints,
+    getKnockoutMatches
+} = require('../controllers/groupController');
 
 /**
  * @route   GET /api/groups/standings
@@ -23,6 +27,15 @@ router.get('/standings', (req, res, next) => {
  * @access  Public
  * @query   leagueId (Number) - Obrigatório
  */
+
+/**
+ * @route   POST /api/groups/prediction-points
+ * @desc    Calcula a pontuação da classificação prevista.
+ * @query   leagueId (String) - Obrigatório
+ * @query   live (Boolean) - true inclui partidas iniciadas; false somente finalizadas
+ */
+router.post('/prediction-points', getGroupPredictionPoints);
+
 router.get('/knockout', (req, res, next) => {
     // Log para monitorar a requisição das chaves eliminatórias no terminal
     const { leagueId } = req.query;

@@ -673,10 +673,47 @@ router.post('/global', protect, admin, async (req, res) => {
 
          // Sem grupos, ou com grupos sem mata-mata, não existe o conceito
       // de classificados para o mata-mata.
-      lockUpdates.scoringRules = {
-        ...currentScoring,
-        ...incomingScoring
+      incomingChampionshipRules.groupQualification = {
+        totalTeams,
+        groupCount,
+        totalQualified
       };
+      lockUpdates.championshipRules = {
+        ...currentChamp,
+        ...incomingChampionshipRules
+      };
+
+      // Se a fase de grupos foi desativada, regras antigas de classificação
+      // não podem continuar válidas de forma invisível.
+      if (hasGroupPhase === false) {
+        const currentScoring = {
+          ...(currentSettingsForRules?.scoringRules || {}),
+          ...(lockUpdates.scoringRules || {})
+        };
+        if (Array.isArray(currentScoring.groupQualificationRules) && currentScoring.groupQualificationRules.length) {
+          lockUpdates.scoringRules = {
+            ...currentScoring,
+            groupQualificationRules: []
+          };
+        }
+      } else if (hasKnockoutPhase === false) {
+        const currentScoring = {
+          ...(currentSettingsForRules?.scoringRules || {}),
+          ...(lockUpdates.scoringRules || {})
+        };
+        if (Array.isArray(currentScoring.groupQualificationRules)) {
+          const filtered = currentScoring.groupQualificationRules.map(rule => ({
+            ...rule,
+            conditions: Array.isArray(rule.conditions)
+              ? rule.conditions.filter(c => c !== 'teamQualified' && c !== 'teamNotQualified')
+              : []
+          })).filter(rule => Array.isArray(rule.conditions) && rule.conditions.length);
+          lockUpdates.scoringRules = {
+            ...currentScoring,
+            groupQualificationRules: filtered
+          };
+        }
+      }
 
       shouldRecalculate = true;
     }
