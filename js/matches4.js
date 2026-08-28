@@ -4737,8 +4737,8 @@ async function fetchTechnicalData(matchIdStr) {
     }
 }
 
-export async function initMatches {
-  startGroupPredictionPointsLiveRefresh();(passedOpenedGroups = null) {
+export async function initMatches(passedOpenedGroups = null) {
+  startGroupPredictionPointsLiveRefresh();
   let openedGroups = passedOpenedGroups;
 
   if (!openedGroups || openedGroups.length === 0) {
