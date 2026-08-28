@@ -248,8 +248,17 @@ function isPointsRunPhase(phase) {
 }
 
 function isKnockoutPhase(phase) {
-  const p = String(phase || '').toLowerCase();
+  const p = String(phase || '').toLowerCase().trim();
+  // Fase desconhecida não pode ser classificada como mata-mata.
+  if (!p) return false;
   return p !== 'group' && !isPointsRunPhase(p);
+}
+
+function getBetPhase(bet, matchMap) {
+  const ownPhase = String(bet?.phase || '').trim();
+  if (ownPhase) return ownPhase;
+  const match = matchMap?.get(Number(bet?.matchId));
+  return String(match?.phase || '').trim();
 }
 
 function hasGroupPhase() {
@@ -450,10 +459,10 @@ function renderExtras() {
   `;
 }
 
-function renderPills() {
+function renderPills(matchMap) {
   const raw = MyBetsState.bets?.groupMatches || MyBetsState.bets?.matches || [];
-  const groupCount = raw.filter(b => isGroupPhase(b.phase)).length;
-  const knockoutCount = raw.filter(b => isKnockoutPhase(b.phase)).length;
+  const groupCount = raw.filter(b => isGroupPhase(getBetPhase(b, matchMap))).length;
+  const knockoutCount = raw.filter(b => isKnockoutPhase(getBetPhase(b, matchMap))).length;
 
   const group = hasGroupPhase() && groupCount > 0;
   const knockout = hasKnockoutPhase() && knockoutCount > 0;
@@ -672,7 +681,7 @@ function renderMyBetsListOnly() {
 
   if (!listRoot || !pillsRoot) return;
 
-  pillsRoot.innerHTML = renderPills();
+  pillsRoot.innerHTML = renderPills(matchMap);
 
   if (!hasGroupPhase() && MyBetsState.activeTab === 'group') MyBetsState.activeTab = 'knockout';
   if (!hasKnockoutPhase() && MyBetsState.activeTab === 'knockout') MyBetsState.activeTab = 'group';
@@ -682,14 +691,14 @@ function renderMyBetsListOnly() {
 
   const rawBetsList = MyBetsState.bets?.groupMatches || MyBetsState.bets?.matches || [];
   const eligibleBets = rawBetsList.filter(b => {
-    if (isPointsRunChampionship()) return isPointsRunPhase(b.phase);
-    if (isGroupPhase(b.phase)) return hasGroupPhase();
-    return hasKnockoutPhase() && isKnockoutPhase(b.phase);
+    if (isPointsRunChampionship()) return isPointsRunPhase(getBetPhase(b, matchMap));
+    if (isGroupPhase(getBetPhase(b, matchMap))) return hasGroupPhase();
+    return hasKnockoutPhase() && isKnockoutPhase(getBetPhase(b, matchMap));
   });
 
-  const groupBets = eligibleBets.filter(b => isGroupPhase(b.phase));
-  const pointsRunBets = eligibleBets.filter(b => isPointsRunPhase(b.phase));
-  const knockoutBets = eligibleBets.filter(b => isKnockoutPhase(b.phase));
+  const groupBets = eligibleBets.filter(b => isGroupPhase(getBetPhase(b, matchMap)));
+  const pointsRunBets = eligibleBets.filter(b => isPointsRunPhase(getBetPhase(b, matchMap)));
+  const knockoutBets = eligibleBets.filter(b => isKnockoutPhase(getBetPhase(b, matchMap)));
 
   // In points-running mode there is one list, not the group/knockout tab model.
   if (isPointsRunChampionship()) {
@@ -740,7 +749,7 @@ function renderMyBetsListOnly() {
   });
 
   const filtered = enriched.filter(b => {
-    if (isPointsRunChampionship()) return isPointsRunPhase(b.phase);
+    if (isPointsRunChampionship()) return isPointsRunPhase(getBetPhase(b, matchMap));
     return MyBetsState.activeTab === 'group'
       ? isGroupPhase(b.phase)
       : isKnockoutPhase(b.phase);
