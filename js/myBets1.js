@@ -702,7 +702,7 @@ function renderMyBetsListOnly() {
     }
   }
 
-  const visibleBets = isPointsRunChampionship()
+  const pointsRunVisibleBets = isPointsRunChampionship()
     ? pointsRunBets
     : (MyBetsState.activeTab === 'knockout' ? knockoutBets : groupBets);
 
@@ -777,46 +777,74 @@ function renderMyBetsListOnly() {
 export async function initMyBets() {
   const container = document.getElementById('user-bets-container');
   const leagueId = localStorage.getItem('selectedLeagueId');
-  
-  if (!leagueId) return;
+
+  if (!leagueId) {
+    if (container) container.innerHTML = '<div class="loading">Selecione um campeonato.</div>';
+    return;
+  }
+
   if (container) container.innerHTML = `<div class="loading">Carregando...</div>`;
 
+  MyBetsState.openAccordions = {};
+  MyBetsState.selectedUserId = 'me';
+
+  /*
+   * IMPORTANTE:
+   * A abertura de "Meus Palpites" depende somente dos palpites do usuário.
+   * Settings, partidas e ranking são dados auxiliares e NÃO podem bloquear
+   * a tela inteira. Isso evita spinner infinito quando qualquer endpoint
+   * secundário estiver lento/indisponível.
+   */
   try {
-    // Busca as regras de pontuação globais do Admin antes de renderizar
-    try {
-      const settingsRes = await api.get(`/api/settings/global?leagueId=${leagueId}`);
-      if (settingsRes?.success && settingsRes.data) {
-        MyBetsState.scoringRules = settingsRes.data.scoringRules || null;
-        MyBetsState.championshipRules = settingsRes.data.championshipRules || null;
-      }
-    } catch (setErr) {
-      console.warn("Aviso: Nao foi possivel carregar as regras do campeonato. Usando padrao.", setErr);
-      MyBetsState.scoringRules = MyBetsState.scoringRules || null;
-      MyBetsState.championshipRules = MyBetsState.championshipRules || {};
-    }
-
-    const m = await api.get(`/api/matches?leagueId=${leagueId}`);
-    MyBetsState.matches = m.data || [];
-
-    if (!window.__OFFICIAL_RANKING_CACHE__ && !window.__RANKING_CACHE__) {
-      try {
-        const rankRes = await api.get(`/api/bets/leaderboard?type=official&leagueId=${leagueId}`);
-        window.__OFFICIAL_RANKING_CACHE__ = rankRes.data || [];
-      } catch (rankErr) {
-        console.warn("Aviso: Nao foi possivel carregar a lista de usuarios para o dropdown.", rankErr);
-      }
-    }
-
-    MyBetsState.openAccordions = {};
-    MyBetsState.selectedUserId = 'me';
-
     await loadSelectedUserBets();
-
   } catch (err) {
-    console.error("Erro ao carregar Meus Palpites:", err);
-    toast('Erro ao iniciar Meus Palpites', 'error');
+    console.error('[MyBets] Erro fatal ao carregar palpites:', err);
+    if (container) {
+      container.innerHTML =
+        `<div style="text-align:center;padding:20px;color:#ef4444;">
+          Erro na comunicação com o servidor.
+        </div>`;
+    }
+    return;
   }
+
+  // Dados auxiliares carregados em segundo plano.
+  void Promise.allSettled([
+    (async () => {
+      try {
+        const settingsRes = await api.get(`/api/settings/global?leagueId=${encodeURIComponent(leagueId)}`);
+        if (settingsRes?.success && settingsRes.data) {
+          MyBetsState.scoringRules = settingsRes.data.scoringRules || null;
+          MyBetsState.championshipRules = settingsRes.data.championshipRules || null;
+          renderMyBets();
+        }
+      } catch (err) {
+        console.warn('[MyBets] Não foi possível carregar as regras:', err);
+      }
+    })(),
+
+    (async () => {
+      try {
+        const m = await api.get(`/api/matches?leagueId=${encodeURIComponent(leagueId)}`);
+        MyBetsState.matches = Array.isArray(m?.data) ? m.data : [];
+        renderMyBets();
+      } catch (err) {
+        console.warn('[MyBets] Não foi possível carregar as partidas auxiliares:', err);
+      }
+    })(),
+
+    (async () => {
+      if (window.__OFFICIAL_RANKING_CACHE__ || window.__RANKING_CACHE__) return;
+      try {
+        const rankRes = await api.get(`/api/bets/leaderboard?type=official&leagueId=${encodeURIComponent(leagueId)}`);
+        window.__OFFICIAL_RANKING_CACHE__ = rankRes?.data || [];
+      } catch (err) {
+        console.warn('[MyBets] Não foi possível carregar usuários do ranking:', err);
+      }
+    })()
+  ]);
 }
+
 
 export async function reloadMyBets() {
   await initMyBets();
