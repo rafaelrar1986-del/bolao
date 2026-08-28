@@ -290,6 +290,48 @@ function hasExtrasFeature() {
 }
 
 
+function ensureMyBetsStyles() {
+  if (document.getElementById('mybets-v50-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'mybets-v50-styles';
+  style.textContent = `
+    #mybets-group-predictions-inner .mybets-group-predictions-grid {
+      display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; align-items:start;
+    }
+    .mybets-extras-grid {
+      display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-top:8px;
+    }
+    .mybets-extra-card {
+      min-width:0; min-height:88px; box-sizing:border-box; display:flex; align-items:center;
+      gap:9px; padding:11px 10px; border:1px solid rgba(96,165,250,.20); border-radius:14px;
+      background:linear-gradient(145deg,rgba(18,36,78,.72),rgba(8,20,48,.82));
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.035),0 5px 16px rgba(0,0,0,.10);
+    }
+    .mybets-extra-icon { flex:0 0 34px; width:34px; height:34px; display:flex; align-items:center; justify-content:center;
+      border-radius:11px; background:rgba(96,165,250,.11); border:1px solid rgba(96,165,250,.17); font-size:17px; }
+    .mybets-extra-info { min-width:0; flex:1; }
+    .mybets-extra-label { font-size:.67rem; font-weight:800; letter-spacing:.35px; color:rgba(226,232,240,.62);
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .mybets-extra-value { margin-top:5px; min-width:0; font-size:.88rem; font-weight:700; color:#f1f5f9; }
+    .mybets-extra-team { min-width:0; display:flex; align-items:center; gap:6px; }
+    .mybets-extra-team > span:last-child { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .mybets-extra-points { flex:0 0 auto; align-self:flex-end; font-size:.72rem; font-weight:900; white-space:nowrap; }
+    .mybets-extra-points.is-positive { color:#4ade80; }
+    .mybets-extra-points.is-zero { color:#f87171; }
+    .mybets-extras-total { margin-top:10px; min-height:42px; box-sizing:border-box; display:flex; align-items:center;
+      justify-content:space-between; gap:10px; padding:9px 12px; border:1px solid rgba(168,85,247,.18);
+      border-radius:12px; background:rgba(168,85,247,.07); font-size:.82rem; font-weight:800; color:rgba(226,232,240,.78); }
+    .mybets-extras-total strong { color:#4ade80; font-size:.92rem; white-space:nowrap; }
+    @media (max-width:380px) {
+      .mybets-extra-card { padding-left:8px; padding-right:7px; gap:7px; }
+      .mybets-extra-icon { flex-basis:30px; width:30px; height:30px; font-size:15px; }
+      .mybets-extra-label { font-size:.61rem; } .mybets-extra-value { font-size:.78rem; }
+      .mybets-extra-points { font-size:.66rem; }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 function renderMyBetsSection(key, title, icon, content, subtitle = '') {
   const open = MyBetsState.openSections?.[key] === true;
   return `
@@ -682,6 +724,7 @@ async function loadSelectedUserBets() {
 }
 
 export function renderMyBets() {
+  ensureMyBetsStyles();
   const container = document.getElementById('user-bets-container');
   if (!container) return;
 
@@ -848,6 +891,7 @@ function renderMyBetsListOnly() {
 }
 
 export async function initMyBets() {
+  ensureMyBetsStyles();
   const container = document.getElementById('user-bets-container');
   const leagueId = localStorage.getItem('selectedLeagueId');
 
@@ -924,114 +968,4 @@ export async function reloadMyBets() {
 }
 
 
-<style id="mybets-group-predictions-responsive">
-  @media (max-width: 700px) {
-    #mybets-group-predictions-inner .mybets-group-predictions-grid {
-      grid-template-columns: 1fr !important;
-    }
-  }
-</style>
 
-
-<style id="mybets-extras-v50">
-  .mybets-extras-grid {
-    display:grid;
-    grid-template-columns:repeat(2,minmax(0,1fr));
-    gap:10px;
-    margin-top:8px;
-  }
-  .mybets-extra-card {
-    min-width:0;
-    min-height:88px;
-    box-sizing:border-box;
-    display:flex;
-    align-items:center;
-    gap:9px;
-    padding:11px 10px;
-    border:1px solid rgba(96,165,250,.20);
-    border-radius:14px;
-    background:linear-gradient(145deg,rgba(18,36,78,.72),rgba(8,20,48,.82));
-    box-shadow:inset 0 1px 0 rgba(255,255,255,.035),0 5px 16px rgba(0,0,0,.10);
-  }
-  .mybets-extra-icon {
-    flex:0 0 34px;
-    width:34px;
-    height:34px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    border-radius:11px;
-    background:rgba(96,165,250,.11);
-    border:1px solid rgba(96,165,250,.17);
-    font-size:17px;
-  }
-  .mybets-extra-info {
-    min-width:0;
-    flex:1;
-  }
-  .mybets-extra-label {
-    font-size:.67rem;
-    font-weight:800;
-    letter-spacing:.35px;
-    color:rgba(226,232,240,.62);
-    white-space:nowrap;
-    overflow:hidden;
-    text-overflow:ellipsis;
-  }
-  .mybets-extra-value {
-    margin-top:5px;
-    min-width:0;
-    font-size:.88rem;
-    font-weight:700;
-    color:#f1f5f9;
-  }
-  .mybets-extra-team {
-    min-width:0;
-    display:flex;
-    align-items:center;
-    gap:6px;
-  }
-  .mybets-extra-team > span:last-child {
-    min-width:0;
-    overflow:hidden;
-    text-overflow:ellipsis;
-    white-space:nowrap;
-  }
-  .mybets-extra-points {
-    flex:0 0 auto;
-    align-self:flex-end;
-    font-size:.72rem;
-    font-weight:900;
-    white-space:nowrap;
-  }
-  .mybets-extra-points.is-positive { color:#4ade80; }
-  .mybets-extra-points.is-zero { color:#f87171; }
-  .mybets-extras-total {
-    margin-top:10px;
-    min-height:42px;
-    box-sizing:border-box;
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:10px;
-    padding:9px 12px;
-    border:1px solid rgba(168,85,247,.18);
-    border-radius:12px;
-    background:rgba(168,85,247,.07);
-    font-size:.82rem;
-    font-weight:800;
-    color:rgba(226,232,240,.78);
-  }
-  .mybets-extras-total strong {
-    color:#4ade80;
-    font-size:.92rem;
-    white-space:nowrap;
-  }
-  @media (max-width:380px) {
-    .mybets-extra-card { padding-left:8px; padding-right:7px; gap:7px; }
-    .mybets-extra-icon { flex-basis:30px; width:30px; height:30px; font-size:15px; }
-    .mybets-extra-label { font-size:.61rem; }
-    .mybets-extra-value { font-size:.78rem; }
-    .mybets-extra-points { font-size:.66rem; }
-  }
-</style>
