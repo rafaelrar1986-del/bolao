@@ -593,8 +593,16 @@ async function loadSelectedUserBets() {
 
     MyBetsState.isLockedView = false;
     MyBetsState.bets = res?.data || null;
-    await loadOfficialGroupPredictionPoints();
+
+    // IMPORTANTE: a pontuação da classificação prevista é complementar.
+    // Nunca bloquear a abertura de "Meus Palpites" aguardando esse cálculo.
     renderMyBets();
+
+    // Atualiza a pontuação oficial em segundo plano.
+    // Mesmo que o endpoint demore/falhe, a tela de My Bets já foi renderizada.
+    loadOfficialGroupPredictionPoints()
+      .then(() => renderMyBets())
+      .catch(err => console.warn('[MyBets] Atualização de pontos da classificação falhou:', err));
 
   } catch (err) {
     if (err.status === 403) {
