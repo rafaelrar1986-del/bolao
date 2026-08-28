@@ -92,7 +92,20 @@ const getGroupStandings = async (req, res) => {
     // ============================================================
     // O algoritmo está em groupStandingsService.js e é compartilhado
     // pelo controller e pelo cálculo de pontuação.
-    const groupedResults = calculateGroupStandings(activeMatches);
+    const standingsSourceMatches = allMatches.map(m => ({
+      ...m,
+      group:
+        requestedPhase === 'pontos_corridos'
+          ? (m.group || m.leagueName || 'Classificação Geral')
+          : m.group
+    }));
+
+    // Calcula pontos somente com as partidas válidas para o modo solicitado,
+    // mas usa TODAS as partidas da fase para manter a tabela visível desde o início.
+    const groupedResults = calculateGroupStandings(
+      activeMatches,
+      standingsSourceMatches
+    );
 
     /*
      * ============================================================

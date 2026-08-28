@@ -57,8 +57,31 @@ function compareTeams(a, b, activeMatches) {
   return a.name.localeCompare(b.name);
 }
 
-function calculateGroupStandings(matches = []) {
+function calculateGroupStandings(matches = [], teamSourceMatches = matches) {
   const standings = {};
+
+  // A tabela deve existir mesmo quando nenhuma partida foi finalizada.
+  // `matches` contém as partidas usadas para pontuar; `teamSourceMatches`
+  // contém todas as partidas da fase e serve somente para descobrir os times/grupos.
+  (teamSourceMatches || matches).forEach(m => {
+    [m.teamA, m.teamB].forEach(team => {
+      if (team && !standings[team]) {
+        standings[team] = {
+          name: team,
+          group: m.group,
+          pj: 0,
+          v: 0,
+          e: 0,
+          d: 0,
+          gp: 0,
+          gc: 0,
+          sg: 0,
+          pts: 0,
+          qualified: false
+        };
+      }
+    });
+  });
 
   matches.forEach(m => {
     [m.teamA, m.teamB].forEach(team => {
