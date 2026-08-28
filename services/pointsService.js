@@ -25,7 +25,13 @@ const DEFAULT_CHAMPIONSHIP_RULES = Object.freeze({
   winnerFromScore: true,
   podiumSize: 4,
   hasGroupPhase: true,
-  hasKnockoutPhase: false
+  hasKnockoutPhase: false,
+  groupQualification: {
+    totalTeams: 0,
+    groupCount: 0,
+    totalQualified: 0,
+    legs: 1
+  }
 });
 
 /**
@@ -192,6 +198,14 @@ function sanitizeChampionshipRules(rawRules) {
 
   rules.drawIncludesExtraTime = Boolean(rules.drawIncludesExtraTime);
   rules.hasKnockoutPhase = Boolean(rules.hasKnockoutPhase);
+
+  const groupQualification = {
+    ...(DEFAULT_CHAMPIONSHIP_RULES.groupQualification || {}),
+    ...(rules.groupQualification || {})
+  };
+  const legs = Number(groupQualification.legs);
+  groupQualification.legs = legs === 2 ? 2 : 1;
+  rules.groupQualification = groupQualification;
 
   const podiumSize = Number(rules.podiumSize);
   rules.podiumSize = Number.isFinite(podiumSize)
@@ -737,6 +751,86 @@ function groupQualificationConditionMatches(condition, item) {
  *
  * A classificação oficial é derivada somente das partidas finalizadas.
  */
+
+/**
+ * Determina o estado de encerramento de cada grupo de forma genérica.
+ *
+ * A configuração `legs` informa se o confronto é em turno único (1)
+ * ou turno e returno (2). A quantidade esperada é derivada dos times
+ * realmente cadastrados nas partidas da fase:
+ *
+ *   n * (n - 1) / 2 * legs
+ *
+ * A existência de partidas agendadas é usada como fonte dos times,
+ * enquanto apenas partidas não-scheduled contam como iniciadas e
+ * `finished` conta como encerrada.
+ */
+function getGroupCompletionStatus(allGroupMatches = [], championshipRules = {}) {
+  const source = (allGroupMatches || []).filter(m =>
+    String(m.phase || '').toLowerCase() === 'group'
+  );
+  const legs = Number(championshipRules?.groupQualification?.legs) === 2 ? 2 : 1;
+  const byGroup = {};
+
+  for (const m of source) {
+    const group = String(m.group || '').trim();
+    const teamA = String(m.teamA || '').trim();
+    const teamB = String(m.teamB || '').trim();
+    if (!group || !teamA || !teamB || teamA === teamB) continue;
+
+    byGroup[group] ||= {
+      group, teams: new Set(), pairs: new Map(), startedMatches: 0
+    };
+
+    const item = byGroup[group];
+    item.teams.add(teamA);
+    item.teams.add(teamB);
+
+    const pair = [teamA, teamB].sort().join('|||');
+    const pairData = item.pairs.get(pair) || { configured: 0, finished: 0 };
+    pairData.configured++;
+    if (!['scheduled', 'cancelled', 'postponed'].includes(String(m.status || '').toLowerCase())) {
+      item.startedMatches++;
+    }
+    if (m.status === 'finished') pairData.finished++;
+    item.pairs.set(pair, pairData);
+  }
+
+  return Object.values(byGroup).map(item => {
+    const teamCount = item.teams.size;
+    const expectedMatches =
+      teamCount >= 2 ? (teamCount * (teamCount - 1) / 2) * legs : 0;
+    const expectedPairs =
+      teamCount >= 2 ? teamCount * (teamCount - 1) / 2 : 0;
+
+    const configuredMatches = [...item.pairs.values()]
+      .reduce((sum, pair) => sum + pair.configured, 0);
+    const finishedMatches = [...item.pairs.values()]
+      .reduce((sum, pair) => sum + pair.finished, 0);
+
+    const everyPairHasExpectedLegs =
+      expectedPairs > 0 &&
+      item.pairs.size === expectedPairs &&
+      [...item.pairs.values()].every(pair => pair.configured >= legs);
+
+    const everyPairFinished =
+      everyPairHasExpectedLegs &&
+      [...item.pairs.values()].every(pair => pair.finished >= legs);
+
+    return {
+      group: item.group,
+      teamCount,
+      legs,
+      expectedMatches,
+      configuredMatches,
+      startedMatches: item.startedMatches,
+      finishedMatches,
+      started: item.startedMatches > 0,
+      complete: everyPairFinished
+    };
+  });
+}
+
 function calculateGroupQualificationPoints(
   groupPredictions,
   groupMatches,
@@ -797,6 +891,17 @@ function calculateGroupQualificationPoints(
   const sourceMatches = (allGroupMatches || groupMatches || []).filter(m =>
     String(m.phase || '').toLowerCase() === 'group'
   );
+
+  const groupCompletion = getGroupCompletionStatus(
+    sourceMatches,
+    championshipRules
+  );
+  const completionByGroup = new Map(
+    groupCompletion.map(item => [item.group, item])
+  );
+  const allGroupsComplete =
+    groupCompletion.length > 0 &&
+    groupCompletion.every(item => item.complete);
 
   const grouped = {};
   const teamRows = {};
@@ -921,13 +1026,43 @@ function calculateGroupQualificationPoints(
   let total = 0;
   const byGroup = [];
 
+  // Um grupo só pode gerar pontos depois que pelo menos uma partida
+  // daquele grupo entrou no cálculo do modo atual.
+  //
+  // Isso evita a situação em que a tabela, ainda sem nenhum jogo,
+  // possui todos os times zerados e acaba atribuindo pontos ao palpite
+  // apenas por uma ordem alfabética/empate de critérios.
+  const groupsWithPlayedMatches = new Set(
+    matches
+      .map(m => String(m.group || '').trim())
+      .filter(Boolean)
+  );
+
   for (const prediction of groupPredictions) {
     const group = String(prediction?.group || '').trim();
+    const state = completionByGroup.get(group);
+
+    if (!state?.started) continue;
+
+    // Oficial: o grupo precisa estar completamente encerrado.
+    // LIVE: a situação atual pode ser exibida/recalculada.
+    if (!isPartial && !state.complete) continue;
+
     const ranked = rankedByGroup[group] || [];
     if (!ranked.length) continue;
 
     const actualPosition = new Map(ranked.map((team, idx) => [team.name, idx + 1]));
-    const actualQualified = qualified[group] || new Set();
+    // Vagas diretas tornam-se definitivas quando ESTE grupo termina.
+    // Vagas adicionais entre grupos só são definitivas quando TODOS terminam.
+    const actualQualified = new Set(
+      ranked.slice(0, basePerGroup).map(team => team.name)
+    );
+
+    if (allGroupsComplete && additionalCount > 0) {
+      for (const teamName of (qualified[group] || new Set())) {
+        actualQualified.add(teamName);
+      }
+    }
 
     let groupPoints = 0;
     const predictedAdditional = new Set(
@@ -977,10 +1112,22 @@ function calculateGroupQualificationPoints(
     }
 
     total += groupPoints;
-    byGroup.push({ group, points: groupPoints });
+    byGroup.push({
+      group,
+      points: groupPoints,
+      status: isPartial ? 'partial' : 'official',
+      groupComplete: Boolean(state.complete),
+      expectedMatches: Number(state.expectedMatches || 0),
+      finishedMatches: Number(state.finishedMatches || 0)
+    });
   }
 
-  return { points: total, breakdown, byGroup };
+  return {
+    points: total,
+    breakdown,
+    byGroup,
+    groupStatus: groupCompletion
+  };
 }
 
 /**
@@ -1151,6 +1298,15 @@ async function recalculateAllPoints(
       leagueId: normalizedLeagueId
     }).session(session);
 
+    // Carregado uma única vez: serve para determinar dinamicamente a
+    // estrutura/encerramento de cada grupo sem fazer uma consulta por aposta.
+    const allGroupMatches = await Match.find({
+      leagueId: normalizedLeagueId,
+      phase: 'group'
+    })
+      .lean()
+      .session(session);
+
     let updated = 0;
 
     for (const bet of bets) {
@@ -1248,10 +1404,13 @@ async function recalculateAllPoints(
       // ------------------------------------------------------------
       const groupQualificationResult = calculateGroupQualificationPoints(
         bet.groupPredictions || [],
-        finishedMatches,
+        finishedMatches.filter(m =>
+          String(m.phase || '').toLowerCase() === 'group'
+        ),
         scoringRules,
         champRules,
-        false
+        false,
+        allGroupMatches
       );
       bet.groupPredictionPoints = groupQualificationResult.points;
       bet.groupPredictionBreakdown = groupQualificationResult.byGroup;
@@ -1495,6 +1654,7 @@ module.exports = {
   sanitizeChampionshipRules,
   sanitizeGroupQualificationRules,
   calculateGroupQualificationPoints,
+  getGroupCompletionStatus,
   getScoringRules,
   getChampionshipRules,
   getMatchReferenceScore,

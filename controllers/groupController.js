@@ -242,7 +242,13 @@ const getGroupPredictionPoints = async (req, res) => {
 
     const settings = await Settings.findById(leagueId).lean();
     if (settings?.championshipRules?.hasGroupPhase === false) {
-      return res.json({ points: 0, breakdown: [], byGroup: [], startedGroups: [] });
+      return res.json({
+        points: 0,
+        breakdown: [],
+        byGroup: [],
+        startedGroups: [],
+        groupStatus: []
+      });
     }
 
     const predictions = Array.isArray(req.body?.groupPredictions)
@@ -250,7 +256,13 @@ const getGroupPredictionPoints = async (req, res) => {
       : [];
 
     if (!predictions.length) {
-      return res.json({ points: 0, breakdown: [], byGroup: [], startedGroups: [] });
+      return res.json({
+        points: 0,
+        breakdown: [],
+        byGroup: [],
+        startedGroups: [],
+        groupStatus: []
+      });
     }
 
     const live = req.query.live === 'true';
@@ -261,7 +273,9 @@ const getGroupPredictionPoints = async (req, res) => {
     }).lean();
 
     const relevantMatches = matches.filter(m =>
-      live ? m.status !== 'scheduled' : m.status === 'finished'
+      live
+        ? !['scheduled', 'cancelled', 'postponed'].includes(String(m.status || '').toLowerCase())
+        : m.status === 'finished'
     );
 
     const result = calculateGroupQualificationPoints(
@@ -275,7 +289,7 @@ const getGroupPredictionPoints = async (req, res) => {
 
     const startedGroups = [...new Set(
       relevantMatches
-        .filter(m => m.status !== 'scheduled')
+        .filter(m => !['scheduled', 'cancelled', 'postponed'].includes(String(m.status || '').toLowerCase()))
         .map(m => String(m.group || '').trim())
         .filter(Boolean)
     )];
@@ -284,7 +298,8 @@ const getGroupPredictionPoints = async (req, res) => {
       points: Number(result.points || 0),
       breakdown: Array.isArray(result.breakdown) ? result.breakdown : [],
       byGroup: Array.isArray(result.byGroup) ? result.byGroup : [],
-      startedGroups
+      startedGroups,
+      groupStatus: Array.isArray(result.groupStatus) ? result.groupStatus : []
     });
   } catch (error) {
     console.error('[Prediction Points] Erro:', error);

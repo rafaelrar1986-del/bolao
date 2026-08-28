@@ -207,7 +207,9 @@ const SettingsSchema = new mongoose.Schema(
       groupQualification: {
         totalTeams: { type: Number, default: 0, min: 0 },
         groupCount: { type: Number, default: 0, min: 0 },
-        totalQualified: { type: Number, default: 0, min: 0 }
+        totalQualified: { type: Number, default: 0, min: 0 },
+        // 1 = turno único; 2 = turno e returno.
+        legs: { type: Number, enum: [1, 2], default: 1 }
       }
     },
 
