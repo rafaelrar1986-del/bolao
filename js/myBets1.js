@@ -681,13 +681,15 @@ function renderMyBetsListOnly() {
 
   if (!listRoot || !pillsRoot) return;
 
+  // O mapa precisa existir antes de qualquer render/filtro que use getBetPhase().
+  const matchMap = new Map(
+    (MyBetsState.matches || []).map(m => [Number(m.matchId), m])
+  );
+
   pillsRoot.innerHTML = renderPills(matchMap);
 
   if (!hasGroupPhase() && MyBetsState.activeTab === 'group') MyBetsState.activeTab = 'knockout';
   if (!hasKnockoutPhase() && MyBetsState.activeTab === 'knockout') MyBetsState.activeTab = 'group';
-
-  const matchMap = new Map();
-  MyBetsState.matches.forEach(m => matchMap.set(Number(m.matchId), m));
 
   const rawBetsList = MyBetsState.bets?.groupMatches || MyBetsState.bets?.matches || [];
   const eligibleBets = rawBetsList.filter(b => {
