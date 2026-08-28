@@ -1729,6 +1729,14 @@ window.setMatchFilter = (f) => {
   if (f === 'live') STATE.groupStatusFilter = 'all';
   renderMatches();
   updateGroupProgressUI();
+
+  // Grupo e Ao Vivo devem atualizar a pontuação imediatamente ao entrar
+  // ou retornar ao filtro. O modo Data permanece exatamente como está.
+  if (f === 'group' || f === 'live') {
+    loadGroupPredictionPointsLive().catch(err =>
+      console.warn('[GroupPredictionPoints] Falha ao atualizar ao entrar no filtro:', err)
+    );
+  }
 };
 
 window.setKnockoutFilter = (f) => {
@@ -2324,7 +2332,10 @@ function renderMatches(openedGroups = []) {
   
   list.forEach(m => {
     let key;
-    if (STATE.hasSubmitted && (STATE.groupFilter === 'date' || STATE.groupFilter === 'live')) {
+    // Data continua sendo agrupada exclusivamente por data.
+    // Ao Vivo é agrupado por grupo para que a classificação prevista
+    // possa ser mostrada uma única vez para o grupo inteiro.
+    if (STATE.hasSubmitted && STATE.groupFilter === 'date') {
       const d = parseMatchDate(m);
       key = d ? d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'Sem data';
     } else {
@@ -2335,7 +2346,7 @@ function renderMatches(openedGroups = []) {
 
   html += Object.keys(groups)
     .sort((a, b) => {
-      if (STATE.hasSubmitted && (STATE.groupFilter === 'date' || STATE.groupFilter === 'live')) {
+      if (STATE.hasSubmitted && STATE.groupFilter === 'date') {
         const da = parseMatchDate(groups[a][0]);
         const db = parseMatchDate(groups[b][0]);
         return (da?.getTime() || 0) - (db?.getTime() || 0);
@@ -2348,6 +2359,23 @@ function renderMatches(openedGroups = []) {
         const db = parseMatchDate(b);
         return (da?.getTime() || 0) - (db?.getTime() || 0);
       });
+
+      // No Ao Vivo, somente as partidas LIVE são exibidas, mas a
+      // classificação prevista é sempre calculada sobre TODOS os jogos
+      // do grupo, incluindo os ainda agendados.
+      const predictionGames = STATE.groupFilter === 'live'
+        ? (STATE.matches || [])
+            .filter(m =>
+              !isKnockoutMatch(m) &&
+              String(m.group || '').trim() === String(groupName).trim()
+            )
+            .slice()
+            .sort((a, b) => {
+              const da = parseMatchDate(a);
+              const db = parseMatchDate(b);
+              return (da?.getTime() || 0) - (db?.getTime() || 0);
+            })
+        : games;
 
       const rules = getScoringRules();
       const totalPoints = games.reduce((sum, m) => {
@@ -2407,7 +2435,7 @@ function renderMatches(openedGroups = []) {
             <div class="group-matches-grid">
               ${games.map(m => renderGroupCard(m)).join('')}
             </div>
-            ${renderGroupPredictionSection(groupName, games)}
+            ${renderGroupPredictionSection(groupName, predictionGames)}
           </div>
         </div>
       `;
