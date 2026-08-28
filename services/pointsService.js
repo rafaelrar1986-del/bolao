@@ -742,7 +742,8 @@ function calculateGroupQualificationPoints(
   groupMatches,
   scoringRules = {},
   championshipRules = {},
-  isPartial = false
+  isPartial = false,
+  allGroupMatches = groupMatches
 ) {
   const rules = sanitizeGroupQualificationRules(
     scoringRules?.groupQualificationRules
@@ -781,30 +782,50 @@ function calculateGroupQualificationPoints(
     }
   }
 
+  // `matches` = partidas que entram no cálculo do modo atual:
+  //   Oficial -> finished
+  //   Live    -> iniciadas (não scheduled)
+  //
+  // `allGroupMatches` = TODAS as partidas da fase. Elas são a fonte de
+  // verdade para descobrir todos os times/grupos, inclusive equipes que
+  // ainda não jogaram. Isso é indispensável para a pontuação LIVE e OFICIAL.
   const matches = (groupMatches || []).filter(m =>
     String(m.phase || '').toLowerCase() === 'group' &&
     (!isPartial ? m.status === 'finished' : m.status !== 'scheduled')
   );
 
+  const sourceMatches = (allGroupMatches || groupMatches || []).filter(m =>
+    String(m.phase || '').toLowerCase() === 'group'
+  );
+
   const grouped = {};
   const teamRows = {};
 
-  for (const m of matches) {
+  // Primeiro cadastra todos os times da fase, com estatísticas zeradas.
+  for (const m of sourceMatches) {
     const group = String(m.group || '').trim();
     if (!group || !m.teamA || !m.teamB) continue;
     grouped[group] ||= [];
+    if (!teamRows[group]) teamRows[group] = {};
 
     for (const t of [m.teamA, m.teamB]) {
-      if (!teamRows[group]) teamRows[group] = {};
       if (!teamRows[group][t]) {
         teamRows[group][t] = {
           name: t, pts: 0, gp: 0, gc: 0, sg: 0
         };
       }
     }
+  }
 
-    const a = teamRows[group][m.teamA];
-    const b = teamRows[group][m.teamB];
+  // Depois aplica somente os resultados válidos para o modo solicitado.
+  for (const m of matches) {
+    const group = String(m.group || '').trim();
+    if (!group || !m.teamA || !m.teamB) continue;
+    grouped[group] ||= [];
+
+    const a = teamRows[group]?.[m.teamA];
+    const b = teamRows[group]?.[m.teamB];
+    if (!a || !b) continue;
     const sa = Number(m.scoreA), sb = Number(m.scoreB);
     if (!Number.isFinite(sa) || !Number.isFinite(sb)) continue;
 
@@ -1036,7 +1057,8 @@ function calculateBetTotal(
     [...(matchMap?.values?.() || [])],
     rules,
     champRules,
-    isPartial
+    isPartial,
+    [...(matchMap?.values?.() || [])]
   );
 
   const bonusPoints = Number(bet?.bonusPoints) || 0;

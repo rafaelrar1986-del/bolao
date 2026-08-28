@@ -269,7 +269,8 @@ const getGroupPredictionPoints = async (req, res) => {
       relevantMatches,
       settings?.scoringRules || {},
       settings?.championshipRules || {},
-      live
+      live,
+      matches
     );
 
     const startedGroups = [...new Set(
