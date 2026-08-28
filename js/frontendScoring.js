@@ -383,6 +383,9 @@ export function calculateMatchPoints(betMatch, match, settings = {}, isPartial =
 
 export function getMatchPointStatus(betMatch, match, settings = {}, isPartial = false) {
   const result = calculateMatchPoints(betMatch, match, settings, isPartial);
+  // O status visual deve usar o mesmo contexto de fase do motor de pontuação.
+  // Esta variável é local à função e evita o ReferenceError que acionava o fallback.
+  const knockout = isKnockoutMatch(match);
   const matchRules = getMatchRules(settings, match)
     .map(rule => ({
       ...rule,
