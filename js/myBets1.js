@@ -12,10 +12,9 @@ let renderTeamMedia = (teamName, logoUrl) => {
   return `<span class="team-emoji">${emoji}</span>`;
 };
 
-try {
-  const m = await import('./matches4.js?v=1.07');
-  if (m.renderTeamMedia) renderTeamMedia = m.renderTeamMedia;
-} catch (e) {}
+// My Bets é independente de matches4.js.
+// Não importar matches4.js no topo: isso impediria o módulo inteiro de
+// carregar caso a tela de partidas tivesse qualquer erro de inicialização.
 
 const MyBetsState = {
   selectedUserId: 'me',
@@ -600,7 +599,7 @@ async function loadSelectedUserBets() {
 
     // Atualiza a pontuação oficial em segundo plano.
     // Mesmo que o endpoint demore/falhe, a tela de My Bets já foi renderizada.
-    loadOfficialGroupPredictionPoints()
+    void loadOfficialGroupPredictionPoints()
       .then(() => renderMyBets())
       .catch(err => console.warn('[MyBets] Atualização de pontos da classificação falhou:', err));
 
