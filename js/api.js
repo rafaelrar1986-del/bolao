@@ -266,7 +266,7 @@ export const api = {
   // 🏟️ GROUPS
   // ================================================================
   getGroupStandings: (leagueId, live) => {
-    let url = `/api/groups/standings?leagueId=${leagueId || '1'}`;
+    let url = `/api/groups/standings?leagueId=${encodeURIComponent(String(leagueId || '1').trim())}`;
     if (live) url += '&live=true';
     return request('GET', url);
   },

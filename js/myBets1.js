@@ -432,50 +432,110 @@ function renderGroupPredictions() {
   const predictions = MyBetsState.bets?.groupPredictions;
   if (!Array.isArray(predictions) || !predictions.length) return '';
 
+  const championshipRules = getChampionshipRules();
+  const qualification = championshipRules.groupQualification || {};
+  const totalTeams = Number(qualification.totalTeams || 0);
+  const groupCount = Number(qualification.groupCount || 0);
+  const totalQualified = Number(qualification.totalQualified || 0);
+
+  let baseQualifiedPerGroup = 0;
+  let additionalQualificationPosition = null;
+
+  if (
+    totalTeams > 0 &&
+    groupCount > 0 &&
+    totalQualified > 0 &&
+    totalTeams % groupCount === 0
+  ) {
+    baseQualifiedPerGroup = Math.floor(totalQualified / groupCount);
+    const additional = totalQualified % groupCount;
+    additionalQualificationPosition = additional > 0 ? baseQualifiedPerGroup + 1 : null;
+  }
+
   const cards = [...predictions]
     .sort((a,b) => String(a.group || '').localeCompare(String(b.group || ''), 'pt-BR', {numeric:true}))
     .map(pred => {
+      const group = String(pred.group || '').trim();
       const positions = Array.isArray(pred.positions) ? [...pred.positions]
         .sort((a,b) => Number(a.position || 0) - Number(b.position || 0)) : [];
       const additional = Array.isArray(pred.additionalQualifiedTeams)
-        ? pred.additionalQualifiedTeams.filter(Boolean) : [];
-      if (!positions.length && !additional.length) return '';
+        ? [...new Set(pred.additionalQualifiedTeams.filter(Boolean).map(String))]
+        : [];
+
+      if (!positions.length) return '';
+
+      const pointsMap = MyBetsState.groupPredictionPoints.get(group) || new Map();
 
       const rows = positions.map(pos => {
-        const team = pos.team || '—';
+        const team = String(pos.team || '—');
+        const position = Number(pos.position) || 0;
         const m = MyBetsState.matches.find(x => x.teamA === team || x.teamB === team);
         const logo = m ? (m.teamA === team ? m.logoA : m.logoB) : null;
-        const item = MyBetsState.groupPredictionPoints.get(String(pred.group || ''))?.get(team);
+
+        // Candidato a classificação:
+        // - posições-base que classificam diretamente;
+        // - qualquer candidato adicional efetivamente escolhido pelo usuário.
+        const directlyQualified = baseQualifiedPerGroup > 0 && position <= baseQualifiedPerGroup;
+        const additionallyQualified = additional.includes(team);
+        const isQualifiedCandidate = directlyQualified || additionallyQualified;
+
+        const item = pointsMap.get(team);
         const pts = Number(item?.points || 0);
         const hasOfficialResult = item?.actualPosition != null;
+
         const pointsHtml = hasOfficialResult
-          ? `<span class="mybets-group-prediction-points" style="margin-left:auto;min-width:48px;text-align:right;font-size:.72rem;font-weight:900;color:${pts > 0 ? '#6ee7b7' : '#f87171'};">${pts > 0 ? `✓ +${pts}` : '✗ 0'}</span>`
-          : `<span class="mybets-group-prediction-points" style="margin-left:auto;min-width:48px;text-align:right;font-size:.72rem;font-weight:900;color:#999;">—</span>`;
-        return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.06);">
-           <span style="min-width:28px;font-weight:800;opacity:.7;">${Number(pos.position) || '—'}º</span>
-           <span>${renderTeamMedia(team, logo)}</span><span style="font-weight:700;">${team}</span>${pointsHtml}
-         </div>`;
+          ? `<span class="mybets-group-prediction-points ${pts > 0 ? 'is-positive' : 'is-zero'}">${pts > 0 ? `✓ +${pts}` : '✗ 0'}</span>`
+          : `<span class="mybets-group-prediction-points is-pending">—</span>`;
+
+        return `
+          <div class="mybets-group-prediction-row ${isQualifiedCandidate ? 'is-qualified-candidate' : ''}"
+               title="${team.replace(/"/g, '&quot;')}">
+            <span class="mybets-group-prediction-position">${position}º</span>
+            <span class="mybets-group-prediction-team-flag">
+              ${renderTeamMedia(team, logo)}
+            </span>
+            <span class="mybets-group-prediction-qualification">
+              ${isQualifiedCandidate ? 'CLASSIFICADO' : ''}
+            </span>
+            ${pointsHtml}
+          </div>
+        `;
       }).join('');
 
-      const extra = additional.length ? `<div style="margin-top:10px;padding:10px;border-radius:10px;background:rgba(255,255,255,.03);">
-        <div style="font-size:.75rem;font-weight:800;opacity:.65;margin-bottom:7px;">CLASSIFICADOS ADICIONAIS</div>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;">${additional.map(team => {
-          const m = MyBetsState.matches.find(x => x.teamA === team || x.teamB === team);
-          const logo = m ? (m.teamA === team ? m.logoA : m.logoB) : null;
-          return `<span style="display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border-radius:8px;background:rgba(255,255,255,.04);">${renderTeamMedia(team, logo)}<span>${team}</span></span>`;
-        }).join('')}</div>
-      </div>` : '';
+      const totalPoints = [...pointsMap.values()]
+        .reduce((sum,item) => sum + Number(item?.points || 0), 0);
 
-      return `<div class="modern-podium" style="margin-bottom:0;">
-        <div class="modern-podium-header"><div><h2>📊 GRUPO ${pred.group || '—'}</h2><p>Classificação do seu palpite</p></div><div class="trophy-glow">📊</div></div>
-        <div style="padding:4px 0;">${rows}${extra}<div class="mybets-group-prediction-total" style="margin-top:9px;text-align:right;font-size:.78rem;font-weight:900;color:#67e8f9;">Pontuação oficial: ${[...((MyBetsState.groupPredictionPoints.get(String(pred.group || '')) || new Map()).values())].reduce((sum,item)=>sum+Number(item.points||0),0)} pts</div></div>
-      </div>`;
+      return `
+        <div class="mybets-group-prediction-card">
+          <div class="mybets-group-prediction-card-header">
+            <div>
+              <h2>📊 GRUPO ${group || '—'}</h2>
+              <p>Classificação do seu palpite</p>
+            </div>
+          </div>
+
+          <div class="mybets-group-prediction-table">
+            ${rows}
+          </div>
+
+          <div class="mybets-group-prediction-total">
+            <span>PONTUAÇÃO OFICIAL</span>
+            <strong>${totalPoints} pts</strong>
+          </div>
+        </div>
+      `;
     }).join('');
 
-  return cards.trim() ? `<div id="mybets-group-predictions-inner">
-    <div style="margin-bottom:14px;"><p style="margin:5px 0 0;opacity:.6;font-size:.85rem;">Tabelas previstas no seu palpite</p></div>
-    <div class="mybets-group-predictions-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start;">${cards}</div>
-  </div>` : '';
+  return cards.trim() ? `
+    <div id="mybets-group-predictions-inner">
+      <div style="margin-bottom:10px;">
+        <p style="margin:5px 0 0;opacity:.6;font-size:.78rem;">Tabelas previstas no seu palpite</p>
+      </div>
+      <div class="mybets-group-predictions-grid">
+        ${cards}
+      </div>
+    </div>
+  ` : '';
 }
 
 function renderExtras() {
@@ -969,3 +1029,197 @@ export async function reloadMyBets() {
 
 
 
+
+
+<style id="mybets-group-predictions-v52">
+  #mybets-group-predictions-inner .mybets-group-predictions-grid {
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:10px;
+    align-items:start;
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-card {
+    min-width:0;
+    overflow:hidden;
+    border:1px solid rgba(96,165,250,.18);
+    border-radius:14px;
+    background:linear-gradient(145deg,rgba(18,36,78,.68),rgba(8,20,48,.84));
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.03);
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-card-header {
+    padding:9px 10px 7px;
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-card-header h2 {
+    margin:0;
+    font-size:.86rem;
+    font-weight:900;
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-card-header p {
+    margin:2px 0 0;
+    font-size:.62rem;
+    opacity:.55;
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-table {
+    margin:0 7px;
+    overflow:hidden;
+    border:1px solid rgba(255,255,255,.07);
+    border-radius:9px;
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-row {
+    min-height:31px;
+    box-sizing:border-box;
+    display:grid;
+    grid-template-columns:27px 30px minmax(0,1fr) 43px;
+    align-items:center;
+    gap:4px;
+    padding:3px 5px;
+    border-bottom:1px solid rgba(255,255,255,.055);
+    background:rgba(255,255,255,.012);
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-row:last-child {
+    border-bottom:0;
+  }
+
+  /* Faixa verde para TODOS os times que o palpite indica como classificados. */
+  #mybets-group-predictions-inner .mybets-group-prediction-row.is-qualified-candidate {
+    background:linear-gradient(
+      90deg,
+      rgba(34,197,94,.25),
+      rgba(34,197,94,.16)
+    );
+    box-shadow:inset 3px 0 0 rgba(74,222,128,.85);
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-position {
+    font-size:.72rem;
+    font-weight:900;
+    text-align:center;
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-team-flag {
+    width:28px;
+    height:24px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-team-flag img {
+    width:22px !important;
+    height:22px !important;
+    object-fit:contain;
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-team-flag .team-emoji {
+    font-size:19px;
+    line-height:1;
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-qualification {
+    min-width:0;
+    overflow:hidden;
+    font-size:.52rem;
+    font-weight:900;
+    letter-spacing:.2px;
+    color:#86efac;
+    white-space:nowrap;
+    text-overflow:ellipsis;
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-points,
+  #mybets-group-predictions-inner .mybets-group-prediction-row > .mybets-group-prediction-points {
+    text-align:right;
+    font-size:.67rem;
+    font-weight:900;
+    white-space:nowrap;
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-points.is-positive {
+    color:#6ee7b7;
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-points.is-zero {
+    color:#f87171;
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-points.is-pending {
+    color:#777;
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-total {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    padding:7px 10px 9px;
+    font-size:.64rem;
+    font-weight:800;
+    color:rgba(226,232,240,.72);
+  }
+
+  #mybets-group-predictions-inner .mybets-group-prediction-total strong {
+    color:#4ade80;
+    font-size:.8rem;
+  }
+
+  @media (max-width:700px) {
+    #mybets-group-predictions-inner .mybets-group-predictions-grid {
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:8px;
+    }
+
+    #mybets-group-predictions-inner .mybets-group-prediction-row {
+      grid-template-columns:24px 27px minmax(0,1fr) 38px;
+      gap:3px;
+      min-height:29px;
+      padding:2px 4px;
+    }
+
+    #mybets-group-predictions-inner .mybets-group-prediction-team-flag {
+      width:25px;
+      height:22px;
+    }
+
+    #mybets-group-predictions-inner .mybets-group-prediction-team-flag img {
+      width:20px !important;
+      height:20px !important;
+    }
+
+    #mybets-group-predictions-inner .mybets-group-prediction-team-flag .team-emoji {
+      font-size:17px;
+    }
+
+    #mybets-group-predictions-inner .mybets-group-prediction-qualification {
+      font-size:.47rem;
+    }
+
+    #mybets-group-predictions-inner .mybets-group-prediction-points {
+      font-size:.6rem;
+    }
+  }
+
+  @media (max-width:380px) {
+    #mybets-group-predictions-inner .mybets-group-prediction-card-header {
+      padding:8px 8px 6px;
+    }
+
+    #mybets-group-predictions-inner .mybets-group-prediction-card-header h2 {
+      font-size:.78rem;
+    }
+
+    #mybets-group-predictions-inner .mybets-group-prediction-row {
+      grid-template-columns:21px 24px minmax(0,1fr) 34px;
+    }
+
+    #mybets-group-predictions-inner .mybets-group-prediction-qualification {
+      display:none;
+    }
+  }
+</style>
