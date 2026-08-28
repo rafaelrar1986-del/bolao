@@ -70,7 +70,8 @@ const DEFAULT_CHAMPIONSHIP_RULES = {
   groupQualification: {
     totalTeams: 0,
     groupCount: 0,
-    totalQualified: 0
+    totalQualified: 0,
+    legs: 1
   }
 };
 
@@ -1367,6 +1368,22 @@ async function openChampionshipRulesModal() {
                          min="0" step="1" placeholder="Ex.: 32">
                 </div>
               </div>
+
+              <div class="form-group" style="margin-top:10px;">
+                <label>Confrontos entre os times</label>
+                <select id="cr-group-legs">
+                  <option value="1" ${Number(cr.groupQualification?.legs || 1) === 1 ? 'selected' : ''}>
+                    Turno único — cada time enfrenta os outros 1 vez
+                  </option>
+                  <option value="2" ${Number(cr.groupQualification?.legs || 1) === 2 ? 'selected' : ''}>
+                    Turno e returno — cada time enfrenta os outros 2 vezes
+                  </option>
+                </select>
+                <small style="display:block; margin-top:5px; color:#888;">
+                  Usado para determinar dinamicamente quando cada grupo termina.
+                </small>
+              </div>
+
               <div id="cr-group-qualification-summary" style="font-size:.78rem; color:#aaa; margin-top:6px;"></div>
             </div>
 
@@ -1536,6 +1553,7 @@ async function openChampionshipRulesModal() {
     const total = Number(document.getElementById('cr-totalTeams')?.value || 0);
     const groups = Number(document.getElementById('cr-groupCount')?.value || 0);
     const qualified = Number(document.getElementById('cr-totalQualified')?.value || 0);
+    const legs = Number(document.getElementById('cr-group-legs')?.value || 1) === 2 ? 2 : 1;
 
     if (!total || !groups || (hasKnockoutPhase && !qualified)) {
       if (target) target.textContent = hasKnockoutPhase
@@ -1553,7 +1571,13 @@ async function openChampionshipRulesModal() {
     }
 
     if (!hasKnockoutPhase) {
-      target.textContent = `${total / groups} times por grupo • fase de grupos sem mata-mata.`;
+      const teamsPerGroup = total / groups;
+      const expected = teamsPerGroup >= 2
+        ? (teamsPerGroup * (teamsPerGroup - 1) / 2) * legs
+        : 0;
+      target.textContent =
+        `${teamsPerGroup} times por grupo • ${legs === 2 ? 'turno e returno' : 'turno único'} • ` +
+        `${expected} partidas por grupo • fase de grupos sem mata-mata.`;
       return;
     }
 
@@ -1565,13 +1589,17 @@ async function openChampionshipRulesModal() {
       return;
     }
     const extraPosition = additional > 0 ? direct + 1 : null;
+    const expected = teamsPerGroup >= 2
+      ? (teamsPerGroup * (teamsPerGroup - 1) / 2) * legs
+      : 0;
     target.textContent =
-      `${teamsPerGroup} times por grupo • ${direct} classificados por grupo` +
+      `${teamsPerGroup} times por grupo • ${legs === 2 ? 'turno e returno' : 'turno único'} • ` +
+      `${expected} partidas por grupo • ${direct} classificados por grupo` +
       (additional > 0
         ? ` • ${additional} classificados adicionais entre os ${extraPosition}º colocados`
         : ' • sem classificados adicionais');
   };
-  ['cr-totalTeams','cr-groupCount','cr-totalQualified'].forEach(id => {
+  ['cr-totalTeams','cr-groupCount','cr-totalQualified','cr-group-legs'].forEach(id => {
     document.getElementById(id)?.addEventListener('input', updateGroupQualificationSummary);
   });
   updateGroupQualificationSummary();
@@ -1690,6 +1718,11 @@ async function openChampionshipRulesModal() {
 
   const groupCheckbox = document.getElementById('cr-hasGroupPhase');
   const knockoutCheckbox = document.getElementById('cr-hasKnockoutPhase');
+  const groupLegsSelect = document.getElementById('cr-group-legs');
+
+  groupLegsSelect?.addEventListener('change', () => {
+    updateGroupQualificationSummary();
+  });
 
   groupCheckbox?.addEventListener('change', () => {
     updateGroupQualificationSummary();
@@ -1848,6 +1881,9 @@ async function saveChampionshipRules(e) {
   const totalTeams = hasGroupPhase ? Math.floor(Number(document.getElementById('cr-totalTeams')?.value || 0)) : 0;
   const groupCount = hasGroupPhase ? Math.floor(Number(document.getElementById('cr-groupCount')?.value || 0)) : 0;
   const totalQualified = hasGroupPhase && hasKnockoutPhase ? Math.floor(Number(document.getElementById('cr-totalQualified')?.value || 0)) : 0;
+  const groupLegs = hasGroupPhase
+    ? (Number(document.getElementById('cr-group-legs')?.value || 1) === 2 ? 2 : 1)
+    : 1;
 
   if (hasGroupPhase) {
     if (!totalTeams || !groupCount) {
@@ -1884,7 +1920,8 @@ async function saveChampionshipRules(e) {
       groupQualification: {
         totalTeams,
         groupCount,
-        totalQualified
+        totalQualified,
+        legs: groupLegs
       }
     },
     prizeZone: {

@@ -599,7 +599,7 @@ async function loadOfficialGroupPredictionPoints() {
 
   try {
     const response = await api.post(
-      `/api/groups/prediction-points?leagueId=${encodeURIComponent(leagueId)}&live=false`,
+      `/api/groups/prediction-points?leagueId=${encodeURIComponent(leagueId)}&live=true`,
       { groupPredictions: predictions }
     );
     const data = response?.data || response || {};
