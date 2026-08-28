@@ -424,14 +424,16 @@ function renderGroupPredictions() {
         }).join('')}</div>
       </div>` : '';
 
-      return `<div class="modern-podium" style="margin-bottom:14px;">
+      return `<div class="modern-podium" style="margin-bottom:0;">
         <div class="modern-podium-header"><div><h2>📊 GRUPO ${pred.group || '—'}</h2><p>Classificação do seu palpite</p></div><div class="trophy-glow">📊</div></div>
         <div style="padding:4px 0;">${rows}${extra}<div class="mybets-group-prediction-total" style="margin-top:9px;text-align:right;font-size:.78rem;font-weight:900;color:#67e8f9;">Pontuação oficial: ${[...((MyBetsState.groupPredictionPoints.get(String(pred.group || '')) || new Map()).values())].reduce((sum,item)=>sum+Number(item.points||0),0)} pts</div></div>
       </div>`;
     }).join('');
 
   return cards.trim() ? `<div id="mybets-group-predictions-inner">
-    <div style="margin-bottom:14px;"><p style="margin:5px 0 0;opacity:.6;font-size:.85rem;">Tabelas previstas no seu palpite</p></div>${cards}</div>` : '';
+    <div style="margin-bottom:14px;"><p style="margin:5px 0 0;opacity:.6;font-size:.85rem;">Tabelas previstas no seu palpite</p></div>
+    <div class="mybets-group-predictions-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start;">${cards}</div>
+  </div>` : '';
 }
 
 function renderExtras() {
@@ -452,29 +454,41 @@ function renderExtras() {
     if (!teamName) return '';
     const match = MyBetsState.matches.find(m => m.teamA === teamName || m.teamB === teamName);
     const logoUrl = match ? (match.teamA === teamName ? match.logoA : match.logoB) : null;
-    return `<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:6px;">${renderTeamMedia(teamName, logoUrl)}<span>${teamName}</span></div>`;
+    return `<div class="mybets-extra-team" title="${teamName.replace(/"/g, '&quot;')}">${renderTeamMedia(teamName, logoUrl)}<span>${teamName}</span></div>`;
   }
 
   function renderPoints(points) {
     const pts = Number(points || 0);
-    return pts > 0
-      ? `<div style="margin-top:8px;font-weight:800;color:#2ecc71;font-size:0.9rem;">+${pts} pts</div>`
-      : `<div style="margin-top:8px;font-weight:700;color:#e74c3c;font-size:0.85rem;">0 pts</div>`;
+    return `<span class="mybets-extra-points ${pts > 0 ? 'is-positive' : 'is-zero'}">${pts > 0 ? `+${pts}` : '0'} pts</span>`;
+  }
+
+  function renderExtraCard(icon, label, value, points) {
+    return `
+      <div class="mybets-extra-card">
+        <div class="mybets-extra-icon" aria-hidden="true">${icon}</div>
+        <div class="mybets-extra-info">
+          <div class="mybets-extra-label">${label}</div>
+          <div class="mybets-extra-value">${value}</div>
+        </div>
+        ${renderPoints(points)}
+      </div>
+    `;
   }
 
   const rows = [];
-  if (extras.topScorer) rows.push(`<div class="modern-extra-card"><div class="extra-label">ARTILHEIRO</div><div class="extra-value">${extras.topScorer}</div>${renderPoints(bd.topScorer)}</div>`);
-  if (extras.bestAttack) rows.push(`<div class="modern-extra-card"><div class="extra-label">MELHOR ATAQUE</div><div class="extra-value">${renderExtraTeam(extras.bestAttack)}</div>${renderPoints(bd.bestAttack)}</div>`);
-  if (extras.worstDefense) rows.push(`<div class="modern-extra-card"><div class="extra-label">PIOR DEFESA</div><div class="extra-value">${renderExtraTeam(extras.worstDefense)}</div>${renderPoints(bd.worstDefense)}</div>`);
-  if (extras.upset) rows.push(`<div class="modern-extra-card"><div class="extra-label">ZEBRA</div><div class="extra-value">${renderExtraTeam(extras.upset)}</div>${renderPoints(bd.upset)}</div>`);
+  if (extras.topScorer) rows.push(renderExtraCard('⚽', 'ARTILHEIRO', `<span>${extras.topScorer}</span>`, bd.topScorer));
+  if (extras.bestAttack) rows.push(renderExtraCard('🚀', 'MELHOR ATAQUE', renderExtraTeam(extras.bestAttack), bd.bestAttack));
+  if (extras.worstDefense) rows.push(renderExtraCard('🛡️', 'PIOR DEFESA', renderExtraTeam(extras.worstDefense), bd.worstDefense));
+  if (extras.upset) rows.push(renderExtraCard('🦓', 'ZEBRA', renderExtraTeam(extras.upset), bd.upset));
 
   return `
     <div class="modern-extras" style="margin:8px 0;">
-      <div class="modern-extras-list" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:8px;">
+      <div class="mybets-extras-grid">
         ${rows.join('')}
       </div>
-      <div style="margin-top:15px;text-align:right;font-size:1rem;font-weight:800;">
-        Total Extras: <span style="color:#2ecc71;">+${totalExtrasPts} pts</span>
+      <div class="mybets-extras-total">
+        <span>🏆 TOTAL EXTRAS</span>
+        <strong>+${totalExtrasPts} pts</strong>
       </div>
     </div>
   `;
@@ -908,3 +922,116 @@ export async function initMyBets() {
 export async function reloadMyBets() {
   await initMyBets();
 }
+
+
+<style id="mybets-group-predictions-responsive">
+  @media (max-width: 700px) {
+    #mybets-group-predictions-inner .mybets-group-predictions-grid {
+      grid-template-columns: 1fr !important;
+    }
+  }
+</style>
+
+
+<style id="mybets-extras-v50">
+  .mybets-extras-grid {
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:10px;
+    margin-top:8px;
+  }
+  .mybets-extra-card {
+    min-width:0;
+    min-height:88px;
+    box-sizing:border-box;
+    display:flex;
+    align-items:center;
+    gap:9px;
+    padding:11px 10px;
+    border:1px solid rgba(96,165,250,.20);
+    border-radius:14px;
+    background:linear-gradient(145deg,rgba(18,36,78,.72),rgba(8,20,48,.82));
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.035),0 5px 16px rgba(0,0,0,.10);
+  }
+  .mybets-extra-icon {
+    flex:0 0 34px;
+    width:34px;
+    height:34px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border-radius:11px;
+    background:rgba(96,165,250,.11);
+    border:1px solid rgba(96,165,250,.17);
+    font-size:17px;
+  }
+  .mybets-extra-info {
+    min-width:0;
+    flex:1;
+  }
+  .mybets-extra-label {
+    font-size:.67rem;
+    font-weight:800;
+    letter-spacing:.35px;
+    color:rgba(226,232,240,.62);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .mybets-extra-value {
+    margin-top:5px;
+    min-width:0;
+    font-size:.88rem;
+    font-weight:700;
+    color:#f1f5f9;
+  }
+  .mybets-extra-team {
+    min-width:0;
+    display:flex;
+    align-items:center;
+    gap:6px;
+  }
+  .mybets-extra-team > span:last-child {
+    min-width:0;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  .mybets-extra-points {
+    flex:0 0 auto;
+    align-self:flex-end;
+    font-size:.72rem;
+    font-weight:900;
+    white-space:nowrap;
+  }
+  .mybets-extra-points.is-positive { color:#4ade80; }
+  .mybets-extra-points.is-zero { color:#f87171; }
+  .mybets-extras-total {
+    margin-top:10px;
+    min-height:42px;
+    box-sizing:border-box;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    padding:9px 12px;
+    border:1px solid rgba(168,85,247,.18);
+    border-radius:12px;
+    background:rgba(168,85,247,.07);
+    font-size:.82rem;
+    font-weight:800;
+    color:rgba(226,232,240,.78);
+  }
+  .mybets-extras-total strong {
+    color:#4ade80;
+    font-size:.92rem;
+    white-space:nowrap;
+  }
+  @media (max-width:380px) {
+    .mybets-extra-card { padding-left:8px; padding-right:7px; gap:7px; }
+    .mybets-extra-icon { flex-basis:30px; width:30px; height:30px; font-size:15px; }
+    .mybets-extra-label { font-size:.61rem; }
+    .mybets-extra-value { font-size:.78rem; }
+    .mybets-extra-points { font-size:.66rem; }
+  }
+</style>
