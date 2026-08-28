@@ -878,15 +878,23 @@ function calculateGroupQualificationPoints(
 
   // `matches` = partidas que entram no cálculo do modo atual:
   //   Oficial -> finished
-  //   Live    -> iniciadas (não scheduled)
+  //   Live    -> iniciadas e válidas (não scheduled/cancelled/postponed)
   //
   // `allGroupMatches` = TODAS as partidas da fase. Elas são a fonte de
   // verdade para descobrir todos os times/grupos, inclusive equipes que
   // ainda não jogaram. Isso é indispensável para a pontuação LIVE e OFICIAL.
-  const matches = (groupMatches || []).filter(m =>
-    String(m.phase || '').toLowerCase() === 'group' &&
-    (!isPartial ? m.status === 'finished' : m.status !== 'scheduled')
-  );
+  const matches = (groupMatches || []).filter(m => {
+    const status = String(m.status || '').toLowerCase();
+    const isValidStartedStatus =
+      status !== 'scheduled' &&
+      status !== 'cancelled' &&
+      status !== 'postponed';
+
+    return (
+      String(m.phase || '').toLowerCase() === 'group' &&
+      (!isPartial ? status === 'finished' : isValidStartedStatus)
+    );
+  });
 
   const sourceMatches = (allGroupMatches || groupMatches || []).filter(m =>
     String(m.phase || '').toLowerCase() === 'group'

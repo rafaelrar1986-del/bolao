@@ -25,7 +25,7 @@ async function getLeaderboard(req, res) {
     const isPartialRequest = type === 'partial';
 
     const [matches, bets, settings] = await Promise.all([
-      Match.find({ leagueId: toLeagueId(leagueId) }).select('matchId status scoreA scoreB regularTimeScoreA regularTimeScoreB phase qualifiedSide').lean(),
+      Match.find({ leagueId: toLeagueId(leagueId) }).select('matchId status scoreA scoreB regularTimeScoreA regularTimeScoreB phase qualifiedSide group teamA teamB').lean(),
       Bet.find({ hasSubmitted: true, leagueId: lIdStr }).populate('user', 'name avatar').lean(),
       Settings.findById(toLeagueId(leagueId)).lean()
     ]);
