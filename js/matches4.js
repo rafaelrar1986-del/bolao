@@ -749,6 +749,8 @@ const STATE = {
   knockoutQualifiers: new Map(), // matchId -> 'A' | 'B'
   extras: { topScorer:'', bestAttack:'', worstDefense:'', upset:'' },
   groupPredictions: new Map(),
+  groupPredictionPoints: new Map(),
+  groupPredictionPointsStarted: new Set(),
 
   groupFilter: 'group',
   groupStatusFilter: 'all',
@@ -1071,6 +1073,13 @@ function getKnockoutGroupProgress(groupKey) {
   };
 }
 
+
+function startGroupPredictionPointsLiveRefresh() {
+  clearInterval(window.__groupPredictionPointsPointsTimer);
+  window.__groupPredictionPointsPointsTimer = setInterval(() => {
+    loadGroupPredictionPointsLive();
+  }, 30000);
+}
 
 function getDraftStorageKey() {
   const leagueId = localStorage.getItem('selectedLeagueId') || 'default';
@@ -1986,6 +1995,71 @@ function refreshAllGroupThirdCounters() {
   });
 }
 
+
+async function loadGroupPredictionPointsLive() {
+  const leagueId = localStorage.getItem('selectedLeagueId') || 'default';
+  const predictions = [...STATE.groupPredictions.values()].filter(Boolean);
+  if (!predictions.length) return;
+
+  try {
+    const response = await api.post(
+      `/api/groups/prediction-points?leagueId=${encodeURIComponent(leagueId)}&live=true`,
+      { groupPredictions: predictions }
+    );
+    const data = response?.data || response || {};
+
+    STATE.groupPredictionPoints.clear();
+    for (const item of (data.breakdown || [])) {
+      const group = String(item.group || '').trim();
+      const team = String(item.team || '').trim();
+      if (!group || !team) continue;
+      if (!STATE.groupPredictionPoints.has(group)) {
+        STATE.groupPredictionPoints.set(group, new Map());
+      }
+      STATE.groupPredictionPoints.get(group).set(team, item);
+    }
+
+    STATE.groupPredictionPointsStarted = new Set(
+      (data.startedGroups || []).map(String)
+    );
+
+    document.querySelectorAll('.group-prediction-section').forEach(section => {
+      const group = decodeURIComponent(section.dataset.group || '');
+      const points = STATE.groupPredictionPoints.get(group) || new Map();
+      const started = STATE.groupPredictionPointsStarted.has(group);
+
+      section.querySelectorAll('.group-prediction-position').forEach(row => {
+        const select = row.querySelector('.group-prediction-position-select');
+        const el = row.querySelector('.group-prediction-points');
+        if (!el) return;
+
+        if (!started) {
+          el.textContent = '—';
+          el.style.color = '#999';
+          return;
+        }
+
+        const item = points.get(select?.value || '');
+        const pts = Number(item?.points || 0);
+        el.textContent = pts > 0 ? `✓ +${pts}` : '✗ 0';
+        el.style.color = pts > 0 ? '#6ee7b7' : '#f87171';
+      });
+
+      const total = [...points.values()].reduce(
+        (sum, item) => sum + Number(item?.points || 0), 0
+      );
+      const totalEl = section.querySelector('.group-prediction-live-total');
+      if (totalEl) {
+        totalEl.textContent = started
+          ? `🔴 Ao vivo: ${total} pts`
+          : '⏳ Aguardando início do grupo';
+      }
+    });
+  } catch (error) {
+    console.warn('[GroupPredictionPoints] Falha ao atualizar pontuação LIVE:', error);
+  }
+}
+
 function renderGroupPredictionSection(groupName, groupGames) {
   const config=getGroupQualificationConfig();
   const rules=STATE.scoringRules?.groupQualificationRules;
@@ -2016,11 +2090,12 @@ function renderGroupPredictionSection(groupName, groupGames) {
   const rows=prediction.positions.map(p=>{
     const candidate=candidatePosition!=null&&Number(p.position)===Number(candidatePosition);
     const active=selected.has(p.team);
-    return `<div class="group-prediction-position" style="display:grid;grid-template-columns:34px minmax(0,1fr) 42px;gap:7px;align-items:center;margin:6px 0;">
+    return `<div class="group-prediction-position" style="display:grid;grid-template-columns:34px minmax(0,1fr) 58px 42px;gap:7px;align-items:center;margin:6px 0;">
       <span style="font-weight:800;text-align:center;">${p.position===1?'🥇':p.position===2?'🥈':p.position===3?'🥉':`${p.position}º`}</span>
       <select class="group-prediction-position-select" data-group="${encodeURIComponent(groupName)}" data-position="${p.position}" data-previous-value="${String(p.team).replace(/"/g,'&quot;')}" style="width:100%;min-width:0;padding:8px 6px;border-radius:7px;">
         ${teams.map(t=>`<option value="${String(t).replace(/"/g,'&quot;')}" ${t===p.team?'selected':''}>${t}</option>`).join('')}
       </select>
+      <span class="group-prediction-points" style="font-size:.68rem;font-weight:900;text-align:right;white-space:nowrap;color:#999;">—</span>
       ${candidate?`<button type="button" class="group-third-qualifier ${active?'active':''}" data-group="${encodeURIComponent(groupName)}" data-position="${p.position}" data-team="${String(p.team).replace(/"/g,'&quot;')}" style="width:38px;height:34px;border-radius:8px;border:1px solid ${active?'#ffd34d':'rgba(255,255,255,.18)'};background:${active?'rgba(255,211,77,.18)':'rgba(255,255,255,.06)'};color:${active?'#ffd34d':'#aaa'};font-size:16px;">🏆</button>`:'<span></span>'}
     </div>`;
   }).join('');
@@ -2033,6 +2108,7 @@ function renderGroupPredictionSection(groupName, groupGames) {
     ${rows}
     ${limit>0?`<div style="font-size:.68rem;color:#888;margin-top:6px;">Toque no 🏆 do ${candidatePosition}º colocado para indicar que ele avançará.</div>`:''}
     ${!complete?`<div style="margin-top:7px;font-size:.68rem;color:#f5b942;">A classificação será refinada conforme você preencher mais palpites.</div>`:''}
+    <div class="group-prediction-live-total" style="margin-top:8px;text-align:right;font-size:.75rem;font-weight:900;color:#67e8f9;">${STATE.groupPredictionPointsStarted.has(groupName) ? '🔴 Ao vivo: 0 pts' : '⏳ Aguardando início do grupo'}</div>
   </section>`;
 }
 
@@ -4661,7 +4737,8 @@ async function fetchTechnicalData(matchIdStr) {
     }
 }
 
-export async function initMatches(passedOpenedGroups = null) {
+export async function initMatches {
+  startGroupPredictionPointsLiveRefresh();(passedOpenedGroups = null) {
   let openedGroups = passedOpenedGroups;
 
   if (!openedGroups || openedGroups.length === 0) {

@@ -22,7 +22,9 @@ const MyBetsState = {
   isLockedView: false,
   bets: null,
   matches: [],
-  scoringRules: null, // Armazenará as regras vindas do Settings do Admin
+  scoringRules: null,
+  championshipRules: null,
+  groupPredictionPoints: new Map(),
   activeTab: 'group',
   openAccordions: {}
 };
@@ -112,7 +114,7 @@ function renderMatch(b) {
   let chipClass = 'pending';
 
   if (finished && !isMatchLocked) {
-    if (b.phase === 'group' || b.phase === 'pontos_corridos') {
+    if (isGroupPhase(b.phase) || isPointsRunPhase(b.phase)) {
       chipClass = pts > 0 ? 'win' : 'loss';
     } else {
       const acertos = (hitWinner ? 1 : 0) + (hitQualified ? 1 : 0);
@@ -125,7 +127,7 @@ function renderMatch(b) {
   let teamAClass = 'team-left';
   let teamBClass = 'team-left';
 
-  if (b.phase !== 'group' && b.phase !== 'pontos_corridos' && b.qualifier && !isMatchLocked) {
+  if (isKnockoutPhase(b.phase) && b.qualifier && !isMatchLocked) {
     const qualifiedA = b.qualifier === 'A';
     const qualifiedB = b.qualifier === 'B';
 
@@ -222,7 +224,65 @@ function renderLockedScreen() {
   `;
 }
 
+function getChampionshipRules() {
+  return MyBetsState.championshipRules || {};
+}
+
+function getChampionshipMode() {
+  const rules = getChampionshipRules();
+
+  // The project has three independent modalities:
+  // group phase, knockout phase and points-running.
+  if (rules.hasGroupPhase === true && rules.hasKnockoutPhase === true) return 'group+knockout';
+  if (rules.hasGroupPhase === true) return 'group';
+  if (rules.hasKnockoutPhase === true) return 'knockout';
+  return 'pontos_corridos';
+}
+
+function isGroupPhase(phase) {
+  return String(phase || '').toLowerCase() === 'group';
+}
+
+function isPointsRunPhase(phase) {
+  const p = String(phase || '').toLowerCase();
+  return p === 'pontos_corridos' || p === 'points_run';
+}
+
+function isKnockoutPhase(phase) {
+  const p = String(phase || '').toLowerCase();
+  return p !== 'group' && !isPointsRunPhase(p);
+}
+
+function hasGroupPhase() {
+  return getChampionshipMode() === 'group' || getChampionshipMode() === 'group+knockout';
+}
+
+function hasKnockoutPhase() {
+  return getChampionshipMode() === 'knockout' || getChampionshipMode() === 'group+knockout';
+}
+
+function isPointsRunChampionship() {
+  return getChampionshipMode() === 'pontos_corridos';
+}
+
+function getPodiumSize() {
+  const n = Number(getChampionshipRules().podiumSize);
+  return Number.isFinite(n) && n > 0 ? Math.min(4, Math.floor(n)) : 0;
+}
+
+function hasPodiumFeature() {
+  return getPodiumSize() > 0;
+}
+
+function hasExtrasFeature() {
+  const r = getScoringRules();
+  return ['topScorer','bestAttack','worstDefense','upset']
+    .some(k => Number(r?.[k] || 0) > 0);
+}
+
+
 function renderPodium() {
+  if (!hasPodiumFeature()) return '';
   const p = MyBetsState.bets?.podium;
   if (!p || !Array.isArray(p) || p.length === 0) return '';
 
@@ -234,7 +294,7 @@ function renderPodium() {
     { idx: 1, label: 'VICE-CAMPEAO', badge: '2o', color: 'silver' },
     { idx: 2, label: '3o COLOCADO', badge: '3o', color: 'green' },
     { idx: 3, label: '4o COLOCADO', badge: '4o', color: 'purple' }
-  ].filter(r => r.idx < p.length);
+  ].filter(r => r.idx < getPodiumSize() && r.idx < p.length);
 
   return `
     <div class="modern-podium">
@@ -264,7 +324,85 @@ function renderPodium() {
   `;
 }
 
+async function loadOfficialGroupPredictionPoints() {
+  const leagueId = localStorage.getItem('selectedLeagueId');
+  const predictions = MyBetsState.bets?.groupPredictions;
+  if (!leagueId || !Array.isArray(predictions) || !predictions.length) return;
+
+  try {
+    const response = await api.post(
+      `/api/groups/prediction-points?leagueId=${encodeURIComponent(leagueId)}&live=false`,
+      { groupPredictions: predictions }
+    );
+    const data = response?.data || response || {};
+
+    MyBetsState.groupPredictionPoints.clear();
+    (data.breakdown || []).forEach(item => {
+      const group = String(item.group || '').trim();
+      const team = String(item.team || '').trim();
+      if (!group || !team) return;
+      if (!MyBetsState.groupPredictionPoints.has(group)) {
+        MyBetsState.groupPredictionPoints.set(group, new Map());
+      }
+      MyBetsState.groupPredictionPoints.get(group).set(team, item);
+    });
+  } catch (err) {
+    console.warn('[MyBets] Não foi possível carregar pontuação oficial das classificações:', err);
+  }
+}
+
+function renderGroupPredictions() {
+  if (!hasGroupPhase()) return '';
+  const predictions = MyBetsState.bets?.groupPredictions;
+  if (!Array.isArray(predictions) || !predictions.length) return '';
+
+  const cards = [...predictions]
+    .sort((a,b) => String(a.group || '').localeCompare(String(b.group || ''), 'pt-BR', {numeric:true}))
+    .map(pred => {
+      const positions = Array.isArray(pred.positions) ? [...pred.positions]
+        .sort((a,b) => Number(a.position || 0) - Number(b.position || 0)) : [];
+      const additional = Array.isArray(pred.additionalQualifiedTeams)
+        ? pred.additionalQualifiedTeams.filter(Boolean) : [];
+      if (!positions.length && !additional.length) return '';
+
+      const rows = positions.map(pos => {
+        const team = pos.team || '—';
+        const m = MyBetsState.matches.find(x => x.teamA === team || x.teamB === team);
+        const logo = m ? (m.teamA === team ? m.logoA : m.logoB) : null;
+        const item = MyBetsState.groupPredictionPoints.get(String(pred.group || ''))?.get(team);
+        const pts = Number(item?.points || 0);
+        const hasOfficialResult = item?.actualPosition != null;
+        const pointsHtml = hasOfficialResult
+          ? `<span class="mybets-group-prediction-points" style="margin-left:auto;min-width:48px;text-align:right;font-size:.72rem;font-weight:900;color:${pts > 0 ? '#6ee7b7' : '#f87171'};">${pts > 0 ? `✓ +${pts}` : '✗ 0'}</span>`
+          : `<span class="mybets-group-prediction-points" style="margin-left:auto;min-width:48px;text-align:right;font-size:.72rem;font-weight:900;color:#999;">—</span>`;
+        return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.06);">
+           <span style="min-width:28px;font-weight:800;opacity:.7;">${Number(pos.position) || '—'}º</span>
+           <span>${renderTeamMedia(team, logo)}</span><span style="font-weight:700;">${team}</span>${pointsHtml}
+         </div>`;
+      }).join('');
+
+      const extra = additional.length ? `<div style="margin-top:10px;padding:10px;border-radius:10px;background:rgba(255,255,255,.03);">
+        <div style="font-size:.75rem;font-weight:800;opacity:.65;margin-bottom:7px;">CLASSIFICADOS ADICIONAIS</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;">${additional.map(team => {
+          const m = MyBetsState.matches.find(x => x.teamA === team || x.teamB === team);
+          const logo = m ? (m.teamA === team ? m.logoA : m.logoB) : null;
+          return `<span style="display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border-radius:8px;background:rgba(255,255,255,.04);">${renderTeamMedia(team, logo)}<span>${team}</span></span>`;
+        }).join('')}</div>
+      </div>` : '';
+
+      return `<div class="modern-podium" style="margin-bottom:14px;">
+        <div class="modern-podium-header"><div><h2>📊 GRUPO ${pred.group || '—'}</h2><p>Classificação do seu palpite</p></div><div class="trophy-glow">📊</div></div>
+        <div style="padding:4px 0;">${rows}${extra}<div class="mybets-group-prediction-total" style="margin-top:9px;text-align:right;font-size:.78rem;font-weight:900;color:#67e8f9;">Pontuação oficial: ${[...((MyBetsState.groupPredictionPoints.get(String(pred.group || '')) || new Map()).values())].reduce((sum,item)=>sum+Number(item.points||0),0)} pts</div></div>
+      </div>`;
+    }).join('');
+
+  return cards.trim() ? `<section id="mybets-group-predictions-root" style="margin:20px 0;">
+    <div style="margin-bottom:14px;"><h2 style="margin:0;font-size:1.1rem;font-weight:900;">📊 CLASSIFICAÇÃO DOS GRUPOS</h2>
+    <p style="margin:5px 0 0;opacity:.6;font-size:.85rem;">Tabelas previstas no seu palpite</p></div>${cards}</section>` : '';
+}
+
 function renderExtras() {
+  if (!hasExtrasFeature()) return '';
   const extras = MyBetsState.bets?.extras || {};
   const bd = MyBetsState.bets?.extrasBreakdown || {
     topScorer: 0,
@@ -314,12 +452,33 @@ function renderExtras() {
 }
 
 function renderPills() {
+  const raw = MyBetsState.bets?.groupMatches || MyBetsState.bets?.matches || [];
+  const groupCount = raw.filter(b => isGroupPhase(b.phase)).length;
+  const knockoutCount = raw.filter(b => isKnockoutPhase(b.phase)).length;
+
+  const group = hasGroupPhase() && groupCount > 0;
+  const knockout = hasKnockoutPhase() && knockoutCount > 0;
+
+  // Points-running championships have a single match list, never a
+  // "Grupos" tab and never a "Mata-mata" tab.
+  if (isPointsRunChampionship()) return '';
+
+  if (!group && !knockout) return '';
+
+  if (!group && knockout) MyBetsState.activeTab = 'knockout';
+  if (group && !knockout) MyBetsState.activeTab = 'group';
+  if (MyBetsState.activeTab === 'group' && !group) MyBetsState.activeTab = 'knockout';
+  if (MyBetsState.activeTab === 'knockout' && !knockout) MyBetsState.activeTab = 'group';
+
   const isKnockout = MyBetsState.activeTab === 'knockout';
+  const buttons = [];
+  if (group) buttons.push(`<button class="modern-tab ${!isKnockout ? 'active' : ''}" onclick="window.switchMyBetsTab('group')">👥 Grupos</button>`);
+  if (knockout) buttons.push(`<button class="modern-tab ${isKnockout ? 'active' : ''}" onclick="window.switchMyBetsTab('knockout')">⚔ Mata-mata</button>`);
+
   return `
     <div class="modern-tabs">
-      <div class="modern-tab-slider ${isKnockout ? 'right' : ''}"></div>
-      <button class="modern-tab ${!isKnockout ? 'active' : ''}" onclick="window.switchMyBetsTab('group')">👥 Grupos</button>
-      <button class="modern-tab ${isKnockout ? 'active' : ''}" onclick="window.switchMyBetsTab('knockout')">⚔ Mata-mata</button>
+      ${group && knockout ? `<div class="modern-tab-slider ${isKnockout ? 'right' : ''}"></div>` : ''}
+      ${buttons.join('')}
     </div>
   `;
 }
@@ -414,6 +573,7 @@ async function loadSelectedUserBets() {
         res = {
           data: {
             groupMatches: userBets.bets || [],
+            groupPredictions: userBets.groupPredictions || [],
             podium: userBets.podium || [],
             extras: userBets.extras || {},
             extrasBreakdown: userBets.extrasBreakdown || {
@@ -433,6 +593,7 @@ async function loadSelectedUserBets() {
 
     MyBetsState.isLockedView = false;
     MyBetsState.bets = res?.data || null;
+    await loadOfficialGroupPredictionPoints();
     renderMyBets();
 
   } catch (err) {
@@ -466,7 +627,15 @@ export function renderMyBets() {
 
   const userMatches = MyBetsState.bets?.groupMatches || MyBetsState.bets?.matches || [];
 
-  if (!userMatches.length) {
+  const hasSavedPodium = Array.isArray(MyBetsState.bets?.podium) && MyBetsState.bets.podium.length > 0;
+  const hasSavedExtras = MyBetsState.bets?.extras && Object.values(MyBetsState.bets.extras).some(Boolean);
+  const hasSavedGroupPredictions = Array.isArray(MyBetsState.bets?.groupPredictions) &&
+    MyBetsState.bets.groupPredictions.some(p =>
+      (Array.isArray(p.positions) && p.positions.length) ||
+      (Array.isArray(p.additionalQualifiedTeams) && p.additionalQualifiedTeams.length)
+    );
+
+  if (!userMatches.length && !hasSavedPodium && !hasSavedExtras && !hasSavedGroupPredictions) {
     contentRoot.innerHTML = `
       <div class="card" style="text-align:center;padding:40px;background:rgba(255,255,255,0.02);border:1px dashed rgba(255,255,255,0.1);border-radius:15px;color:rgba(255,255,255,0.3);">
         <p>Nenhum palpite registrado.</p>
@@ -478,12 +647,14 @@ export function renderMyBets() {
   contentRoot.innerHTML = `
     <div id="mybets-podium-root"></div>
     <div id="mybets-extras-root"></div>
+    <div id="mybets-group-predictions-root"></div>
     <div id="mybets-pills-root"></div>
     <div id="mybets-list-root"></div>
   `;
 
   document.getElementById('mybets-podium-root').innerHTML = renderPodium();
   document.getElementById('mybets-extras-root').innerHTML = renderExtras();
+  document.getElementById('mybets-group-predictions-root').innerHTML = renderGroupPredictions();
 
   renderMyBetsListOnly();
 }
@@ -496,12 +667,47 @@ function renderMyBetsListOnly() {
 
   pillsRoot.innerHTML = renderPills();
 
+  if (!hasGroupPhase() && MyBetsState.activeTab === 'group') MyBetsState.activeTab = 'knockout';
+  if (!hasKnockoutPhase() && MyBetsState.activeTab === 'knockout') MyBetsState.activeTab = 'group';
+
   const matchMap = new Map();
   MyBetsState.matches.forEach(m => matchMap.set(Number(m.matchId), m));
 
   const rawBetsList = MyBetsState.bets?.groupMatches || MyBetsState.bets?.matches || [];
+  const eligibleBets = rawBetsList.filter(b => {
+    if (isPointsRunChampionship()) return isPointsRunPhase(b.phase);
+    if (isGroupPhase(b.phase)) return hasGroupPhase();
+    return hasKnockoutPhase() && isKnockoutPhase(b.phase);
+  });
 
-  const enriched = rawBetsList.map(b => {
+  const groupBets = eligibleBets.filter(b => isGroupPhase(b.phase));
+  const pointsRunBets = eligibleBets.filter(b => isPointsRunPhase(b.phase));
+  const knockoutBets = eligibleBets.filter(b => isKnockoutPhase(b.phase));
+
+  // In points-running mode there is one list, not the group/knockout tab model.
+  if (isPointsRunChampionship()) {
+    MyBetsState.activeTab = 'points_run';
+  } else {
+    if (MyBetsState.activeTab === 'group' && !groupBets.length && knockoutBets.length) {
+      MyBetsState.activeTab = 'knockout';
+    } else if (MyBetsState.activeTab === 'knockout' && !knockoutBets.length && groupBets.length) {
+      MyBetsState.activeTab = 'group';
+    }
+  }
+
+  const visibleBets = isPointsRunChampionship()
+    ? pointsRunBets
+    : (MyBetsState.activeTab === 'knockout' ? knockoutBets : groupBets);
+
+  if (MyBetsState.activeTab === 'group' && !groupBets.length && knockoutBets.length) {
+    MyBetsState.activeTab = 'knockout';
+  } else if (MyBetsState.activeTab === 'knockout' && !knockoutBets.length && groupBets.length) {
+    MyBetsState.activeTab = 'group';
+  }
+
+  const visibleBets = MyBetsState.activeTab === 'knockout' ? knockoutBets : groupBets;
+
+  const enriched = visibleBets.map(b => {
     const m = matchMap.get(Number(b.matchId)) || {};
     
     const betScoreA = b.scoreA ?? b.betScoreA;
@@ -514,7 +720,7 @@ function renderMyBetsListOnly() {
       teamA: m.teamA || b.teamA || 'Time A',
       teamB: m.teamB || b.teamB || 'Time B',
       group: m.group || b.group || 'Mata-mata',
-      phase: m.phase || b.phase || 'group',
+      phase: m.phase || b.phase || (isPointsRunChampionship() ? 'pontos_corridos' : 'group'),
       status: m.status || b.status || 'scheduled',
       betScoreA,
       betScoreB,
@@ -526,11 +732,12 @@ function renderMyBetsListOnly() {
     };
   });
 
-  const filtered = enriched.filter(b =>
-    MyBetsState.activeTab === 'group'
-      ? (b.phase === 'group' || b.phase === 'pontos_corridos')
-      : (b.phase !== 'group' && b.phase !== 'pontos_corridos')
-  );
+  const filtered = enriched.filter(b => {
+    if (isPointsRunChampionship()) return isPointsRunPhase(b.phase);
+    return MyBetsState.activeTab === 'group'
+      ? isGroupPhase(b.phase)
+      : isKnockoutPhase(b.phase);
+  });
 
   filtered.sort((a, b) => a.matchId - b.matchId);
 
@@ -541,7 +748,11 @@ function renderMyBetsListOnly() {
 
   let html = '';
 
-  if (MyBetsState.activeTab === 'group') {
+  if (isPointsRunChampionship()) {
+    Object.keys(groups).sort().forEach(g => {
+      html += renderAccordion(g, g, groups[g]);
+    });
+  } else if (MyBetsState.activeTab === 'group') {
     Object.keys(groups).sort().forEach(g => {
       html += renderAccordion(g, g, groups[g]);
     });
@@ -569,9 +780,12 @@ export async function initMyBets() {
       const settingsRes = await api.get(`/api/settings/global?leagueId=${leagueId}`);
       if (settingsRes?.success && settingsRes.data) {
         MyBetsState.scoringRules = settingsRes.data.scoringRules || null;
+        MyBetsState.championshipRules = settingsRes.data.championshipRules || null;
       }
     } catch (setErr) {
-      console.warn("Aviso: Nao foi possivel carregar scoringRules do settings. Usando padrao.", setErr);
+      console.warn("Aviso: Nao foi possivel carregar as regras do campeonato. Usando padrao.", setErr);
+      MyBetsState.scoringRules = MyBetsState.scoringRules || null;
+      MyBetsState.championshipRules = MyBetsState.championshipRules || {};
     }
 
     const m = await api.get(`/api/matches?leagueId=${leagueId}`);
