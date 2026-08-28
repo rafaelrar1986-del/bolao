@@ -871,7 +871,12 @@ function calculateGroupQualificationPoints(
     group: String(m.group || '').trim()
   }));
 
-  const groupedResults = calculateGroupStandings(standingsMatches);
+  // Pontuação usa apenas partidas válidas para o modo (LIVE/Oficial),
+  // mas a classificação precisa conhecer todos os times da fase.
+  const groupedResults = calculateGroupStandings(
+    standingsMatches,
+    sourceMatches
+  );
 
   const rankedByGroup = {};
   Object.entries(groupedResults).forEach(([group, teams]) => {
