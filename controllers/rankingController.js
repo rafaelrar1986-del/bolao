@@ -60,7 +60,11 @@ const getRanking = async (req, res) => {
         avatar: user ? user.avatar : 'default.png',
         points: computed.totalPoints,
         groupPhasePoints: computed.groupPhasePoints,
+      groupMatchPoints: computed.groupMatchPoints,
+      groupQualificationPoints: computed.groupQualificationPoints,
         knockoutPoints: computed.knockoutPoints,
+      knockoutMatchPoints: computed.knockoutMatchPoints,
+      knockoutQualifierPoints: computed.knockoutQualifierPoints,
         podiumPoints: computed.podiumPoints,
         extrasPoints: computed.extrasPoints,
         bonusPoints: computed.bonusPoints

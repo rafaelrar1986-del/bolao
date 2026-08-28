@@ -395,10 +395,6 @@ BetSchema.methods.recalculateTotals =
 
       (Number(
         eb?.upset
-      ) || 0) +
-
-      (Number(
-        eb?.groupQualification
       ) || 0);
 
     // ==========================================================
@@ -412,6 +408,9 @@ BetSchema.methods.recalculateTotals =
     this.totalPoints =
       (
         Number(this.groupPoints) || 0
+      ) +
+      (
+        Number(this.groupPredictionPoints) || 0
       ) +
       (
         Number(this.podiumPoints) || 0
