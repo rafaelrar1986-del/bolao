@@ -1245,13 +1245,81 @@ export function buildSavePayload() {
   // 🆕 Sempre envia pódio (mesmo vazio = []), para permitir limpar no backend
   payload.podium = podiumArray || [];
   if (Object.keys(extras).length > 0) payload.extras = extras;
-  payload.groupPredictions = Array.from(STATE.groupPredictions.values()).map(prediction => ({
-    group: prediction.group,
-    positions: (prediction.positions || []).map(p => ({
-      position: Number(p.position), team: String(p.team || '').trim()
-    })).filter(p => Number.isInteger(p.position) && p.team),
-    additionalQualifiedTeams: [...new Set((prediction.additionalQualifiedTeams || []).map(t => String(t).trim()).filter(Boolean))]
-  })).filter(p => p.group && p.positions.length);
+  /*
+   * A classificação prevista é derivada das apostas das partidas.
+   * Ela não pode depender somente de STATE.groupPredictions, porque esse
+   * Map fica reservado para alterações manuais do usuário.
+   *
+   * Ao salvar, materializamos a previsão de TODOS os grupos da fase de
+   * grupos. Assim, um campeonato com 12 grupos salva 12 tabelas no Bet,
+   * inclusive os grupos cuja tabela nunca foi aberta pelo usuário.
+   */
+  const groupGamesMap = new Map();
+  (STATE.matches || [])
+    .filter(m => !isKnockoutMatch(m) && String(m.phase || '').toLowerCase() === 'group')
+    .forEach(m => {
+      const group = String(m.group || '').trim();
+      if (group) {
+        if (!groupGamesMap.has(group)) groupGamesMap.set(group, []);
+        groupGamesMap.get(group).push(m);
+      }
+    });
+
+  const groupPredictionsToSave = [];
+  groupGamesMap.forEach((games, group) => {
+    const teams = getGroupTeams(games);
+    if (!teams.length) return;
+
+    const standings = calculatePredictedGroupStandings(games);
+    const prediction = getSavedGroupPrediction(group, standings, games);
+
+    const positions = (prediction?.positions || []).map(p => ({
+      position: Number(p.position),
+      team: String(p.team || '').trim()
+    })).filter(p => Number.isInteger(p.position) && p.position > 0 && p.team);
+
+    if (!positions.length) return;
+
+    const additionalQualifiedTeams = [
+      ...new Set(
+        (prediction?.additionalQualifiedTeams || [])
+          .map(t => String(t || '').trim())
+          .filter(Boolean)
+      )
+    ];
+
+    groupPredictionsToSave.push({
+      group,
+      positions,
+      additionalQualifiedTeams
+    });
+  });
+
+  // Fallback para compatibilidade com dados antigos/estruturas sem STATE.matches.
+  if (!groupPredictionsToSave.length) {
+    Array.from(STATE.groupPredictions.values()).forEach(prediction => {
+      const positions = (prediction?.positions || []).map(p => ({
+        position: Number(p.position),
+        team: String(p.team || '').trim()
+      })).filter(p => Number.isInteger(p.position) && p.position > 0 && p.team);
+
+      if (prediction?.group && positions.length) {
+        groupPredictionsToSave.push({
+          group: String(prediction.group).trim(),
+          positions,
+          additionalQualifiedTeams: [
+            ...new Set(
+              (prediction.additionalQualifiedTeams || [])
+                .map(t => String(t || '').trim())
+                .filter(Boolean)
+            )
+          ]
+        });
+      }
+    });
+  }
+
+  payload.groupPredictions = groupPredictionsToSave;
   return payload;
 }
 
