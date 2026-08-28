@@ -22,46 +22,40 @@ async function getMyBets(req, res) {
     const lIdNum = Number(leagueId);
     const lIdStr = String(leagueId);
 
-    const [bet, matches, settings] = await Promise.all([
-      Bet.findOne({ user: req.user._id, leagueId: lIdStr }).lean(),
-      Match.find({ leagueId: toLeagueId(leagueId) }).lean(),
-      Settings.findById(toLeagueId(leagueId)).lean()
-    ]);
+    // A consulta principal deve ser SOMENTE o documento de apostas.
+    // Dados auxiliares (partidas/regras) não podem impedir a abertura do My Bets.
+    const bet = await Bet.findOne({
+      user: req.user._id,
+      leagueId: lIdStr
+    }).lean();
 
     if (!bet) {
       return res.json({ success: true, data: null, hasSubmitted: false });
     }
 
-    const matchIdsDaLiga = new Set(matches.map(m => Number(m.matchId)));
-
-    const gm = (bet.groupMatches || [])
-      .filter(b => matchIdsDaLiga.has(Number(b.matchId)))
-      .map((b) => {
-        const m = matches.find(x => Number(x.matchId) === Number(b.matchId));
-        const teamA = m?.teamA || 'Time A';
-        const teamB = m?.teamB || 'Time B';
-        return {
-          ...b,
-          matchName: m ? `${m.teamA} vs ${m.teamB}` : `Jogo ${b.matchId}`,
-          teamA,
-          teamB,
-          status: m?.status || 'scheduled',
-          choiceLabel: toWinnerLabel(b.winner, teamA, teamB)
-        };
-      });
-
-    const podiumSize = settings?.championshipRules?.podiumSize ?? 4;
-
+    /*
+     * Não enriquecemos os palpites aqui com Match/Settings.
+     * O frontend trata esses dados separadamente.
+     *
+     * Isso é intencional: /my-bets é a fonte primária da tela e deve
+     * responder mesmo se a coleção de partidas ou configurações estiver
+     * indisponível/lenta.
+     */
     return res.json({
       success: true,
       data: {
         ...bet,
-        groupMatches: gm,
+        groupMatches: bet.groupMatches || [],
+        groupPredictions: bet.groupPredictions || [],
         podium: bet.podium || [],
-        extras: bet.extras || {},
-        podiumSize
+        extras: bet.extras || {}
       },
-      hasSubmitted: gm.length > 0
+      hasSubmitted: Boolean(
+        (bet.groupMatches && bet.groupMatches.length) ||
+        (bet.groupPredictions && bet.groupPredictions.length) ||
+        (bet.podium && bet.podium.length) ||
+        (bet.extras && Object.keys(bet.extras).length)
+      )
     });
 
   } catch (e) {
