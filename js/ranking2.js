@@ -999,52 +999,74 @@ function attachMobileCardEvents(entries, mobileRoot) {
             mobileRoot.querySelectorAll('.user-score-card').forEach(c => c.remove());
 
             const entry = entries[idx];
+            const n = (v) => Number(v || 0);
 
-            const breakdown = [
+            // Classificação dos grupos: soma por grupo a partir do breakdown
+            // real calculado pelo backend. Não usa extrasPoints.
+            const qualificationByGroup = new Map();
+            (Array.isArray(entry.groupQualificationBreakdown)
+                ? entry.groupQualificationBreakdown
+                : []
+            ).forEach(row => {
+                const group = String(row.group || '').trim();
+                if (!group) return;
+                qualificationByGroup.set(
+                    group,
+                    n(qualificationByGroup.get(group)) + n(row.points)
+                );
+            });
+
+            const groupDetails = [
+                { label: 'Partidas', points: n(entry.groupMatchPoints) },
+                { label: 'Classificação', points: n(entry.groupQualificationPoints), key: 'qualification' }
+            ];
+
+            const knockoutDetails = [
+                { label: 'Partidas', points: n(entry.knockoutMatchPoints) },
+                { label: 'Classificados', points: n(entry.knockoutQualifierPoints) }
+            ];
+
+            const podiumDetails = Array.isArray(entry.podiumBreakdown)
+                ? entry.podiumBreakdown.map((value, index) => ({
+                    label: `${index + 1}º lugar`,
+                    points: n(value)
+                }))
+                : [];
+
+            const extrasDetails = [
+                { label: 'Artilheiro', points: n(entry.topScorerPoints) },
+                { label: 'Melhor Ataque', points: n(entry.bestAttackPoints) },
+                { label: 'Pior Defesa', points: n(entry.worstDefensePoints) },
+                { label: 'Zebra', points: n(entry.upsetPoints) }
+            ];
+
+            const categories = [
                 {
-                    points: entry.groupPhasePoints,
-                    label: 'Grupos'
+                    key: 'groups',
+                    label: 'Grupos',
+                    points: n(entry.groupPhasePoints),
+                    details: groupDetails
                 },
                 {
-                    points: entry.knockoutPoints,
+                    key: 'knockout',
                     label: 'Mata-mata',
-                    details: [
-                        ...(Number(entry.knockoutMatchPoints || 0) > 0
-                            ? [{ label: 'Partidas', points: Number(entry.knockoutMatchPoints || 0) }]
-                            : []),
-                        ...(Number(entry.knockoutQualifierPoints || 0) > 0
-                            ? [{ label: 'Classificados', points: Number(entry.knockoutQualifierPoints || 0) }]
-                            : [])
-                    ]
+                    points: n(entry.knockoutPoints),
+                    details: knockoutDetails
                 },
                 {
-                    points: entry.podiumPoints,
-                    label: 'Pódio'
+                    key: 'podium',
+                    label: 'Pódio',
+                    points: n(entry.podiumPoints),
+                    details: podiumDetails
                 },
                 {
-                    points: entry.topScorerPoints,
-                    label: 'Artilheiro'
-                },
-                {
-                    points: entry.upsetPoints,
-                    label: 'Zebra'
-                },
-                {
-                    points: entry.bestAttackPoints,
-                    label: 'Melhor Ataque'
-                },
-                {
-                    points: entry.worstDefensePoints,
-                    label: 'Pior Defesa'
+                    key: 'extras',
+                    label: 'Extras',
+                    points: n(entry.extrasPoints),
+                    details: extrasDetails
                 }
-            ].filter(item => Number(item.points || 0) > 0);
+            ].filter(category => category.points > 0);
 
-            const card = document.createElement('div');
-            card.className = 'user-score-card';
-
-            // Os critérios de desempate ficam dentro do detalhe expandido.
-            // Assim preservamos o detalhamento já existente (Grupos, Mata-mata,
-            // Pódio e Extras) e não ocupamos altura adicional no card fechado.
             const rankingMeta = getRankingMeta(
                 window.__RANKING_LAST_RESPONSE__ || {},
                 entries
@@ -1076,27 +1098,89 @@ function attachMobileCardEvents(entries, mobileRoot) {
                     </div>
                 </div>` : '';
 
+            const renderSubdetails = (category) => {
+                const details = category.details || [];
+                if (!details.length) return '';
+
+                return `
+                    <div class="user-score-subdetails" data-parent="${category.key}" hidden>
+                        ${details.map((detail, detailIndex) => {
+                            const hasChildren =
+                                category.key === 'groups' &&
+                                detail.key === 'qualification' &&
+                                qualificationByGroup.size > 0;
+
+                            return `
+                                <div class="user-score-detail-row ${hasChildren ? 'has-children' : ''}"
+                                     data-detail="${category.key}-${detailIndex}">
+                                    <button type="button"
+                                            class="user-score-detail-toggle"
+                                            ${hasChildren ? '' : 'disabled'}>
+                                        <span>${detail.label}</span>
+                                        <strong>${detail.points}</strong>
+                                        ${hasChildren ? '<span class="user-score-chevron">›</span>' : ''}
+                                    </button>
+                                    ${hasChildren ? `
+                                        <div class="user-score-group-details" hidden>
+                                            ${[...qualificationByGroup.entries()].map(([group, points]) => `
+                                                <div class="user-score-group-row">
+                                                    <span>${group}</span>
+                                                    <strong>${points}</strong>
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                    ` : ''}
+                                </div>`;
+                        }).join('')}
+                    </div>`;
+            };
+
+            const card = document.createElement('div');
+            card.className = 'user-score-card';
             card.innerHTML = `
                 ${tieBreakdown}
                 <div class="user-score-breakdown">
-                    ${breakdown.map(item => `
-                        <div class="user-score-item">
-                            <strong>${item.points}</strong>
-                            <span>${item.label}</span>
-                            ${Array.isArray(item.details) && item.details.length ? `
-                                <div class="user-score-item-details" style="margin:6px 0 0 8px; padding-left:8px; border-left:1px solid rgba(255,255,255,.12);">
-                                    ${item.details.map(detail => `
-                                        <div class="user-score-detail" style="display:flex; justify-content:space-between; gap:12px; font-size:.78rem; opacity:.85; margin-top:3px;">
-                                            <span>${detail.label}</span>
-                                            <strong>${detail.points}</strong>
-                                        </div>
-                                    `).join('')}
-                                </div>
-                            ` : ''}
+                    ${categories.map((category, categoryIndex) => `
+                        <div class="user-score-category" data-category="${category.key}">
+                            <button type="button" class="user-score-category-toggle">
+                                <strong>${category.points}</strong>
+                                <span>${category.label}</span>
+                                <span class="user-score-chevron">›</span>
+                            </button>
+                            ${renderSubdetails(category)}
                         </div>
                     `).join('')}
                 </div>
             `;
+
+            // Primeiro nível: Grupos / Mata-mata / Pódio / Extras.
+            card.querySelectorAll('.user-score-category-toggle').forEach(button => {
+                button.addEventListener('click', (ev) => {
+                    ev.stopPropagation();
+                    const category = button.closest('.user-score-category');
+                    const details = category?.querySelector('.user-score-subdetails');
+                    if (!details) return;
+
+                    const opening = details.hidden;
+                    details.hidden = !opening;
+                    category.classList.toggle('is-open', opening);
+                });
+            });
+
+            // Segundo nível: Classificação dos grupos.
+            card.querySelectorAll('.user-score-detail-toggle').forEach(button => {
+                if (button.disabled) return;
+                button.addEventListener('click', (ev) => {
+                    ev.stopPropagation();
+                    const row = button.closest('.user-score-detail-row');
+                    const groups = row?.querySelector('.user-score-group-details');
+                    if (!groups) return;
+
+                    const opening = groups.hidden;
+                    groups.hidden = !opening;
+                    row.classList.toggle('is-open', opening);
+                });
+            });
 
             item.appendChild(card);
         });

@@ -16406,3 +16406,83 @@ body:has(#admin) .modal-content .setting-section {
   white-space: nowrap !important;
   box-sizing: border-box !important;
 }
+
+
+/* ============================================================
+   Ranking - detalhamento hierárquico de pontuação
+   ============================================================ */
+.user-score-category {
+    margin-top: 8px;
+    border-radius: 10px;
+    overflow: hidden;
+    background: rgba(255,255,255,.025);
+    border: 1px solid rgba(255,255,255,.08);
+}
+.user-score-category-toggle,
+.user-score-detail-toggle {
+    width: 100%;
+    border: 0;
+    color: inherit;
+    background: transparent;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-align: left;
+    cursor: pointer;
+}
+.user-score-category-toggle {
+    padding: 10px 12px;
+}
+.user-score-category-toggle strong {
+    min-width: 34px;
+    text-align: right;
+}
+.user-score-category-toggle span:nth-child(2) {
+    flex: 1;
+}
+.user-score-chevron {
+    font-size: 1.15rem;
+    line-height: 1;
+    opacity: .65;
+    transition: transform .18s ease;
+}
+.user-score-category.is-open > .user-score-category-toggle .user-score-chevron,
+.user-score-detail-row.is-open .user-score-chevron {
+    transform: rotate(90deg);
+}
+.user-score-subdetails {
+    padding: 0 8px 8px;
+}
+.user-score-detail-row {
+    margin-top: 5px;
+}
+.user-score-detail-toggle {
+    padding: 7px 9px;
+    border-radius: 7px;
+    background: rgba(255,255,255,.025);
+    font-size: .82rem;
+}
+.user-score-detail-toggle span:first-child {
+    flex: 1;
+}
+.user-score-detail-toggle:disabled {
+    cursor: default;
+}
+.user-score-group-details {
+    margin: 4px 0 0 12px;
+    padding-left: 10px;
+    border-left: 1px solid rgba(255,255,255,.10);
+}
+.user-score-group-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 8px;
+    font-size: .78rem;
+    opacity: .86;
+}
+.user-score-category button:focus-visible,
+.user-score-detail-row button:focus-visible {
+    outline: 2px solid rgba(255,255,255,.45);
+    outline-offset: -2px;
+}
