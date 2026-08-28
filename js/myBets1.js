@@ -25,7 +25,8 @@ const MyBetsState = {
   championshipRules: null,
   groupPredictionPoints: new Map(),
   activeTab: 'group',
-  openAccordions: {}
+  openAccordions: {},
+  openSections: {}
 };
 
 const KNOCKOUT_ORDER = [
@@ -289,6 +290,31 @@ function hasExtrasFeature() {
 }
 
 
+function renderMyBetsSection(key, title, icon, content, subtitle = '') {
+  const open = MyBetsState.openSections?.[key] === true;
+  return `
+    <section class="mybets-section-accordion ${open ? 'active' : ''}" data-section-key="${key}" style="margin:16px 0;">
+      <button type="button"
+        class="mybets-section-accordion-header"
+        onclick="window.toggleMyBetsSection('${key}')"
+        aria-expanded="${open ? 'true' : 'false'}"
+        style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border:1px solid rgba(255,255,255,.10);border-radius:12px;background:rgba(255,255,255,.035);color:inherit;cursor:pointer;text-align:left;">
+        <span style="display:flex;align-items:center;gap:10px;min-width:0;">
+          <span style="font-size:1.15rem;">${icon}</span>
+          <span style="min-width:0;">
+            <strong style="display:block;font-size:1rem;">${title}</strong>
+            ${subtitle ? `<small style="display:block;opacity:.6;margin-top:2px;">${subtitle}</small>` : ''}
+          </span>
+        </span>
+        <span class="mybets-section-accordion-arrow" style="font-size:1rem;opacity:.7;transition:transform .2s;transform:rotate(${open ? '180deg' : '0deg'});">▼</span>
+      </button>
+      <div class="mybets-section-accordion-content" style="display:${open ? 'block' : 'none'};padding-top:4px;">
+        ${content}
+      </div>
+    </section>
+  `;
+}
+
 function renderPodium() {
   if (!hasPodiumFeature()) return '';
   const p = MyBetsState.bets?.podium;
@@ -404,9 +430,8 @@ function renderGroupPredictions() {
       </div>`;
     }).join('');
 
-  return cards.trim() ? `<section id="mybets-group-predictions-root" style="margin:20px 0;">
-    <div style="margin-bottom:14px;"><h2 style="margin:0;font-size:1.1rem;font-weight:900;">📊 CLASSIFICAÇÃO DOS GRUPOS</h2>
-    <p style="margin:5px 0 0;opacity:.6;font-size:.85rem;">Tabelas previstas no seu palpite</p></div>${cards}</section>` : '';
+  return cards.trim() ? `<div id="mybets-group-predictions-inner">
+    <div style="margin-bottom:14px;"><p style="margin:5px 0 0;opacity:.6;font-size:.85rem;">Tabelas previstas no seu palpite</p></div>${cards}</div>` : '';
 }
 
 function renderExtras() {
@@ -444,12 +469,8 @@ function renderExtras() {
   if (extras.upset) rows.push(`<div class="modern-extra-card"><div class="extra-label">ZEBRA</div><div class="extra-value">${renderExtraTeam(extras.upset)}</div>${renderPoints(bd.upset)}</div>`);
 
   return `
-    <div class="modern-extras" style="margin:20px 0;">
-      <div class="modern-podium-header">
-        <div><h2>🎯 EXTRAS</h2><p>Palpites extras</p></div>
-        <div class="trophy-glow">🎯</div>
-      </div>
-      <div class="modern-extras-list" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:12px;">
+    <div class="modern-extras" style="margin:8px 0;">
+      <div class="modern-extras-list" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:8px;">
         ${rows.join('')}
       </div>
       <div style="margin-top:15px;text-align:right;font-size:1rem;font-weight:800;">
@@ -527,6 +548,27 @@ function renderAccordion(key, title, items) {
 /* =====================
     WINDOW EXPOSURE
 ===================== */
+window.toggleMyBetsSection = key => {
+  MyBetsState.openSections ||= {};
+  MyBetsState.openSections[key] = !MyBetsState.openSections[key];
+
+  const section = document.querySelector(`.mybets-section-accordion[data-section-key="${key}"]`);
+  if (!section) {
+    renderMyBets();
+    return;
+  }
+
+  const content = section.querySelector('.mybets-section-accordion-content');
+  const arrow = section.querySelector('.mybets-section-accordion-arrow');
+  const header = section.querySelector('.mybets-section-accordion-header');
+  const open = MyBetsState.openSections[key];
+
+  section.classList.toggle('active', open);
+  if (content) content.style.display = open ? 'block' : 'none';
+  if (arrow) arrow.style.transform = `rotate(${open ? '180deg' : '0deg'})`;
+  if (header) header.setAttribute('aria-expanded', open ? 'true' : 'false');
+};
+
 window.switchMyBetsTab = tab => {
   MyBetsState.activeTab = tab;
   MyBetsState.openAccordions = {};
@@ -660,19 +702,25 @@ export function renderMyBets() {
     return;
   }
 
+  const podiumHtml = renderPodium();
+  const extrasHtml = renderExtras();
+  const groupsHtml = renderGroupPredictions();
+
+  // Mantém Pódio separado e transforma Extras, Classificação e Partidas
+  // em seções independentes para reduzir a rolagem.
   contentRoot.innerHTML = `
-    <div id="mybets-podium-root"></div>
-    <div id="mybets-extras-root"></div>
-    <div id="mybets-group-predictions-root"></div>
-    <div id="mybets-pills-root"></div>
-    <div id="mybets-list-root"></div>
+    <div id="mybets-podium-root">${podiumHtml}</div>
+    ${extrasHtml ? renderMyBetsSection('extras', 'EXTRAS', '🎯', extrasHtml, 'Palpites extras') : ''}
+    ${groupsHtml ? renderMyBetsSection('groupPredictions', 'CLASSIFICAÇÃO DOS GRUPOS', '📊', groupsHtml, 'Tabelas previstas no seu palpite') : ''}
+    ${userMatches.length ? renderMyBetsSection('matches', 'PARTIDAS', '⚽', `
+      <div id="mybets-pills-root"></div>
+      <div id="mybets-list-root"></div>
+    `, 'Seus palpites de partidas') : ''}
   `;
 
-  document.getElementById('mybets-podium-root').innerHTML = renderPodium();
-  document.getElementById('mybets-extras-root').innerHTML = renderExtras();
-  document.getElementById('mybets-group-predictions-root').innerHTML = renderGroupPredictions();
-
-  renderMyBetsListOnly();
+  if (userMatches.length) {
+    renderMyBetsListOnly();
+  }
 }
 
 function renderMyBetsListOnly() {
