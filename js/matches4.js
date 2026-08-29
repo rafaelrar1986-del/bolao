@@ -1,7 +1,7 @@
 import { api } from './api.js';
 import { flagEmoji } from './flags.js';
 import { $, toast } from './ui.js';
-import { getReferenceQualifier as getBackendAlignedQualifier, getMatchPointStatus, getEffectiveBetWinner, calculateMatchPoints as calculateScoringMatchPoints } from './frontendScoring.js?v=1.17'; 
+import { getReferenceQualifier as getBackendAlignedQualifier, getMatchPointStatus, getEffectiveBetWinner, calculateMatchPoints as calculateScoringMatchPoints } from './frontendScoring.js?v=1.18'; 
 
 /* =====================
     Helpers
@@ -2646,19 +2646,32 @@ function renderGroupCard(m) {
 
   if (m.status === 'finished') {
     const rules = getScoringRules();
+    const betForScoring = {
+      scoreA: scoreData.scoreA,
+      scoreB: scoreData.scoreB,
+      winner: choice,
+      qualifier: userQualifier
+    };
+
     const result = calculateScoringMatchPoints(
-      {
-        scoreA: scoreData.scoreA,
-        scoreB: scoreData.scoreB,
-        winner: choice
-      },
+      betForScoring,
       m,
       { scoringRules: rules },
       false
     );
     points = result.points;
 
-    statusClass = points > 0 ? 'hit-full' : 'hit-none';
+    // O card do mata-mata deve usar exatamente o mesmo motor de pontuação
+    // usado para calcular os pontos. Isso inclui regras personalizadas e
+    // o bônus de classificado. Não usar apenas `points > 0`, pois isso
+    // transforma qualquer acerto parcial em verde.
+    const pointStatus = getMatchPointStatus(
+      betForScoring,
+      m,
+      { scoringRules: rules },
+      false
+    );
+    statusClass = `hit-${pointStatus.category}`;
   }
 
   const minutoFormatado = (isLive && m.minute && !isPenalties) ? (String(m.minute).includes("'") ? m.minute : m.minute + "'") : "";
