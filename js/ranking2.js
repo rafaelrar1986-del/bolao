@@ -1038,7 +1038,7 @@ function attachMobileCardEvents(entries, mobileRoot) {
                 { label: 'Melhor Ataque', points: n(entry.bestAttackPoints) },
                 { label: 'Pior Defesa', points: n(entry.worstDefensePoints) },
                 { label: 'Zebra', points: n(entry.upsetPoints) }
-            ];
+            ].filter(detail => detail.points > 0);
 
             const categories = [
                 {
