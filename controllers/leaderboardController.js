@@ -50,6 +50,7 @@ async function getLeaderboard(req, res) {
       groupMatchPoints: computed.groupMatchPoints,
       groupQualificationPoints: computed.groupQualificationPoints,
       groupQualificationBreakdown: computed.groupQualificationBreakdown || [],
+      podiumBreakdown: computed.podiumBreakdown || [],
     exactScorePoints: Number(computed.exactScorePoints || 0),
     knockoutPoints: computed.knockoutPoints,
       knockoutMatchPoints: computed.knockoutMatchPoints,
