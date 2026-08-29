@@ -1143,8 +1143,10 @@ function attachMobileCardEvents(entries, mobileRoot) {
                     ${categories.map((category, categoryIndex) => `
                         <div class="user-score-category" data-category="${category.key}">
                             <button type="button" class="user-score-category-toggle">
-                                <strong>${category.points}</strong>
-                                <span>${category.label}</span>
+                                <span class="user-score-category-main">
+                                    <strong>${category.points}</strong>
+                                    <span>${category.label}</span>
+                                </span>
                                 <span class="user-score-chevron">›</span>
                             </button>
                             ${renderSubdetails(category)}

@@ -16431,14 +16431,31 @@ body:has(#admin) .modal-content .setting-section {
     cursor: pointer;
 }
 .user-score-category-toggle {
-    padding: 10px 12px;
+    padding: 7px 10px;
+    min-height: 48px;
 }
-.user-score-category-toggle strong {
-    min-width: 34px;
-    text-align: right;
-}
-.user-score-category-toggle span:nth-child(2) {
+.user-score-category-main {
     flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    line-height: 1.05;
+}
+.user-score-category-main strong {
+    min-width: 0;
+    text-align: center;
+    font-size: 1.08rem;
+    line-height: 1;
+}
+.user-score-category-main > span {
+    font-size: .70rem;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    opacity: .72;
+    line-height: 1;
 }
 .user-score-chevron {
     font-size: 1.15rem;
