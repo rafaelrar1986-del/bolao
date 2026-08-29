@@ -80,7 +80,7 @@ try { const m = await import('./ui.js'); if (m.showPaywall) showPaywall = m.show
 
 let initMatches, updateMatchDom, getMissingGroupBets, getMissingGroupQualificationBets, getMissingExtrasBets, getMissingKnockoutQualifiers, buildSavePayload, saveLocalDraft, clearLocalDraft, markKnockoutGroupAsSaved, getKnockoutGroupByMatchId;
 try {
-  const m = await import('./matches4.js?v=1.09');
+  const m = await import('./matches4.js?v=1.10');
   initMatches = m.initMatches;
   updateMatchDom = m.updateMatchDom;
   getMissingGroupBets = m.getMissingGroupBets;

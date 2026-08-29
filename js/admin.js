@@ -5,7 +5,7 @@
 import { api } from './api.js';
 import { flagEmoji } from './flags.js';
 import { toast, openModal, closeModal } from './ui.js';
-import { renderTeamMedia } from './matches4.js'; 
+import { renderTeamMedia } from './matches4.js?v=1.10'; 
 
 const STATUS_LABELS = {
   'scheduled': 'Agendado',

@@ -1,7 +1,7 @@
 import { api } from './api.js';
 import { flagEmoji } from './flags.js';
 import { $, toast } from './ui.js';
-import { getReferenceQualifier as getBackendAlignedQualifier, getMatchPointStatus, getEffectiveBetWinner, calculateMatchPoints as calculateScoringMatchPoints } from './frontendScoring.js?v=1.16'; 
+import { getReferenceQualifier as getBackendAlignedQualifier, getMatchPointStatus, getEffectiveBetWinner, calculateMatchPoints as calculateScoringMatchPoints } from './frontendScoring.js?v=1.17'; 
 
 /* =====================
     Helpers
