@@ -879,6 +879,25 @@ function isMatchAvailableForBetting(match) {
   return true;
 }
 
+// Disponibilidade do mata-mata para o usuário.
+// Usa exatamente a mesma configuração controlada pelo Admin:
+// - all  -> todas as etapas disponíveis;
+// - round -> somente as etapas/rodadas liberadas.
+// A validação temporal continua separada: partida iniciada não é aposta pendente.
+function isKnockoutMatchAvailableForBetting(match) {
+  if (!match || !isKnockoutMatch(match)) return false;
+  if (match.status === 'cancelled') return false;
+  if (isMatchStartedByStatus(match) || isMatchStartedByTime(match)) return false;
+
+  if (STATE.knockoutBetAvailabilityMode !== 'round') return true;
+
+  const round = Number(match.roundNumber);
+  if (!Number.isInteger(round) || round <= 0) return false;
+
+  return STATE.unlockedKnockoutRounds.has(round) &&
+         !STATE.lockedKnockoutRounds.has(round);
+}
+
 export function isMatchEditable(match, now = new Date()) {
   if (!match) return false;
 
@@ -949,16 +968,19 @@ export function getMissingExtrasBets() {
 
 export function getMissingKnockoutQualifiers() {
   return STATE.matches
-    .filter(m => isKnockoutMatch(m))
-    .filter(m => !isMatchStartedByStatus(m))
-    .filter(m => !isMatchStartedByTime(m))
+    .filter(m => isKnockoutMatchAvailableForBetting(m))
     .filter(m => {
+      const id = Number(m.matchId);
+      const rawId = String(m.matchId);
       const missingWinner =
-        hasWinnerBet() && !STATE.betsMap.has(Number(m.matchId));
+        hasWinnerBet() &&
+        !STATE.betsMap.has(id) &&
+        !STATE.betsMap.has(rawId);
 
       const missingQualifier =
         hasQualifierBet(m) &&
-        !STATE.knockoutQualifiers.has(Number(m.matchId));
+        !STATE.knockoutQualifiers.has(id) &&
+        !STATE.knockoutQualifiers.has(rawId);
 
       return missingWinner || missingQualifier;
     });
@@ -973,13 +995,24 @@ export function getKnockoutGroupByMatchId(matchId) {
 
 export function getMissingKnockoutDecisionsCount() {
   return STATE.matches
-    .filter(isKnockoutMatch)
-    .filter(m => !isMatchStartedByStatus(m))
-    .filter(m => !isMatchStartedByTime(m))
+    .filter(m => isKnockoutMatchAvailableForBetting(m))
     .reduce((sum, m) => {
+      const id = Number(m.matchId);
+      const rawId = String(m.matchId);
       let missing = 0;
-      if (hasWinnerBet() && !STATE.betsMap.has(m.matchId)) missing++;
-      if (hasQualifierBet(m) && !STATE.knockoutQualifiers.has(m.matchId)) missing++;
+
+      if (hasWinnerBet() &&
+          !STATE.betsMap.has(id) &&
+          !STATE.betsMap.has(rawId)) {
+        missing++;
+      }
+
+      if (hasQualifierBet(m) &&
+          !STATE.knockoutQualifiers.has(id) &&
+          !STATE.knockoutQualifiers.has(rawId)) {
+        missing++;
+      }
+
       return sum + missing;
     }, 0);
 }
@@ -1022,6 +1055,7 @@ function formatDateBR(match) {
 function getKnockoutGroupProgress(groupKey) {
   const games = STATE.matches.filter(m => {
     if (!isKnockoutMatch(m)) return false;
+    if (!isKnockoutMatchAvailableForBetting(m)) return false;
     if (STATE.knockoutFilter === 'date') {
       return formatDateBR(m) === groupKey;
     }
