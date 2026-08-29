@@ -957,7 +957,7 @@ export function getMissingKnockoutQualifiers() {
         hasWinnerBet() && !STATE.betsMap.has(Number(m.matchId));
 
       const missingQualifier =
-        hasQualifierBet() &&
+        hasQualifierBet(m) &&
         !STATE.knockoutQualifiers.has(Number(m.matchId));
 
       return missingWinner || missingQualifier;
@@ -979,7 +979,7 @@ export function getMissingKnockoutDecisionsCount() {
     .reduce((sum, m) => {
       let missing = 0;
       if (hasWinnerBet() && !STATE.betsMap.has(m.matchId)) missing++;
-      if (hasQualifierBet() && !STATE.knockoutQualifiers.has(m.matchId)) missing++;
+      if (hasQualifierBet(m) && !STATE.knockoutQualifiers.has(m.matchId)) missing++;
       return sum + missing;
     }, 0);
 }
@@ -1036,14 +1036,14 @@ function getKnockoutGroupProgress(groupKey) {
   const totalDecisions = validGames.reduce((sum, m) => {
     let needed = 0;
     if (hasWinnerBet()) needed++;
-    if (hasQualifierBet()) needed++;
+    if (hasQualifierBet(m)) needed++;
     return sum + needed;
   }, 0);
 
   let filledDecisions = 0;
   validGames.forEach(m => {
     if (hasWinnerBet() && STATE.betsMap.has(m.matchId)) filledDecisions++;
-    if (hasQualifierBet() && STATE.knockoutQualifiers.has(m.matchId)) filledDecisions++;
+    if (hasQualifierBet(m) && STATE.knockoutQualifiers.has(m.matchId)) filledDecisions++;
   });
 
   const finished = validGames.filter(m => m.status === 'finished').length;
@@ -1684,7 +1684,7 @@ async function loadMyBets() {
       return isKO && (m.group || 'Mata-mata') === groupName;
     });
 
-    const decisionsEnabled = hasWinnerBet() || hasQualifierBet();
+    const decisionsEnabled = hasWinnerBet() || hasQualifierBet(m);
 
     const allDecisionsFilled = decisionsEnabled && gamesInGroup.every(m => {
       const winnerFilled =
@@ -1692,7 +1692,7 @@ async function loadMyBets() {
         STATE.betsMap.has(Number(m.matchId));
 
       const qualifierFilled =
-        !hasQualifierBet() ||
+        !hasQualifierBet(m) ||
         STATE.knockoutQualifiers.has(Number(m.matchId));
 
       return winnerFilled && qualifierFilled;
@@ -3188,7 +3188,7 @@ const winnerLockedButtons =
 const qualifierLockedButtons =
   isLockedCard ||
   !canEdit ||
-  !hasQualifierBet();
+  !hasQualifierBet(m);
 
   return `
     <div class="match-card ${statusClass}" 
@@ -3313,7 +3313,7 @@ const qualifierLockedButtons =
 
       ${shotmapHtml}
 
-      ${hasQualifierBet() ? `
+      ${hasQualifierBet(m) ? `
       <div class="knockout-footer-compact">
         <div class="qual-mini-row">
           <span class="qual-label">Classificado:</span>
