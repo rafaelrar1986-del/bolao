@@ -1059,12 +1059,12 @@ function attachMobileCardEvents(entries, mobileRoot) {
                     points: n(entry.podiumPoints),
                     details: podiumDetails
                 },
-                {
+                ...(n(entry.extrasPoints) > 0 ? [{
                     key: 'extras',
                     label: 'Extras',
                     points: n(entry.extrasPoints),
                     details: extrasDetails
-                }
+                }] : [])
             ].filter(category => category.points > 0);
 
             const rankingMeta = getRankingMeta(

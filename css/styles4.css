@@ -16503,3 +16503,46 @@ body:has(#admin) .modal-content .setting-section {
     outline: 2px solid rgba(255,255,255,.45);
     outline-offset: -2px;
 }
+
+
+/* ============================================================
+   Ranking compacto — categorias principais sempre na mesma linha
+   ============================================================ */
+#ranking .user-score-breakdown {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    align-items: start !important;
+    justify-content: initial !important;
+    gap: 8px !important;
+    width: 100% !important;
+}
+
+#ranking .user-score-category {
+    width: 100% !important;
+    min-width: 0 !important;
+    margin-top: 0 !important;
+    box-sizing: border-box !important;
+}
+
+#ranking .user-score-category-toggle {
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+#ranking .user-score-category-main {
+    min-width: 0 !important;
+    width: 100% !important;
+}
+
+/* Em telas extremamente estreitas, preserva as 3 colunas
+   reduzindo somente o espaçamento. */
+@media (max-width: 380px) {
+    #ranking .user-score-breakdown {
+        gap: 5px !important;
+    }
+
+    #ranking .user-score-category-toggle {
+        padding-left: 5px !important;
+        padding-right: 5px !important;
+    }
+}
