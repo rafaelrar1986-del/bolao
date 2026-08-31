@@ -453,7 +453,7 @@ export function createMatchesScoring(ctx = {}) {
   }
 
   function calcLivePoints(match) {
-      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, getDisplayWinner } = ctx;
+      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, getMatchPointStatusForUI, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, getDisplayWinner } = ctx;
     const mId = String(match.matchId);
     const choice = STATE.betsMap.get(mId) ?? STATE.betsMap.get(Number(match.matchId));
     const scoreData =

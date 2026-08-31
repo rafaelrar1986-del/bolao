@@ -3,7 +3,7 @@ export function createMatchesGroupsRenderer(ctx = {}) {
   const get = (name) => ctx[name];
 
   function renderMatches(openedGroups = []) {
-      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, getScoringRules, winnerDerivesFromScore, deriveWinnerFromScoreData, calcLivePoints, getGroupPhaseProgress, updateGroupProgressUI, updateBetsCounters, renderFilterHeader, renderGroupPredictionSection, refreshPredictedGroupForMatch, bindAllGroupPredictionSections, renderGroupCard } = ctx;
+      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, calculateScoringMatchPointsForUI, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, getScoringRules, winnerDerivesFromScore, deriveWinnerFromScoreData, calcLivePoints, getGroupPhaseProgress, updateGroupProgressUI, updateBetsCounters, renderFilterHeader, renderGroupPredictionSection, refreshPredictedGroupForMatch, bindAllGroupPredictionSections, renderGroupCard } = ctx;
     if (!STATE.hasSubmitted) STATE.groupFilter = 'group';
 
     const wrap = $('#matches-container');
@@ -298,7 +298,7 @@ export function createMatchesGroupsRenderer(ctx = {}) {
   }
 
   function renderGroupCard(m) {
-      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, getScoringRules, hasScoreInput, winnerDerivesFromScore, getDisplayWinner, getPredictionScoreSideInputStyle, hasWinnerBet, generateShotmapDots, getMatchRefWinner, calcLivePoints, isMatchEditable } = ctx;
+      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, calculateScoringMatchPointsForUI, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, getScoringRules, hasScoreInput, winnerDerivesFromScore, getDisplayWinner, getPredictionScoreSideInputStyle, hasWinnerBet, generateShotmapDots, getMatchRefWinner, calcLivePoints, isMatchEditable } = ctx;
     const idNum = Number(m.matchId);
     const storedChoice = STATE.betsMap.get(idNum) || STATE.betsMap.get(String(m.matchId));
     
