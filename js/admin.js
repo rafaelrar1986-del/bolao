@@ -591,7 +591,10 @@ export function initAdmin() {
   const btnWhitelist = document.getElementById('btn-open-whitelist-modal');
   if (btnWhitelist) btnWhitelist.addEventListener('click', openWhitelistModal);
 
-  loadAdminMatches();
+  // Carrega primeiro as regras do campeonato. A lista de partidas usa essas
+  // regras para decidir se a seção correta é Grupos, Pontos Corridos ou Mata-mata.
+  // Antes, loadAdminMatches() era disparado em paralelo e a UI podia nascer
+  // como "Grupos" e nunca ser redesenhada quando as regras chegavam.
 
   loadStatsLockStatus();
   const btnStats = document.getElementById('btn-toggle-stats-lock');
@@ -637,8 +640,11 @@ export function initAdmin() {
 
   renderPhaseControls();
 
-  // 🆕 Carrega configurações da liga
-  loadLeagueSettings();
+  // 🆕 Carrega configurações da liga antes de renderizar as partidas.
+  // Isso elimina a corrida entre regras do campeonato e a lista do Admin.
+  loadLeagueSettings()
+    .catch(err => console.warn('Erro ao carregar regras antes da lista de partidas:', err))
+    .finally(() => loadAdminMatches());
 }
 
 /* ============================================================
@@ -2448,6 +2454,35 @@ const KNOCKOUT_GROUPS = [
   'Final'
 ];
 
+function getAdminChampionshipMode(matchesList = []) {
+  const rules = CurrentSettings?.championshipRules || {};
+  const explicitGroup = rules.hasGroupPhase === true;
+  const explicitKnockout = rules.hasKnockoutPhase === true;
+
+  // A configuração salva é a autoridade. Quando não existe uma configuração
+  // explícita (ex.: liga antiga), usamos as partidas como fallback seguro.
+  const hasRuleFields =
+    Object.prototype.hasOwnProperty.call(rules, 'hasGroupPhase') ||
+    Object.prototype.hasOwnProperty.call(rules, 'hasKnockoutPhase');
+
+  if (hasRuleFields) {
+    if (!explicitGroup && !explicitKnockout) return 'points_run';
+    if (explicitGroup && explicitKnockout) return 'group+knockout';
+    if (explicitGroup) return 'group';
+    return 'knockout';
+  }
+
+  const regular = (matchesList || []).filter(m => String(m?.phase || '').toLowerCase() !== 'knockout');
+  const hasPointsRun = regular.some(m => {
+    const phase = String(m?.phase || '').toLowerCase();
+    return phase === 'pontos_corridos' || phase === 'points_run';
+  });
+  const hasKnockoutMatches = (matchesList || []).some(m => String(m?.phase || '').toLowerCase() === 'knockout');
+  if (hasPointsRun && !hasKnockoutMatches) return 'points_run';
+  if (!hasPointsRun && hasKnockoutMatches) return 'knockout';
+  return 'group';
+}
+
 function renderAdminMatches(matchesList) {
   const container = $adminMatchesList();
   if (!container) return;
@@ -2463,15 +2498,33 @@ function renderAdminMatches(matchesList) {
     if (!validIds.has(String(id))) selectedAdminMatchIds.delete(String(id));
   });
 
+  const championshipMode = getAdminChampionshipMode(matchesList);
+  const availableAdminTabs = championshipMode === 'points_run'
+    ? ['points_run']
+    : championshipMode === 'knockout'
+      ? ['knockout']
+      : championshipMode === 'group+knockout'
+        ? ['group', 'knockout']
+        : ['group'];
+
+  if (!availableAdminTabs.includes(activeAdminTab)) {
+    activeAdminTab = availableAdminTabs[0];
+  }
+
+  const adminTabConfig = {
+    group: { icon: 'fas fa-users', label: 'Grupos' },
+    points_run: { icon: 'fas fa-futbol', label: 'Pontos Corridos' },
+    knockout: { icon: 'fas fa-sitemap', label: 'Mata-mata' }
+  };
+
   let html = `
     <div class="admin-match-toolbar">
       <div class="admin-match-tabs" role="tablist">
-        <button class="admin-match-tab ${activeAdminTab === 'group' ? 'active' : ''}" onclick="window.switchAdminTab('group')">
-          <i class="fas fa-users"></i><span>Grupos</span>
-        </button>
-        <button class="admin-match-tab ${activeAdminTab === 'knockout' ? 'active' : ''}" onclick="window.switchAdminTab('knockout')">
-          <i class="fas fa-sitemap"></i><span>Mata-mata</span>
-        </button>
+        ${availableAdminTabs.map(tab => `
+          <button class="admin-match-tab ${activeAdminTab === tab ? 'active' : ''}" onclick="window.switchAdminTab('${tab}')">
+            <i class="${adminTabConfig[tab].icon}"></i><span>${adminTabConfig[tab].label}</span>
+          </button>
+        `).join('')}
       </div>
       <div class="admin-match-toolbar-actions">
         <button class="admin-select-mode-btn ${adminMatchSelectionMode ? 'active' : ''}" type="button"
@@ -2486,11 +2539,14 @@ function renderAdminMatches(matchesList) {
   `;
 
   const filteredMatches = matchesList.filter(m => {
-    if (activeAdminTab === 'group') {
-      return m.phase === 'group' || m.phase === 'points_run' ||
-             m.phase === 'pontos_corridos' || !m.phase;
+    const phase = String(m?.phase || '').toLowerCase();
+    if (activeAdminTab === 'points_run') {
+      return phase === 'pontos_corridos' || phase === 'points_run';
     }
-    return m.phase === 'knockout';
+    if (activeAdminTab === 'group') {
+      return phase === 'group' || (!phase && championshipMode !== 'points_run');
+    }
+    return phase === 'knockout';
   });
 
   if (filteredMatches.length === 0) {
@@ -2628,7 +2684,11 @@ function renderSingleMatchRow(match) {
         <div class="admin-match-top">
           <span>ID ${match.matchId}</span>
           <span>API: ${match.apiId || '---'}</span>
-          <span class="admin-match-phase">${match.group || '-'}</span>
+          <span class="admin-match-phase">${
+            String(match.phase || '').toLowerCase() === 'pontos_corridos' || String(match.phase || '').toLowerCase() === 'points_run'
+              ? (match.phaseName || (Number(match.roundNumber) > 0 ? `Rodada ${Number(match.roundNumber)}` : 'Pontos Corridos'))
+              : (match.group || '-')
+          }</span>
           <span class="admin-match-menu"><i class="fas fa-ellipsis-v"></i></span>
         </div>
         <div class="admin-match-teams">

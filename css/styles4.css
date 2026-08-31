@@ -16546,3 +16546,12 @@ body:has(#admin) .modal-content .setting-section {
         padding-right: 5px !important;
     }
 }
+
+/* Fases condicionais: hidden precisa vencer os blocos de display:flex !important
+   das versões legadas da bottom navigation. */
+.app-nav button[hidden] {
+  display: none !important;
+}
+.tabs .tab[hidden] {
+  display: none !important;
+}

@@ -20,7 +20,10 @@ export function createMatchesGroupsRenderer(ctx = {}) {
     const isPointsRun = inferredPointsRun || hasPointsRunMatches;
 
     const topKnockoutTab = document.querySelector('.tabs .tab[data-tab="knockout"]');
-    if (topKnockoutTab) topKnockoutTab.style.display = hasKnockoutPhase ? '' : 'none';
+    if (topKnockoutTab) {
+      topKnockoutTab.hidden = !hasKnockoutPhase;
+      topKnockoutTab.setAttribute('aria-hidden', String(!hasKnockoutPhase));
+    }
     const bottomBets = document.querySelector('#app-nav button[data-tab="bets"]');
     if (bottomBets) {
       const label = bottomBets.querySelector('span');
@@ -28,7 +31,10 @@ export function createMatchesGroupsRenderer(ctx = {}) {
       bottomBets.setAttribute('aria-label', isPointsRun ? 'Pontos Corridos' : 'Grupos');
     }
     const bottomKnockout = document.querySelector('#app-nav button[data-tab="knockout"]');
-    if (bottomKnockout) bottomKnockout.style.display = hasKnockoutPhase ? '' : 'none';
+    if (bottomKnockout) {
+      bottomKnockout.hidden = !hasKnockoutPhase;
+      bottomKnockout.setAttribute('aria-hidden', String(!hasKnockoutPhase));
+    }
 
     const wrap = $('#matches-container');
     if (!wrap) return;
@@ -198,7 +204,7 @@ export function createMatchesGroupsRenderer(ctx = {}) {
               <div class="group-matches-grid">
                 ${games.map(m => renderGroupCard(m)).join('')}
               </div>
-              ${renderGroupPredictionSection(groupName, predictionGames)}
+              ${hasGroupPhase ? renderGroupPredictionSection(groupName, predictionGames) : ''}
             </div>
           </div>
         `;

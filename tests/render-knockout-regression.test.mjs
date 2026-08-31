@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+const kwrap={innerHTML:'',querySelectorAll(){return[]},querySelector(){return null}};
+const gwrap={innerHTML:'',querySelectorAll(){return[]},querySelector(){return null}};
+globalThis.window={addEventListener(){},STATE:null,syncEngravedFlags(){}};
+globalThis.document={addEventListener(){},querySelectorAll(){return[]},querySelector(){return null},getElementById(id){return id==='knockout-container'?kwrap:id==='matches-container'?gwrap:null},createElement(){return {style:{},classList:{add(){},remove(){},toggle(){}},setAttribute(){},appendChild(){},querySelector(){return null},querySelectorAll(){return[]}}}};
+globalThis.localStorage={getItem(){return null},setItem(){},removeItem(){}};
+globalThis.requestAnimationFrame=f=>f(); globalThis.getComputedStyle=()=>({position:'static'});
+await import(new URL('../js/matches4.js',import.meta.url));
+window.STATE.matches=[{matchId:101,phase:'knockout',group:'Oitavas',status:'finished',teamA:'Brazil',teamB:'Argentina',scoreA:2,scoreB:1,logoA:'',logoB:'',roundNumber:1}];
+window.STATE.hasSubmitted=true;
+window.STATE.scoringRules={exactScore:5,scoreTeamA:1,scoreTeamB:1,winner:2,qualifier:3,podiumPoints:[20,15,10,5]};
+window.STATE.championshipRules={knockoutFormat:'single_leg'};
+window.STATE.betsMap.set(101,'A');
+window.STATE.scoresMap.set(101,{scoreA:2,scoreB:1});
+window.STATE.knockoutQualifiers.set(101,'A');
+assert.doesNotThrow(()=>window.renderKnockoutMatches([]));
+assert.ok(kwrap.innerHTML.includes('Brazil'),'finished knockout match rendered');
+console.log('FINISHED_KNOCKOUT_RENDER_OK');
