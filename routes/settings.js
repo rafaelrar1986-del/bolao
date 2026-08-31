@@ -453,6 +453,39 @@ router.post('/global', protect, admin, async (req, res) => {
     const historyEventsToAppend = [];
 
     /*
+     * Regras estruturais do campeonato
+     * Mantém a configuração de grupos (inclusive legs) e adiciona o formato
+     * do mata-mata: jogo único ou ida e volta, com gol fora opcional.
+     */
+    if (req.body.championshipRules && typeof req.body.championshipRules === 'object') {
+      const currentChampionship = currentSettingsForRules?.championshipRules || {};
+      const incoming = { ...req.body.championshipRules };
+      const currentGroup = currentChampionship.groupQualification || {};
+      const incomingGroup = incoming.groupQualification || {};
+      const legs = Number(incomingGroup.legs ?? currentGroup.legs ?? 1) === 2 ? 2 : 1;
+
+      if (incoming.knockoutFormat !== undefined && !['single', 'home_away'].includes(incoming.knockoutFormat)) {
+        return res.status(400).json({ success: false, message: 'Formato do mata-mata inválido.' });
+      }
+
+      const knockoutFormat = incoming.knockoutFormat ?? currentChampionship.knockoutFormat ?? 'single';
+      incoming.knockoutFormat = knockoutFormat === 'home_away' ? 'home_away' : 'single';
+      incoming.knockoutAwayGoals = incoming.knockoutFormat === 'home_away'
+        ? Boolean(incoming.knockoutAwayGoals ?? currentChampionship.knockoutAwayGoals)
+        : false;
+      incoming.groupQualification = {
+        ...currentGroup,
+        ...incomingGroup,
+        legs
+      };
+
+      lockUpdates.championshipRules = {
+        ...currentChampionship,
+        ...incoming
+      };
+    }
+
+    /*
      * Regras de pontuação
      */
     if (
@@ -670,18 +703,6 @@ router.post('/global', protect, admin, async (req, res) => {
           seenGroupRuleSignatures.add(signature);
         }
       }
-
-         // Sem grupos, ou com grupos sem mata-mata, não existe o conceito
-      // de classificados para o mata-mata.
-      incomingChampionshipRules.groupQualification = {
-        totalTeams,
-        groupCount,
-        totalQualified
-      };
-      lockUpdates.championshipRules = {
-        ...currentChamp,
-        ...incomingChampionshipRules
-      };
 
       // Se a fase de grupos foi desativada, regras antigas de classificação
       // não podem continuar válidas de forma invisível.

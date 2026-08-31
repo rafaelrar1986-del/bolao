@@ -444,8 +444,10 @@ async function saveBets(req, res) {
         });
       }
 
-      const qualifier =
-        normalizeQualifier(data?.qualifier);
+      const existingGm = gmMap.get(idNum);
+      const qualifier = Object.prototype.hasOwnProperty.call(data || {}, 'qualifier')
+        ? normalizeQualifier(data?.qualifier)
+        : existingGm?.qualifier ?? null;
 
       const isKnockoutMatch =
         matchData?.phase === 'knockout' ||
@@ -457,8 +459,6 @@ async function saveBets(req, res) {
           message: `Palpite de classificado não é permitido para a partida ${idNum}, pois ela não pertence ao mata-mata.`
         });
       }
-
-      const existingGm = gmMap.get(idNum);
 
       // Se a partida já está encerrada e foi aceita apenas como reenvio
       // idêntico, preserva os pontos/breakdown já apurados. Para uma aposta
@@ -847,7 +847,9 @@ async function saveSingleBet(req, res) {
           scoreA == null || scoreA === '' ? null : Number(scoreA);
         betDoc.groupMatches[index].scoreB =
           scoreB == null || scoreB === '' ? null : Number(scoreB);
-        betDoc.groupMatches[index].qualifier = validQualifier;
+        if (Object.prototype.hasOwnProperty.call(req.body, 'qualifier')) {
+          betDoc.groupMatches[index].qualifier = validQualifier;
+        }
         betDoc.groupMatches[index].points = 0;
         betDoc.groupMatches[index].pointsBreakdown = novoPalpite.pointsBreakdown;
       } else {

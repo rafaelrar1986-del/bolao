@@ -200,6 +200,8 @@ const SettingsSchema = new mongoose.Schema(
       // Default true preserva o comportamento dos campeonatos antigos.
       hasGroupPhase:        { type: Boolean, default: true },
       hasKnockoutPhase:     { type: Boolean, default: false },
+      knockoutFormat: { type: String, enum: ['single', 'home_away'], default: 'single' },
+      knockoutAwayGoals: { type: Boolean, default: false },
 
       // Estrutura genérica da classificação da fase de grupos.
       // Ex.: 48 times / 12 grupos / 32 classificados =>

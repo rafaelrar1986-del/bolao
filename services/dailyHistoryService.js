@@ -6,6 +6,7 @@ const {
   getScoringRules,
   getChampionshipRules,
   calculateMatchPoints,
+  calculateBetMatchPoints,
   calculatePodiumPoints,
   calculateExtrasPoints
 }
@@ -205,9 +206,10 @@ async function saveDailySnapshot(historyDate, leagueId, options = {}) {
 
         if (!realMatch) continue;
 
-        const result = calculateMatchPoints(
+        const result = calculateBetMatchPoints(
           betMatch,
           realMatch,
+          matchMap,
           scoringRules,
           championshipRules,
           false

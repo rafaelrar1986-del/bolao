@@ -26,6 +26,8 @@ const DEFAULT_CHAMPIONSHIP_RULES = Object.freeze({
   podiumSize: 4,
   hasGroupPhase: true,
   hasKnockoutPhase: false,
+  knockoutFormat: 'single',
+  knockoutAwayGoals: false,
   groupQualification: {
     totalTeams: 0,
     groupCount: 0,
@@ -198,6 +200,8 @@ function sanitizeChampionshipRules(rawRules) {
 
   rules.drawIncludesExtraTime = Boolean(rules.drawIncludesExtraTime);
   rules.hasKnockoutPhase = Boolean(rules.hasKnockoutPhase);
+  rules.knockoutFormat = rules.knockoutFormat === 'home_away' ? 'home_away' : 'single';
+  rules.knockoutAwayGoals = rules.knockoutFormat === 'home_away' && Boolean(rules.knockoutAwayGoals);
 
   const groupQualification = {
     ...(DEFAULT_CHAMPIONSHIP_RULES.groupQualification || {}),
@@ -1139,6 +1143,91 @@ function calculateGroupQualificationPoints(
 }
 
 /**
+ * Localiza as duas partidas de um confronto ida e volta.
+ * A associação é feita pela etapa e pelo mesmo par de equipes,
+ * independentemente de quem é mandante em cada jogo.
+ */
+function parseConfrontationDate(match) {
+  const raw = String(match?.date || '').trim();
+  const md = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  const mt = String(match?.time || '00:00').match(/^(\d{1,2}):(\d{2})/);
+  if (md) return Date.parse(`${md[3]}-${md[2]}-${md[1]}T${String(mt ? mt[1] : '0').padStart(2,'0')}:${mt ? mt[2] : '00'}:00Z`) || 0;
+  return Date.parse(raw) || 0;
+}
+
+function getKnockoutConfrontationMatches(realMatch, matchMap, champRules) {
+  if (!realMatch || champRules?.knockoutFormat !== 'home_away') return [];
+  if (realMatch.phase !== 'knockout' && realMatch.phase !== 'mata-mata') return [];
+  const a = String(realMatch.teamA || '').trim().toLowerCase();
+  const b = String(realMatch.teamB || '').trim().toLowerCase();
+  const stage = String(realMatch.roundNumber ?? realMatch.roundName ?? realMatch.group ?? '').trim().toLowerCase();
+  if (!a || !b || !stage) return [];
+  return [...(matchMap instanceof Map ? matchMap.values() : [])]
+    .filter(m => {
+      if (!m || (m.phase !== 'knockout' && m.phase !== 'mata-mata')) return false;
+      const ca = String(m.teamA || '').trim().toLowerCase();
+      const cb = String(m.teamB || '').trim().toLowerCase();
+      const cs = String(m.roundNumber ?? m.roundName ?? m.group ?? '').trim().toLowerCase();
+      return cs === stage && ((ca === a && cb === b) || (ca === b && cb === a));
+    })
+    .sort((x, y) => parseConfrontationDate(x) - parseConfrontationDate(y) || Number(x.matchId) - Number(y.matchId));
+}
+
+function resolveKnockoutConfrontationQualifier(realMatch, matchMap, champRules) {
+  const legs = getKnockoutConfrontationMatches(realMatch, matchMap, champRules);
+  if (legs.length < 2 || !legs.every(m => m.status === 'finished')) return null;
+  const teamA = String(realMatch.teamA || '').trim().toLowerCase();
+  const teamB = String(realMatch.teamB || '').trim().toLowerCase();
+  const totalFor = (team) => legs.reduce((sum, m) => {
+    const home = String(m.teamA || '').trim().toLowerCase() === team;
+    return sum + Number(home ? (m.scoreA ?? 0) : (m.scoreB ?? 0));
+  }, 0);
+  const totalA = totalFor(teamA);
+  const totalB = totalFor(teamB);
+  if (totalA !== totalB) return totalA > totalB ? 'A' : 'B';
+
+  if (champRules.knockoutAwayGoals) {
+    // Em cada perna, gols fora são os gols marcados quando a equipe foi visitante.
+    const awayGoalsFor = (team) => legs.reduce((sum, m) => {
+      const homeTeam = String(m.teamA || '').trim().toLowerCase();
+      return sum + (homeTeam === team ? 0 : Number(m.scoreB ?? 0));
+    }, 0);
+    const awayA = awayGoalsFor(teamA);
+    const awayB = awayGoalsFor(teamB);
+    if (awayA !== awayB) return awayA > awayB ? 'A' : 'B';
+  }
+
+  const last = legs[legs.length - 1];
+  const lastWinner = last.qualifiedSide === 'A' || last.qualifiedSide === 'B' ? last.qualifiedSide : null;
+  if (!lastWinner) return null;
+  const lastTeamA = String(last.teamA || '').trim().toLowerCase();
+  if (lastWinner === 'A') return lastTeamA === teamA ? 'A' : 'B';
+  return lastTeamA === teamA ? 'B' : 'A';
+}
+
+/**
+ * Calcula uma partida levando em conta, quando aplicável, o confronto ida/volta.
+ * Mantém calculateMatchPoints puro para os consumidores de partida isolada.
+ */
+function calculateBetMatchPoints(betMatch, match, matchMap, scoringRules = DEFAULT_SCORING, championshipRules = DEFAULT_CHAMPIONSHIP_RULES, isPartial = false) {
+  let betForCalculation = betMatch;
+  let matchForCalculation = match;
+  if ((match?.phase === 'knockout' || match?.phase === 'mata-mata') && championshipRules?.knockoutFormat === 'home_away') {
+    const legs = getKnockoutConfrontationMatches(match, matchMap, championshipRules);
+    if (legs.length >= 2) {
+      const firstLegId = Number(legs[0].matchId);
+      const complete = legs.every(m => m.status === 'finished');
+      betForCalculation = { ...betMatch };
+      if (Number(match.matchId) !== firstLegId || !complete) betForCalculation.qualifier = null;
+      if (complete && Number(match.matchId) === firstLegId) {
+        matchForCalculation = { ...match, qualifiedSide: resolveKnockoutConfrontationQualifier(match, matchMap, championshipRules) };
+      }
+    }
+  }
+  return calculateMatchPoints(betForCalculation, matchForCalculation, scoringRules, championshipRules, isPartial);
+}
+
+/**
  * Calcula a pontuação total de uma aposta em memória.
  *
  * Esta função é usada por endpoints de ranking/estatísticas e também por
@@ -1166,9 +1255,23 @@ function calculateBetTotal(
     const match = matchMap?.get(String(betMatch.matchId));
     if (!match) continue;
 
+    let betForCalculation = betMatch;
+    let matchForCalculation = match;
+    if ((match.phase === 'knockout' || match.phase === 'mata-mata') && champRules.knockoutFormat === 'home_away') {
+      const legs = getKnockoutConfrontationMatches(match, matchMap, champRules);
+      if (legs.length >= 2) {
+        const firstLegId = Number(legs[0].matchId);
+        const complete = legs.every(m => m.status === 'finished');
+        betForCalculation = { ...betMatch };
+        if (Number(match.matchId) !== firstLegId || !complete) betForCalculation.qualifier = null;
+        if (complete && Number(match.matchId) === firstLegId) {
+          matchForCalculation = { ...match, qualifiedSide: resolveKnockoutConfrontationQualifier(match, matchMap, champRules) };
+        }
+      }
+    }
     const result = calculateMatchPoints(
-      betMatch,
-      match,
+      betForCalculation,
+      matchForCalculation,
       rules,
       champRules,
       isPartial
@@ -1371,9 +1474,24 @@ async function recalculateAllPoints(
       for (const groupMatch of bet.groupMatches || []) {
         const match = matchesMap.get(String(groupMatch.matchId));
 
+        let betForCalculation = groupMatch;
+        let matchForCalculation = match;
+        if ((match?.phase === 'knockout' || match?.phase === 'mata-mata') && champRules.knockoutFormat === 'home_away') {
+          const legs = getKnockoutConfrontationMatches(match, matchesMap, champRules);
+          if (legs.length >= 2) {
+            const firstLegId = Number(legs[0].matchId);
+            const complete = legs.every(m => m.status === 'finished');
+            betForCalculation = { ...groupMatch };
+            if (Number(match.matchId) !== firstLegId || !complete) betForCalculation.qualifier = null;
+            if (complete && Number(match.matchId) === firstLegId) {
+              matchForCalculation = { ...match, qualifiedSide: resolveKnockoutConfrontationQualifier(match, matchesMap, champRules) };
+            }
+          }
+        }
+
         const result = calculateMatchPoints(
-          groupMatch,
-          match,
+          betForCalculation,
+          matchForCalculation,
           scoringRules,
           champRules,
           false
@@ -1671,6 +1789,7 @@ module.exports = {
   getMatchReferenceQualifier,
   getMaxPointsPerMatch,
   calculateMatchPoints,
+  calculateBetMatchPoints,
   calculatePodiumPoints,
   calculateExtrasPoints,
   calculateBetTotal,
