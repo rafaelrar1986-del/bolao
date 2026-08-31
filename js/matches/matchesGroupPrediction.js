@@ -10,7 +10,7 @@ export function createMatchesGroupPrediction(ctx = {}) {
       <div class="filter-wrapper" style="margin-bottom: 20px;">
         <div class="filter-pills-row" style="display: flex; margin-bottom: 12px; overflow-x: auto; -webkit-overflow-scrolling: touch;">
           <div class="filter-pills" style="display: flex; gap: 8px;">
-            <button class="pill ${STATE.groupFilter === 'group' ? 'active' : ''}" onclick="setMatchFilter('group')">Grupo</button>
+            <button class="pill ${STATE.groupFilter === 'group' ? 'active' : ''}" onclick="setMatchFilter('group')">${STATE.championshipRules?.hasGroupPhase === true ? 'Grupo' : 'Rodada'}</button>
             <button class="pill ${STATE.groupFilter === 'date' ? 'active' : ''}" onclick="setMatchFilter('date')">Data</button>
             <button class="pill ${STATE.groupFilter === 'live' ? 'active' : ''}" onclick="setMatchFilter('live')">📡 Ao Vivo</button>
           </div>

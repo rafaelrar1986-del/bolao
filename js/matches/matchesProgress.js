@@ -155,7 +155,11 @@ export function createMatchesProgress(ctx = {}) {
               .replace(/\d+\s*pts/i, '').trim();
 
           const games = STATE.matches.filter(m => {
-            const matchGroup = (m.group || '').trim().toUpperCase();
+            const phase = String(m.phase || '').toLowerCase();
+            const isPointsRun = phase === 'pontos_corridos' || phase === 'points_run';
+            const matchGroup = isPointsRun
+              ? String(m.phaseName || (Number(m.roundNumber) > 0 ? `Rodada ${m.roundNumber}` : 'Pontos Corridos')).trim().toUpperCase()
+              : String(m.group || '').trim().toUpperCase();
             const currentKey = (groupKey || '').trim().toUpperCase();
             return matchGroup === currentKey &&
               isMatchAvailableForBetting(m);

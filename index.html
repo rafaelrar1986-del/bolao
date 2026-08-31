@@ -1028,6 +1028,8 @@ async function runRobotSync() {
     
     // 3. Captura os novos valores de fase (se não existirem, assume 'group')
     const phaseType = elPhase ? elPhase.value : 'group';
+    const isPointsRun = phaseType === 'points_run';
+    const phaseToApi = isPointsRun ? 'pontos_corridos' : phaseType;
     const knockoutPhase = elKnockout ? elKnockout.value : null;
 
     if (!leagueId || !dateFrom || !dateTo) {
@@ -1048,7 +1050,9 @@ async function runRobotSync() {
                 leagueId, 
                 dateFrom, 
                 dateTo,
-                phaseType,
+                phaseType: phaseToApi,
+                isPointsRun,
+                unifyGroups: isPointsRun,
                 knockoutPhase: phaseType === 'knockout' ? knockoutPhase : null
             })
         });
@@ -1058,7 +1062,9 @@ async function runRobotSync() {
         if (loader) loader.style.display = 'none';
 
         if (data.success) {
-            const msgFase = phaseType === 'knockout' ? knockoutPhase : 'Fase de Grupos';
+            const msgFase = phaseType === 'knockout'
+                ? knockoutPhase
+                : (isPointsRun ? 'Pontos Corridos' : 'Fase de Grupos');
             alert(`✅ Sucesso!\nFase: ${msgFase}\nCriados: ${data.details.criados}\nAtualizados: ${data.details.atualizados}`);
             
             // Tenta atualizar a lista sem dar reload na página inteira

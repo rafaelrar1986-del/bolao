@@ -6,6 +6,30 @@ export function createMatchesGroupsRenderer(ctx = {}) {
       const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, calculateScoringMatchPointsForUI, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, getScoringRules, winnerDerivesFromScore, deriveWinnerFromScoreData, calcLivePoints, getGroupPhaseProgress, updateGroupProgressUI, updateBetsCounters, renderFilterHeader, renderGroupPredictionSection, refreshPredictedGroupForMatch, bindAllGroupPredictionSections, renderGroupCard } = ctx;
     if (!STATE.hasSubmitted) STATE.groupFilter = 'group';
 
+    // A navegação é dinâmica: pontos corridos não é fase de grupos e
+    // portanto não deve ser apresentado ao usuário como "Grupos".
+    const rules = STATE.championshipRules || {};
+    const hasGroupPhase = rules.hasGroupPhase === true;
+    const hasKnockoutPhase = rules.hasKnockoutPhase === true;
+    const inferredPointsRun = !hasGroupPhase && !hasKnockoutPhase;
+    const phaseMatches = STATE.matches || [];
+    const hasPointsRunMatches = phaseMatches.some(m => {
+      const p = String(m?.phase || '').toLowerCase();
+      return p === 'pontos_corridos' || p === 'points_run';
+    });
+    const isPointsRun = inferredPointsRun || hasPointsRunMatches;
+
+    const topKnockoutTab = document.querySelector('.tabs .tab[data-tab="knockout"]');
+    if (topKnockoutTab) topKnockoutTab.style.display = hasKnockoutPhase ? '' : 'none';
+    const bottomBets = document.querySelector('#app-nav button[data-tab="bets"]');
+    if (bottomBets) {
+      const label = bottomBets.querySelector('span');
+      if (label) label.textContent = isPointsRun ? 'Pontos Corridos' : 'Grupos';
+      bottomBets.setAttribute('aria-label', isPointsRun ? 'Pontos Corridos' : 'Grupos');
+    }
+    const bottomKnockout = document.querySelector('#app-nav button[data-tab="knockout"]');
+    if (bottomKnockout) bottomKnockout.style.display = hasKnockoutPhase ? '' : 'none';
+
     const wrap = $('#matches-container');
     if (!wrap) return;
 
@@ -74,7 +98,11 @@ export function createMatchesGroupsRenderer(ctx = {}) {
         const d = parseMatchDate(m);
         key = d ? d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'Sem data';
       } else {
-        key = m.group || m.phaseName || 'Grupo';
+        const phase = String(m.phase || '').toLowerCase();
+        const pointsRunMatch = phase === 'pontos_corridos' || phase === 'points_run';
+        key = pointsRunMatch
+          ? (m.phaseName || (Number(m.roundNumber) > 0 ? `Rodada ${m.roundNumber}` : 'Pontos Corridos'))
+          : (m.group || m.phaseName || 'Grupo');
       }
       (groups[key] ||= []).push(m);
     });
@@ -539,7 +567,7 @@ export function createMatchesGroupsRenderer(ctx = {}) {
   `;
 
     return `
-      <div class="match-card ${statusClass}" id="match-${m.matchId}" data-match-id="${m.matchId}" data-status="${m.status}" data-phase="group" data-team-a="${m.teamA}" data-team-b="${m.teamB}" style="cursor:pointer">
+      <div class="match-card ${statusClass}" id="match-${m.matchId}" data-match-id="${m.matchId}" data-status="${m.status}" data-phase="${m.phase || 'group'}" data-team-a="${m.teamA}" data-team-b="${m.teamB}" style="cursor:pointer">
         ${actionBarHtml} 
         <div class="match-header compact">
           <div class="group-label">${m.group || ''}</div>

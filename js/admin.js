@@ -1740,10 +1740,20 @@ async function openChampionshipRulesModal() {
   const groupCheckbox = document.getElementById('cr-hasGroupPhase');
   const knockoutCheckbox = document.getElementById('cr-hasKnockoutPhase');
   const knockoutFormatSelect = document.getElementById('cr-knockout-format');
+  const knockoutStructurePanel = document.getElementById('cr-knockout-structure-panel');
   const knockoutAwayGoalsWrap = document.getElementById('cr-knockout-away-goals-wrap');
   const syncKnockoutFormatUI = () => {
-    const homeAway = knockoutCheckbox?.checked === true && knockoutFormatSelect?.value === 'home_away';
-    if (knockoutAwayGoalsWrap) knockoutAwayGoalsWrap.style.display = homeAway ? '' : 'none';
+    const enabled = knockoutCheckbox?.checked === true;
+    const homeAway = enabled && knockoutFormatSelect?.value === 'home_away';
+
+    // A estrutura do mata-mata só existe quando o campeonato possui mata-mata.
+    // Não basta esconder apenas o critério de gol fora: todo o painel deve desaparecer.
+    if (knockoutStructurePanel) {
+      knockoutStructurePanel.style.display = enabled ? '' : 'none';
+    }
+    if (knockoutAwayGoalsWrap) {
+      knockoutAwayGoalsWrap.style.display = homeAway ? '' : 'none';
+    }
   };
   knockoutFormatSelect?.addEventListener('change', syncKnockoutFormatUI);
   const groupLegsSelect = document.getElementById('cr-group-legs');
@@ -1759,6 +1769,7 @@ async function openChampionshipRulesModal() {
   });
 
   knockoutCheckbox?.addEventListener('change', () => {
+    syncKnockoutFormatUI();
     updateChampionshipType();
     const container = document.getElementById('tr-selects');
     const current = Array.from(
@@ -3643,7 +3654,9 @@ async function runRobotSync() {
     const dateTo = elTo.value;
     const selectedPhase = elPhase ? elPhase.value : 'auto';
     const isPointsRun = (selectedPhase === 'points_run');
-    const phaseToApi = isPointsRun ? 'group' : selectedPhase;
+    // Pontos corridos é uma fase própria. Não converter para 'group',
+    // pois isso faz as partidas serem persistidas/renderizadas como grupos.
+    const phaseToApi = isPointsRun ? 'pontos_corridos' : selectedPhase;
     const knockoutPhase = elKnockout ? elKnockout.value : null;
 
     if (loader) loader.style.display = 'block';
