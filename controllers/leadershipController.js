@@ -9,6 +9,12 @@ const { blockStatsIfLocked } = require('../middleware/blockStats');
 
 const { sortMatchesChronologically } = require('../utils/matchSort');
 const {
+  getVisibilityLockState,
+  getGlobalPredictionVisibilityState
+} = require('../services/betVisibilityService');
+const { getBetLockState } = require('../services/betLockService');
+
+const {
   DEFAULT_SCORING,
   DEFAULT_CHAMPIONSHIP_RULES,
   calculateBetTotal,
@@ -110,7 +116,6 @@ async function getLeadershipPath(req, res) {
       }
     }
 
-    const unlockedPhases = settings?.unlockedPhases || [];
     const dynamicPodium = [...officialPodium];
 
     const betsByUserMap = new Map(bets.filter(b => b.user?._id).map(b => [b.user._id.toString(), b]));
@@ -601,7 +606,11 @@ async function getLeadershipPath(req, res) {
     const targetEliminatedTeams = userSpecificEliminatedMap.get(activeUserId) || eliminatedTeams;
     const targetConflicting = userConflictingMatchIds.get(activeUserId) || new Set();
 
-    const isPodiumLocked = !unlockedPhases.includes('podium') && !unlockedPhases.includes('Pódio');
+    const isPodiumLocked = !isAdmin && getGlobalPredictionVisibilityState(
+      settings,
+      false,
+      isViewingSelf
+    ).locked;
     const hidePodium = !isViewingSelf && isPodiumLocked;
     const podiumDetails = [];
 
@@ -922,14 +931,13 @@ async function getLeadershipPath(req, res) {
     const matchesAnalysis = displayFutureMatches.map((m, index) => {
       const midStr = String(m.matchId);
       const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
-      const isLocked =
-  (m.phase === 'group' || m.phase === 'pontos_corridos')
-    ? (
-        !unlockedPhases.includes('group') &&
-        !unlockedPhases.includes(m.group) &&
-        !unlockedPhases.includes(m.phaseName)
-      )
-    : !unlockedPhases.includes(m.group);
+      const isLocked = !isAdmin && getVisibilityLockState(
+        m,
+        settings,
+        false,
+        getBetLockState,
+        isViewingSelf
+      ).locked;
       const targetPick = targetPicksMap.get(midStr);
 
       let MARGEM_DE_PERIGO_PARTIDAS = 3;

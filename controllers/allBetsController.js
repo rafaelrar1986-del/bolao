@@ -14,7 +14,11 @@ const {
 
 const {
   getVisibilityLockState,
-  getVisibleBetData
+  getGlobalPredictionVisibilityState,
+  getVisibleBetData,
+  maskGroupPredictions,
+  maskPodium,
+  maskExtras
 } = require('../services/betVisibilityService');
 
 const {
@@ -66,9 +70,6 @@ async function getAllBets(req, res) {
         message: 'Configurações da liga não encontradas'
       });
     }
-
-    const unlockedPhases =
-      settings.unlockedPhases || [];
 
     const betLockMode =
       getBetLockMode(settings);
@@ -204,12 +205,15 @@ async function getAllBets(req, res) {
               String(g.matchId)
             );
 
+          const isOwner = String(b.user?._id || '') === String(req.user?._id || '');
+
           const visibilityState =
             getVisibilityLockState(
               m,
               settings,
               isAdmin,
-              getBetLockState
+              getBetLockState,
+              isOwner
             );
 
           const isLocked =
@@ -249,35 +253,23 @@ async function getAllBets(req, res) {
       // ----------------------------------------------------------
       // VISIBILIDADE DO PÓDIO E EXTRAS
       // ----------------------------------------------------------
-      const isPodiumLocked =
-        !isAdmin &&
-        !unlockedPhases.includes(
-          'podium'
-        );
+      const isOwner = String(b.user?._id || '') === String(req.user?._id || '');
+      const globalVisibility = getGlobalPredictionVisibilityState(
+        settings,
+        isAdmin,
+        isOwner
+      );
+      const isGlobalPredictionLocked = globalVisibility.locked;
 
-      const finalPodium =
-        (
-          b.podium &&
-          b.podium.length > 0 &&
-          !isPodiumLocked
-        )
-          ? b.podium
-          : (
-              b.podium &&
-              b.podium.length > 0
-                ? Array(
-                    b.podium.length
-                  ).fill('🔒')
-                : null
-            );
+      const finalPodium = maskPodium(
+        b.podium,
+        isGlobalPredictionLocked
+      );
 
-      const finalExtras =
-        (
-          b.extras &&
-          !isPodiumLocked
-        )
-          ? b.extras
-          : null;
+      const finalExtras = maskExtras(
+        b.extras,
+        isGlobalPredictionLocked
+      );
 
       // ----------------------------------------------------------
       // RECÁLCULO OFICIAL DOS PONTOS
@@ -303,7 +295,7 @@ async function getAllBets(req, res) {
       //
       let finalExtrasBreakdown = null;
 
-      if (!isPodiumLocked && b.extras) {
+      if (!isGlobalPredictionLocked && b.extras) {
 
         const rules = {
           ...DEFAULT_SCORING,
@@ -355,7 +347,10 @@ async function getAllBets(req, res) {
           viewBets,
 
         groupPredictions:
-          b.groupPredictions || [],
+          maskGroupPredictions(
+            b.groupPredictions,
+            isGlobalPredictionLocked
+          ),
 
 
         podium:

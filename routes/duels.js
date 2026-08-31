@@ -3,6 +3,12 @@ const Bet = require('../models/Bet');
 const Match = require('../models/Match');
 const Settings = require('../models/Settings');
 const { protect } = require('../middleware/auth');
+const { getBetLockState } = require('../services/betLockService');
+const {
+  getVisibilityLockState,
+  getGlobalPredictionVisibilityState,
+  maskPodium
+} = require('../services/betVisibilityService');
 
 const router = express.Router();
 
@@ -20,7 +26,7 @@ router.get('/:userId', protect, async (req, res) => {
     }
 
     const isRequestingOwnProfile = req.user._id.toString() === userId.toString();
-    //const isAdmin = req.user.isAdmin === true;
+    const isAdmin = req.user.isAdmin === true;
 
     const configId = toLeagueId(leagueId);
     
@@ -51,49 +57,40 @@ router.get('/:userId', protect, async (req, res) => {
       });
     }
 
-    const unlockedPhases = settings?.unlockedPhases || [];
-
-    // 2. Mapeamento com checagem rigorosa de visibilidade
+    // A visibilidade é derivada da possibilidade real de edição da aposta,
+    // nunca diretamente de unlockedPhases.
     const maskedGroupMatches = (bet.groupMatches || []).map(g => {
-      // Garantimos que a comparação de ID seja numérica para evitar erros de tipo
       const m = matches.find(x => Number(x.matchId) === Number(g.matchId));
-      
-      let isLocked = true; // Começa bloqueado por segurança
+      const isOwner = false; // este bloco é sempre sobre o adversário
+      const visibilityState = getVisibilityLockState(
+        m,
+        settings,
+        isAdmin,
+        getBetLockState,
+        isOwner
+      );
+      const locked = visibilityState.locked;
 
-      if (m) {
-        // Lógica para fase de grupos OU pontos corridos
-        if (m.phase === 'group' || m.phase === 'pontos_corridos') {
-          // Verifica todas as chaves de desbloqueio
-          const canSeeGroup = unlockedPhases.includes('group') || 
-                              unlockedPhases.includes(m.group) || 
-                              unlockedPhases.includes(m.phaseName);
-          
-          isLocked = !canSeeGroup;
-        } else {
-          // Lógica padrão para fases eliminatórias (Mata-mata)
-          isLocked = !unlockedPhases.includes(m.group);
-        }
-      }
-
-      // Retorna o palpite mascarado se estiver trancado
       return {
         matchId: g.matchId,
-        winner: isLocked ? '🔒' : g.winner,
-        scoreA: isLocked ? '?' : g.scoreA, // Adicionado suporte para placar se existir
-        scoreB: isLocked ? '?' : g.scoreB,
-        qualifier: (isLocked) ? (g.qualifier ? '🔒' : null) : g.qualifier,
-        isLocked: isLocked
+        winner: locked ? '🔒' : g.winner,
+        scoreA: locked ? null : g.scoreA,
+        scoreB: locked ? null : g.scoreB,
+        qualifier: locked ? (g.qualifier ? '🔒' : null) : g.qualifier,
+        isLocked: locked
       };
     });
 
-    // 3. Trava do Pódio
-    // 🆕 CORREÇÃO: podium é array [String] no schema Bet, não objeto {first, second, ...}
-    const isPodiumLocked = !unlockedPhases.includes('podium');
-    const finalPodium = (bet.podium && !isPodiumLocked) 
-      ? bet.podium 
-      : (bet.podium && bet.podium.length > 0 
-          ? new Array(bet.podium.length).fill('🔒') 
-          : null);
+    const globalVisibility = getGlobalPredictionVisibilityState(
+      settings,
+      isAdmin,
+      false
+    );
+
+    const finalPodium = maskPodium(
+      bet.podium,
+      globalVisibility.locked
+    );
 
     res.json({
       success: true,

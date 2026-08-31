@@ -9,7 +9,9 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "test:functional:save": "node tests/bet-save-critical.test.js",
     "test:functional:lock": "node tests/bet-lock-critical.test.js",
-    "test:functional:critical": "npm run test:functional:save && npm run test:functional:lock"
+    "test:functional:critical": "node tests/privacy-battery.test.js && node tests/bet-visibility-critical.test.js",
+    "test:functional:visibility": "node tests/bet-visibility-critical.test.js",
+    "test:functional:privacy-battery": "node tests/privacy-battery.test.js"
   },
   "engines": {
     "node": "22.x"

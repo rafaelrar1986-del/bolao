@@ -1,175 +1,149 @@
 /**
  * Centraliza a regra de visibilidade dos palpites de terceiros.
  *
- * Importante:
- * - Administrador sempre pode visualizar.
- * - No modo "match", a partida é liberada pelo próprio horário/status.
- * - No modo "grade", a visibilidade continua usando unlockedPhases,
- *   preservando o comportamento existente.
- * - Se a partida não for encontrada, a regra é fail-closed: fica bloqueada.
+ * Regra de negócio:
+ * - O próprio usuário sempre pode ver os próprios palpites.
+ * - Admin sempre pode visualizar palpites de terceiros.
+ * - Para um participante comum, o palpite de uma partida fica privado
+ *   enquanto aquela aposta ainda puder ser criada/alterada.
+ * - Assim que a aposta fica efetivamente bloqueada para edição, ela passa
+ *   a ser pública.
  *
- * Este módulo não contém regras de salvamento e não toca no leadership-path.
+ * A decisão de edição vem do betLockService. Não usamos unlockedPhases
+ * diretamente para decidir privacidade, porque liberar uma rodada/fase para
+ * aposta NÃO significa revelar os palpites existentes nela.
  */
 
-function getVisibilityLockState(match, settings, isAdmin, getBetLockState) {
-  if (isAdmin) {
+function getVisibilityLockState(match, settings, isAdmin = false, getBetLockState, isOwner = false, now = new Date()) {
+  if (isAdmin || isOwner) {
     return {
       locked: false,
-      reason: null
+      reason: null,
+      editable: false,
+      visible: true
     };
-  }
-
-  const mode =
-    settings?.betLockMode === 'match'
-      ? 'match'
-      : 'grade';
-
-  if (mode === 'match') {
-    if (!match) {
-      return {
-        locked: true,
-        reason: 'match_not_found'
-      };
-    }
-
-    const state =
-      getBetLockState(
-        match,
-        settings,
-        new Date()
-      );
-
-    // Para visibilidade, a lógica é o inverso da trava de salvamento:
-    // antes do início o palpite fica oculto; após o início ele é revelado.
-    return {
-      locked: !state.locked,
-      reason: state.locked
-        ? null
-        : 'match_not_started'
-    };
-  }
-
-  const unlockedPhases =
-    Array.isArray(settings?.unlockedPhases)
-      ? settings.unlockedPhases
-      : [];
-
-  const visibilityPhase = String(match?.phase || '').toLowerCase();
-  const isGroup = visibilityPhase === 'group';
-  const isPointsRun =
-    visibilityPhase === 'pontos_corridos' ||
-    visibilityPhase === 'points_run';
-  const isKnockout = visibilityPhase === 'knockout';
-
-  const roundMode = isGroup
-    ? settings?.groupBetAvailabilityMode === 'round'
-    : isPointsRun
-      ? settings?.pointsRunBetAvailabilityMode === 'round'
-      : isKnockout
-        ? settings?.knockoutBetAvailabilityMode === 'round'
-        : false;
-
-  if (roundMode) {
-    const round = Number(match.roundNumber);
-    const unlockedRounds = isGroup
-      ? (Array.isArray(settings?.unlockedGroupRounds) ? settings.unlockedGroupRounds.map(Number) : [])
-      : isPointsRun
-        ? (Array.isArray(settings?.unlockedPointsRunRounds) ? settings.unlockedPointsRunRounds.map(Number) : [])
-        : (Array.isArray(settings?.unlockedKnockoutRounds) ? settings.unlockedKnockoutRounds.map(Number) : []);
-    const lockedRounds = isGroup
-      ? (Array.isArray(settings?.lockedGroupRounds) ? settings.lockedGroupRounds.map(Number) : [])
-      : isPointsRun
-        ? (Array.isArray(settings?.lockedPointsRunRounds) ? settings.lockedPointsRunRounds.map(Number) : [])
-        : (Array.isArray(settings?.lockedKnockoutRounds) ? settings.lockedKnockoutRounds.map(Number) : []);
-
-    if (!Number.isInteger(round) || round <= 0) {
-      return { locked: true, reason: 'round_not_defined' };
-    }
-
-    if (lockedRounds.includes(round) || !unlockedRounds.includes(round)) {
-      return { locked: true, reason: 'round_not_released' };
-    }
   }
 
   if (!match) {
     return {
       locked: true,
-      reason: 'match_not_found'
+      reason: 'match_not_found',
+      editable: false,
+      visible: false
     };
   }
 
-  if (
-    match.phase === 'group' ||
-    match.phase === 'pontos_corridos'
-  ) {
-    const groupUnlocked =
-      unlockedPhases.includes('group');
-
-    const specificGroupUnlocked =
-      unlockedPhases.includes(match.group);
-
-    const phaseNameUnlocked =
-      unlockedPhases.includes(match.phaseName);
-
-    const locked =
-      !groupUnlocked &&
-      !specificGroupUnlocked &&
-      !phaseNameUnlocked;
-
+  // A trava global de salvamento também encerra a capacidade de edição.
+  // O endpoint de save a aplica antes da validação da partida. Em testMode
+  // essa trava é deliberadamente ignorada, portanto não altera a privacidade.
+  if (settings?.blockSaveBets === true && settings?.testMode !== true) {
     return {
-      locked,
-      reason: locked
-        ? 'phase_not_unlocked'
-        : null
+      locked: false,
+      reason: null,
+      editable: false,
+      visible: true
     };
   }
 
-  const locked =
-    !unlockedPhases.includes(match.group);
+  if (typeof getBetLockState !== 'function') {
+    // Fail closed: sem a autoridade de lock, nunca revelamos a aposta.
+    return {
+      locked: true,
+      reason: 'lock_service_unavailable',
+      editable: false,
+      visible: false
+    };
+  }
+
+  const state = getBetLockState(match, settings, now);
+  const editable = state?.locked !== true;
 
   return {
-    locked,
-    reason: locked
-      ? 'phase_not_unlocked'
-      : null
+    // Privacidade é exatamente o inverso da possibilidade de edição.
+    locked: editable,
+    reason: editable ? (state?.reason || 'bet_editable') : null,
+    editable,
+    visible: !editable
+  };
+}
+
+/**
+ * Pódio, Extras e previsões de classificação não estão vinculados a uma
+ * partida individual. O endpoint de salvamento atualmente permite alterá-los
+ * enquanto a trava global de apostas não estiver ativa (e também no testMode).
+ * Portanto a privacidade desses blocos acompanha a mesma autoridade de save.
+ */
+function getGlobalPredictionVisibilityState(settings, isAdmin = false, isOwner = false) {
+  if (isAdmin || isOwner) {
+    return { locked: false, reason: null, editable: false, visible: true };
+  }
+
+  const editable = settings?.testMode === true || settings?.blockSaveBets !== true;
+
+  return {
+    locked: editable,
+    reason: editable ? 'global_predictions_editable' : null,
+    editable,
+    visible: !editable
   };
 }
 
 function getVisibleBetData(bet, match, visibilityState) {
-  const locked =
-    visibilityState?.locked !== false;
+  const locked = visibilityState?.locked !== false;
 
   return {
     matchId: bet?.matchId,
+    isLocked: locked,
+    isEditable: visibilityState?.editable === true,
 
-    scoreA:
-      locked
-        ? null
-        : bet?.scoreA,
+    scoreA: locked ? null : bet?.scoreA,
+    scoreB: locked ? null : bet?.scoreB,
 
-    scoreB:
-      locked
-        ? null
-        : bet?.scoreB,
+    choice: locked ? '🔒' : bet?.winner,
+    choiceLabel: locked ? 'Bloqueado' : null,
 
-    choice:
-      locked
-        ? '🔒'
-        : bet?.winner,
-
-    choiceLabel:
-      locked
-        ? 'Bloqueado'
-        : null,
-
-    qualifier:
-      locked
-        ? null
-        : bet?.qualifier
+    qualifier: locked ? null : bet?.qualifier
   };
+}
+
+function maskGroupPredictions(groupPredictions, locked) {
+  if (!locked || !Array.isArray(groupPredictions)) {
+    return Array.isArray(groupPredictions) ? groupPredictions : [];
+  }
+
+  return groupPredictions.map(prediction => ({
+    group: prediction?.group || '',
+    positions: Array.isArray(prediction?.positions)
+      ? prediction.positions.map(p => ({
+          position: Number(p?.position),
+          team: '🔒'
+        }))
+      : [],
+    additionalQualifiedTeams: Array.isArray(prediction?.additionalQualifiedTeams)
+      ? prediction.additionalQualifiedTeams.map(() => '🔒')
+      : []
+  }));
+}
+
+function maskPodium(podium, locked) {
+  if (!Array.isArray(podium) || podium.length === 0) return null;
+  return locked ? podium.map(() => '🔒') : podium;
+}
+
+function maskExtras(extras, locked) {
+  if (!extras || typeof extras !== 'object') return null;
+  if (!locked) return extras;
+
+  return Object.fromEntries(
+    Object.keys(extras).map(key => [key, '🔒'])
+  );
 }
 
 module.exports = {
   getVisibilityLockState,
-  getVisibleBetData
+  getGlobalPredictionVisibilityState,
+  getVisibleBetData,
+  maskGroupPredictions,
+  maskPodium,
+  maskExtras
 };
