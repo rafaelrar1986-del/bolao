@@ -300,9 +300,11 @@ exports.fetchAndSyncMatches = async (req, res) => {
                 group: groupValue,
                 phase: isApiKnockout
                     ? 'knockout'
-                    : (normalizedPhaseType === 'auto'
-                        ? autoDetectedPhase
-                        : normalizedPhaseType),
+                    : (isPointsRun
+                        ? 'pontos_corridos'
+                        : (normalizedPhaseType === 'auto'
+                            ? autoDetectedPhase
+                            : normalizedPhaseType)),
                 phaseName: phaseNameValue,
                 roundNumber: Number.isFinite(Number(item.round_number))
                     ? Number(item.round_number)
@@ -343,7 +345,7 @@ exports.fetchAndSyncMatches = async (req, res) => {
                 // Só atualiza se a partida ainda não foi processada (calculada no ranking)
                 if (!match.processed) {
                     // 🛡️ TRAVA DE SEGURANÇA CONTRA SOBRESCRITA DE FASES
-                    if (match.phaseName) {
+                    if (match.phaseName && !isPointsRun) {
                         delete updateData.group;
                         delete updateData.phase;
                         delete updateData.phaseName;
