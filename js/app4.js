@@ -80,7 +80,7 @@ try { const m = await import('./ui.js'); if (m.showPaywall) showPaywall = m.show
 
 let initMatches, updateMatchDom, getMissingGroupBets, getMissingGroupQualificationBets, getMissingExtrasBets, getMissingKnockoutQualifiers, buildSavePayload, saveLocalDraft, clearLocalDraft, markKnockoutGroupAsSaved, getKnockoutGroupByMatchId;
 try {
-  const m = await import('./matches4.js?v=1.08');
+  const m = await import('./matches4.js?v=1.13');
   initMatches = m.initMatches;
   updateMatchDom = m.updateMatchDom;
   getMissingGroupBets = m.getMissingGroupBets;
@@ -119,10 +119,10 @@ let initNewsWall = () => {};
 try { const m = await import('./newsWall.js'); initNewsWall = m.initNewsWall; } catch(e) {}
 
 let initMyBets = () => {};
-try { const m = await import('./myBets1.js?v=1.06'); initMyBets = m.initMyBets; } catch(e) {}
+try { const m = await import('./myBets1.js?v=1.13'); initMyBets = m.initMyBets; } catch(e) {}
 
 let initAllBets = () => {};
-try { const m = await import('./allBets.js?v=1.06'); initAllBets = m.initAllBets; } catch(e) {}
+try { const m = await import('./allBets.js?v=1.13'); initAllBets = m.initAllBets; } catch(e) {}
 
 let initAdmin, loadGlobalSaveLocks, isSaveBetsBlocked, isRequireAllBetsEnabled;
 try {

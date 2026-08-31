@@ -1,7 +1,7 @@
 // js/allBets.js — adaptado para nova versão do backend
 import { api } from './api.js';
 import { $, toast } from './ui.js';
-import { calculateMatchPoints as calculateScoringMatchPoints, getScoringRules as getFrontendScoringRules } from './frontendScoring.js';
+import { calculateMatchPoints as calculateScoringMatchPoints, getScoringRules as getFrontendScoringRules, getKnockoutConfrontationPointContext } from './frontendScoring.js?v=1.18';
 
 const AB_STATE = {
     search: '',
@@ -13,6 +13,8 @@ const AB_STATE = {
     matchesById: {},
     unlockedPhases: [],
     scoringRules: null,
+    championshipRules: null,
+    currentUserBets: [],
 };
 
 /* ======================
@@ -32,28 +34,29 @@ function getScoringRules() {
 }
 
 function calculateMatchPoints(bet, match) {
-    const result = calculateScoringMatchPoints(
-        {
-            scoreA: bet.scoreA,
-            scoreB: bet.scoreB,
-            winner: bet.choice || bet.winner,
-            qualifier: bet.qualifier
-        },
-        match,
-        {
-            scoringRules: getScoringRules()
-        },
-        false
-    );
-
-    return {
-        points: result.points,
-        hitWinner: result.breakdown.winner > 0,
-        hitExact: result.breakdown.exactScore > 0,
-        hitScoreA: result.breakdown.scoreTeamA > 0,
-        hitScoreB: result.breakdown.scoreTeamB > 0,
-        hitQualified: result.breakdown.qualifier > 0
-    };
+  const allMatches = Object.values(AB_STATE.matchesById || {});
+  const allBets = AB_STATE.currentUserBets || [];
+  const context = getKnockoutConfrontationPointContext(
+    bet,
+    match,
+    allMatches,
+    allBets,
+    { scoringRules: getScoringRules(), championshipRules: AB_STATE.championshipRules }
+  );
+  const result = calculateScoringMatchPoints(
+    context.betMatch,
+    context.match,
+    { scoringRules: getScoringRules(), championshipRules: AB_STATE.championshipRules },
+    false
+  );
+  return {
+    points: result.points,
+    hitWinner: result.breakdown.winner > 0,
+    hitExact: result.breakdown.exactScore > 0,
+    hitScoreA: result.breakdown.scoreTeamA > 0,
+    hitScoreB: result.breakdown.scoreTeamB > 0,
+    hitQualified: result.breakdown.qualifier > 0
+  };
 }
 
 /** Pódio vem como array do backend: [1o, 2o, 3o, 4o] ou null */
@@ -90,6 +93,7 @@ function renderPagination(totalUsers) {
 }
 
 export function drawAllBets() {
+    AB_STATE.currentUserBets = [];
     const $container = $('#all-bets-container');
     if (!$container) return;
 
@@ -115,6 +119,7 @@ export function drawAllBets() {
 
     let html = '';
     for (const u of pageItems) {
+        AB_STATE.currentUserBets = u.bets || [];
         let chips = '';
 
         // Ordena palpites decrescente por matchId
@@ -248,6 +253,7 @@ function exportAllBetsCSV() {
             ];
 
             for (const b of (user.bets || [])) {
+                AB_STATE.currentUserBets = user.bets || [];
                 const m = AB_STATE.matchesById[b.matchId];
                 if (!m) continue;
 
@@ -381,8 +387,9 @@ export async function initAllBets() {
         // 2. Busca scoringRules da liga para calcular pontos corretamente
         try {
             const settingsRes = await api.get(`/api/settings/global?leagueId=${leagueId}`);
-            if (settingsRes?.success && settingsRes.data?.scoringRules) {
-                AB_STATE.scoringRules = settingsRes.data.scoringRules;
+            if (settingsRes?.success && settingsRes.data) {
+                AB_STATE.scoringRules = settingsRes.data.scoringRules || null;
+                AB_STATE.championshipRules = settingsRes.data.championshipRules || null;
             }
         } catch (e) {
             console.warn('Nao foi possivel carregar scoringRules:', e.message);

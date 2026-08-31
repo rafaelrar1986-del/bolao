@@ -5,7 +5,7 @@
 import { api } from './api.js';
 import { flagEmoji } from './flags.js';
 import { toast, openModal, closeModal } from './ui.js';
-import { renderTeamMedia } from './matches4.js'; 
+import { renderTeamMedia } from './matches4.js?v=1.13'; 
 
 const STATUS_LABELS = {
   'scheduled': 'Agendado',
@@ -67,6 +67,8 @@ const DEFAULT_CHAMPIONSHIP_RULES = {
   podiumSize: 4,
   hasGroupPhase: true,
   hasKnockoutPhase: false,
+  knockoutFormat: 'single',
+  knockoutAwayGoals: false,
   groupQualification: {
     totalTeams: 0,
     groupCount: 0,
@@ -1387,6 +1389,25 @@ async function openChampionshipRulesModal() {
               <div id="cr-group-qualification-summary" style="font-size:.78rem; color:#aaa; margin-top:6px;"></div>
             </div>
 
+            <div id="cr-knockout-structure-panel" style="margin-top:14px; padding:10px; border-radius:9px; border:1px solid rgba(255,255,255,.08); background:rgba(0,0,0,.12);">
+              <strong style="display:block; color:#ffda44; margin-bottom:8px;">🏆 Estrutura do mata-mata</strong>
+              <div class="form-group">
+                <label>Formato dos confrontos</label>
+                <select id="cr-knockout-format">
+                  <option value="single" ${cr.knockoutFormat !== 'home_away' ? 'selected' : ''}>Jogo único</option>
+                  <option value="home_away" ${cr.knockoutFormat === 'home_away' ? 'selected' : ''}>Ida e volta</option>
+                </select>
+              </div>
+              <div id="cr-knockout-away-goals-wrap" style="margin-top:10px; ${cr.knockoutFormat === 'home_away' ? '' : 'display:none;'}">
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                  <input type="checkbox" id="cr-knockout-away-goals" ${cr.knockoutAwayGoals ? 'checked' : ''}>
+                  <span>Utilizar critério de gol fora de casa</span>
+                </label>
+                <small style="display:block; margin-top:5px; color:#888;">Usado somente se o agregado terminar empatado.</small>
+              </div>
+              <small style="display:block; margin-top:8px; color:#888;">Em ida e volta, o palpite de classificado pertence ao confronto e vale uma única vez.</small>
+            </div>
+
             <div id="cr-championship-type" style="margin-top:12px; padding:9px 10px; border-radius:8px; background:rgba(0,102,179,.12); border:1px solid rgba(0,102,179,.25); font-size:.86rem;"></div>
           </div>
 
@@ -1718,6 +1739,13 @@ async function openChampionshipRulesModal() {
 
   const groupCheckbox = document.getElementById('cr-hasGroupPhase');
   const knockoutCheckbox = document.getElementById('cr-hasKnockoutPhase');
+  const knockoutFormatSelect = document.getElementById('cr-knockout-format');
+  const knockoutAwayGoalsWrap = document.getElementById('cr-knockout-away-goals-wrap');
+  const syncKnockoutFormatUI = () => {
+    const homeAway = knockoutCheckbox?.checked === true && knockoutFormatSelect?.value === 'home_away';
+    if (knockoutAwayGoalsWrap) knockoutAwayGoalsWrap.style.display = homeAway ? '' : 'none';
+  };
+  knockoutFormatSelect?.addEventListener('change', syncKnockoutFormatUI);
   const groupLegsSelect = document.getElementById('cr-group-legs');
 
   groupLegsSelect?.addEventListener('change', () => {
@@ -1751,6 +1779,7 @@ async function openChampionshipRulesModal() {
   renderDistribution();
   updateGroupQualificationSummary();
   renderTieBreakers();
+  syncKnockoutFormatUI();
 
   // 📷 QR Code: permite câmera/upload e redimensiona a imagem antes do armazenamento.
   paymentQrCode = String(CurrentSettings.payment?.pixQrCode || '');
@@ -1917,6 +1946,8 @@ async function saveChampionshipRules(e) {
         Number(document.getElementById('cr-podiumSize').value) || 4,
       hasGroupPhase,
       hasKnockoutPhase,
+      knockoutFormat: hasKnockoutPhase && document.getElementById('cr-knockout-format')?.value === 'home_away' ? 'home_away' : 'single',
+      knockoutAwayGoals: hasKnockoutPhase && document.getElementById('cr-knockout-format')?.value === 'home_away' && document.getElementById('cr-knockout-away-goals')?.checked === true,
       groupQualification: {
         totalTeams,
         groupCount,

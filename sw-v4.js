@@ -1,4 +1,4 @@
-const CACHE_NAME = "bolao-k-bwalya-v25";
+const CACHE_NAME = "bolao-k-bwalya-v30";
 
 const APP_SHELL = [
   "./",

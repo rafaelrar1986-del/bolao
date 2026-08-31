@@ -2,7 +2,7 @@
    DUELO RENDERER — VERSÃO FINAL (COMPLETA E INTEGRADA)
    ============================================================ */
 
-import { renderTeamMedia } from '../matches4.js';
+import { renderTeamMedia } from '../matches4.js?v=1.13';
 
 let currentDuelPhase = 'group';
 let currentRenderContext = null;

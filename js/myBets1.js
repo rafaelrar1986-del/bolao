@@ -2,7 +2,7 @@
 import { api } from './api.js';
 import { toast } from './ui.js';
 import { flagEmoji } from './flags.js';
-import { calculateMatchPoints as calculateScoringMatchPoints, getScoringRules as getFrontendScoringRules } from './frontendScoring.js';
+import { calculateMatchPoints as calculateScoringMatchPoints, getScoringRules as getFrontendScoringRules, getKnockoutConfrontationPointContext } from './frontendScoring.js?v=1.18';
 
 let renderTeamMedia = (teamName, logoUrl) => {
   const emoji = flagEmoji(teamName) || '';
@@ -55,18 +55,19 @@ function getScoringRules() {
 }
 
 function calculateMatchPoints(bet, match) {
-  const result = calculateScoringMatchPoints(
-    {
-      scoreA: bet.betScoreA ?? bet.scoreA,
-      scoreB: bet.betScoreB ?? bet.scoreB,
-      winner: bet.winner,
-      qualifier: bet.qualifier
-    },
+  const context = getKnockoutConfrontationPointContext(
+    bet,
     match,
-    { scoringRules: getScoringRules() },
+    MyBetsState.matches,
+    MyBetsState.bets?.groupMatches || MyBetsState.bets?.matches || [],
+    { scoringRules: getScoringRules(), championshipRules: MyBetsState.championshipRules }
+  );
+  const result = calculateScoringMatchPoints(
+    context.betMatch,
+    context.match,
+    { scoringRules: getScoringRules(), championshipRules: MyBetsState.championshipRules },
     false
   );
-
   return {
     points: result.points,
     hitWinner: result.breakdown.winner > 0,

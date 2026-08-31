@@ -1,7 +1,8 @@
+// MATCHES4_VERSION: 1.10
 import { api } from './api.js';
 import { flagEmoji } from './flags.js';
 import { $, toast } from './ui.js';
-import { getReferenceQualifier as getBackendAlignedQualifier, getMatchPointStatus, getEffectiveBetWinner, calculateMatchPoints as calculateScoringMatchPoints } from './frontendScoring.js?v=1.16'; 
+import { getReferenceQualifier as getBackendAlignedQualifier, getMatchPointStatus as getFrontendMatchPointStatus, getEffectiveBetWinner, calculateMatchPoints as calculateScoringMatchPoints } from './frontendScoring.js?v=1.18'; 
 
 /* =====================
     Helpers
@@ -484,7 +485,9 @@ function hasExtras() {
 function getChampionshipRules() {
   return STATE.championshipRules || {
     drawIncludesExtraTime: false,
-    podiumSize: 4
+    podiumSize: 4,
+    knockoutFormat: 'single',
+    knockoutAwayGoals: false
   };
 }
 
@@ -588,11 +591,19 @@ function getMatchRefWinner(match) {
 function getMatchRefQualifier(match) {
   if (!match || match.status !== 'finished') return null;
 
+  const rules = getChampionshipRules();
+  if (rules?.knockoutFormat === 'home_away' && isKnockoutMatch(match)) {
+    const info = getKnockoutConfrontationInfo(match);
+    if (info?.legs?.length >= 2) {
+      const resolved = resolveFrontendKnockoutConfrontationQualifier(match, info);
+      if (resolved) return resolved;
+      return null;
+    }
+  }
+
   // O backend considera qualifiedSide como fonte oficial em partidas
   // finalizadas. Isso inclui decisões definidas manualmente pelo admin.
-  return getBackendAlignedQualifier(match, {
-    championshipRules: getChampionshipRules()
-  });
+  return getBackendAlignedQualifier(match, { championshipRules: rules });
 }
 
 /* ============================================================
@@ -696,7 +707,7 @@ function calcLivePoints(match) {
       null
   };
 
-  return getMatchPointStatus(betMatch, match, settings, true);
+  return getMatchPointStatusForUI(betMatch, match, settings, true);
 }
 
 /**
@@ -967,25 +978,26 @@ export function getMissingExtrasBets() {
 }
 
 export function getMissingKnockoutQualifiers() {
+  const seenConfrontations = new Set();
   return STATE.matches
     .filter(m => isKnockoutMatchAvailableForBetting(m))
     .filter(m => {
+      const info = getKnockoutConfrontationInfo(m);
+      const isReturnLeg = getChampionshipRules()?.knockoutFormat === 'home_away' && info.index > 0;
       const id = Number(m.matchId);
       const rawId = String(m.matchId);
-      const missingWinner =
-        hasWinnerBet() &&
-        !STATE.betsMap.has(id) &&
-        !STATE.betsMap.has(rawId);
-
-      const missingQualifier =
-        hasQualifierBet(m) &&
-        !STATE.knockoutQualifiers.has(id) &&
-        !STATE.knockoutQualifiers.has(rawId);
-
+      const missingWinner = hasWinnerBet() && !STATE.betsMap.has(id) && !STATE.betsMap.has(rawId);
+      let missingQualifier = false;
+      if (hasQualifierBet(m) && !isReturnLeg) {
+        const key = String(info.first?.matchId ?? id);
+        if (!seenConfrontations.has(key)) {
+          seenConfrontations.add(key);
+          missingQualifier = !STATE.knockoutQualifiers.has(Number(key)) && !STATE.knockoutQualifiers.has(key);
+        }
+      }
       return missingWinner || missingQualifier;
     });
 }
-
 export function getKnockoutGroupByMatchId(matchId) {
   const m = STATE.matches.find(
     m => String(m.matchId) === String(matchId)
@@ -994,6 +1006,7 @@ export function getKnockoutGroupByMatchId(matchId) {
 }
 
 export function getMissingKnockoutDecisionsCount() {
+  const seenConfrontations = new Set();
   return STATE.matches
     .filter(m => isKnockoutMatchAvailableForBetting(m))
     .reduce((sum, m) => {
@@ -1001,22 +1014,20 @@ export function getMissingKnockoutDecisionsCount() {
       const rawId = String(m.matchId);
       let missing = 0;
 
-      if (hasWinnerBet() &&
-          !STATE.betsMap.has(id) &&
-          !STATE.betsMap.has(rawId)) {
-        missing++;
-      }
+      if (hasWinnerBet() && !STATE.betsMap.has(id) && !STATE.betsMap.has(rawId)) missing++;
 
-      if (hasQualifierBet(m) &&
-          !STATE.knockoutQualifiers.has(id) &&
-          !STATE.knockoutQualifiers.has(rawId)) {
-        missing++;
+      const info = getKnockoutConfrontationInfo(m);
+      const isReturnLeg = getChampionshipRules()?.knockoutFormat === 'home_away' && info.index > 0;
+      if (hasQualifierBet(m) && !isReturnLeg) {
+        const key = String(info.first?.matchId ?? id);
+        if (!seenConfrontations.has(key)) {
+          seenConfrontations.add(key);
+          if (!STATE.knockoutQualifiers.has(Number(key)) && !STATE.knockoutQualifiers.has(key)) missing++;
+        }
       }
-
       return sum + missing;
     }, 0);
 }
-
 export function markKnockoutGroupAsSaved(groupName) {
   STATE.savedKnockoutGroups.add(groupName);
 }
@@ -1068,16 +1079,24 @@ function getKnockoutGroupProgress(groupKey) {
 
   // 🆕 Respeita scoring rules: só conta decisões habilitadas pelo admin
   const totalDecisions = validGames.reduce((sum, m) => {
-    let needed = 0;
-    if (hasWinnerBet()) needed++;
-    if (hasQualifierBet(m)) needed++;
+    let needed = hasWinnerBet() ? 1 : 0;
+    const info = getKnockoutConfrontationInfo(m);
+    if (hasQualifierBet(m) && info.index === 0) needed++;
     return sum + needed;
   }, 0);
 
   let filledDecisions = 0;
+  const countedQualifierConfrontations = new Set();
   validGames.forEach(m => {
-    if (hasWinnerBet() && STATE.betsMap.has(m.matchId)) filledDecisions++;
-    if (hasQualifierBet(m) && STATE.knockoutQualifiers.has(m.matchId)) filledDecisions++;
+    if (hasWinnerBet() && (STATE.betsMap.has(Number(m.matchId)) || STATE.betsMap.has(String(m.matchId)))) filledDecisions++;
+    const info = getKnockoutConfrontationInfo(m);
+    if (hasQualifierBet(m) && info.index === 0) {
+      const key = String(info.first?.matchId ?? m.matchId);
+      if (!countedQualifierConfrontations.has(key)) {
+        countedQualifierConfrontations.add(key);
+        if (STATE.knockoutQualifiers.has(Number(key)) || STATE.knockoutQualifiers.has(key)) filledDecisions++;
+      }
+    }
   });
 
   const finished = validGames.filter(m => m.status === 'finished').length;
@@ -1227,7 +1246,11 @@ export function buildSavePayload() {
   // pois o backend espera groupMatches[matchId].qualifier
   STATE.betsMap.forEach((v, k) => {
     const score = STATE.scoresMap.get(k) || STATE.scoresMap.get(Number(k));
-    const qualifier = STATE.knockoutQualifiers.get(k) || STATE.knockoutQualifiers.get(Number(k)) || null;
+    const match = STATE.matches.find(m => Number(m.matchId) === Number(k));
+    const info = match ? getKnockoutConfrontationInfo(match) : { index: 0 };
+    const qualifier = info.index === 0
+      ? (STATE.knockoutQualifiers.get(k) || STATE.knockoutQualifiers.get(Number(k)) || null)
+      : null;
     const payloadWinner = winnerDerivesFromScore()
       ? deriveWinnerFromScoreData(score)
       : v;
@@ -1235,13 +1258,16 @@ export function buildSavePayload() {
       winner: payloadWinner,
       scoreA: score?.scoreA ?? null,
       scoreB: score?.scoreB ?? null,
-      qualifier: qualifier
+      ...(info.index === 0 ? { qualifier } : {})
     };
   });
 
   // 🆕 Também inclui matches de mata-mata que só têm qualifier (sem winner)
   STATE.knockoutQualifiers.forEach((v, k) => {
     const key = String(k);
+    const match = STATE.matches.find(m => Number(m.matchId) === Number(k));
+    const info = match ? getKnockoutConfrontationInfo(match) : { index: 0 };
+    if (info.index !== 0) return;
     if (!groupMatches[key]) {
       groupMatches[key] = {
         winner: null,
@@ -2418,7 +2444,7 @@ function renderMatches(openedGroups = []) {
         const scoreData = STATE.scoresMap.get(Number(mId)) || STATE.scoresMap.get(mId) || {};
 
         if (m.status === 'finished') {
-          const result = calculateScoringMatchPoints(
+          const result = calculateScoringMatchPointsForUI(
             {
               scoreA: scoreData.scoreA,
               scoreB: scoreData.scoreB,
@@ -2646,7 +2672,7 @@ function renderGroupCard(m) {
 
   if (m.status === 'finished') {
     const rules = getScoringRules();
-    const result = calculateScoringMatchPoints(
+    const result = calculateScoringMatchPointsForUI(
       {
         scoreA: scoreData.scoreA,
         scoreB: scoreData.scoreB,
@@ -2920,7 +2946,9 @@ function renderKnockoutMatches(openedGroups = []) {
         const mId = String(m.matchId);
         
         const choice = STATE.betsMap.get(mId) || STATE.betsMap.get(Number(mId));
-        const userQ = STATE.knockoutQualifiers.get(mId) || STATE.knockoutQualifiers.get(Number(mId));
+        const info = getKnockoutConfrontationInfo(m);
+        const isReturnLeg = getChampionshipRules()?.knockoutFormat === 'home_away' && info.index > 0;
+        const userQ = isReturnLeg ? null : (STATE.knockoutQualifiers.get(mId) || STATE.knockoutQualifiers.get(Number(mId)));
         const scoreData = STATE.scoresMap.get(Number(mId)) || STATE.scoresMap.get(mId) || {};
         
         // CÁLCULO DE CLASSIFICADO RESPEITANDO FLAG MANUAL DO ADMIN E SCORE DE REFERÊNCIA
@@ -2929,7 +2957,7 @@ function renderKnockoutMatches(openedGroups = []) {
         const res = m.status === 'finished' ? getMatchRefWinner(m) : null;
         
         if (m.status === 'finished') {
-            const result = calculateScoringMatchPoints(
+            const result = calculateScoringMatchPointsForUI(
               {
                 scoreA: scoreData.scoreA,
                 scoreB: scoreData.scoreB,
@@ -3026,16 +3054,138 @@ window.toggleKnockoutPendingFilter = (isPendingOnly) => {
   renderKnockoutMatches();
 };
 
+function getKnockoutConfrontationInfo(match) {
+  const rules = getChampionshipRules();
+  if (!match || rules?.knockoutFormat !== 'home_away') return { legs: [match], index: 0, first: match, second: null };
+  const a = String(match.teamA || '').trim().toLowerCase();
+  const b = String(match.teamB || '').trim().toLowerCase();
+  const stage = String(match.roundNumber ?? match.roundName ?? match.group ?? '').trim().toLowerCase();
+  const legs = STATE.matches.filter(candidate => {
+    if (!isKnockoutMatch(candidate)) return false;
+    const ca = String(candidate.teamA || '').trim().toLowerCase();
+    const cb = String(candidate.teamB || '').trim().toLowerCase();
+    const cs = String(candidate.roundNumber ?? candidate.roundName ?? candidate.group ?? '').trim().toLowerCase();
+    return cs === stage && ((ca === a && cb === b) || (ca === b && cb === a));
+  }).slice().sort((x, y) => (parseMatchDate(x)?.getTime() || 0) - (parseMatchDate(y)?.getTime() || 0) || Number(x.matchId) - Number(y.matchId));
+  const index = Math.max(0, legs.findIndex(x => Number(x.matchId) === Number(match.matchId)));
+  return { legs, index, first: legs[0] || match, second: legs[1] || null };
+}
+
+
+/**
+ * Contexto de pontuação do mata-mata para a UI.
+ * Em ida e volta, o classificado pertence ao confronto: só é avaliado
+ * na primeira perna e somente quando as duas pernas terminaram.
+ */
+function getKnockoutConfrontationPointContext(match, betMatch = {}, isPartial = false) {
+  if (!match || getChampionshipRules()?.knockoutFormat !== 'home_away' || !isKnockoutMatch(match)) {
+    return { match, betMatch };
+  }
+
+  const info = getKnockoutConfrontationInfo(match);
+  if (!info?.legs || info.legs.length < 2) return { match, betMatch };
+
+  const firstLegId = Number(info.first?.matchId);
+  const currentId = Number(match.matchId);
+  const complete = info.legs.length >= 2 && info.legs.every(leg => leg.status === 'finished');
+  const preparedBet = { ...(betMatch || {}) };
+
+  // A segunda perna apenas exibe o palpite da ida; nunca gera uma segunda
+  // pontuação de classificado.
+  if (currentId !== firstLegId) {
+    preparedBet.qualifier = null;
+    return { match, betMatch: preparedBet };
+  }
+
+  // Antes da volta terminar ainda não existe classificado oficial do confronto.
+  if (!complete) {
+    preparedBet.qualifier = null;
+    return { match, betMatch: preparedBet };
+  }
+
+  const realQualifier = resolveFrontendKnockoutConfrontationQualifier(match, info);
+  return {
+    match: { ...match, qualifiedSide: realQualifier },
+    betMatch: preparedBet
+  };
+}
+
+function resolveFrontendKnockoutConfrontationQualifier(match, info = null) {
+  const confrontation = info || getKnockoutConfrontationInfo(match);
+  const legs = confrontation?.legs || [];
+  if (legs.length < 2 || !legs.every(leg => leg.status === 'finished')) return null;
+
+  const teamA = String(match.teamA || '').trim().toLowerCase();
+  const teamB = String(match.teamB || '').trim().toLowerCase();
+  const totalFor = (team) => legs.reduce((sum, leg) => {
+    const home = String(leg.teamA || '').trim().toLowerCase() === team;
+    return sum + Number(home ? (leg.scoreA ?? 0) : (leg.scoreB ?? 0));
+  }, 0);
+
+  const totalA = totalFor(teamA);
+  const totalB = totalFor(teamB);
+  if (totalA !== totalB) return totalA > totalB ? 'A' : 'B';
+
+  const rules = getChampionshipRules();
+  if (rules.knockoutAwayGoals) {
+    const awayGoalsFor = (team) => legs.reduce((sum, leg) => {
+      const homeTeam = String(leg.teamA || '').trim().toLowerCase();
+      return sum + (homeTeam === team ? 0 : Number(leg.scoreB ?? 0));
+    }, 0);
+    const awayA = awayGoalsFor(teamA);
+    const awayB = awayGoalsFor(teamB);
+    if (awayA !== awayB) return awayA > awayB ? 'A' : 'B';
+  }
+
+  // Persistimos a regra final do backend: quando o agregado (e gol fora,
+  // se houver) empata, a decisão final da última partida vem de
+  // qualifiedSide, que pode ser definido automaticamente ou pelo Admin.
+  const last = legs[legs.length - 1];
+  const lastWinner = last?.qualifiedSide === 'A' || last?.qualifiedSide === 'B'
+    ? last.qualifiedSide
+    : null;
+  if (!lastWinner) return null;
+
+  const lastTeamA = String(last.teamA || '').trim().toLowerCase();
+  if (lastWinner === 'A') return lastTeamA === teamA ? 'A' : 'B';
+  return lastTeamA === teamA ? 'B' : 'A';
+}
+
+function calculateScoringMatchPointsForUI(betMatch, match, settings = {}, isPartial = false) {
+  const context = getKnockoutConfrontationPointContext(match, betMatch, isPartial);
+  return calculateScoringMatchPoints(context.betMatch, context.match, settings, isPartial);
+}
+
+function getMatchPointStatusForUI(betMatch, match, settings = {}, isPartial = false) {
+  const context = getKnockoutConfrontationPointContext(match, betMatch, isPartial);
+  return getFrontendMatchPointStatus(context.betMatch, context.match, settings, isPartial);
+}
+
+function getConfrontationQualifierBet(match) {
+  const info = getKnockoutConfrontationInfo(match);
+  const first = info.first || match;
+  const id = Number(first?.matchId);
+  const firstSide = STATE.knockoutQualifiers.get(id) || STATE.knockoutQualifiers.get(String(id)) || null;
+  if (!firstSide) return null;
+  const firstTeam = firstSide === 'A' ? first.teamA : first.teamB;
+  if (String(match.teamA || '').trim().toLowerCase() === String(firstTeam || '').trim().toLowerCase()) return 'A';
+  if (String(match.teamB || '').trim().toLowerCase() === String(firstTeam || '').trim().toLowerCase()) return 'B';
+  return null;
+}
+
 function renderKnockoutCard(m) {
   const mId = String(m.matchId);
   const idNum = Number(m.matchId);
   
   // Acesso seguro ao STATE e declaração antecipada das apostas/placares
   const storedChoice = STATE.betsMap ? (STATE.betsMap.get(mId) || STATE.betsMap.get(idNum)) : null;
-  const userQualifier = STATE.knockoutQualifiers ? (STATE.knockoutQualifiers.get(mId) || STATE.knockoutQualifiers.get(idNum)) : null;
+  const confrontationInfo = getKnockoutConfrontationInfo(m);
+  const isReturnLeg = getChampionshipRules()?.knockoutFormat === 'home_away' && confrontationInfo.index > 0;
+  const firstLegQualifier = getConfrontationQualifierBet(m);
+  const userQualifier = isReturnLeg ? firstLegQualifier : (STATE.knockoutQualifiers ? (STATE.knockoutQualifiers.get(mId) || STATE.knockoutQualifiers.get(idNum)) : null);
   const scoreData = STATE.scoresMap ? (STATE.scoresMap.get(idNum) || STATE.scoresMap.get(mId) || {}) : {};
   const choice = getDisplayWinner(storedChoice, scoreData);
-  const realQualifier = m.qualifiedSide; 
+  const realQualifier = getMatchRefQualifier(m); 
   
   // 🚀 LÓGICA DE EDIÇÃO E TRAVAMENTO DE FASES (Mata-mata)
   const isEditing = window.STATE?.editingMatches?.has(idNum);
@@ -3102,12 +3252,12 @@ function renderKnockoutCard(m) {
 
   if (m.status === 'finished') {
     const rules = getScoringRules();
-    const result = calculateScoringMatchPoints(
+    const result = calculateScoringMatchPointsForUI(
       {
         scoreA: scoreData.scoreA,
         scoreB: scoreData.scoreB,
         winner: choice,
-        qualifier: userQualifier
+        qualifier: isReturnLeg ? null : userQualifier
       },
       m,
       { scoringRules: rules },
@@ -3115,12 +3265,24 @@ function renderKnockoutCard(m) {
     );
     points = result.points;
 
-    const hitResult = result.breakdown.winner > 0;
-    const hitQualified = result.breakdown.qualifier > 0;
+    // A classificação visual deve seguir o mesmo motor de pontuação,
+    // inclusive quando o campeonato usa regras personalizadas.
+    // Não podemos inferir "acerto total" apenas por breakdown.winner,
+    // porque uma regra como "Placar exato = 10" preenche
+    // breakdown.matchRulePoints, e não breakdown.winner.
+    const pointStatus = getMatchPointStatusForUI(
+      {
+        scoreA: scoreData.scoreA,
+        scoreB: scoreData.scoreB,
+        winner: choice,
+        qualifier: isReturnLeg ? null : userQualifier
+      },
+      m,
+      { scoringRules: rules },
+      false
+    );
 
-    if (hitResult && hitQualified) statusClass = 'hit-full';
-    else if (points > 0) statusClass = 'hit-partial';
-    else statusClass = 'hit-none';
+    statusClass = `hit-${pointStatus.category}`;
   }
 
   const minutoFormatado = (isLive && m.minute && !isPenalties) 
@@ -3222,7 +3384,8 @@ const winnerLockedButtons =
 const qualifierLockedButtons =
   isLockedCard ||
   !canEdit ||
-  !hasQualifierBet(m);
+  !hasQualifierBet(m) ||
+  isReturnLeg;
 
   return `
     <div class="match-card ${statusClass}" 
@@ -3353,7 +3516,7 @@ const qualifierLockedButtons =
           <span class="qual-label">Classificado:</span>
           
           <div style="position: relative; display: inline-block;">
-              <select data-q="${m.matchId}" 
+              <select data-q="${m.matchId}" data-confrontation-first="${confrontationInfo.first?.matchId ?? m.matchId}" ${isReturnLeg ? 'disabled' : ''}
                       style="${qualifierLockedButtons ? 'pointer-events: none; opacity: 1; cursor: pointer;' : ''}" 
                       onclick="event.stopPropagation()">
                 <option value="">...</option>
@@ -3386,6 +3549,8 @@ function attachKnockoutEvents(wrap) {
 
       const rawId = sel.dataset.q;
       const idNum = Number(rawId);
+
+      if (sel.disabled || sel.dataset.confrontationFirst !== String(rawId)) return;
 
       if (sel.value) {
         STATE.knockoutQualifiers.set(idNum, sel.value);
@@ -4405,7 +4570,7 @@ async function fetchAndRenderBets(matchObj) {
 
                 let status;
                 try {
-                    status = getMatchPointStatus(
+                    status = getMatchPointStatusForUI(
                         betMatch,
                         matchObj,
                         modalSettings,
@@ -5333,7 +5498,11 @@ window.saveSingleBet = async function(matchId, event) {
 
   try {
     const choice = window.STATE.betsMap.get(idNum) || window.STATE.betsMap.get(String(matchId));
-    const qualifier = window.STATE.knockoutQualifiers.get(idNum) || window.STATE.knockoutQualifiers.get(String(matchId));
+    const match = window.STATE.matches?.find(m => Number(m.matchId) === idNum);
+    const info = match ? getKnockoutConfrontationInfo(match) : { index: 0 };
+    const qualifier = info.index === 0
+      ? (window.STATE.knockoutQualifiers.get(idNum) || window.STATE.knockoutQualifiers.get(String(matchId)))
+      : undefined;
     const scoreData = window.STATE.scoresMap.get(idNum) || window.STATE.scoresMap.get(String(matchId)) || { scoreA: null, scoreB: null };
     const leagueId = localStorage.getItem('selectedLeagueId');
 
@@ -5341,8 +5510,8 @@ window.saveSingleBet = async function(matchId, event) {
     const res = await api.post(`/api/bets/single`, { 
       leagueId, 
       matchId: idNum, 
-      winner: choice, 
-      qualifier,
+      winner: choice,
+      ...(qualifier !== undefined ? { qualifier } : {}),
       scoreA: scoreData.scoreA,
       scoreB: scoreData.scoreB
     });

@@ -1,3 +1,4 @@
+// FRONTEND_SCORING_VERSION: 1.18
 // frontendScoring.js
 // Espelha as regras de referência do services/pointsService.js.
 // O frontend usa este módulo apenas para exibição/simulações locais;
@@ -264,6 +265,135 @@ function evaluateMatchRuleCondition(
     default:
       return false;
   }
+}
+
+
+
+/**
+ * Retorna o contexto oficial de pontuação de um confronto mata-mata.
+ * Em ida/volta o classificado pertence ao confronto, não à partida.
+ * `allMatches` e `allBets` permitem que qualquer tela (Partidas, Meus
+ * Palpites e Todos os Palpites) use exatamente a mesma regra.
+ */
+export function getKnockoutConfrontationPointContext(betMatch, match, allMatches = [], allBets = [], settings = {}) {
+  const rules = getChampionshipRules(settings);
+  if (!match || rules?.knockoutFormat !== 'home_away' || !isKnockoutMatch(match)) {
+    return { match, betMatch, isReturnLeg: false, isConfrontationComplete: true, firstLeg: match, legs: [match] };
+  }
+
+  const matches = Array.isArray(allMatches) ? allMatches : [];
+  const teamA = String(match.teamA || '').trim().toLowerCase();
+  const teamB = String(match.teamB || '').trim().toLowerCase();
+  const stage = String(match.roundNumber ?? match.roundName ?? match.group ?? '').trim().toLowerCase();
+
+  const parseLegDate = value => {
+    const raw = String(value ?? '').trim();
+    if (/^\d{2}\/\d{2}\/\d{4}/.test(raw)) {
+      const [d, m, y] = raw.slice(0, 10).split('/').map(Number);
+      return new Date(y, m - 1, d).getTime();
+    }
+    const t = Date.parse(raw);
+    return Number.isFinite(t) ? t : 0;
+  };
+
+  const legs = matches.filter(candidate => {
+    if (!isKnockoutMatch(candidate)) return false;
+    const ca = String(candidate.teamA || '').trim().toLowerCase();
+    const cb = String(candidate.teamB || '').trim().toLowerCase();
+    const cs = String(candidate.roundNumber ?? candidate.roundName ?? candidate.group ?? '').trim().toLowerCase();
+    return cs === stage && ((ca === teamA && cb === teamB) || (ca === teamB && cb === teamA));
+  }).slice().sort((a, b) => {
+    const da = parseLegDate(a?.dateISO || a?.date);
+    const db = parseLegDate(b?.dateISO || b?.date);
+    return da - db || Number(a.matchId) - Number(b.matchId);
+  });
+
+  if (legs.length < 2) {
+    return { match, betMatch, isReturnLeg: false, isConfrontationComplete: false, firstLeg: legs[0] || match, legs };
+  }
+
+  const firstLeg = legs[0];
+  const isReturnLeg = Number(match.matchId) !== Number(firstLeg.matchId);
+  const complete = legs.slice(0, 2).every(leg => leg.status === 'finished');
+  const preparedBet = { ...(betMatch || {}) };
+
+  // Localiza o palpite da primeira partida para garantir que a pontuação
+  // do classificado continue vinculada à ida mesmo quando a tela está
+  // renderizando a volta.
+  const findBet = id => (Array.isArray(allBets) ? allBets.find(b => Number(b?.matchId) === Number(id)) : null);
+  const firstBet = findBet(firstLeg.matchId);
+  const firstQualifier = firstBet?.qualifier ?? firstBet?.qualifiedSide ?? null;
+
+  if (isReturnLeg) {
+    // A volta mostra o classificado escolhido na ida, mas jamais recebe
+    // pontos de classificado.
+    preparedBet.qualifier = null;
+    return {
+      match,
+      betMatch: preparedBet,
+      displayQualifier: firstQualifier,
+      isReturnLeg: true,
+      isConfrontationComplete: complete,
+      firstLeg,
+      secondLeg: legs[1],
+      legs: legs.slice(0, 2)
+    };
+  }
+
+  if (!complete) {
+    preparedBet.qualifier = null;
+    return {
+      match,
+      betMatch: preparedBet,
+      displayQualifier: firstQualifier ?? preparedBet.qualifier ?? null,
+      isReturnLeg: false,
+      isConfrontationComplete: false,
+      firstLeg,
+      secondLeg: legs[1],
+      legs: legs.slice(0, 2)
+    };
+  }
+
+  // O classificado real do confronto: agregado, gol fora (se habilitado)
+  // e, persistindo empate, qualifiedSide da última partida.
+  const totalFor = team => legs.slice(0, 2).reduce((sum, leg) => {
+    const home = String(leg.teamA || '').trim().toLowerCase() === team;
+    return sum + Number(home ? (leg.scoreA ?? 0) : (leg.scoreB ?? 0));
+  }, 0);
+  const totalA = totalFor(teamA);
+  const totalB = totalFor(teamB);
+  let realQualifier = totalA === totalB ? null : (totalA > totalB ? 'A' : 'B');
+
+  if (!realQualifier && rules.knockoutAwayGoals) {
+    const awayGoals = team => legs.slice(0, 2).reduce((sum, leg) => {
+      const home = String(leg.teamA || '').trim().toLowerCase();
+      return sum + (home === team ? 0 : Number(leg.scoreB ?? 0));
+    }, 0);
+    const awayA = awayGoals(teamA);
+    const awayB = awayGoals(teamB);
+    if (awayA !== awayB) realQualifier = awayA > awayB ? 'A' : 'B';
+  }
+
+  if (!realQualifier) {
+    const last = legs[1];
+    const q = last?.qualifiedSide === 'A' || last?.qualifiedSide === 'B' ? last.qualifiedSide : null;
+    if (q) {
+      const lastA = String(last.teamA || '').trim().toLowerCase();
+      realQualifier = q === 'A' ? (lastA === teamA ? 'A' : 'B') : (lastA === teamA ? 'B' : 'A');
+    }
+  }
+
+  preparedBet.qualifier = firstQualifier ?? preparedBet.qualifier ?? null;
+  return {
+    match: { ...match, qualifiedSide: realQualifier },
+    betMatch: preparedBet,
+    displayQualifier: preparedBet.qualifier,
+    isReturnLeg: false,
+    isConfrontationComplete: true,
+    firstLeg,
+    secondLeg: legs[1],
+    legs: legs.slice(0, 2)
+  };
 }
 
 export function calculateMatchPoints(betMatch, match, settings = {}, isPartial = false) {

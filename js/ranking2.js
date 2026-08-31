@@ -1,7 +1,7 @@
 import { api } from './api.js';
 import { toast } from './ui.js';
 import { initUserProfile } from './userProfile.js?v=1.06';
-import { renderTeamMedia } from './matches4.js?v=1.06';
+import { renderTeamMedia } from './matches4.js?v=1.13';
 
 /* =====================
     Helpers & State
