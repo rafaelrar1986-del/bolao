@@ -725,6 +725,11 @@ async function saveSingleBet(req, res) {
 
     const validQualifier = normalizeQualifier(qualifier);
 
+    // Carrega as configurações antes de qualquer regra que dependa delas.
+    // Isso é especialmente importante para testMode e para as travas de fase.
+    const configId = toLeagueId(leagueId);
+    const settings = await Settings.findById(configId).lean();
+
     const isKnockoutMatch =
       match.phase === 'knockout' ||
       match.phase === 'mata-mata';
@@ -754,9 +759,6 @@ async function saveSingleBet(req, res) {
     // ============================================================
     // 🛡️ SEGURANÇA 2: Trava de Fase/Grade
     // ============================================================
-    const configId = toLeagueId(leagueId);
-    const settings = await Settings.findById(configId).lean();
-
     const scoringRules = settings?.scoringRules || {};
     const scoresEnabled = scoresAreEnabled(scoringRules);
 
