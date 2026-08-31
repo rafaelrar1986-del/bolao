@@ -313,13 +313,23 @@ export function createMatchesGroupsRenderer(ctx = {}) {
     const isScheduled = m.status === 'scheduled' || m.status === 'agendado';
     const isPenalties = m.status === 'penaltis';
 
-    const canEdit = isMatchEditable(m);
+    const canEditByRule = isMatchEditable(m);
+    // Após o primeiro envio, uma aposta já salva fica em modo somente leitura
+    // até o usuário clicar em ✏️ Editar. Uma partida ainda sem aposta continua
+    // editável normalmente. O testMode não remove o botão Editar: ele apenas
+    // mantém a partida elegível para edição.
+    const hasSavedBet = Boolean(
+      storedChoice ||
+      scoreData.scoreA != null ||
+      scoreData.scoreB != null
+    );
+    const canEdit = canEditByRule && (!STATE.hasSubmitted || isEditing || !hasSavedBet);
 
     let actionBarHtml = '';
-    if (STATE.hasSubmitted && canEdit) {
+    if (STATE.hasSubmitted && hasSavedBet && canEditByRule) {
       if (isEditing) {
         actionBarHtml = `<div class="card-action-bar" style="display: flex; justify-content: flex-end; padding: 6px 8px 0 8px; margin-top: -31px;"><button class="btn-save-bet" onclick="window.saveSingleBet(${m.matchId}, event)" style="background: #2ecc71; color: white; border: none; padding: 4px 12px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2); display: flex; align-items: center; gap: 4px; z-index: 2; position: relative;">💾 Salvar</button></div>`;
-      } else if (isLockedCard) {
+      } else {
         actionBarHtml = `<div class="card-action-bar" style="display: flex; justify-content: flex-start; padding: 6px 8px 0 8px; margin-top: -31px;"><button class="btn-edit-bet" onclick="window.unlockMatchForEdit(${m.matchId}, event)" style="background: lightblue; color: #3498db; border: 1px solid #3498db; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px; z-index: 2; position: relative;">✏️ Editar</button></div>`;
       }
     }

@@ -71,8 +71,6 @@ export function createMatchesBetting(ctx = {}) {
   function isMatchStartedByStatus(match) {
       const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal } = ctx;
     if (!match) return false;
-    if (STATE.testMode === true) return false;
-
     const status = String(match.status || '').toLowerCase().trim();
 
     // Mantém exatamente a mesma convenção do betLockService.js.
@@ -84,8 +82,6 @@ export function createMatchesBetting(ctx = {}) {
 
   function isMatchStartedByTime(match, now = new Date()) {
       const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal } = ctx;
-    if (STATE.testMode === true) return false;
-
     const matchDate = parseMatchDate(match);
     if (!matchDate || isNaN(matchDate.getTime())) return false;
 
@@ -138,9 +134,8 @@ export function createMatchesBetting(ctx = {}) {
       const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, isMatchStartedByStatus, isMatchStartedByTime, isMatchAvailableForBetting } = ctx;
     if (!match) return false;
 
-    // 🧪 Modo de teste: permite editar qualquer partida, inclusive
-    // finalizada ou com horário passado, sem alterar seu status oficial.
-    if (STATE.testMode === true) return true;
+    // 🧪 testMode não cancela o bloqueio por início. Ele permite testar
+    // o fluxo sem depender do bloqueio global, mas respeita blockMode.
 
     // Mantém a mesma regra temporal do backend:
     // status não agendado (exceto cancelado/postergado) OU
@@ -152,7 +147,18 @@ export function createMatchesBetting(ctx = {}) {
       return false;
     }
 
+    // No modo por grade, o primeiro jogo iniciado bloqueia TODOS os jogos
+    // que pertencem à mesma grade. Essa verificação vem ANTES das regras
+    // de rodada para impedir que uma rodada ainda liberada continue editável.
     const lockMode = STATE.betLockMode || 'grade';
+    const gradeDaPartida = match.phaseName || match.group || 'Mata-mata';
+    const gradeJaIniciou = lockMode === 'grade' && STATE.matches.some(other =>
+      (other.phaseName || other.group || 'Mata-mata') === gradeDaPartida &&
+      (isMatchStartedByStatus(other) || isMatchStartedByTime(other, now))
+    );
+    if (gradeJaIniciou) return false;
+
+    const matchPhase = String(match.phase || '').toLowerCase();
 
     if (match.phase === 'group' && STATE.groupBetAvailabilityMode === 'round') {
       return isMatchAvailableForBetting(match);
@@ -162,10 +168,6 @@ export function createMatchesBetting(ctx = {}) {
     if (lockMode === 'match') {
       return true;
     }
-
-    // No modo por grade, a fase também precisa estar desbloqueada.
-    const gradeDaPartida = match.phaseName || match.group || 'Mata-mata';
-    const matchPhase = String(match.phase || '').toLowerCase();
     const isPointsRun =
       matchPhase === 'pontos_corridos' || matchPhase === 'points_run';
     if (isPointsRun && STATE.pointsRunBetAvailabilityMode === 'round') {

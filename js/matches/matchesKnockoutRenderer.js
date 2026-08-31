@@ -200,10 +200,20 @@ export function createMatchesKnockoutRenderer(ctx = {}) {
     const isPenalties = m.status === 'penaltis';
 
     // 🔒 Respeita o modo de bloqueio definido pelo admin.
-    const canEdit = !isLockedByRule;
+    const canEditByRule = !isLockedByRule;
+    const hasSavedBet = Boolean(
+      choice ||
+      userQualifier ||
+      scoreData.scoreA != null ||
+      scoreData.scoreB != null
+    );
+    // Após o primeiro envio, uma aposta salva fica em somente leitura até
+    // o clique em ✏️ Editar. Em testMode, a elegibilidade continua verdadeira
+    // e o botão Editar deve aparecer normalmente.
+    const canEdit = canEditByRule && (!STATE.hasSubmitted || isEditing || !hasSavedBet);
 
     let actionBarHtml = '';
-    if (STATE.hasSubmitted && canEdit) {
+    if (STATE.hasSubmitted && hasSavedBet && canEditByRule) {
       if (isEditing) {
         actionBarHtml = `
           <div class="card-action-bar" style="display: flex; justify-content: flex-end; padding: 6px 8px 0 8px; margin-top: -31px;">
@@ -213,7 +223,7 @@ export function createMatchesKnockoutRenderer(ctx = {}) {
             </button>
           </div>
         `;
-      } else if (isLockedCard) {
+      } else {
         actionBarHtml = `
           <div class="card-action-bar" style="display: flex; justify-content: flex-start; padding: 6px 8px 0 8px; margin-top: -31px;">
             <button class="btn-edit-bet" onclick="window.unlockMatchForEdit(${m.matchId}, event)" 
