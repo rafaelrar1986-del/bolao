@@ -936,7 +936,9 @@ async function getLeadershipPath(req, res) {
         settings,
         false,
         getBetLockState,
-        isViewingSelf
+        isViewingSelf,
+        new Date(),
+        matches
       ).locked;
       const targetPick = targetPicksMap.get(midStr);
 

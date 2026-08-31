@@ -67,7 +67,9 @@ router.get('/:userId', protect, async (req, res) => {
         settings,
         isAdmin,
         getBetLockState,
-        isOwner
+        isOwner,
+        new Date(),
+        matches
       );
       const locked = visibilityState.locked;
 

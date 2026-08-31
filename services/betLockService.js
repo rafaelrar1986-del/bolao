@@ -2,7 +2,9 @@
  * Centraliza as regras de bloqueio de apostas.
  *
  * Modos:
- * - grade: o início/encerramento da grade é controlado por lockedPhases.
+ * - grade: quando a primeira partida da grade inicia, a grade inteira fica bloqueada.
+ *   lockedPhases continua sendo a trava administrativa/persistida, mas a decisão
+ *   também detecta o início real de qualquer partida da mesma grade.
  * - match: cada partida é bloqueada pelo próprio status/horário.
  *
  * blockSaveBets continua sendo uma trava global separada e não pertence a este service.
@@ -138,17 +140,7 @@ function isGradeLocked(match, settings) {
 /**
  * Retorna o motivo do bloqueio sem aplicar blockSaveBets.
  */
-function getBetLockState(match, settings, now = new Date()) {
-  // 🧪 Modo de teste: permite apostar inclusive em partidas finalizadas,
-  // sem alterar o status oficial da partida.
-  if (settings?.testMode === true) {
-    return {
-      mode: 'test',
-      locked: false,
-      reason: null
-    };
-  }
-
+function getBetLockState(match, settings, now = new Date(), allMatches = []) {
   const mode = getBetLockMode(settings);
   const started = isMatchStarted(match, now);
 
@@ -166,20 +158,31 @@ function getBetLockState(match, settings, now = new Date()) {
   }
 
   const gradeLocked = isGradeLocked(match, settings);
+  const grade = getMatchGrade(match);
+
+  // No modo grade, o primeiro jogo que iniciar fecha a grade inteira.
+  // Se allMatches não foi fornecido, mantemos a trava persistida/da própria partida.
+  const gradeStarted = mode === 'grade' && Array.isArray(allMatches) && grade
+    ? allMatches.some(other =>
+        getMatchGrade(other) === grade && isMatchStarted(other, now)
+      )
+    : false;
 
   return {
     mode,
-    locked: gradeLocked || started,
+    locked: gradeLocked || gradeStarted || started,
     reason: gradeLocked
       ? 'grade_locked'
-      : started
-        ? 'match_started'
-        : null
+      : gradeStarted
+        ? 'grade_started'
+        : (mode === 'match' && started)
+          ? 'match_started'
+          : null
   };
 }
 
-function isBetLocked(match, settings, now = new Date()) {
-  return getBetLockState(match, settings, now).locked;
+function isBetLocked(match, settings, now = new Date(), allMatches = []) {
+  return getBetLockState(match, settings, now, allMatches).locked;
 }
 
 module.exports = {

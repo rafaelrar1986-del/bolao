@@ -350,19 +350,33 @@ async function saveBets(req, res) {
       }
     }
 
-    // 🆕 CORREÇÃO CRÍTICA: Verifica se alguma partida enviada já começou
+    // 🛡️ AUTORIDADE ÚNICA DE BLOQUEIO
+    // Usa exatamente a mesma regra do frontend/backend de visibilidade.
+    // No modo 'grade', o início de QUALQUER partida da grade bloqueia
+    // todas as demais partidas daquela grade, inclusive em testMode.
     const checkNow = new Date();
     for (const matchId of matchIdsEnviados) {
       const matchData = matchMap.get(Number(matchId));
-      if (
-        settings?.testMode !== true &&
-        matchData &&
-        isMatchStarted(matchData, checkNow) &&
-        !matchesReenvioPermitido.has(Number(matchId))
-      ) {
+      if (!matchData) continue;
+
+      const lockState = getBetLockState(
+        matchData,
+        settings,
+        checkNow,
+        dbMatches
+      );
+
+      if (lockState.locked && !matchesReenvioPermitido.has(Number(matchId))) {
+        const gradeDaPartida = getMatchGrade(matchData);
+        const isGradeLock =
+          lockState.reason === 'grade_locked' ||
+          lockState.reason === 'grade_started';
+
         return res.status(403).json({
           success: false,
-          message: `Aposta bloqueada: Partida ${matchData.teamA} x ${matchData.teamB} já foi iniciada ou encerrada.`
+          message: isGradeLock
+            ? `As apostas para a fase "${gradeDaPartida}" foram encerradas!`
+            : `Aposta bloqueada: Partida ${matchData.teamA} x ${matchData.teamB} já foi iniciada ou encerrada.`
         });
       }
     }
@@ -799,10 +813,10 @@ async function saveSingleBet(req, res) {
 
     const gradeDaPartida = getMatchGrade(match);
     const betLockMode = getBetLockMode(settings);
-    const betLockState = getBetLockState(match, settings, now);
+    const betLockState = getBetLockState(match, settings, now, dbMatches);
 
     if (betLockState.locked) {
-      const message = betLockState.reason === 'grade_locked'
+      const message = (betLockState.reason === 'grade_locked' || betLockState.reason === 'grade_started')
         ? `As apostas para a fase "${gradeDaPartida}" foram encerradas pelo Administrador!`
         : `Aposta bloqueada: a partida ${match.teamA} x ${match.teamB} já foi iniciada ou encerrada.`;
 

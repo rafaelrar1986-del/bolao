@@ -14,8 +14,21 @@
  * aposta NÃO significa revelar os palpites existentes nela.
  */
 
-function getVisibilityLockState(match, settings, isAdmin = false, getBetLockState, isOwner = false, now = new Date()) {
+function getVisibilityLockState(match, settings, isAdmin = false, getBetLockState, isOwner = false, now = new Date(), allMatches = []) {
   if (isAdmin || isOwner) {
+    return {
+      locked: false,
+      reason: null,
+      editable: false,
+      visible: true
+    };
+  }
+
+  // A trava global de salvamento torna a aposta não editável para
+  // participantes comuns; portanto os palpites podem ser revelados.
+  // No testMode essa trava global é deliberadamente ignorada pelo fluxo
+  // de salvamento, então a privacidade continua seguindo a edição real.
+  if (settings?.blockSaveBets === true && settings?.testMode !== true) {
     return {
       locked: false,
       reason: null,
@@ -33,18 +46,6 @@ function getVisibilityLockState(match, settings, isAdmin = false, getBetLockStat
     };
   }
 
-  // A trava global de salvamento também encerra a capacidade de edição.
-  // O endpoint de save a aplica antes da validação da partida. Em testMode
-  // essa trava é deliberadamente ignorada, portanto não altera a privacidade.
-  if (settings?.blockSaveBets === true && settings?.testMode !== true) {
-    return {
-      locked: false,
-      reason: null,
-      editable: false,
-      visible: true
-    };
-  }
-
   if (typeof getBetLockState !== 'function') {
     // Fail closed: sem a autoridade de lock, nunca revelamos a aposta.
     return {
@@ -55,7 +56,7 @@ function getVisibilityLockState(match, settings, isAdmin = false, getBetLockStat
     };
   }
 
-  const state = getBetLockState(match, settings, now);
+  const state = getBetLockState(match, settings, now, allMatches);
   const editable = state?.locked !== true;
 
   return {

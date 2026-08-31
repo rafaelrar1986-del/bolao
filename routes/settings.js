@@ -487,7 +487,19 @@ router.post('/global', protect, admin, async (req, res) => {
 
     /*
      * Regras de pontuação
+     *
+     * IMPORTANTE: estas flags precisam representar a configuração
+     * efetiva do campeonato (estado atual + alterações deste request).
+     * Antes, a validação abaixo usava hasGroupPhase/hasKnockoutPhase
+     * sem declaração, causando ReferenceError ao salvar a pontuação.
      */
+    const effectiveChampionshipRules = {
+      ...(currentSettingsForRules?.championshipRules || {}),
+      ...(lockUpdates.championshipRules || {})
+    };
+    const hasGroupPhase = effectiveChampionshipRules.hasGroupPhase !== false;
+    const hasKnockoutPhase = effectiveChampionshipRules.hasKnockoutPhase === true;
+
     if (
       req.body.scoringRules &&
       typeof req.body.scoringRules === 'object'

@@ -74,6 +74,8 @@ async function getAllBets(req, res) {
     const betLockMode =
       getBetLockMode(settings);
 
+    const allMatchesForLeague = await Match.find({ leagueId: toLeagueId(leagueId) }).lean();
+
     // ============================================================
     // FILTRO DE PARTIDAS
     // ============================================================
@@ -213,7 +215,9 @@ async function getAllBets(req, res) {
               settings,
               isAdmin,
               getBetLockState,
-              isOwner
+              isOwner,
+              new Date(),
+              allMatchesForLeague
             );
 
           const isLocked =
