@@ -224,7 +224,7 @@ export function createMatchesModal(ctx = {}) {
   }
 
   async function fetchAndRenderBets(matchObj) {
-      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, getMatchRefScore, getMatchRefWinner, getMatchRefQualifier, getLiveRefScore, getLiveRefWinner, getLiveRefQualifier, renderTimelineHTML } = ctx;
+      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, getMatchRefScore, getMatchRefWinner, getMatchRefQualifier, getLiveRefScore, getMatchPointStatusForUI, getLiveRefWinner, getLiveRefQualifier, renderTimelineHTML } = ctx;
       try {
           const leagueId = localStorage.getItem('selectedLeagueId') || '1';
           const matchIdStr = String(matchObj.matchId);
