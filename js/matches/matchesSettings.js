@@ -189,7 +189,7 @@ export function createMatchesSettings(ctx = {}) {
         return isKO && (m.group || 'Mata-mata') === groupName;
       });
 
-      const decisionsEnabled = hasWinnerBet() || hasQualifierBet(m);
+      const decisionsEnabled = hasWinnerBet() || gamesInGroup.some(game => hasQualifierBet(game));
 
       const allDecisionsFilled = decisionsEnabled && gamesInGroup.every(m => {
         const winnerFilled =

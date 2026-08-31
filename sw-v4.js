@@ -1,4 +1,4 @@
-const CACHE_NAME = "bolao-k-bwalya-v30";
+const CACHE_NAME = "bolao-k-bwalya-refactor-full-v2";
 
 const APP_SHELL = [
   "./",
@@ -12,6 +12,22 @@ const APP_SHELL = [
   "./js/config.js",
   "./js/ui.js",
   "./js/matches4.js",
+  "./js/matches/matchesRules.js",
+  "./js/matches/matchesVisuals.js",
+  "./js/matches/matchesUtilsState.js",
+  "./js/matches/matchesScoring.js",
+  "./js/matches/matchesBetting.js",
+  "./js/matches/matchesProgress.js",
+  "./js/matches/matchesDraft.js",
+  "./js/matches/matchesSettings.js",
+  "./js/matches/matchesGroupPrediction.js",
+  "./js/matches/matchesGroupsRenderer.js",
+  "./js/matches/matchesKnockoutRenderer.js",
+  "./js/matches/matchesPodiumExtras.js",
+  "./js/matches/matchesModal.js",
+  "./js/matches/matchesController.js",
+  "./js/matches/matchesUtils.js",
+  "./js/matches/matchesConfrontation.js",
   "./js/ranking2.js",
   "./js/newsTicker.js",
   "./js/newsWall.js",

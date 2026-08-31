@@ -382,7 +382,7 @@ export function createMatchesScoring(ctx = {}) {
   }
 
   function getMatchRefQualifier(match) {
-      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, getChampionshipRules } = ctx;
+      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, getChampionshipRules, getKnockoutConfrontationInfo, resolveFrontendKnockoutConfrontationQualifier } = ctx;
     if (!match || match.status !== 'finished') return null;
 
     const rules = getChampionshipRules();

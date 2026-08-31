@@ -3,13 +3,22 @@ export function createMatchesModal(ctx = {}) {
   const get = (name) => ctx[name];
 
   function prepareMatchForRender(match) {
-      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal } = ctx;
+      const {
+          STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier,
+          getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints,
+          withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel,
+          resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal,
+          checkUserStatusAtScore, calculateDiff
+      } = ctx;
       const currentUserId = window.currentUser?._id || window.currentUser?.id;
 
-      if (match.goalsDetail) {
+      // Compatibilidade segura com o helper legado. Essas funções não fazem parte
+      // do fluxo atual do modal; se algum consumidor externo fornecer os helpers,
+      // preservamos o comportamento antigo. Caso contrário, não lançamos ReferenceError.
+      if (match.goalsDetail && typeof checkUserStatusAtScore === 'function' && typeof calculateDiff === 'function') {
           match.goalsDetail.forEach(event => {
               if (event.type === 'goal' || !event.type) {
-                  event.userStatusAtThisMoment = checkUserStatusAtScore(match, event.scoreAtTime); 
+                  event.userStatusAtThisMoment = checkUserStatusAtScore(match, event.scoreAtTime);
                   event.diffFull = calculateDiff(match, 'full');
                   event.diffPartial = calculateDiff(match, 'partial');
                   event.diffWrong = calculateDiff(match, 'wrong');

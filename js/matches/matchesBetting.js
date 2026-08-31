@@ -205,7 +205,7 @@ export function createMatchesBetting(ctx = {}) {
   }
 
   function getMissingKnockoutQualifiers() {
-      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, hasWinnerBet, hasQualifierBet, getChampionshipRules, isKnockoutMatchAvailableForBetting } = ctx;
+      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, hasWinnerBet, hasQualifierBet, getChampionshipRules, isKnockoutMatchAvailableForBetting, getKnockoutConfrontationInfo } = ctx;
     const seenConfrontations = new Set();
     return STATE.matches
       .filter(m => isKnockoutMatchAvailableForBetting(m))
@@ -236,7 +236,7 @@ export function createMatchesBetting(ctx = {}) {
   }
 
   function getMissingKnockoutDecisionsCount() {
-      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, hasWinnerBet, hasQualifierBet, getChampionshipRules, isKnockoutMatchAvailableForBetting } = ctx;
+      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, hasWinnerBet, hasQualifierBet, getChampionshipRules, isKnockoutMatchAvailableForBetting, getKnockoutConfrontationInfo } = ctx;
     const seenConfrontations = new Set();
     return STATE.matches
       .filter(m => isKnockoutMatchAvailableForBetting(m))

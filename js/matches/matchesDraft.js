@@ -112,7 +112,7 @@ export function createMatchesDraft(ctx = {}) {
   }
 
   function buildSavePayload() {
-      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, winnerDerivesFromScore, deriveWinnerFromScoreData, hasPodium, hasTopScorer, hasBestAttack, hasWorstDefense, hasUpset, getPodiumPositions, getGroupTeams, calculatePredictedGroupStandings, getSavedGroupPrediction } = ctx;
+      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, winnerDerivesFromScore, deriveWinnerFromScoreData, hasPodium, hasTopScorer, hasBestAttack, hasWorstDefense, hasUpset, getPodiumPositions, getGroupTeams, calculatePredictedGroupStandings, getSavedGroupPrediction, getKnockoutConfrontationInfo } = ctx;
     const leagueId = localStorage.getItem('selectedLeagueId');
     const groupMatches = {};
 

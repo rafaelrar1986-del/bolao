@@ -36,7 +36,7 @@ export function createMatchesProgress(ctx = {}) {
   }
 
   function getKnockoutGroupProgress(groupKey) {
-      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, hasWinnerBet, hasQualifierBet, isKnockoutMatchAvailableForBetting, formatDateBR } = ctx;
+      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, hasWinnerBet, hasQualifierBet, isKnockoutMatchAvailableForBetting, formatDateBR, getKnockoutConfrontationInfo } = ctx;
     const games = STATE.matches.filter(m => {
       if (!isKnockoutMatch(m)) return false;
       if (!isKnockoutMatchAvailableForBetting(m)) return false;

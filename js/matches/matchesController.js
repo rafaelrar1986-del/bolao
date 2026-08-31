@@ -429,7 +429,7 @@ export function createMatchesController(ctx = {}) {
   }
 
   function unlockMatchForEdit(matchId, event) {
-      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, renderMatches, renderKnockoutMatches } = ctx;
+      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, renderMatches, renderKnockoutMatches, getKnockoutConfrontationInfo } = ctx;
     if (event) event.stopPropagation();
     
     const idNum = Number(matchId);
@@ -456,7 +456,7 @@ export function createMatchesController(ctx = {}) {
   };
 
   async function saveSingleBet(matchId, event) {
-      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, renderMatches, renderKnockoutMatches } = ctx;
+      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, renderMatches, renderKnockoutMatches, getKnockoutConfrontationInfo } = ctx;
     if (event) event.stopPropagation();
     
     const idNum = Number(matchId);

@@ -3,7 +3,7 @@ export function createMatchesKnockoutRenderer(ctx = {}) {
   const get = (name) => ctx[name];
 
   function renderKnockoutMatches(openedGroups = []) {
-      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, getScoringRules, getChampionshipRules, getMatchRefScore, getMatchRefWinner, getMatchRefQualifier, calcLivePoints, getKnockoutGroupProgress, renderKnockoutFilterHeader, renderKnockoutCard, attachKnockoutEvents } = ctx;
+      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, getScoringRules, getChampionshipRules, getMatchRefScore, getMatchRefWinner, getMatchRefQualifier, calcLivePoints, getKnockoutGroupProgress, renderKnockoutFilterHeader, renderKnockoutCard, attachKnockoutEvents, getKnockoutConfrontationInfo } = ctx;
     const wrap = document.getElementById('knockout-container');
     if (!wrap) return;
 
@@ -175,7 +175,7 @@ export function createMatchesKnockoutRenderer(ctx = {}) {
   }
 
   function renderKnockoutCard(m) {
-      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, getScoringRules, hasScoreInput, winnerDerivesFromScore, getDisplayWinner, getPredictionScoreInputStyle, hasWinnerBet, hasQualifierBet, getChampionshipRules, generateShotmapDots, getMatchRefScore, getMatchRefWinner, getMatchRefQualifier, calcLivePoints, isMatchEditable } = ctx;
+      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, getScoringRules, hasScoreInput, winnerDerivesFromScore, getDisplayWinner, getPredictionScoreInputStyle, hasWinnerBet, hasQualifierBet, getChampionshipRules, generateShotmapDots, getMatchRefScore, getMatchRefWinner, getMatchRefQualifier, calcLivePoints, isMatchEditable, getKnockoutConfrontationInfo, getConfrontationQualifierBet } = ctx;
     const mId = String(m.matchId);
     const idNum = Number(m.matchId);
     
