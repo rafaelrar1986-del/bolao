@@ -372,6 +372,10 @@ export function createMatchesModal(ctx = {}) {
                       : (user?.bets || user?.bet || null);
                   if (!ub) return;
 
+                  // A API já decidiu a privacidade por aposta. Nunca rederive
+                  // isso com unlockedPhases no frontend.
+                  if (ub.isLocked === true) return;
+
                   const betMatch = {
                       scoreA: ub.scoreA,
                       scoreB: ub.scoreB,
@@ -440,21 +444,17 @@ export function createMatchesModal(ctx = {}) {
                   matchObj.phase === 'group' &&
                   STATE.groupBetAvailabilityMode === 'round';
 
-              const isVisibleByAdmin = isGroupRoundMode
-                  ? (
-                      Number.isInteger(Number(matchObj.roundNumber)) &&
-                      STATE.unlockedGroupRounds.has(Number(matchObj.roundNumber)) &&
-                      !STATE.lockedGroupRounds.has(Number(matchObj.roundNumber))
-                    )
-                  : (
-                      isKnockout
-                          ? unlockedPhases.includes(matchObj.group)
-                          : (unlockedPhases.includes('group') ||
-                             unlockedPhases.includes(matchObj.group) ||
-                             unlockedPhases.includes(matchObj.phaseName))
-                    );
+              // A privacidade não é mais calculada por unlockedPhases.
+              // O backend devolve isLocked por aposta. Para esta modalidade
+              // de exibição, basta procurar algum palpite não mascarado.
+              const hasVisibleThirdPartyBet = allBets.some(user => {
+                  const ub = Array.isArray(user?.bets)
+                      ? user.bets[0]
+                      : (user?.bets || user?.bet || null);
+                  return ub && ub.isLocked !== true;
+              });
 
-              if (!isVisibleByAdmin) {
+              if (!hasVisibleThirdPartyBet) {
                   htmlResult = `<div class="bet-locked"><div style="font-size:2rem;">🔒</div>Palpites Ocultos.</div>`;
               } else {
                   const torcida = { home: [], draw: [], away: [] };
