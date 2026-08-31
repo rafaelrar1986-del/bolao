@@ -49,6 +49,28 @@ export function getChampionshipRules(settings = {}) {
 }
 
 function scoresAreEnabled(rules = {}) {
+  // Quando matchRules existe, inclusive vazio, somente uma categoria
+  // configurada com pontos > 0 pode exigir placar.
+  if (Array.isArray(rules.matchRules)) {
+    const scoreConditions = new Set([
+      'exactScore',
+      'scoreTeamA',
+      'scoreTeamB',
+      'scoreWinner',
+      'scoreLoser',
+      'totalGoals',
+      'goalDifference'
+    ]);
+
+    return rules.matchRules.some(rule =>
+      Number(rule?.points) > 0 &&
+      Array.isArray(rule?.conditions) &&
+      rule.conditions.some(condition => scoreConditions.has(condition))
+    );
+  }
+
+  // Compatibilidade com configurações antigas que ainda não possuem
+  // matchRules.
   return (Number(rules.exactScore) || 0) > 0 ||
     (Number(rules.scoreTeamA) || 0) > 0 ||
     (Number(rules.scoreTeamB) || 0) > 0;

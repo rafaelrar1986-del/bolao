@@ -43,6 +43,7 @@ export function createMatchesScoring(ctx = {}) {
     ]);
 
     return getCustomMatchRules().some(rule =>
+      Number(rule?.points) > 0 &&
       Array.isArray(rule?.conditions) &&
       rule.conditions.some(condition => scoreConditions.has(condition))
     );
@@ -50,7 +51,14 @@ export function createMatchesScoring(ctx = {}) {
 
   function hasScoreInput() {
       const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, getScoringRules, hasCustomMatchRules, customRulesNeedScoreInput } = ctx;
-    if (hasCustomMatchRules()) return customRulesNeedScoreInput();
+    // O novo construtor de regras é a fonte de verdade sempre que
+    // matchRules existir (inclusive quando estiver vazio).
+    // Os campos legados exactScore/scoreTeamA/scoreTeamB não podem fazer
+    // o campo de placar reaparecer quando o ADM não configurou nenhuma
+    // categoria que pontua pelo placar.
+    if (Array.isArray(getScoringRules().matchRules)) {
+      return customRulesNeedScoreInput();
+    }
 
     const r = getScoringRules();
     return (r.exactScore > 0 || r.scoreTeamA > 0 || r.scoreTeamB > 0);
