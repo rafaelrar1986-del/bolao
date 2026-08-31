@@ -2,7 +2,7 @@
 import { api } from "./api.js";
 import { flagEmoji } from "./flags.js";
 import { $, toast } from "./ui.js";
-import { renderTeamMedia } from "./matches4.js?v=1.13";
+import { renderTeamMedia } from "./matches/matchesUtils.js";
 
 let STATS = {
     matches: [],

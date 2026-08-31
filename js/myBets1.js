@@ -2,7 +2,7 @@
 import { api } from './api.js';
 import { toast } from './ui.js';
 import { flagEmoji } from './flags.js';
-import { calculateMatchPoints as calculateScoringMatchPoints, getScoringRules as getFrontendScoringRules, getKnockoutConfrontationPointContext } from './frontendScoring.js?v=1.18';
+import { calculateMatchPoints as calculateScoringMatchPoints, getScoringRules as getFrontendScoringRules, getKnockoutConfrontationPointContext } from './frontendScoring.js?v=1.19';
 
 let renderTeamMedia = (teamName, logoUrl) => {
   const emoji = flagEmoji(teamName) || '';
