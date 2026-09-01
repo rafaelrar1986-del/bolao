@@ -67,39 +67,10 @@ async function getLeadershipPath(req, res) {
     const champResults = settings.championshipResults || {};
     const officialPodium = settings.podium || [];
     const podiumSize = champRules.podiumSize ?? 4;
+    // Zona de premiação dos participantes (não confundir com podiumSize,
+    // que define exclusivamente o pódio dos times).
+    const prizeZonePositions = Math.max(0, Number(settings.prizeZone?.positions || 0));
     const podiumPointsArr = scoringRules.podiumPoints || [];
-
-    // Indica se as regras configuradas atribuem pontos a algum campo
-    // relacionado ao placar. A Estratégia usa esta informação para decidir
-    // se deve exibir o placar do palpite, evitando inferir isso apenas pela
-    // existência de scoreA/scoreB no documento da aposta.
-    const matchRules = Array.isArray(scoringRules.matchRules) ? scoringRules.matchRules : [];
-    const scoreRuleConditions = new Set([
-      'exactScore',
-      'scoreTeamA',
-      'scoreTeamB',
-      'scoreWinner',
-      'scoreLoser',
-      'totalGoals',
-      'goalDifference'
-    ]);
-    const scoreRulePoints = matchRules.reduce((max, rule) => {
-      const points = Number(rule?.points || 0);
-      const hasScoreCondition = Array.isArray(rule?.conditions) &&
-        rule.conditions.some(condition => scoreRuleConditions.has(condition));
-      return hasScoreCondition && Number.isFinite(points) && points > 0
-        ? Math.max(max, points)
-        : max;
-    }, 0);
-    const legacyScorePoints = Math.max(
-      Number(scoringRules.exactScore || 0),
-      Number(scoringRules.scoreTeamA || 0),
-      Number(scoringRules.scoreTeamB || 0)
-    );
-    const scoreScoring = {
-      enabled: scoreRulePoints > 0 || legacyScorePoints > 0,
-      points: Math.max(scoreRulePoints, legacyScorePoints)
-    };
     // Teto máximo de pontuação por partida.
     // O leadership-path usa esse valor nos ghost points e nas margens de
     // perigo. Como o teto máximo possível precisa contemplar também a
@@ -119,37 +90,24 @@ async function getLeadershipPath(req, res) {
           const midStr = String(m.matchId);
           const simData = parsedSimulations[midStr];
           if (simData && m.status !== 'finished') {
-            let winner = simData.winner?.toLowerCase();
+            const winner = simData.winner?.toLowerCase();
             const qualifier = simData.qualifier?.toUpperCase();
-            const hasScoreA = Number.isInteger(simData.scoreA) && simData.scoreA >= 0;
-            const hasScoreB = Number.isInteger(simData.scoreB) && simData.scoreB >= 0;
 
-            // Um placar preenchido também constitui uma simulação. Quando o
-            // vencedor não foi escolhido manualmente, ele é derivado do placar.
-            if (!winner && hasScoreA && hasScoreB) {
-              winner = simData.scoreA > simData.scoreB ? 'a' : (simData.scoreB > simData.scoreA ? 'b' : 'draw');
-            }
-
-            if (winner || qualifier || hasScoreA || hasScoreB) {
+            if (winner || qualifier) {
               m.isSimulated = true;
               if (winner === 'a') {
-                m.scoreA = hasScoreA ? simData.scoreA : 2;
-                m.scoreB = hasScoreB ? simData.scoreB : 0;
+                m.scoreA = simData.scoreA ?? 2;
+                m.scoreB = simData.scoreB ?? 0;
               } else if (winner === 'b') {
-                m.scoreA = hasScoreA ? simData.scoreA : 0;
-                m.scoreB = hasScoreB ? simData.scoreB : 2;
+                m.scoreA = simData.scoreA ?? 0;
+                m.scoreB = simData.scoreB ?? 2;
               } else if (winner === 'draw') {
-                m.scoreA = hasScoreA ? simData.scoreA : 1;
-                m.scoreB = hasScoreB ? simData.scoreB : 1;
-              } else {
-                m.scoreA = hasScoreA ? simData.scoreA : null;
-                m.scoreB = hasScoreB ? simData.scoreB : null;
+                m.scoreA = simData.scoreA ?? 1;
+                m.scoreB = simData.scoreB ?? 1;
               }
 
-              if (m.scoreA != null && m.scoreB != null) {
-                if (m.regularTimeScoreA == null) m.regularTimeScoreA = m.scoreA;
-                if (m.regularTimeScoreB == null) m.regularTimeScoreB = m.scoreB;
-              }
+              if (m.regularTimeScoreA == null) m.regularTimeScoreA = m.scoreA;
+              if (m.regularTimeScoreB == null) m.regularTimeScoreB = m.scoreB;
 
               if (qualifier === 'A') m.qualifiedSide = 'A';
               if (qualifier === 'B') m.qualifiedSide = 'B';
@@ -863,11 +821,15 @@ async function getLeadershipPath(req, res) {
 
     const targetMinPosition = usersBeatingTargetInWorstCase + 1;
 
+    // Status matemático dos participantes é determinado pela ZONA DE PREMIAÇÃO.
+    // podiumSize pertence ao pódio dos times e não deve ser usado aqui.
     let statusBadge = 'IN_CONTENTION';
-    if (targetMinPosition <= 2) {
-      statusBadge = 'GUARANTEED_PODIUM';
-    } else if (targetMaxPosition > 2) {
-      statusBadge = 'ELIMINATED';
+    if (prizeZonePositions > 0) {
+      if (targetMinPosition <= prizeZonePositions) {
+        statusBadge = 'GUARANTEED_PRIZE_ZONE';
+      } else if (targetMaxPosition > prizeZonePositions) {
+        statusBadge = 'ELIMINATED';
+      }
     }
 
     // ---------- PONTOS EM DISPUTA ----------
@@ -1095,12 +1057,6 @@ async function getLeadershipPath(req, res) {
         status: m.status,
         phase: m.phase,
         group: m.group,
-        // A Estratégia precisa saber se o placar é um campo pontuável.
-        // Isso é derivado das mesmas regras usadas por pointsService.
-        scoreScoring,
-        // Quando ativo, o resultado/vencedor não é um palpite independente:
-        // ele é derivado exclusivamente do placar informado pelo participante.
-        winnerFromScore: champRules.winnerFromScore !== false,
         hasImpact,
         isMiracleResult,
         isCriticalForMiracle: miracleData ? !!miracleData.isCritical : false,
@@ -1138,6 +1094,8 @@ async function getLeadershipPath(req, res) {
           maxPosition: targetMaxPosition,
           minPosition: targetMinPosition,
           statusBadge,
+          prizeZonePositions,
+          prizeZone: settings.prizeZone || { positions: 0, totalAmount: 0, distribution: [] },
           probability,
           currentPoints: targetPoints,
           maxPoints: targetMaxTotal,
