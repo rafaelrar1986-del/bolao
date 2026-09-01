@@ -286,6 +286,7 @@ window.showMathExplanation = function() {
 function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
     const { summary, matches } = data;
     window.__LAST_SIMULATED_RANKING__ = summary.simulatedRanking || [];
+    window.__LAST_LEADERSHIP_MATCHES__ = res.data.matches || [];
     
     // Filtra e ORDENA cronologicamente os cards de secagem
     const impactMatches = matches ? matches.filter(m => m.hasImpact).sort((a, b) => {
@@ -481,6 +482,7 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
                         const teamB = teamsArray[1]?.trim() || 'Time B';
 
                         const currentSim = simulatedResults[mId] || {};
+                        const winnerFromScore = m.winnerFromScore === true;
                         let chosenWinner = currentSim.winner;
                         let chosenQualifier = currentSim.qualifier;
 
@@ -573,12 +575,19 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
                             </div>
 
                             <div style="display: flex; gap: 15px; margin-bottom: 12px; flex-wrap: wrap;">
+                                ${winnerFromScore ? `
+                                <div style="display: flex; flex-direction: column; min-width: 90px;">
+                                    <span style="font-size: 0.55rem; font-weight: 800; color: rgba(255,255,255,0.4); text-transform: uppercase;">Seu Palpite (Placar):</span>
+                                    <span style="font-size: 0.8rem; font-weight: 800; color: #67e8f9;">${m.myChoice?.scoreA != null && m.myChoice?.scoreB != null ? `${m.myChoice.scoreA} x ${m.myChoice.scoreB}` : 'Sem Placar'}</span>
+                                </div>
+                                ` : `
                                 <div style="display: flex; flex-direction: column; min-width: 120px;">
                                     <span style="font-size: 0.55rem; font-weight: 800; color: rgba(255,255,255,0.4); text-transform: uppercase;">Seu Palpite (Resultado):</span>
                                     <span style="font-size: 0.8rem; font-weight: 700; color: #00ffff;">${m.myChoice?.label || 'Sem Palpite'}</span>
                                 </div>
+                                `}
 
-                                ${m.scoreScoring?.enabled && (m.myChoice?.scoreA != null || m.myChoice?.scoreB != null) ? `
+                                ${!winnerFromScore && m.scoreScoring?.enabled && (m.myChoice?.scoreA != null || m.myChoice?.scoreB != null) ? `
                                 <div style="display: flex; flex-direction: column; min-width: 90px;">
                                     <span style="font-size: 0.55rem; font-weight: 800; color: rgba(255,255,255,0.4); text-transform: uppercase;">Seu Palpite (Placar):</span>
                                     <span style="font-size: 0.8rem; font-weight: 800; color: #67e8f9;">${m.myChoice?.scoreA ?? '-'} x ${m.myChoice?.scoreB ?? '-'}</span>
@@ -594,6 +603,7 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
                             </div>
 
                             ${(strategyMode === 'simulacao' || isMiracleActive) ? `
+                                ${!winnerFromScore ? `
                                 <div style="margin-bottom: 10px; background: rgba(0,0,0,0.15); padding: 10px; border-radius: 10px; border: 1px solid ${isMiracleCard ? 'rgba(255, 218, 68, 0.3)' : 'rgba(255, 152, 0, 0.15)'};">
                                     <span style="font-size: 0.55rem; font-weight: 800; color: ${isMiracleCard ? '#ffda44' : '#ff9800'}; text-transform: uppercase; display:block; margin-bottom:6px;">Simular Resultado:</span>
                                     <div class="sim-btn-group">
@@ -602,8 +612,9 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
                                         <button class="sim-choice-btn ${btnWinnerB}" onclick="registerSimulation('${mId}', 'winner', 'B')">${teamB}</button>
                                     </div>
                                 </div>
+                                ` : ''}
 
-                                        ${m.scoreScoring?.enabled && strategyMode === 'simulacao' ? `
+                                        ${(m.scoreScoring?.enabled || winnerFromScore) && strategyMode === 'simulacao' ? `
                                 <div style="margin-bottom: 12px; background: rgba(0,0,0,0.15); padding: 10px; border-radius: 10px; border: 1px solid rgba(255, 152, 0, 0.15);">
                                     <span style="font-size: 0.55rem; font-weight: 800; color: #ff9800; text-transform: uppercase; display:block; margin-bottom:6px;">Simular Placar:</span>
                                     <div style="display:flex; align-items:center; justify-content:center; gap:8px;">
@@ -656,6 +667,52 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
 /* =====================
     🎮 GERENCIADOR DE ESCOLHAS DA SIMULAÇÃO
 ===================== */
+function getStrategyMatchData(matchId) {
+    const id = String(matchId);
+    const source = Array.isArray(window.__LAST_LEADERSHIP_MATCHES__)
+        ? window.__LAST_LEADERSHIP_MATCHES__
+        : [];
+    return source.find(item => String(item.matchId || item.id) === id) || null;
+}
+
+/**
+ * Verifica se o card está COMPLETO antes de consultar o backend.
+ * A exigência de cada campo segue exatamente o que o card apresenta:
+ * - placar: quando winnerFromScore está ativo ou há pontuação por placar;
+ * - vencedor: quando winnerFromScore está desativado;
+ * - classificado: em mata-mata, pois é um palpite independente.
+ *
+ * Importante: esta função NÃO consulta o backend. Ela apenas decide se o
+ * estado local da simulação já contém todos os dados necessários.
+ */
+function isSimulationCardComplete(matchId) {
+    const id = String(matchId);
+    const m = getStrategyMatchData(id);
+    const sim = simulatedResults[id] || {};
+    if (!m) return false;
+
+    const isKnockout = m.phase === 'knockout' || m.phase === 'mata-mata';
+    const winnerFromScore = m.winnerFromScore === true;
+    const requiresScore = winnerFromScore || m.scoreScoring?.enabled === true;
+    const requiresWinner = !winnerFromScore;
+    const requiresQualifier = isKnockout;
+
+    const scoreComplete = Number.isInteger(sim.scoreA) && sim.scoreA >= 0
+        && Number.isInteger(sim.scoreB) && sim.scoreB >= 0;
+    const winnerComplete = sim.winner === 'A' || sim.winner === 'B' || sim.winner === 'Draw' || sim.winner === 'draw';
+    const qualifierComplete = sim.qualifier === 'A' || sim.qualifier === 'B';
+
+    if (requiresScore && !scoreComplete) return false;
+    if (requiresWinner && !winnerComplete) return false;
+    if (requiresQualifier && !qualifierComplete) return false;
+
+    return true;
+}
+
+function shouldRecalculateSimulationCard(matchId) {
+    return isSimulationCardComplete(matchId);
+}
+
 window.registerSimulation = function(matchId, field, value) {
     matchId = String(matchId); // Blindagem de Tipo
 
@@ -709,7 +766,12 @@ window.registerSimulation = function(matchId, field, value) {
         if (b.dataset.mode === 'simulacao') b.classList.add('active');
     });
 
-    loadRanking(selectedId, selectedName);
+    // Só consulta o backend quando TODOS os campos exigidos pelo card
+    // estiverem preenchidos. Antes disso, a alteração fica somente no estado
+    // local e não dispara nenhuma chamada de rede.
+    if (shouldRecalculateSimulationCard(matchId)) {
+        loadRanking(selectedId, selectedName);
+    }
 };
 
 window.updateSimulationScore = function(matchId, field, rawValue) {
@@ -727,10 +789,13 @@ window.updateSimulationScore = function(matchId, field, rawValue) {
         simulatedResults[matchId][field] = value;
     }
 
-    // Se os dois placares foram preenchidos, o vencedor simulado é derivado
-    // automaticamente. O usuário ainda pode sobrescrevê-lo pelos botões.
+    // O vencedor só é derivado do placar quando a regra da liga determina
+    // winnerFromScore=true. Nessa configuração não existe escolha manual de vencedor.
     const sim = simulatedResults[matchId];
-    if (Number.isInteger(sim.scoreA) && Number.isInteger(sim.scoreB)) {
+    const matchData = Array.isArray(window.__LAST_LEADERSHIP_MATCHES__)
+        ? window.__LAST_LEADERSHIP_MATCHES__.find(item => String(item.matchId) === matchId)
+        : null;
+    if (matchData?.winnerFromScore === true && Number.isInteger(sim.scoreA) && Number.isInteger(sim.scoreB)) {
         sim.winner = sim.scoreA > sim.scoreB ? 'A' : (sim.scoreB > sim.scoreA ? 'B' : 'Draw');
     }
 
@@ -745,7 +810,13 @@ window.updateSimulationScore = function(matchId, field, rawValue) {
         if (b.dataset.mode === 'simulacao') b.classList.add('active');
     });
 
-    loadRanking(selectedId, selectedName);
+    // O placar pode ser digitado em duas etapas (A e B). Não consulte o
+    // backend enquanto o card estiver incompleto; a consulta acontece apenas
+    // quando placar + vencedor/classificado exigidos pelo card estiverem
+    // todos preenchidos.
+    if (shouldRecalculateSimulationCard(matchId)) {
+        loadRanking(selectedId, selectedName);
+    }
 };
 
 /* =====================
