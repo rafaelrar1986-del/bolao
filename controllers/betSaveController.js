@@ -617,142 +617,66 @@ async function saveBets(req, res) {
     });
 
     // ============================================================
-    // 📧 E-MAIL DE COMPROVANTE
+    // 📧 COMPROVANTE VERSIONADO
+    // Cada salvamento efetivamente aceito gera um novo protocolo,
+    // snapshot persistido e e-mail com o estado completo atual.
     // ============================================================
     try {
+      const { createBetReceipt } = require('../services/betReceiptService');
       const { sendBetsConfirmationEmail } = require('../services/emailService');
-      const userEmail = req.user.email;
-      const userName = req.user.name || 'Participante';
-      const leagueName = settings?.title || `Liga #${leagueId}`;
-      const protocolo = `${String(req.user._id).slice(-4).toUpperCase()}-${Date.now()}`;
-      const dataEmissao = new Date().toLocaleString('pt-BR');
 
-      const palpitesCompletos = [];
-      listaFinalGrupoMatches.forEach((userBet) => {
-        const matchInfo = dbMatches.find(m => Number(m.matchId) === Number(userBet.matchId));
-        if (matchInfo && matchInfo.teamA && matchInfo.teamB) {
-          palpitesCompletos.push({ ...userBet, gameData: matchInfo });
-        }
+      const receiptResult = await createBetReceipt({
+        bet,
+        matches: dbMatches,
+        userId: req.user._id,
+        leagueId,
+        operation: bet.firstSubmission && bet.firstSubmission.getTime() !== now.getTime() ? 'edit' : 'save',
+        userName: req.user.name || 'Participante',
+        leagueName: settings?.title || `Liga #${leagueId}`
       });
 
-      const getPhaseWeight = (phaseName) => {
-        const p = String(phaseName).toLowerCase();
-        if (p.includes('3') || p.includes('terceiro')) return 60;
-        if (p.includes('semi')) return 50;
-        if (p.includes('quartas')) return 40;
-        if (p.includes('oitavas')) return 30;
-        if (p.includes('16') || p.includes('avos')) return 20;
-        if (p.includes('final')) return 70;
-        return 10;
-      };
-
-      palpitesCompletos.sort((a, b) => {
-        const gradeA = a.gameData.phaseName || a.gameData.group || 'Geral';
-        const gradeB = b.gameData.phaseName || b.gameData.group || 'Geral';
-        const weightA = getPhaseWeight(gradeA);
-        const weightB = getPhaseWeight(gradeB);
-        if (weightA !== weightB) return weightB - weightA;
-        return gradeA.localeCompare(gradeB, undefined, { numeric: true, sensitivity: 'base' });
+      const emailAttemptedAt = new Date();
+      await receiptResult.receipt.updateOne({
+        $set: { 'email.attemptedAt': emailAttemptedAt }
       });
 
-      let betsHtml = `
-        <div style="font-family: sans-serif; max-width: 600px; margin: auto;">
-          <div style="background-color: #2c3e50; padding: 15px; color: white; text-align: center; border-radius: 4px 4px 0 0;">
-            <h2 style="margin: 0;">Comprovante de Palpites</h2>
-            <p style="margin: 5px 0 0 0; font-size: 14px;">Protocolo: <strong>${protocolo}</strong></p>
-            <p style="margin: 5px 0 0 0; font-size: 12px;">Emitido em: ${dataEmissao}</p>
-          </div>
-          <table style="width: 100%; border-collapse: collapse; font-family: sans-serif; margin-top: 15px;">
-            <thead>
-              <tr style="background-color: #f4f6f7; border-bottom: 2px solid #bdc3c7;">
-                <th style="padding: 12px; text-align: left; color: #34495e;">Confronto / Fase</th>
-                <th style="padding: 12px; text-align: center; color: #34495e; width: 160px;">Seu Palpite</th>
-              </tr>
-            </thead>
-            <tbody>
-      `;
-
-      let ultimaGrade = '';
-      palpitesCompletos.forEach((item) => {
-        const matchInfo = item.gameData;
-        const gradeAtual = matchInfo.phaseName || matchInfo.group || 'Geral';
-
-        if (gradeAtual !== ultimaGrade) {
-          betsHtml += `
-            <tr style="background-color: #eaeded;">
-              <td colspan="2" style="padding: 8px 12px; font-weight: bold; color: #2c3e50; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">
-                📂 ${gradeAtual}
-              </td>
-            </tr>
-          `;
-          ultimaGrade = gradeAtual;
-        }
-
-        let traducaoPalpite = '';
-        if (item.winner === 'A') traducaoPalpite = `Vitória: ${matchInfo.teamA}`;
-        if (item.winner === 'B') traducaoPalpite = `Vitória: ${matchInfo.teamB}`;
-        if (item.winner === 'draw') traducaoPalpite = 'Empate';
-
-        if (item.qualifier) {
-          const timeClassificado = item.qualifier === 'A' ? matchInfo.teamA : matchInfo.teamB;
-          traducaoPalpite += ` <br><span style="font-size: 11px; color: #e67e22; font-weight: normal;">(Classifica: ${timeClassificado})</span>`;
-        }
-
-        betsHtml += `
-          <tr style="border-bottom: 1px solid #ecf0f1;">
-            <td style="padding: 12px; color: #2c3e50;">
-              <strong>${matchInfo.teamA}</strong> vs <strong>${matchInfo.teamB}</strong>
-            </td>
-            <td style="padding: 12px; text-align: center; font-weight: bold; color: #27ae60; background-color: #fafdfb;">
-              ${traducaoPalpite}
-            </td>
-          </tr>
-        `;
+      sendBetsConfirmationEmail(
+        req.user.email,
+        req.user.name || 'Participante',
+        settings?.title || `Liga #${leagueId}`,
+        receiptResult.html
+      ).then(async response => {
+        const messageId = response?.messageId || response?.data?.messageId || null;
+        await receiptResult.receipt.updateOne({
+          $set: {
+            'email.sentAt': new Date(),
+            'email.messageId': messageId
+          }
+        });
+      }).catch(async err => {
+        console.error('❌ Falha assíncrona ao enviar e-mail de palpites:', err.message);
+        try {
+          await receiptResult.receipt.updateOne({
+            $set: { 'email.error': String(err.message || err) }
+          });
+        } catch (_) {}
       });
 
-      betsHtml += `</tbody></table>`;
-
-      if (payload.podium && payload.podium.length > 0) {
-        betsHtml += `
-          <div style="margin-top: 25px; padding: 15px; background-color: #fcf8e3; border: 1px solid #faebcc; border-radius: 4px; font-family: sans-serif;">
-            <h4 style="margin: 0 0 10px 0; color: #8a6d3b;">🏆 Seus Palpites de Pódio:</h4>
-            ${payload.podium.map((team, idx) => `<p style="margin: 4px 0;"><strong>${idx + 1}º Lugar:</strong> ${team}</p>`).join('')}
-          </div>
-        `;
-      }
-
-      if (payload.extras) {
-        betsHtml += `
-          <div style="margin-top: 15px; padding: 15px; background-color: #e8f6f3; border: 1px solid #a3e4d7; border-radius: 4px; font-family: sans-serif;">
-            <h4 style="margin: 0 0 10px 0; color: #1e8449;">🌟 Palpites Extras:</h4>
-            ${payload.extras.topScorer ? `<p style="margin: 4px 0;"><strong>Artilheiro:</strong> ${payload.extras.topScorer}</p>` : ''}
-            ${payload.extras.bestAttack ? `<p style="margin: 4px 0;"><strong>Melhor Ataque:</strong> ${payload.extras.bestAttack}</p>` : ''}
-            ${payload.extras.worstDefense ? `<p style="margin: 4px 0;"><strong>Pior Defesa:</strong> ${payload.extras.worstDefense}</p>` : ''}
-            ${payload.extras.upset ? `<p style="margin: 4px 0;"><strong>Zebra:</strong> ${payload.extras.upset}</p>` : ''}
-          </div>
-        `;
-      }
-
-      betsHtml += `
-          <div style="margin-top: 30px; padding: 15px; border-top: 1px dashed #bdc3c7; font-size: 12px; color: #7f8c8d; background-color: #f9f9f9; border-radius: 0 0 4px 4px;">
-            <p><strong>⚠️ AVISO IMPORTANTE DE AUDITORIA:</strong></p>
-            <p>Este comprovante reflete exclusivamente os palpites salvos no sistema no exato momento de sua emissão (<strong>${dataEmissao}</strong>).</p>
-            <p>Nossa plataforma permite a edição individual de palpites até o horário de início oficial de cada partida. <strong>Caso você realize qualquer alteração no site após o recebimento deste e-mail, este comprovante perderá automaticamente sua validade legal para as partidas alteradas.</strong> Em caso de divergência, prevalecerá incondicionalmente o último registro gravado em nosso banco de dados antes do bloqueio do jogo.</p>
-          </div>
-        </div>
-      `;
-
-      sendBetsConfirmationEmail(userEmail, userName, leagueName, betsHtml)
-        .catch(err => console.error('❌ Falha assíncrona ao enviar e-mail de palpites:', err.message));
-
-    } catch (emailSetupError) {
-      console.error('❌ Erro na preparação do e-mail de palpites:', emailSetupError);
+      var generatedProtocol = receiptResult.protocol;
+    } catch (receiptError) {
+      // O salvamento da aposta não é desfeito por indisponibilidade do e-mail.
+      // Mas falha na criação do comprovante deve ser visível no log para auditoria.
+      console.error('❌ Erro ao criar comprovante versionado:', receiptError);
+      return res.status(500).json({
+        success: false,
+        message: 'Aposta salva, mas não foi possível registrar o comprovante de auditoria. Contate o administrador.'
+      });
     }
 
     return res.json({
       success: true,
       message: 'Palpites salvos e participação confirmada!',
-      data: { id: bet._id }
+      data: { id: bet._id, protocol: generatedProtocol }
     });
 
   } catch (e) {
@@ -801,7 +725,15 @@ async function saveSingleBet(req, res) {
     // Carrega as configurações antes de qualquer regra que dependa delas.
     // Isso é especialmente importante para testMode e para as travas de fase.
     const configId = toLeagueId(leagueId);
-    const settings = await Settings.findById(configId).lean();
+    // O modo `grade` precisa consultar todas as partidas da liga para saber
+    // se qualquer partida da mesma grade já iniciou. Sem essa coleção,
+    // getBetLockState não consegue aplicar corretamente o bloqueio da grade.
+    const [settings, dbMatches] = await Promise.all([
+      Settings.findById(configId).lean(),
+      Match.find({ leagueId: configId })
+        .select('matchId group phase phaseName roundNumber roundName teamA teamB date time status')
+        .lean()
+    ]);
 
     const isKnockoutMatch =
       match.phase === 'knockout' ||
@@ -954,9 +886,62 @@ async function saveSingleBet(req, res) {
 
     await betDoc.save();
 
+    // Qualquer salvamento individual aceito também gera uma nova versão
+    // completa do comprovante, com todos os palpites atuais.
+    let generatedProtocol = null;
+    try {
+      const { createBetReceipt } = require('../services/betReceiptService');
+      const { sendBetsConfirmationEmail } = require('../services/emailService');
+
+      const receiptResult = await createBetReceipt({
+        bet: betDoc,
+        matches: dbMatches,
+        userId: req.user._id,
+        leagueId,
+        operation: 'edit',
+        userName: req.user.name || 'Participante',
+        leagueName: settings?.title || `Liga #${leagueId}`
+      });
+
+      generatedProtocol = receiptResult.protocol;
+      await receiptResult.receipt.updateOne({
+        $set: { 'email.attemptedAt': new Date() }
+      });
+
+      sendBetsConfirmationEmail(
+        req.user.email,
+        req.user.name || 'Participante',
+        settings?.title || `Liga #${leagueId}`,
+        receiptResult.html
+      ).then(async response => {
+        try {
+          await receiptResult.receipt.updateOne({
+            $set: {
+              'email.sentAt': new Date(),
+              'email.messageId': response?.messageId || response?.data?.messageId || null
+            }
+          });
+        } catch (_) {}
+      }).catch(async err => {
+        console.error('❌ Falha assíncrona ao enviar e-mail da edição:', err.message);
+        try {
+          await receiptResult.receipt.updateOne({
+            $set: { 'email.error': String(err.message || err) }
+          });
+        } catch (_) {}
+      });
+    } catch (receiptError) {
+      console.error('❌ Erro ao criar comprovante da edição:', receiptError);
+      return res.status(500).json({
+        success: false,
+        message: 'Palpite salvo, mas não foi possível registrar o comprovante de auditoria.'
+      });
+    }
+
     return res.json({
       success: true,
-      message: 'Palpite individual salvo com sucesso!'
+      message: 'Palpite individual salvo e comprovante atualizado com sucesso!',
+      data: { protocol: generatedProtocol }
     });
 
   } catch (error) {

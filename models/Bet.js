@@ -184,6 +184,20 @@ const BetSchema = new mongoose.Schema({
     default: null
   },
 
+  // Comprovante/auditoria da versão atualmente válida desta aposta.
+  currentReceipt: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'BetReceipt',
+    default: null,
+    index: true
+  },
+
+  currentProtocol: {
+    type: String,
+    default: null,
+    index: true
+  },
+
   groupMatches: {
     type: [GroupMatchSchema],
     default: []

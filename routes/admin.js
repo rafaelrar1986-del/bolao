@@ -7,6 +7,7 @@ const path = require('path');
 // Importações de Modelos e Serviços
 const AllowedEmail = require('../models/AllowedEmail'); 
 const User = require('../models/User'); 
+const BetReceipt = require('../models/BetReceipt');
 const { sendBroadcastEmail } = require('../services/emailService');
 const { protect, admin } = require('../middleware/auth');
 
@@ -118,6 +119,70 @@ router.post('/send', protect, admin, upload.single('attachment'), async (req, re
       success: false, 
       message: error.message || 'Falha ao processar o envio.' 
     });
+  }
+});
+
+
+/**
+ * @route    GET /api/admin/bet-receipts/validate
+ * @desc     Valida um protocolo de comprovante e informa o participante.
+ */
+router.get('/bet-receipts/validate', protect, admin, async (req, res) => {
+  try {
+    const protocol = String(req.query.protocol || '').trim();
+    const leagueId = req.query.leagueId != null ? String(req.query.leagueId).trim() : '';
+    if (!protocol) {
+      return res.status(400).json({ success: false, message: 'Informe o protocolo.' });
+    }
+
+    const receipt = await BetReceipt.findOne(leagueId ? { protocol, leagueId } : { protocol })
+      .populate('user', 'name email')
+      .lean();
+
+    if (!receipt) {
+      return res.status(404).json({
+        success: false,
+        valid: false,
+        status: 'not_found',
+        message: 'Protocolo não encontrado.'
+      });
+    }
+
+    let currentReceipt = receipt;
+    if (!receipt.isCurrent) {
+      currentReceipt = await BetReceipt.findOne({
+        user: receipt.user?._id || receipt.user,
+        leagueId: receipt.leagueId,
+        isCurrent: true
+      }).sort({ version: -1 }).lean();
+    }
+
+    const currentProtocol = currentReceipt?.protocol || null;
+
+    return res.json({
+      success: true,
+      valid: receipt.isCurrent === true,
+      status: receipt.isCurrent === true ? 'current' : 'historical',
+      receipt: {
+        protocol: receipt.protocol,
+        version: receipt.version,
+        operation: receipt.operation,
+        createdAt: receipt.createdAt,
+        isCurrent: receipt.isCurrent === true,
+        leagueId: receipt.leagueId,
+        snapshotHash: receipt.snapshotHash,
+        email: receipt.email || null,
+        user: receipt.user ? {
+          id: receipt.user._id,
+          name: receipt.user.name || 'Participante',
+          email: receipt.user.email || ''
+        } : null
+      },
+      currentProtocol
+    });
+  } catch (error) {
+    console.error('❌ Erro ao validar protocolo:', error);
+    return res.status(500).json({ success: false, message: 'Erro ao consultar o protocolo.' });
   }
 });
 

@@ -99,7 +99,7 @@ async function sendBetsConfirmationEmail(to, userName, leagueName, betsHtml) {
   const url = 'https://api.brevo.com/v3/smtp/email';
 
   try {
-    await axios.post(
+    const response = await axios.post(
       url,
       {
         sender: { name: 'Bolão Copa 2026', email: 'bolaokb@gmail.com' },
@@ -138,6 +138,7 @@ async function sendBetsConfirmationEmail(to, userName, leagueName, betsHtml) {
       }
     );
     console.log('📧 E-mail de palpites enviado via Brevo com sucesso para:', to);
+    return response?.data || {};
   } catch (error) {
     console.error('❌ Erro ao enviar e-mail de palpites:', error.response ? error.response.data : error.message);
     throw error;
