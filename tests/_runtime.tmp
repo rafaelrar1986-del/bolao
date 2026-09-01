@@ -1,5 +1,0 @@
-globalThis.window={addEventListener(){},STATE:null};globalThis.document={addEventListener(){},querySelectorAll(){return[]},getElementById(){return null},createElement(){return {style:{},classList:{add(){},remove(){}},setAttribute(){},appendChild(){},querySelector(){return null}}}};globalThis.localStorage={getItem(){return null},setItem(){},removeItem(){}};globalThis.requestAnimationFrame=f=>f();globalThis.getComputedStyle=()=>({position:'static'});
-const m=await import('file:///tmp/bolao/final2/frontend/js/matches4.js');
-for(const n of ['initMatches','updateMatchDom','getMissingGroupBets','getMissingKnockoutDecisionsCount','saveLocalDraft','buildSavePayload']) if(typeof m[n]!=='function') throw new Error('missing export '+n);
-for(const n of ['toggleKnockoutPendingFilter','togglePendingFilter','setMatchFilter','setKnockoutFilter','syncModalData','renderLineups','abrirDetalhesPartida','switchTab','unlockMatchForEdit','saveSingleBet']) if(typeof window[n]!=='function') throw new Error('missing global '+n);
-console.log('RUNTIME_IMPORT_OK');
