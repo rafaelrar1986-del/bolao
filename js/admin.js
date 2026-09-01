@@ -585,6 +585,121 @@ window.toggleKnockoutRound = async function(round, isCurrentlyUnlocked) {
     }
 };
 
+async function openBetReceiptValidationModal() {
+  const existing = document.getElementById('bet-receipt-validation-modal');
+  if (existing) {
+    existing.classList.add('active');
+    document.getElementById('bet-receipt-protocol')?.focus();
+    return;
+  }
+
+  const modal = document.createElement('div');
+  modal.id = 'bet-receipt-validation-modal';
+  modal.className = 'modal active';
+  modal.innerHTML = `
+    <div class="modal-content" style="max-width:620px;">
+      <div class="modal-header">
+        <h3><i class="fas fa-search"></i> Validar protocolo de aposta</h3>
+        <button class="close-modal" type="button" aria-label="Fechar"
+          onclick="document.getElementById('bet-receipt-validation-modal')?.remove()">&times;</button>
+      </div>
+      <div style="padding:10px 0;">
+        <p style="color:#aaa;font-size:.82rem;margin:0 0 12px;">
+          Informe o protocolo recebido pelo participante para verificar se ele corresponde
+          à versão atualmente válida da aposta.
+        </p>
+        <div style="display:flex;gap:8px;">
+          <input id="bet-receipt-protocol" type="text" autocomplete="off"
+            placeholder="Ex.: KB26-20260901-A1B2C3D4E5"
+            style="flex:1;padding:10px;border-radius:7px;border:1px solid rgba(255,255,255,.15);background:rgba(0,0,0,.15);color:inherit;">
+          <button id="btn-validate-bet-receipt" class="btn btn-primary" type="button">
+            <i class="fas fa-search"></i> Consultar
+          </button>
+        </div>
+        <div id="bet-receipt-result" style="margin-top:14px;"></div>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+
+  const input = document.getElementById('bet-receipt-protocol');
+  const result = document.getElementById('bet-receipt-result');
+  const button = document.getElementById('btn-validate-bet-receipt');
+
+  const renderResult = data => {
+    const r = data?.receipt;
+    const u = r?.user;
+    const when = r?.createdAt ? new Date(r.createdAt).toLocaleString('pt-BR') : '-';
+    const current = data?.currentProtocol || r?.protocol || '-';
+    if (data?.status === 'current') {
+      result.innerHTML = `
+        <div style="padding:14px;border-radius:9px;border:1px solid rgba(46,204,113,.35);background:rgba(46,204,113,.08);">
+          <div style="font-weight:800;color:#2ecc71;font-size:1rem;">✅ PROTOCOLO VÁLIDO E ATUAL</div>
+          <div style="margin-top:9px;line-height:1.7;">
+            <strong>Participante:</strong> ${escapeHtml(u?.name || 'Participante')}<br>
+            <strong>E-mail:</strong> ${escapeHtml(u?.email || '-')}<br>
+            <strong>Protocolo:</strong> ${escapeHtml(r.protocol)}<br>
+            <strong>Versão:</strong> ${Number(r.version || 1)}<br>
+            <strong>Emitido:</strong> ${escapeHtml(when)}
+          </div>
+        </div>`;
+    } else {
+      result.innerHTML = `
+        <div style="padding:14px;border-radius:9px;border:1px solid rgba(241,196,15,.35);background:rgba(241,196,15,.08);">
+          <div style="font-weight:800;color:#f1c40f;font-size:1rem;">⚠️ PROTOCOLO HISTÓRICO — NÃO É O ATUAL</div>
+          <div style="margin-top:9px;line-height:1.7;">
+            <strong>Participante:</strong> ${escapeHtml(u?.name || 'Participante')}<br>
+            <strong>E-mail:</strong> ${escapeHtml(u?.email || '-')}<br>
+            <strong>Protocolo consultado:</strong> ${escapeHtml(r.protocol)}<br>
+            <strong>Versão:</strong> ${Number(r.version || 1)}<br>
+            <strong>Emitido:</strong> ${escapeHtml(when)}<br>
+            <div style="margin-top:10px;padding:9px;background:rgba(255,255,255,.05);border-radius:6px;">
+              <strong>✅ Protocolo atual válido:</strong><br>
+              <span style="font-family:monospace;font-weight:800;">${escapeHtml(current)}</span>
+            </div>
+          </div>
+        </div>`;
+    }
+  };
+
+  const validate = async () => {
+    const protocol = String(input?.value || '').trim();
+    if (!protocol) {
+      result.innerHTML = '<div style="color:#e74c3c;">Informe um protocolo.</div>';
+      return;
+    }
+    button.disabled = true;
+    result.innerHTML = '<div style="color:#aaa;"><i class="fas fa-spinner fa-spin"></i> Consultando...</div>';
+    try {
+      const leagueId = localStorage.getItem('selectedLeagueId') || '1';
+      const data = await api.get(`/api/admin/bet-receipts/validate?leagueId=${encodeURIComponent(leagueId)}&protocol=${encodeURIComponent(protocol)}`);
+      renderResult(data);
+    } catch (err) {
+      if (err.status === 404) {
+        result.innerHTML = `
+          <div style="padding:14px;border-radius:9px;border:1px solid rgba(231,76,60,.35);background:rgba(231,76,60,.08);">
+            <div style="font-weight:800;color:#e74c3c;">❌ PROTOCOLO NÃO ENCONTRADO</div>
+            <div style="margin-top:7px;">Nenhum comprovante corresponde ao protocolo informado.</div>
+          </div>`;
+      } else {
+        result.innerHTML = `<div style="color:#e74c3c;">${escapeHtml(err.message || 'Erro ao consultar protocolo.')}</div>`;
+      }
+    } finally {
+      button.disabled = false;
+    }
+  };
+
+  button.addEventListener('click', validate);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') validate(); });
+  input.focus();
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 // =============== BOOTSTRAP ===============
 export function initAdmin() {
   console.log('✅ initAdmin executado');
@@ -603,6 +718,7 @@ export function initAdmin() {
   window.saveChampionshipResults = saveChampionshipResults;
   window.openBetLockModeModal = openBetLockModeModal;
   window.saveBetLockMode = saveBetLockMode;
+  window.openBetReceiptValidationModal = openBetReceiptValidationModal;
 
   window.handleAddMatch = handleAddMatch;
   window.prepareFinishMatch = prepareFinishMatch;
@@ -631,6 +747,10 @@ export function initAdmin() {
 
   const btnEmail = document.getElementById('btn-open-email-modal');
   if (btnEmail) btnEmail.addEventListener('click', openEmailModal);
+  const btnReceiptValidation = document.getElementById('btn-open-receipt-validation');
+  if (btnReceiptValidation) {
+    btnReceiptValidation.addEventListener('click', openBetReceiptValidationModal);
+  }
 
   const btnAdd = document.getElementById('btn-open-add-modal');
   if (btnAdd) btnAdd.addEventListener('click', openAddMatchModal);
