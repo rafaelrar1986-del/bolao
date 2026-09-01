@@ -10,6 +10,18 @@ import './admin/users.js';
 import './admin/robot.js';
 import './adminBindings.js';
 
+// Named exports preserved for app4.js and other consumers that historically imported
+// these Admin lock helpers directly from the monolithic admin.js.
+export { openModal, closeModal };
+
+export const loadGlobalSaveLocks = (...args) => R.loadGlobalSaveLocks(...args);
+export const isSaveBetsBlocked = (...args) => R.isSaveBetsBlocked(...args);
+export const isSaveKnockoutBlocked = (...args) => R.isSaveKnockoutBlocked(...args);
+export const isRequireAllBetsEnabled = (...args) => R.isRequireAllBetsEnabled(...args);
+export const isBetEditingBeforeLockEnabled = (...args) => R.isBetEditingBeforeLockEnabled(...args);
+export const refreshSaveLocksUI = (...args) => R.refreshSaveLocksUI(...args);
+export const loadAdminUsers = (...args) => R.loadAdminUsers(...args);
+
 export function initAdmin() {
   console.log('✅ initAdmin executado');
   window.closeModal = closeModal;

@@ -6,6 +6,10 @@ import { DEFAULT_SCORING, DEFAULT_CHAMPIONSHIP_RULES, SAVE_LOCK_KEYS } from './a
 import { R, registerAdminFunctions } from './adminRuntime.js';
 import { escapeHtml, knockoutDisplayLabel } from './adminUtils.js';
 
+// DOM accessor formerly declared in the monolithic admin.js. Keep it local to
+// this module so rendering never depends on an undeclared global.
+const $adminMatchesList = () => document.getElementById('admin-matches-list');
+
 async function loadAdminMatches() {
   try {
     const leagueId = localStorage.getItem('selectedLeagueId') || '1';

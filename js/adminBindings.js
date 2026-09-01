@@ -1,8 +1,14 @@
 // Global bindings kept for existing inline HTML handlers.
 import { R } from './admin/adminRuntime.js';
+import { openModal, closeModal } from './ui.js';
 import { api } from './api.js';
 import { toast, openModal, closeModal } from './ui.js';
 import { renderTeamMedia } from './matches/matchesUtils.js';
+
+// Legacy inline HTML handlers must be available as soon as the Admin module loads.
+// Do not wait for initAdmin(): an earlier initialization error must not disable modal close/open actions.
+window.openModal = openModal;
+window.closeModal = closeModal;
 
 window.switchAdminTab = function(tab) {
   R.activeAdminTab = tab;
