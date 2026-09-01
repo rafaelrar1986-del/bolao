@@ -286,7 +286,7 @@ window.showMathExplanation = function() {
 function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
     const { summary, matches } = data;
     window.__LAST_SIMULATED_RANKING__ = summary.simulatedRanking || [];
-    window.__LAST_LEADERSHIP_MATCHES__ = res.data.matches || [];
+    window.__LAST_LEADERSHIP_MATCHES__ = matches || [];
     
     // Filtra e ORDENA cronologicamente os cards de secagem
     const impactMatches = matches ? matches.filter(m => m.hasImpact).sort((a, b) => {
