@@ -208,6 +208,9 @@ const SettingsSchema = new mongoose.Schema(
       hasGroupPhase:        { type: Boolean, default: true },
       hasKnockoutPhase:     { type: Boolean, default: false },
       knockoutFormat: { type: String, enum: ['single', 'home_away'], default: 'single' },
+      // Quando o mata-mata geral é ida e volta, permite que a final seja
+      // configurada separadamente. Em formato geral de jogo único é ignorado.
+      knockoutFinalFormat: { type: String, enum: ['single', 'home_away'], default: 'home_away' },
       knockoutAwayGoals: { type: Boolean, default: false },
 
       // Estrutura genérica da classificação da fase de grupos.

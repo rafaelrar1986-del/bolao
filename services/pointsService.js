@@ -1,3 +1,4 @@
+const { getEffectiveKnockoutFormat } = require('../utils/knockoutFormat');
 const Bet = require('../models/Bet');
 const Match = require('../models/Match');
 const Settings = require('../models/Settings');
@@ -27,6 +28,7 @@ const DEFAULT_CHAMPIONSHIP_RULES = Object.freeze({
   hasGroupPhase: true,
   hasKnockoutPhase: false,
   knockoutFormat: 'single',
+  knockoutFinalFormat: 'home_away',
   knockoutAwayGoals: false,
   groupQualification: {
     totalTeams: 0,
@@ -201,6 +203,9 @@ function sanitizeChampionshipRules(rawRules) {
   rules.drawIncludesExtraTime = Boolean(rules.drawIncludesExtraTime);
   rules.hasKnockoutPhase = Boolean(rules.hasKnockoutPhase);
   rules.knockoutFormat = rules.knockoutFormat === 'home_away' ? 'home_away' : 'single';
+  rules.knockoutFinalFormat = rules.knockoutFormat === 'home_away' && rules.knockoutFinalFormat === 'single'
+    ? 'single'
+    : 'home_away';
   rules.knockoutAwayGoals = rules.knockoutFormat === 'home_away' && Boolean(rules.knockoutAwayGoals);
 
   const groupQualification = {
@@ -1156,18 +1161,27 @@ function parseConfrontationDate(match) {
 }
 
 function getKnockoutConfrontationMatches(realMatch, matchMap, champRules) {
-  if (!realMatch || champRules?.knockoutFormat !== 'home_away') return [];
+  if (!realMatch) return [];
   if (realMatch.phase !== 'knockout' && realMatch.phase !== 'mata-mata') return [];
+
+  const effectiveFormat = realMatch.stageFormat === 'single' || realMatch.stageFormat === 'home_away'
+    ? realMatch.stageFormat
+    : getEffectiveKnockoutFormat(champRules || {}, realMatch);
+
+  if (effectiveFormat !== 'home_away') return [];
+
   const a = String(realMatch.teamA || '').trim().toLowerCase();
   const b = String(realMatch.teamB || '').trim().toLowerCase();
-  const stage = String(realMatch.roundNumber ?? realMatch.roundName ?? realMatch.group ?? '').trim().toLowerCase();
+  const stage = String(realMatch.knockoutTieKey ?? realMatch.roundNumber ?? realMatch.roundName ?? realMatch.group ?? '').trim().toLowerCase();
   if (!a || !b || !stage) return [];
+
   return [...(matchMap instanceof Map ? matchMap.values() : [])]
     .filter(m => {
       if (!m || (m.phase !== 'knockout' && m.phase !== 'mata-mata')) return false;
       const ca = String(m.teamA || '').trim().toLowerCase();
       const cb = String(m.teamB || '').trim().toLowerCase();
-      const cs = String(m.roundNumber ?? m.roundName ?? m.group ?? '').trim().toLowerCase();
+      const cs = String(m.knockoutTieKey ?? m.roundNumber ?? m.roundName ?? m.group ?? '').trim().toLowerCase();
+      if (realMatch.knockoutTieKey && m.knockoutTieKey) return cs === stage;
       return cs === stage && ((ca === a && cb === b) || (ca === b && cb === a));
     })
     .sort((x, y) => parseConfrontationDate(x) - parseConfrontationDate(y) || Number(x.matchId) - Number(y.matchId));
@@ -1212,7 +1226,10 @@ function resolveKnockoutConfrontationQualifier(realMatch, matchMap, champRules) 
 function calculateBetMatchPoints(betMatch, match, matchMap, scoringRules = DEFAULT_SCORING, championshipRules = DEFAULT_CHAMPIONSHIP_RULES, isPartial = false) {
   let betForCalculation = betMatch;
   let matchForCalculation = match;
-  if ((match?.phase === 'knockout' || match?.phase === 'mata-mata') && championshipRules?.knockoutFormat === 'home_away') {
+  if (
+    (match?.phase === 'knockout' || match?.phase === 'mata-mata') &&
+    getEffectiveKnockoutFormat(championshipRules || {}, match) === 'home_away'
+  ) {
     const legs = getKnockoutConfrontationMatches(match, matchMap, championshipRules);
     if (legs.length >= 2) {
       const firstLegId = Number(legs[0].matchId);

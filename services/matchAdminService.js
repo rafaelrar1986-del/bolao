@@ -22,6 +22,8 @@ const { requireLeagueId } = require('../utils/leagueId');
 const matchHistoryService = require('./matchHistoryService');
 const auditService = require('./auditService');
 const emailService = require('./emailService');
+const { getEffectiveKnockoutFormat, getEffectiveKnockoutLegCount, buildKnockoutTieKey } = require('../utils/knockoutFormat');
+const { materializeKnockoutConfrontation } = require('./knockoutConfrontationService');
 
 async function addMatch(ctx) {
 
@@ -107,6 +109,18 @@ async function addMatch(ctx) {
       });
     }
 
+    const leagueSettings = await Settings.findById(normalizedLeagueId).lean();
+    const championshipRules = leagueSettings?.championshipRules || {};
+    const stageFormat = normalizedPhase === 'knockout'
+      ? getEffectiveKnockoutFormat(championshipRules, { phaseName: phaseName || group })
+      : null;
+    const stageLegCount = normalizedPhase === 'knockout'
+      ? getEffectiveKnockoutLegCount(championshipRules, { phaseName: phaseName || group })
+      : 1;
+    const knockoutTieKey = normalizedPhase === 'knockout'
+      ? buildKnockoutTieKey(phaseName || group, teamA, teamB)
+      : null;
+
     const m = await Match.create({
       matchId: idNum,
       apiId: apiNum,
@@ -120,12 +134,21 @@ async function addMatch(ctx) {
       phaseName: phaseName ? String(phaseName).trim() : undefined,
       stadium: stadium ? String(stadium).trim() : undefined,
       phase: normalizedPhase,
+      stageFormat,
+      knockoutTieKey,
+      knockoutLeg: 1,
+      knockoutExpectedLegs: stageLegCount,
       status: 'scheduled',
       scoreA: null,
       scoreB: null,
       penaltiesA: null,
       penaltiesB: null
     });
+
+    if (normalizedPhase === 'knockout') {
+      await materializeKnockoutConfrontation(m, championshipRules);
+      await m.save({ validateModifiedOnly: true });
+    }
 
     ctx.res.json({ success: true, data: m });
   } catch (err) {
@@ -446,6 +469,12 @@ async function editMatch(ctx) {
     // ============================================================
     // MINUTO
     // ============================================================
+    if (match.phase === 'knockout') {
+      const currentRules = (await Settings.findById(normalizedLeagueId).lean())?.championshipRules || {};
+      await materializeKnockoutConfrontation(match, currentRules);
+      await match.save({ validateModifiedOnly: true });
+    }
+
     if (match.status === 'finished') {
       match.minute = 'Fim';
     } else if (

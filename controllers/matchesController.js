@@ -95,7 +95,23 @@ async function getMatches(req, res) {
     const matches = await Match.find(filtro).lean();
     matches.sort(compareMatchesChronologically);
 
-    res.json({ success: true, data: matches });
+    // Expõe o formato efetivo por etapa para o frontend, sem gravar
+    // configuração redundante em cada partida.
+    const settings = await Settings.findById(normalizedLeagueId).lean();
+    const championshipRules = settings?.championshipRules || {};
+    const { getEffectiveKnockoutFormat, getEffectiveKnockoutLegCount } =
+      require('../utils/knockoutFormat');
+
+    const enrichedMatches = matches.map(match => {
+      if (String(match.phase || '').toLowerCase() !== 'knockout') return match;
+      return {
+        ...match,
+        stageFormat: getEffectiveKnockoutFormat(championshipRules, match),
+        stageLegCount: getEffectiveKnockoutLegCount(championshipRules, match)
+      };
+    });
+
+    res.json({ success: true, data: enrichedMatches });
   } catch (err) {
     console.error('Erro ao listar partidas:', err);
     res.status(500).json({ success: false, message: 'Erro ao listar partidas' });

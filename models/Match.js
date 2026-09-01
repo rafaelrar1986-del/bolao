@@ -21,6 +21,14 @@ const MatchSchema = new Schema(
     roundNumber: { type: Number, required: false, min: 1, index: true },
     roundName: { type: String, required: false, trim: true },
 
+    // Mata-mata: formato efetivo e identidade do confronto.
+    // stageFormat é materializado na partida para que o robô e o updater
+    // não precisem inferir novamente a regra global no momento do resultado.
+    stageFormat: { type: String, enum: ['single', 'home_away', null], default: null, index: true },
+    knockoutTieKey: { type: String, default: null, index: true },
+    knockoutLeg: { type: Number, min: 1, default: 1 },
+    knockoutExpectedLegs: { type: Number, min: 1, default: 1 },
+
     teamA: { type: String, required: true, trim: true },
     teamB: { type: String, required: true, trim: true },
 
@@ -229,22 +237,23 @@ MatchSchema.pre('save', async function (next) {
     const isKnockout = this.phase === 'knockout';
 
   if (isKnockout && this.qualifiedSideManuallySet !== true) {
-    const sA = this.scoreA;
-    const sB = this.scoreB;
-    const pA = this.penaltiesA;
-    const pB = this.penaltiesB;
-
-    // 1. Prioridade Máxima: Pênaltis (Cálculo automático se houver disputa)
-    if (pA !== null && pB !== null && pA !== pB) {
-      this.qualifiedSide = pA > pB ? 'A' : 'B';
-    }
-    // 2. Segunda Prioridade: Gols (Se não houve pênaltis ou não terminou em empate)
-    else if (sA !== null && sB !== null && sA !== sB) {
-      this.qualifiedSide = sA > sB ? 'A' : 'B';
-    }
-    // 3. Caso de Empate Real ou dados inconclusivos
-    else {
+    // Em ida/volta o vencedor pertence ao CONFRONTO, não à partida isolada.
+    // O updater resolve o agregado depois que as duas pernas terminarem.
+    if (this.stageFormat === 'home_away') {
       this.qualifiedSide = null;
+    } else {
+      const sA = this.scoreA;
+      const sB = this.scoreB;
+      const pA = this.penaltiesA;
+      const pB = this.penaltiesB;
+
+      if (pA !== null && pB !== null && pA !== pB) {
+        this.qualifiedSide = pA > pB ? 'A' : 'B';
+      } else if (sA !== null && sB !== null && sA !== sB) {
+        this.qualifiedSide = sA > sB ? 'A' : 'B';
+      } else {
+        this.qualifiedSide = null;
+      }
     }
   }
 

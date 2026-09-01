@@ -4,6 +4,9 @@ const express = require('express');
 const router = express.Router();
 
 const Settings = require('../models/Settings');
+const Match = require('../models/Match');
+const { materializeKnockoutConfrontation } = require('../services/knockoutConfrontationService');
+const { buildKnockoutTieKey } = require('../utils/knockoutFormat');
 const PointsService = require('../services/pointsService');
 const { rebuildLeagueDailyHistory } = require('../services/dailyHistoryService');
 
@@ -471,6 +474,17 @@ router.post('/global', protect, admin, async (req, res) => {
 
       const knockoutFormat = incoming.knockoutFormat ?? currentChampionship.knockoutFormat ?? 'single';
       incoming.knockoutFormat = knockoutFormat === 'home_away' ? 'home_away' : 'single';
+
+      if (incoming.knockoutFinalFormat !== undefined && !['single', 'home_away'].includes(incoming.knockoutFinalFormat)) {
+        return res.status(400).json({ success: false, message: 'Formato da final inválido.' });
+      }
+      // Compatibilidade: campeonatos antigos em ida/volta continuam com final
+      // ida/volta se o novo campo ainda não existir.
+      incoming.knockoutFinalFormat =
+        incoming.knockoutFormat === 'home_away'
+          ? (incoming.knockoutFinalFormat ?? currentChampionship.knockoutFinalFormat ?? 'home_away')
+          : 'single';
+
       incoming.knockoutAwayGoals = incoming.knockoutFormat === 'home_away'
         ? Boolean(incoming.knockoutAwayGoals ?? currentChampionship.knockoutAwayGoals)
         : false;
@@ -1039,6 +1053,59 @@ router.post('/global', protect, admin, async (req, res) => {
           upsert: true
         }
       ).lean();
+
+    /*
+     * ============================================================
+     * 4A. MATERIALIZAÇÃO DA ESTRUTURA DO MATA-MATA
+     * ============================================================
+     *
+     * Sempre que as regras estruturais forem salvas, sincroniza
+     * as partidas já criadas antes do início do campeonato.
+     * Assim o Admin, o robô e o frontend passam a enxergar
+     * exatamente a mesma quantidade de pernas e identidade
+     * de confronto.
+     */
+    if (lockUpdates.championshipRules) {
+      try {
+        const knockoutMatches = await Match.find({
+          leagueId: configId,
+          phase: 'knockout'
+        });
+
+        // Cada confronto é materializado uma única vez.
+        const seenTieKeys = new Set();
+
+        for (const knockoutMatch of knockoutMatches) {
+          const existingKey = String(knockoutMatch.knockoutTieKey || '').trim();
+          const provisionalKey = existingKey || buildKnockoutTieKey(
+            knockoutMatch,
+            knockoutMatch.teamA,
+            knockoutMatch.teamB
+          );
+
+          if (provisionalKey && seenTieKeys.has(provisionalKey)) continue;
+          if (provisionalKey) seenTieKeys.add(provisionalKey);
+
+          await materializeKnockoutConfrontation(
+            knockoutMatch,
+            settingsSaved.championshipRules || {}
+          );
+        }
+      } catch (structureError) {
+        console.error(
+          'Erro ao sincronizar estrutura do mata-mata:',
+          structureError
+        );
+
+        return res.status(500).json({
+          success: false,
+          message:
+            'Configurações salvas, mas ocorreu um erro ao sincronizar a estrutura do mata-mata.',
+          data: settingsSaved,
+          error: structureError.message || 'Erro desconhecido'
+        });
+      }
+    }
 
     /*
      * ============================================================

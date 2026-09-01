@@ -6,6 +6,8 @@ const auditService = require('../services/auditService');
 const emailService = require('../services/emailService');
 const { recalculateAllPoints } = require('./pointsService');
 const { trySaveDailyPoints } = require('./dailyHistoryService');
+const { getEffectiveKnockoutFormat, getEffectiveKnockoutLegCount, buildKnockoutTieKey, normalizeTeamKey } = require('../utils/knockoutFormat');
+const { materializeKnockoutConfrontation } = require('./knockoutConfrontationService');
 
 function toLeagueId(leagueId) {
   return leagueId != null ? String(leagueId).trim() : 'default';
@@ -592,6 +594,136 @@ function normalizeEventCore(event) {
   };
 }
 
+
+function parseUpdaterMatchDate(match) {
+  const md = String(match?.date || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  const mt = String(match?.time || '00:00').match(/^(\d{1,2}):(\d{2})/);
+  if (!md) return 0;
+  return Date.parse(`${md[3]}-${md[2]}-${md[1]}T${String(mt?.[1] || '0').padStart(2, '0')}:${mt?.[2] || '00'}:00Z`) || 0;
+}
+
+async function resolveKnockoutConfrontation(match, rules) {
+  if (!match || match.phase !== 'knockout') return;
+
+  // Primeiro garante que a partida e o confronto inteiro tenham metadados
+  // consistentes. A chave existente é preservada mesmo se os nomes das
+  // equipes forem atualizados posteriormente.
+  await materializeKnockoutConfrontation(match, rules || {});
+
+  const stageFormat = getEffectiveKnockoutFormat(rules || {}, match);
+  if (stageFormat !== 'home_away') return;
+
+  const tieKey = match.knockoutTieKey ||
+    buildKnockoutTieKey(match, match.teamA, match.teamB);
+  if (!tieKey) return;
+
+  const expectedLegs = getEffectiveKnockoutLegCount(rules || {}, match);
+  let legs = await Match.find({
+    leagueId: match.leagueId,
+    phase: 'knockout',
+    knockoutTieKey: tieKey
+  }).sort({ date: 1, time: 1, matchId: 1 });
+
+  // Compatibilidade com partidas antigas ainda sem knockoutTieKey.
+  if (legs.length < expectedLegs) {
+    const teamAKey = String(match.teamA || '').trim().toLowerCase();
+    const teamBKey = String(match.teamB || '').trim().toLowerCase();
+    const stageKey = String(match.phaseName || match.roundName || match.group || '').trim().toLowerCase();
+    const legacyCandidates = await Match.find({
+      leagueId: match.leagueId,
+      phase: 'knockout'
+    });
+    const fallback = legacyCandidates.filter(m => {
+      const ca = String(m.teamA || '').trim().toLowerCase();
+      const cb = String(m.teamB || '').trim().toLowerCase();
+      const cs = String(m.phaseName || m.roundName || m.group || '').trim().toLowerCase();
+      return cs === stageKey &&
+        ((ca === teamAKey && cb === teamBKey) || (ca === teamBKey && cb === teamAKey));
+    });
+    const merged = new Map([...legs, ...fallback].map(m => [String(m._id), m]));
+    legs = [...merged.values()].sort((a,b) =>
+      parseUpdaterMatchDate(a)-parseUpdaterMatchDate(b) || Number(a.matchId)-Number(b.matchId)
+    );
+  }
+
+  // A confrontation is unresolved until all expected legs are finished.
+  if (legs.length < expectedLegs || !legs.slice(0, expectedLegs).every(m => m.status === 'finished')) {
+    await Match.updateMany(
+      { _id: { $in: legs.map(m => m._id) }, qualifiedSideManuallySet: { $ne: true } },
+      { $set: { qualifiedSide: null } }
+    );
+    return;
+  }
+
+  const usedLegs = legs.slice(0, expectedLegs);
+  const first = usedLegs[0];
+  const teamAKey = normalizeTeamKey(first.teamA);
+  const teamBKey = normalizeTeamKey(first.teamB);
+
+  const aggregate = { A: 0, B: 0 };
+  for (const leg of usedLegs) {
+    const a = normalizeTeamKey(leg.teamA);
+    const b = normalizeTeamKey(leg.teamB);
+    const sa = Number(leg.scoreA ?? 0);
+    const sb = Number(leg.scoreB ?? 0);
+    if (a === teamAKey && b === teamBKey) {
+      aggregate.A += sa; aggregate.B += sb;
+    } else if (a === teamBKey && b === teamAKey) {
+      aggregate.A += sb; aggregate.B += sa;
+    }
+  }
+
+  let winnerTeam = null;
+  if (aggregate.A !== aggregate.B) {
+    winnerTeam = aggregate.A > aggregate.B ? teamAKey : teamBKey;
+  } else if (rules?.knockoutAwayGoals) {
+    let away = { A: 0, B: 0 };
+    for (const leg of usedLegs) {
+      const a = normalizeTeamKey(leg.teamA);
+      const b = normalizeTeamKey(leg.teamB);
+      const sa = Number(leg.scoreA ?? 0);
+      const sb = Number(leg.scoreB ?? 0);
+      if (a === teamAKey && b === teamBKey) away.B += sb;
+      else if (a === teamBKey && b === teamAKey) away.A += sa;
+    }
+    if (away.A !== away.B) winnerTeam = away.A > away.B ? teamAKey : teamBKey;
+  }
+
+  // If aggregate/away goals are still tied, use the last leg's shootout.
+  if (!winnerTeam) {
+    const last = usedLegs[usedLegs.length - 1];
+    if (last.penaltiesA != null && last.penaltiesB != null &&
+        Number(last.penaltiesA) !== Number(last.penaltiesB)) {
+      const lastA = normalizeTeamKey(last.teamA);
+      winnerTeam = Number(last.penaltiesA) > Number(last.penaltiesB)
+        ? lastA : normalizeTeamKey(last.teamB);
+    }
+  }
+
+  if (!winnerTeam) {
+    await Match.updateMany(
+      { _id: { $in: usedLegs.map(m => m._id) }, qualifiedSideManuallySet: { $ne: true } },
+      { $set: { qualifiedSide: null } }
+    );
+    return;
+  }
+
+  const ops = usedLegs
+    .filter(m => m.qualifiedSideManuallySet !== true)
+    .map(m => ({
+      updateOne: {
+        filter: { _id: m._id },
+        update: {
+          $set: {
+            qualifiedSide: String(m.teamA || '').trim().toLowerCase() === winnerTeam ? 'A' : 'B'
+          }
+        }
+      }
+    }));
+
+  if (ops.length) await Match.bulkWrite(ops);
+}
+
 async function processGameList(games, allowedLeagues, robotSettings, source) {
   if (!Array.isArray(games) || games.length === 0) return;
 
@@ -795,6 +927,32 @@ if (match.status === 'scheduled' && proposedStatus === 'scheduled') {
         ? (shouldIgnoreMinuteRegression(match.minute, detailMinute) ? match.minute : `${detailMinute}'`)
         : `${liveMinute}'`;
 
+      let stageFormat = match.stageFormat || null;
+      let knockoutTieKey = match.knockoutTieKey || null;
+      let knockoutExpectedLegs = match.knockoutExpectedLegs || 1;
+      let knockoutLeg = match.knockoutLeg || 1;
+
+      if (match.phase === 'knockout') {
+        const leagueSettings = await Settings.findById(toLeagueId(match.leagueId || eventDetail.leagueId || 'default')).lean();
+        const championshipRules = leagueSettings?.championshipRules || {};
+        stageFormat = getEffectiveKnockoutFormat(championshipRules, {
+          phaseName: eventDetail.roundName || match.phaseName || match.group,
+          stageFormat
+        });
+        knockoutExpectedLegs = getEffectiveKnockoutLegCount(championshipRules, {
+          phaseName: eventDetail.roundName || match.phaseName || match.group,
+          stageFormat
+        });
+        knockoutTieKey = knockoutTieKey ||
+          buildKnockoutTieKey(eventDetail.roundName || match.phaseName || match.group, eventDetail.homeTeam || match.teamA, eventDetail.awayTeam || match.teamB);
+
+        const siblings = knockoutTieKey
+          ? await Match.find({ leagueId: match.leagueId, phase: 'knockout', knockoutTieKey }).sort({ date: 1, time: 1, matchId: 1 }).select('_id')
+          : [];
+        const position = siblings.findIndex(x => String(x._id) === String(match._id));
+        knockoutLeg = position >= 0 ? position + 1 : 1;
+      }
+
       const updateData = {
         // scoreA/B = placar final acumulado (90 + prorrogação)
         scoreA: resolvedHomeScore,
@@ -803,6 +961,10 @@ if (match.status === 'scheduled' && proposedStatus === 'scheduled') {
         regularTimeScoreA: regularHomeScore,
         regularTimeScoreB: regularAwayScore,
         status: effectiveStatus,
+        stageFormat,
+        knockoutTieKey,
+        knockoutExpectedLegs,
+        knockoutLeg,
         apiStatus: mapApiStatus(firstDefined(gameData.status, eventDetail.status), firstDefined(gameData.period, eventDetail.period)),
         minute: effectiveStatus === 'finished' ? 'Fim' : resolvedMinute,
         penaltiesA: penA,
@@ -957,6 +1119,15 @@ if (match.status === 'scheduled' && proposedStatus === 'scheduled') {
       }
 
       await Match.updateOne({ _id: match._id }, { $set: updateData });
+      if (match.phase === 'knockout' && stageFormat === 'home_away') {
+        const leagueSettings = await Settings.findById(toLeagueId(match.leagueId || eventDetail.leagueId || 'default')).lean();
+        const championshipRules = leagueSettings?.championshipRules || {};
+        const currentMatch = typeof match.toObject === 'function' ? match.toObject() : match;
+        await resolveKnockoutConfrontation(
+          { ...currentMatch, ...updateData },
+          championshipRules
+        );
+      }
 
       if (effectiveStatus === 'finished' && match.status !== 'finished') {
         // 🆕 CORREÇÃO: Usa toLeagueId() consistente com o resto do sistema

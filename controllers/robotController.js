@@ -1,5 +1,8 @@
 const axios = require('axios');
 const Match = require('../models/Match');
+const Settings = require('../models/Settings');
+const { getEffectiveKnockoutFormat, getEffectiveKnockoutLegCount, buildKnockoutTieKey } = require('../utils/knockoutFormat');
+const { materializeKnockoutConfrontation } = require('../services/knockoutConfrontationService');
 
 /**
  * Mapeia os status da API para os Enums do seu MatchSchema
@@ -26,6 +29,14 @@ const mapStatus = (apiStatus) => {
  * Usa o process.env.API_FOOTBALL_KEY para autorização
  * Garante a padronização do campo "name" para o atributo data-name do Frontend
  */
+
+function parseRobotMatchDate(match) {
+    const md = String(match?.date || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    const mt = String(match?.time || '00:00').match(/^(\d{1,2}):(\d{2})/);
+    if (!md) return 0;
+    return Date.parse(`${md[3]}-${md[2]}-${md[1]}T${String(mt?.[1] || '0').padStart(2, '0')}:${mt?.[2] || '00'}:00Z`) || 0;
+}
+
 exports.getAvailableLeagues = async (req, res) => {
     try {
         const API_KEY = process.env.API_FOOTBALL_KEY; 
@@ -241,6 +252,9 @@ exports.fetchAndSyncMatches = async (req, res) => {
             const detectedKnockoutRound =
                 knockoutRoundMap[apiRoundName] || null;
 
+            const leagueSettings = await Settings.findById(currentLeagueId).lean();
+            const championshipRules = leagueSettings?.championshipRules || {};
+
             // group_name preenchido é a fonte para identificar grupos.
             // Quando group_name é nulo e round_name é reconhecido,
             // a própria API identifica o mata-mata.
@@ -310,6 +324,16 @@ exports.fetchAndSyncMatches = async (req, res) => {
                     ? Number(item.round_number)
                     : null,
                 roundName: apiRoundName || null,
+                stageFormat: isApiKnockout
+                    ? getEffectiveKnockoutFormat(championshipRules, { phaseName: phaseNameValue || detectedKnockoutRound || apiRoundName })
+                    : null,
+                knockoutTieKey: isApiKnockout
+                    ? buildKnockoutTieKey(phaseNameValue || detectedKnockoutRound || apiRoundName, translateTeamName(item.home_team), translateTeamName(item.away_team))
+                    : null,
+                knockoutLeg: 1,
+                knockoutExpectedLegs: isApiKnockout
+                    ? getEffectiveKnockoutLegCount(championshipRules, { phaseName: phaseNameValue || detectedKnockoutRound || apiRoundName })
+                    : 1,
                 date: dateStr,
                 time: timeStr,
                 status: mapStatus(item.status),
@@ -339,6 +363,9 @@ exports.fetchAndSyncMatches = async (req, res) => {
                 });
 
                 await match.save();
+                if (match.phase === 'knockout') {
+                    await materializeKnockoutConfrontation(match, championshipRules);
+                }
                 createdCount++;
 
             } else {
@@ -355,6 +382,9 @@ exports.fetchAndSyncMatches = async (req, res) => {
                     Object.assign(match, updateData);
 
                     await match.save();
+                    if (match.phase === 'knockout') {
+                        await materializeKnockoutConfrontation(match, championshipRules);
+                    }
                     updatedCount++;
                 }
             }
