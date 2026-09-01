@@ -126,7 +126,7 @@ try { const m = await import('./allBets.js?v=1.13'); initAllBets = m.initAllBets
 
 let initAdmin, loadGlobalSaveLocks, isSaveBetsBlocked, isRequireAllBetsEnabled;
 try {
-  const m = await import('./admin.js?v=1.16');
+  const m = await import('./admin.js?v=1.19');
   initAdmin = m.initAdmin;
   loadGlobalSaveLocks = m.loadGlobalSaveLocks;
   isSaveBetsBlocked = m.isSaveBetsBlocked;
