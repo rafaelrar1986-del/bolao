@@ -33,6 +33,8 @@ export function createMatchesSettings(ctx = {}) {
       if (settingsRes?.success && settingsRes.data) {
         STATE.betLockMode =
           settingsRes.data.betLockMode === 'match' ? 'match' : 'grade';
+        STATE.allowBetEditingBeforeLock =
+          settingsRes.data.allowBetEditingBeforeLock !== false;
 
         // 🧪 O modo de teste precisa ser hidratado do backend.
         // Sem isso, o frontend continuava tratando partidas finalizadas
@@ -63,6 +65,7 @@ export function createMatchesSettings(ctx = {}) {
         STATE.unlockedPhases = new Set(settingsRes.data.unlockedPhases || []);
       } else {
         STATE.betLockMode = 'grade';
+        STATE.allowBetEditingBeforeLock = true;
         STATE.groupBetAvailabilityMode = 'all';
         STATE.unlockedGroupRounds = new Set();
         STATE.lockedGroupRounds = new Set();
@@ -79,6 +82,7 @@ export function createMatchesSettings(ctx = {}) {
     } catch (err) {
       console.warn("⚠️ Não foi possível carregar lockedPhases:", err);
       STATE.betLockMode = 'grade';
+      STATE.allowBetEditingBeforeLock = true;
       STATE.testMode = false;
       STATE.lockedPhases = new Set();
       STATE.unlockedPhases = new Set();

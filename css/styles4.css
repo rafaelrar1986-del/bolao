@@ -16076,6 +16076,18 @@ body:has(#login-section:not([hidden])){
   min-height:58px;
   padding:8px;
 }
+#admin .admin-control-grid-single .admin-edit-bets-visual {
+  width:72px;
+  min-width:72px;
+  min-height:58px;
+  padding:8px;
+  background:linear-gradient(145deg,rgba(31,41,55,.96),rgba(17,24,39,.96));
+}
+#admin .admin-edit-bets-visual.is-active {
+  background:linear-gradient(145deg,#2563eb,#1d4ed8);
+  border-color:rgba(96,165,250,.55);
+  color:#fff;
+}
 #admin .admin-require-all-visual {
   background:linear-gradient(145deg,rgba(31,41,55,.96),rgba(17,24,39,.96));
 }

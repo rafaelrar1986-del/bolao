@@ -228,61 +228,88 @@ async function renderPhaseControls() {
         }).length;
         const knockoutMatchCount = knockoutMatches.length;
 
-        let phases = [
-            { id: 'group', label: 'Grupos' },
-            { id: 'podium', label: 'Pódio' }
-        ];
+        // ============================================================
+        // VISIBILIDADE DOS PALPITES — DINÂMICA
+        // Não há mais etapas fixas da Copa aqui. Os controles são criados
+        // a partir das partidas realmente cadastradas nesta liga.
+        // unlockedPhases controla somente a REVELAÇÃO dos palpites.
+        // O bloqueio de salvamento/edição continua nas regras próprias.
+        // ============================================================
+        const visibilityItems = [];
+        const visibilitySeen = new Set();
 
-        if (knockoutSelect) {
-            const knockoutOptions = Array.from(knockoutSelect.options)
-                .filter(opt => opt.value && opt.value !== "")
-                .map(opt => ({
-                    id: opt.value,
-                    label: opt.text
-                }));
+        const addVisibilityItem = (id, label, meta = '') => {
+            const rawId = String(id || '').trim();
+            if (!rawId || visibilitySeen.has(rawId)) return;
+            visibilitySeen.add(rawId);
+            visibilityItems.push({ id: rawId, label: String(label || rawId), meta });
+        };
 
-            phases = [...phases, ...knockoutOptions];
+        const genericGroupPhaseNames = new Set([
+            'fase de grupos',
+            'fase grupos',
+            'grupos',
+            'group',
+            'groups'
+        ]);
+
+        // Grupos: quando existem várias rodadas/fases reais, usa o
+        // phaseName/rodada como chave; caso contrário mantém "group" para
+        // compatibilidade com configurações antigas.
+        const groupVisibilityValues = new Map();
+        allLeagueMatches
+            .filter(m => String(m.phase || '').toLowerCase() === 'group')
+            .forEach(m => {
+                const phaseName = String(m.phaseName || '').trim();
+                const groupName = String(m.group || '').trim();
+                let id = phaseName && !genericGroupPhaseNames.has(phaseName.toLowerCase())
+                    ? phaseName
+                    : groupName || 'group';
+                let label = phaseName && !genericGroupPhaseNames.has(phaseName.toLowerCase())
+                    ? phaseName
+                    : (groupName ? `Grupo ${groupName.replace(/^grupo\s+/i, '')}` : 'Grupos');
+                if (id) groupVisibilityValues.set(id, label);
+            });
+
+        if (hasGroupMatches) {
+            // Se houver phaseName/rodadas, elas são os controles dinâmicos.
+            // "Grupos" também fica disponível como chave global compatível.
+            addVisibilityItem('group', 'Grupos', 'global');
+            groupVisibilityValues.forEach((label, id) => addVisibilityItem(id, label, 'group'));
         }
 
-        // A ordem visual do mata-mata nunca depende de roundNumber.
-        // O roundNumber vindo da API pode representar outra convenção.
-        const knockoutOrder = [
-            '16-avos de final',
-            'Oitavas de final',
-            'Quartas de final',
-            'Semifinal',
-            '3º lugar',
-            'Final'
-        ];
-        const knockoutOrderIndex = label => {
-            const normalized = String(label || '').trim().toLowerCase();
-            const index = knockoutOrder.findIndex(x => x.toLowerCase() === normalized);
-            return index >= 0 ? index : 999;
-        };
+        // Pontos corridos: cada rodada/fase real vira um controle de
+        // visibilidade. Também existe uma chave global "pontos_corridos".
+        if (hasPointsRunMatches) {
+            addVisibilityItem('pontos_corridos', 'Pontos Corridos', 'global');
+            const pointRunVisibility = new Map();
+            allLeagueMatches
+                .filter(m => {
+                    const phase = String(m.phase || '').toLowerCase();
+                    return phase === 'pontos_corridos' || phase === 'points_run';
+                })
+                .forEach(m => {
+                    const label = String(m.phaseName || '').trim() ||
+                        (Number(m.roundNumber) > 0 ? `Rodada ${Number(m.roundNumber)}` : 'Pontos Corridos');
+                    pointRunVisibility.set(label, label);
+                });
+            pointRunVisibility.forEach(label => addVisibilityItem(label, label, 'points_run'));
+        }
 
-        // Nome curto somente para a interface. O nome original da etapa
-        // continua sendo preservado no dado da partida.
-        const knockoutDisplayLabel = label => {
-            const normalized = String(label || '').trim().toLowerCase();
-            const shortLabels = {
-                '16-avos de final': '16-avos',
-                'oitavas de final': 'Oitavas',
-                'quartas de final': 'Quartas',
-                'semifinal': 'Semifinal',
-                '3º lugar': '3º lugar',
-                'final': 'Final'
-            };
-            return shortLabels[normalized] || String(label || '');
-        };
+        // Mata-mata: somente as etapas realmente presentes no campeonato.
+        if (hasKnockoutMatches) {
+            addVisibilityItem('knockout', 'Mata-mata', 'global');
+            const knockoutVisibility = new Map();
+            knockoutMatches.forEach(m => {
+                const label = String(m.phaseName || m.group || '').trim() ||
+                    (Number(m.roundNumber) > 0 ? `Rodada ${Number(m.roundNumber)}` : 'Mata-mata');
+                knockoutVisibility.set(label, label);
+            });
+            knockoutVisibility.forEach(label => addVisibilityItem(label, label, 'knockout'));
+        }
 
-        knockoutRounds.sort((a, b) => {
-            const labelA = knockoutRoundLabels[a] || `Rodada ${a}`;
-            const labelB = knockoutRoundLabels[b] || `Rodada ${b}`;
-            const ia = knockoutOrderIndex(labelA);
-            const ib = knockoutOrderIndex(labelB);
-            if (ia !== ib) return ia - ib;
-            return a - b;
-        });
+        // Pódio é uma entidade global e não depende das partidas.
+        addVisibilityItem('podium', 'Pódio', 'global');
 
         const roundControls = hasGroupMatches ? `
           <div style="grid-column:1/-1; margin-top:10px; padding:10px; border:1px solid rgba(255,255,255,.08); border-radius:8px;">
@@ -364,13 +391,15 @@ async function renderPhaseControls() {
 
         container.innerHTML = `
             <div class="d-flex flex-wrap gap-2" style="display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 5px !important;">
-                ${phases.map(p => {
-                    const isChecked = unlocked.includes(p.id);
+                ${visibilityItems.map(item => {
+                    const isChecked = unlocked.some(v => String(v).trim().toLowerCase() === String(item.id).trim().toLowerCase());
+                    const phaseIdJson = JSON.stringify(item.id).replace(/</g, '\u003c');
                     return `
                         <button class="btn ${isChecked ? 'btn-success' : 'btn-outline-secondary'}" 
-                                onclick="togglePhaseVisibility('${p.id}', ${isChecked})"
-                                style="font-size: 10px; height: 32px; padding: 2px; border-radius: 4px; border: none; font-weight: bold;">
-                            ${p.label}
+                                onclick='togglePhaseVisibility(${phaseIdJson}, ${isChecked})'
+                                style="font-size: 10px; min-height: 32px; padding: 4px 6px; border-radius: 4px; border: none; font-weight: bold;"
+                                title="${item.meta === 'global' ? 'Visibilidade global da fase' : 'Visibilidade dos palpites desta fase/rodada'}">
+                            ${item.label}
                         </button>
                     `;
                 }).join('')}
@@ -2147,6 +2176,7 @@ let GLOBAL_SAVE_LOCKS = {
   blockSaveBets: false,
   blockSaveKnockout: false,
   requireAllBets: false,
+  allowBetEditingBeforeLock: true,
   testMode: false
 };
 
@@ -2296,6 +2326,17 @@ export function isRequireAllBetsEnabled() {
   } catch (e) { return false; }
 }
 
+export function isBetEditingBeforeLockEnabled() {
+  return GLOBAL_SAVE_LOCKS?.allowBetEditingBeforeLock !== false;
+}
+
+async function setBetEditingBeforeLockEnabled(value) {
+  const ok = await updateGlobalSaveLocks({ allowBetEditingBeforeLock: !!value });
+  if (!ok) return false;
+  GLOBAL_SAVE_LOCKS.allowBetEditingBeforeLock = !!value;
+  return true;
+}
+
 async function setSaveBetsBlocked(value) {
   try {
     const ok = await updateGlobalSaveLocks({ blockSaveBets: !!value });
@@ -2330,6 +2371,7 @@ export function refreshSaveLocksUI() {
   const btnBets = document.getElementById('btn-toggle-save-bets');
   const btnKO = document.getElementById('btn-toggle-save-knockout');
   const btnRequireAll = document.getElementById('btn-toggle-require-all-bets');
+  const btnEditBets = document.getElementById('btn-toggle-edit-bets-before-lock');
 
   if (btnBets) {
     const blocked = isSaveBetsBlocked();
@@ -2356,6 +2398,17 @@ export function refreshSaveLocksUI() {
     btnRequireAll.classList.toggle('btn-secondary', !enabled);
     btnRequireAll.classList.toggle('is-active', enabled);
     btnRequireAll.title = enabled ? 'Não exigir todos os palpites' : 'Exigir todos os palpites antes de salvar';
+  }
+
+  if (btnEditBets) {
+    const enabled = isBetEditingBeforeLockEnabled();
+    btnEditBets.innerHTML = `<i class="fas ${enabled ? 'fa-pencil-alt' : 'fa-ban'}"></i>`;
+    btnEditBets.classList.toggle('btn-primary', enabled);
+    btnEditBets.classList.toggle('btn-secondary', !enabled);
+    btnEditBets.classList.toggle('is-active', enabled);
+    btnEditBets.title = enabled
+      ? 'Impedir edição de palpites já salvos antes do bloqueio'
+      : 'Permitir edição de palpites já salvos antes do bloqueio';
   }
 
   const saveBetsBtn = document.getElementById('save-bets');
@@ -2395,6 +2448,7 @@ function wireSaveLocksAdmin() {
   const btnBets = document.getElementById('btn-toggle-save-bets');
   const btnKO   = document.getElementById('btn-toggle-save-knockout');
   const btnRequireAll = document.getElementById('btn-toggle-require-all-bets');
+  const btnEditBets = document.getElementById('btn-toggle-edit-bets-before-lock');
 
   if (btnBets) {
     btnBets.addEventListener('click', () => {
@@ -2425,6 +2479,29 @@ function wireSaveLocksAdmin() {
       refreshSaveLocksUI();
       setRequireAllBetsEnabled(newVal);
       toast(newVal ? 'Exigência de todos os palpites ativada.' : 'Exigência desativada.', 'info');
+    });
+  }
+
+  if (btnEditBets) {
+    btnEditBets.addEventListener('click', async () => {
+      const newVal = !isBetEditingBeforeLockEnabled();
+      const ok = await setBetEditingBeforeLockEnabled(newVal);
+      if (!ok) {
+        toast('Não foi possível atualizar a permissão de edição.', 'error');
+        return;
+      }
+      refreshSaveLocksUI();
+      if (window.STATE) {
+        window.STATE.allowBetEditingBeforeLock = newVal;
+        try { window.renderMatches?.(); } catch (_) {}
+        try { window.renderKnockoutMatches?.(); } catch (_) {}
+      }
+      toast(
+        newVal
+          ? 'Edição de palpites antes do bloqueio liberada.'
+          : 'Edição de palpites já salvos antes do bloqueio desativada.',
+        'info'
+      );
     });
   }
 }

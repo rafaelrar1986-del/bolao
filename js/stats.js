@@ -34,6 +34,26 @@ function renderEmptyState(msg) {
             </div>`;
 }
 
+
+function isStatsPhaseVisible(match) {
+    if (!match) return false;
+    const unlocked = new Set((STATS.unlockedPhases || []).map(v => String(v).trim().toLowerCase()));
+    const phase = String(match.phase || '').trim().toLowerCase();
+    const addKeys = [match.phase, match.group, match.phaseName];
+
+    if (phase === 'group' || phase === 'groups' || phase === 'grupo' || phase === 'grupos') {
+        addKeys.push('group');
+    } else if (phase === 'pontos_corridos' || phase === 'points_run') {
+        addKeys.push('pontos_corridos', 'points_run');
+    } else if (phase === 'knockout' || phase === 'mata-mata' || phase === 'mata_mata') {
+        addKeys.push('knockout', 'mata-mata');
+    }
+
+    const round = Number(match.roundNumber);
+    if (Number.isInteger(round) && round > 0) addKeys.push(`Rodada ${round}`);
+    return addKeys.some(v => unlocked.has(String(v ?? '').trim().toLowerCase()));
+}
+
 function getLogoForTeam(teamName) {
     if (!teamName || teamName === '—') return null;
     const m = STATS.matches.find(match => 
@@ -84,11 +104,7 @@ window.switchStatsTab = (tab) => {
 /* --- Favoritos Dinâmicos --- */
 function renderTopPicksForTab(filteredMatches) {
     // 🛡️ Valida por grupo OU por phaseName (Rodada)
-    const allowed = filteredMatches.filter(m => 
-        STATS.unlockedPhases.includes('group') || 
-        STATS.unlockedPhases.includes(m.group) || 
-        STATS.unlockedPhases.includes(m.phaseName)
-    );
+    const allowed = filteredMatches.filter(isStatsPhaseVisible);
 
     if (allowed.length === 0) return '';
     
@@ -140,11 +156,7 @@ function renderTopPicksForTab(filteredMatches) {
 
 /* --- Lista de Jogos (Barras de Progresso) --- */
 function renderMatchList(filteredMatches) {
-    const allowedMatches = filteredMatches.filter(m => 
-        STATS.unlockedPhases.includes('group') || 
-        STATS.unlockedPhases.includes(m.group) || 
-        STATS.unlockedPhases.includes(m.phaseName)
-    );
+    const allowedMatches = filteredMatches.filter(isStatsPhaseVisible);
 
     if (allowedMatches.length === 0) return renderEmptyState("Estatísticas bloqueadas.");
 

@@ -131,17 +131,11 @@ export function renderDuelInterface(
   }
 
   function renderMatch(m) {
-    // 🛡️ CORREÇÃO DEFINITIVA DE PRIVACIDADE:
-    // Se o backend enviar isLocked: false, NADA no frontend deve trancar.
+    // O backend é a autoridade final da privacidade. unlockedPhases
+    // não pode ser usado aqui para contornar uma aposta que o backend
+    // marcou como privada.
     const isLockedByBackend = (m.isLocked === true);
-    
-    // Fallback apenas se o backend não enviou a info: checa window.STATE
-    const isPhaseUnlocked = unlockedPhases.includes('group') || 
-                            unlockedPhases.includes(m.group) || 
-                            unlockedPhases.includes(m.phaseName);
-
-    // O jogo só será visível se NÃO estiver trancado pelo backend OU se a fase estiver liberada explicitamente
-    const isVisible = !isLockedByBackend || isPhaseUnlocked || m.status === 'finished';
+    const isVisible = !isLockedByBackend;
 
     const bV_raw = visitedBets.find(b => Number(b.matchId) === Number(m.matchId)) || {};
     const bM = myBets.find(b => Number(b.matchId) === Number(m.matchId)) || {};

@@ -431,6 +431,10 @@ export function createMatchesController(ctx = {}) {
   function unlockMatchForEdit(matchId, event) {
       const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, renderMatches, renderKnockoutMatches, getKnockoutConfrontationInfo } = ctx;
     if (event) event.stopPropagation();
+    if (STATE?.allowBetEditingBeforeLock === false) {
+      if (typeof toast === 'function') toast('A edição de palpites já salvos está desativada pelo administrador.', 'warning');
+      return;
+    }
     
     const idNum = Number(matchId);
 

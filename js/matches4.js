@@ -41,6 +41,7 @@ const STATE = {
   testMode: false,
   lockedPhases: new Set(),
   unlockedPhases: new Set(),
+  allowBetEditingBeforeLock: true,
   hasSubmitted: false,
   allBets: [],
   officialPodium: null,

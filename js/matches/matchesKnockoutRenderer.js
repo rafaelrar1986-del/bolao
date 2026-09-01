@@ -210,10 +210,15 @@ export function createMatchesKnockoutRenderer(ctx = {}) {
     // Após o primeiro envio, uma aposta salva fica em somente leitura até
     // o clique em ✏️ Editar. Em testMode, a elegibilidade continua verdadeira
     // e o botão Editar deve aparecer normalmente.
-    const canEdit = canEditByRule && (!STATE.hasSubmitted || isEditing || !hasSavedBet);
+    const canEditSavedBet = STATE.allowBetEditingBeforeLock !== false;
+    const canEdit = canEditByRule && (
+      !hasSavedBet ||
+      !STATE.hasSubmitted ||
+      (isEditing && canEditSavedBet)
+    );
 
     let actionBarHtml = '';
-    if (STATE.hasSubmitted && hasSavedBet && canEditByRule) {
+    if (STATE.hasSubmitted && hasSavedBet && canEditByRule && canEditSavedBet) {
       if (isEditing) {
         actionBarHtml = `
           <div class="card-action-bar" style="display: flex; justify-content: flex-end; padding: 6px 8px 0 8px; margin-top: -31px;">

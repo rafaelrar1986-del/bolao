@@ -348,19 +348,23 @@ export function createMatchesGroupsRenderer(ctx = {}) {
     const isPenalties = m.status === 'penaltis';
 
     const canEditByRule = isMatchEditable(m);
-    // Após o primeiro envio, uma aposta já salva fica em modo somente leitura
-    // até o usuário clicar em ✏️ Editar. Uma partida ainda sem aposta continua
-    // editável normalmente. O testMode não remove o botão Editar: ele apenas
-    // mantém a partida elegível para edição.
+    // Após o primeiro envio, uma aposta já salva só pode voltar a ser editada
+    // se o administrador tiver permitido essa edição. Uma partida sem aposta
+    // continua editável normalmente. Isso é independente do bloqueio da partida.
     const hasSavedBet = Boolean(
       storedChoice ||
       scoreData.scoreA != null ||
       scoreData.scoreB != null
     );
-    const canEdit = canEditByRule && (!STATE.hasSubmitted || isEditing || !hasSavedBet);
+    const canEditSavedBet = STATE.allowBetEditingBeforeLock !== false;
+    const canEdit = canEditByRule && (
+      !hasSavedBet ||
+      !STATE.hasSubmitted ||
+      (isEditing && canEditSavedBet)
+    );
 
     let actionBarHtml = '';
-    if (STATE.hasSubmitted && hasSavedBet && canEditByRule) {
+    if (STATE.hasSubmitted && hasSavedBet && canEditByRule && canEditSavedBet) {
       if (isEditing) {
         actionBarHtml = `<div class="card-action-bar" style="display: flex; justify-content: flex-end; padding: 6px 8px 0 8px; margin-top: -31px;"><button class="btn-save-bet" onclick="window.saveSingleBet(${m.matchId}, event)" style="background: #2ecc71; color: white; border: none; padding: 4px 12px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2); display: flex; align-items: center; gap: 4px; z-index: 2; position: relative;">💾 Salvar</button></div>`;
       } else {
