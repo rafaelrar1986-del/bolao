@@ -16,8 +16,8 @@ const {
  */
 router.get('/standings', (req, res, next) => {
     // Log para monitorar qual liga está sendo requisitada no terminal do VSCode/Render
-    const { leagueId, live } = req.query;
-    console.log(`[ROUTE] Request Standings - League: ${leagueId || '1 (default)'} | Live: ${live || 'false'}`);
+    const { leagueId, live, phase } = req.query;
+    console.log(`[ROUTE] Request Standings - League: ${leagueId || '1 (default)'} | Phase: ${phase || 'auto'} | Live: ${live || 'false'}`);
     next();
 }, getGroupStandings);
 
