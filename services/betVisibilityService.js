@@ -1,34 +1,97 @@
 /**
  * Centraliza a regra de visibilidade dos palpites de terceiros.
  *
- * Regra de negócio:
- * - O próprio usuário sempre pode ver os próprios palpites.
- * - Admin sempre pode visualizar palpites de terceiros.
- * - Para um participante comum, o palpite de uma partida fica privado
- *   enquanto aquela aposta ainda puder ser criada/alterada.
- * - Assim que a aposta fica efetivamente bloqueada para edição, ela passa
- *   a ser pública.
+ * REGRAS:
+ * 1) blockSaveBets controla SOMENTE salvamento. Nunca libera visibilidade.
+ * 2) Enquanto a aposta ainda puder ser criada/alterada, terceiros NÃO veem o palpite.
+ * 3) Depois do bloqueio real, a visibilidade depende de unlockedPhases.
+ * 4) Admin e dono sempre podem ver seus dados.
  *
- * A decisão de edição vem do betLockService. Não usamos unlockedPhases
- * diretamente para decidir privacidade, porque liberar uma rodada/fase para
- * aposta NÃO significa revelar os palpites existentes nela.
+ * unlockedPhases é a autorização administrativa explícita para revelar uma
+ * fase/rodada. O valor é dinâmico e pode ser:
+ *   - group / nome do grupo / phaseName
+ *   - pontos_corridos / points_run / phaseName
+ *   - knockout / nome da etapa / phaseName
+ *   - podium
  */
 
-function getVisibilityLockState(match, settings, isAdmin = false, getBetLockState, isOwner = false, now = new Date(), allMatches = []) {
-  if (isAdmin || isOwner) {
-    return {
-      locked: false,
-      reason: null,
-      editable: false,
-      visible: true
-    };
+function normalizeKey(value) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function getMatchVisibilityKeys(match) {
+  if (!match) return [];
+
+  const phase = normalizeKey(match.phase);
+  const keys = new Set();
+
+  const add = value => {
+    const raw = String(value ?? '').trim();
+    if (!raw) return;
+    keys.add(raw);
+    keys.add(normalizeKey(raw));
+  };
+
+  if (phase === 'group' || phase === 'groups' || phase === 'grupo' || phase === 'grupos') {
+    add('group');
+    add(match.group);
+    add(match.phaseName);
+    if (Number.isInteger(Number(match.roundNumber)) && Number(match.roundNumber) > 0) {
+      add(`Rodada ${Number(match.roundNumber)}`);
+    }
+  } else if (phase === 'pontos_corridos' || phase === 'points_run') {
+    add('pontos_corridos');
+    add('points_run');
+    add(match.phaseName);
+    if (Number.isInteger(Number(match.roundNumber)) && Number(match.roundNumber) > 0) {
+      add(`Rodada ${Number(match.roundNumber)}`);
+    }
+  } else if (phase === 'knockout' || phase === 'mata-mata' || phase === 'mata_mata') {
+    add('knockout');
+    add('mata-mata');
+    add(match.group);
+    add(match.phaseName);
+    if (Number.isInteger(Number(match.roundNumber)) && Number(match.roundNumber) > 0) {
+      add(`Rodada ${Number(match.roundNumber)}`);
+    }
+  } else {
+    add(match.phase);
+    add(match.group);
+    add(match.phaseName);
   }
 
-  // A trava global de salvamento torna a aposta não editável para
-  // participantes comuns; portanto os palpites podem ser revelados.
-  // No testMode essa trava global é deliberadamente ignorada pelo fluxo
-  // de salvamento, então a privacidade continua seguindo a edição real.
-  if (settings?.blockSaveBets === true && settings?.testMode !== true) {
+  return [...keys];
+}
+
+function isPhaseVisibilityUnlocked(match, settings) {
+  const unlocked = Array.isArray(settings?.unlockedPhases)
+    ? settings.unlockedPhases
+    : [];
+
+  if (!match || unlocked.length === 0) return false;
+
+  const unlockedSet = new Set(
+    unlocked.flatMap(value => {
+      const raw = String(value ?? '').trim();
+      return raw ? [raw, normalizeKey(raw)] : [];
+    })
+  );
+
+  return getMatchVisibilityKeys(match).some(key =>
+    unlockedSet.has(key) || unlockedSet.has(normalizeKey(key))
+  );
+}
+
+function getVisibilityLockState(
+  match,
+  settings,
+  isAdmin = false,
+  getBetLockState,
+  isOwner = false,
+  now = new Date(),
+  allMatches = []
+) {
+  if (isAdmin || isOwner) {
     return {
       locked: false,
       reason: null,
@@ -47,7 +110,6 @@ function getVisibilityLockState(match, settings, isAdmin = false, getBetLockStat
   }
 
   if (typeof getBetLockState !== 'function') {
-    // Fail closed: sem a autoridade de lock, nunca revelamos a aposta.
     return {
       locked: true,
       reason: 'lock_service_unavailable',
@@ -59,38 +121,44 @@ function getVisibilityLockState(match, settings, isAdmin = false, getBetLockStat
   const state = getBetLockState(match, settings, now, allMatches);
   const editable = state?.locked !== true;
 
+  // A privacidade segue primeiro a regra de edição. unlockedPhases só
+  // autoriza a revelação depois que a aposta já estiver bloqueada.
+  const phaseUnlocked = isPhaseVisibilityUnlocked(match, settings);
+  const visible = !editable && phaseUnlocked;
+
   return {
-    // Privacidade é exatamente o inverso da possibilidade de edição.
-    locked: editable,
-    reason: editable ? (state?.reason || 'bet_editable') : null,
+    locked: !visible,
+    reason: visible
+      ? null
+      : editable
+        ? (state?.reason || 'bet_editable')
+        : (phaseUnlocked ? 'bet_visibility_locked' : 'phase_visibility_locked'),
     editable,
-    visible: !editable
+    visible
   };
 }
 
-/**
- * Pódio, Extras e previsões de classificação não estão vinculados a uma
- * partida individual. O endpoint de salvamento atualmente permite alterá-los
- * enquanto a trava global de apostas não estiver ativa (e também no testMode).
- * Portanto a privacidade desses blocos acompanha a mesma autoridade de save.
- */
-function getGlobalPredictionVisibilityState(settings, isAdmin = false, isOwner = false) {
+function getGlobalPredictionVisibilityState(settings, isAdmin = false, isOwner = false, visibilityKey = 'podium') {
   if (isAdmin || isOwner) {
     return { locked: false, reason: null, editable: false, visible: true };
   }
 
-  const editable = settings?.testMode === true || settings?.blockSaveBets !== true;
+  const unlocked = Array.isArray(settings?.unlockedPhases)
+    ? settings.unlockedPhases.map(v => normalizeKey(v))
+    : [];
+
+  const visible = unlocked.includes(normalizeKey(visibilityKey));
 
   return {
-    locked: editable,
-    reason: editable ? 'global_predictions_editable' : null,
-    editable,
-    visible: !editable
+    locked: !visible,
+    reason: visible ? null : 'phase_visibility_locked',
+    editable: !visible,
+    visible
   };
 }
 
 function getVisibleBetData(bet, match, visibilityState) {
-  const locked = visibilityState?.locked !== false;
+  const locked = visibilityState?.visible !== true;
 
   return {
     matchId: bet?.matchId,
@@ -141,6 +209,9 @@ function maskExtras(extras, locked) {
 }
 
 module.exports = {
+  normalizeKey,
+  getMatchVisibilityKeys,
+  isPhaseVisibilityUnlocked,
   getVisibilityLockState,
   getGlobalPredictionVisibilityState,
   getVisibleBetData,

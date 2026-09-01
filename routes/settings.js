@@ -257,6 +257,7 @@ router.post('/global', protect, admin, async (req, res) => {
       'blockSaveBets',
       'blockSaveKnockout',
       'requireAllBets',
+      'allowBetEditingBeforeLock',
       'statsLocked'
     ];
 

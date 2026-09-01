@@ -37,6 +37,13 @@ const SettingsSchema = new mongoose.Schema(
       default: false
     },
 
+    // ✏️ Permite alterar uma aposta já salva enquanto a partida/grade
+    // ainda estiver editável. Não interfere no bloqueio de salvamento.
+    allowBetEditingBeforeLock: {
+      type: Boolean,
+      default: true
+    },
+
     // 🧪 MODO DE TESTE TEMPORÁRIO
     // Permite ao administrador testar regras/apostas sem alterar o
     // firstMatchStartedAt ou o status oficial das partidas.

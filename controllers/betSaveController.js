@@ -45,6 +45,33 @@ function normalizeGroupPredictionsInput(input) {
   })).filter(item => item.group && item.positions.length);
 }
 
+function normalizeNullableScore(value) {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function predictionWasChanged(existingBet, effectiveWinner, qualifier, scoreA, scoreB, scoresEnabled) {
+  if (!existingBet) return true;
+
+  const winnerChanged =
+    String(existingBet.winner ?? '') !== String(effectiveWinner ?? '');
+
+  const qualifierChanged =
+    String(existingBet.qualifier ?? '') !== String(qualifier ?? '');
+
+  if (winnerChanged || qualifierChanged) return true;
+
+  if (scoresEnabled) {
+    return (
+      normalizeNullableScore(existingBet.scoreA) !== normalizeNullableScore(scoreA) ||
+      normalizeNullableScore(existingBet.scoreB) !== normalizeNullableScore(scoreB)
+    );
+  }
+
+  return false;
+}
+
 async function saveBets(req, res) {
   try {
     const { groupMatches, podium, extras, groupPredictions, leagueId } = req.body;
@@ -220,6 +247,18 @@ async function saveBets(req, res) {
 
     const validMatchIds = new Set(dbMatches.map(m => m.matchId));
     const matchMap = new Map(dbMatches.map(m => [m.matchId, m]));
+
+    // Carrega a aposta atual uma única vez para aplicar a política de edição
+    // sem interferir nas regras de bloqueio/salvamento. A opção permite ou
+    // impede apenas a alteração de uma aposta já existente; novas apostas
+    // continuam podendo ser salvas normalmente enquanto o salvamento estiver aberto.
+    const existingBetForEditPolicy = await Bet.findOne({
+      user: req.user._id,
+      leagueId: String(leagueId)
+    }).lean();
+    const existingBetsForEditPolicy = new Map(
+      (existingBetForEditPolicy?.groupMatches || []).map(b => [Number(b.matchId), b])
+    );
 
     // ============================================================
     // 🛡️ VALIDAÇÃO DE GRADE TRANCADA
@@ -472,6 +511,26 @@ async function saveBets(req, res) {
           success: false,
           message: `Palpite de classificado não é permitido para a partida ${idNum}, pois ela não pertence ao mata-mata.`
         });
+      }
+
+      // Política independente de bloqueio: quando desativada, uma aposta já
+      // salva não pode ser modificada. A criação de novas apostas permanece
+      // permitida enquanto as regras normais de salvamento permitirem.
+      if (settings?.allowBetEditingBeforeLock === false) {
+        const existingBetForMatch = existingBetsForEditPolicy.get(idNum);
+        if (existingBetForMatch && predictionWasChanged(
+          existingBetForMatch,
+          effectiveChoice,
+          qualifier,
+          scoreA,
+          scoreB,
+          scoresEnabled
+        )) {
+          return res.status(403).json({
+            success: false,
+            message: 'A edição de palpites já salvos está desativada pelo administrador.'
+          });
+        }
       }
 
       // Se a partida já está encerrada e foi aceita apenas como reenvio
@@ -858,6 +917,20 @@ async function saveSingleBet(req, res) {
       const index = betDoc.groupMatches.findIndex(b => Number(b.matchId) === idNum);
 
       if (index !== -1) {
+        if (settings?.allowBetEditingBeforeLock === false && predictionWasChanged(
+          betDoc.groupMatches[index],
+          effectiveWinner,
+          validQualifier,
+          scoreA,
+          scoreB,
+          scoresEnabled
+        )) {
+          return res.status(403).json({
+            success: false,
+            message: 'A edição de palpites já salvos está desativada pelo administrador.'
+          });
+        }
+
         betDoc.groupMatches[index].winner = effectiveWinner;
         betDoc.groupMatches[index].scoreA =
           scoreA == null || scoreA === '' ? null : Number(scoreA);
