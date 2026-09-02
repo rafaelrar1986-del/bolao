@@ -8,18 +8,27 @@ const { protect, admin, checkPaid } = require('../middleware/auth');
 const { blockStatsIfLocked } = require('../middleware/blockStats');
 
 const { sortMatchesChronologically } = require('../utils/matchSort');
+const { getEffectiveKnockoutFormat } = require('../utils/knockoutFormat');
+const { getKnockoutConfrontationKey, validateHomeAwayLegs } = require('../utils/knockoutConfrontationKey');
 const {
   getVisibilityLockState,
   getGlobalPredictionVisibilityState
 } = require('../services/betVisibilityService');
 const { getBetLockState } = require('../services/betLockService');
+const {
+  buildScenarioUniverse,
+  isMatchInMiracleBettingScope,
+  materializeScenarioConfrontations
+} = require('../services/miracleScenarioService');
+const { normalizeTieBreakers, getTieBreakerMetrics, compareBySportsRanking } = require('../services/rankingService');
 
 const {
   DEFAULT_SCORING,
   DEFAULT_CHAMPIONSHIP_RULES,
   calculateBetTotal,
   calculateMatchPoints,
-  getMaxPointsPerMatch
+  getMaxPointsPerMatch,
+  sanitizeGroupQualificationRules
 } = require('../services/pointsService');
 function strMatch(a, b) {
   if (a == null || b == null) return false;
@@ -50,7 +59,7 @@ async function getLeadershipPath(req, res) {
     const [settings, matches, bets] = await Promise.all([
       Settings.findById(configId).lean(),
       Match.find({ leagueId: toLeagueId(leagueId) })
-        .select('matchId date time status scoreA scoreB regularTimeScoreA regularTimeScoreB penaltiesA penaltiesB phase teamA teamB logoA logoB group qualifiedSide')
+        .select('matchId date time status scoreA scoreB regularTimeScoreA regularTimeScoreB penaltiesA penaltiesB phase teamA teamB logoA logoB group qualifiedSide qualifiedSideManuallySet stageFormat knockoutTieKey knockoutLeg knockoutExpectedLegs')
         .lean(),
       Bet.find({ hasSubmitted: true, $or: [{ leagueId: lIdStr }, { leagueId: lIdNum }] })
         .select('user groupMatches matchId podium extras bonusPoints')
@@ -67,42 +76,7 @@ async function getLeadershipPath(req, res) {
     const champResults = settings.championshipResults || {};
     const officialPodium = settings.podium || [];
     const podiumSize = champRules.podiumSize ?? 4;
-    // Zona de premiação dos participantes. Não confundir com podiumSize,
-    // que define exclusivamente o pódio dos times.
-    const prizeZonePositions = Math.max(0, Number(settings.prizeZone?.positions || 0));
     const podiumPointsArr = scoringRules.podiumPoints || [];
-
-    // Indica se as regras configuradas atribuem pontos a algum campo
-    // relacionado ao placar. A Estratégia usa esta informação para decidir
-    // se deve exibir o placar do palpite, evitando inferir isso apenas pela
-    // existência de scoreA/scoreB no documento da aposta.
-    const matchRules = Array.isArray(scoringRules.matchRules) ? scoringRules.matchRules : [];
-    const scoreRuleConditions = new Set([
-      'exactScore',
-      'scoreTeamA',
-      'scoreTeamB',
-      'scoreWinner',
-      'scoreLoser',
-      'totalGoals',
-      'goalDifference'
-    ]);
-    const scoreRulePoints = matchRules.reduce((max, rule) => {
-      const points = Number(rule?.points || 0);
-      const hasScoreCondition = Array.isArray(rule?.conditions) &&
-        rule.conditions.some(condition => scoreRuleConditions.has(condition));
-      return hasScoreCondition && Number.isFinite(points) && points > 0
-        ? Math.max(max, points)
-        : max;
-    }, 0);
-    const legacyScorePoints = Math.max(
-      Number(scoringRules.exactScore || 0),
-      Number(scoringRules.scoreTeamA || 0),
-      Number(scoringRules.scoreTeamB || 0)
-    );
-    const scoreScoring = {
-      enabled: scoreRulePoints > 0 || legacyScorePoints > 0,
-      points: Math.max(scoreRulePoints, legacyScorePoints)
-    };
     // Teto máximo de pontuação por partida.
     // O leadership-path usa esse valor nos ghost points e nas margens de
     // perigo. Como o teto máximo possível precisa contemplar também a
@@ -122,37 +96,24 @@ async function getLeadershipPath(req, res) {
           const midStr = String(m.matchId);
           const simData = parsedSimulations[midStr];
           if (simData && m.status !== 'finished') {
-            let winner = simData.winner?.toLowerCase();
+            const winner = simData.winner?.toLowerCase();
             const qualifier = simData.qualifier?.toUpperCase();
-            const hasScoreA = Number.isInteger(simData.scoreA) && simData.scoreA >= 0;
-            const hasScoreB = Number.isInteger(simData.scoreB) && simData.scoreB >= 0;
 
-            // Um placar preenchido também constitui uma simulação. Quando o
-            // vencedor não foi escolhido manualmente, ele é derivado do placar.
-            if (!winner && hasScoreA && hasScoreB) {
-              winner = simData.scoreA > simData.scoreB ? 'a' : (simData.scoreB > simData.scoreA ? 'b' : 'draw');
-            }
-
-            if (winner || qualifier || hasScoreA || hasScoreB) {
+            if (winner || qualifier) {
               m.isSimulated = true;
               if (winner === 'a') {
-                m.scoreA = hasScoreA ? simData.scoreA : 2;
-                m.scoreB = hasScoreB ? simData.scoreB : 0;
+                m.scoreA = simData.scoreA ?? 2;
+                m.scoreB = simData.scoreB ?? 0;
               } else if (winner === 'b') {
-                m.scoreA = hasScoreA ? simData.scoreA : 0;
-                m.scoreB = hasScoreB ? simData.scoreB : 2;
+                m.scoreA = simData.scoreA ?? 0;
+                m.scoreB = simData.scoreB ?? 2;
               } else if (winner === 'draw') {
-                m.scoreA = hasScoreA ? simData.scoreA : 1;
-                m.scoreB = hasScoreB ? simData.scoreB : 1;
-              } else {
-                m.scoreA = hasScoreA ? simData.scoreA : null;
-                m.scoreB = hasScoreB ? simData.scoreB : null;
+                m.scoreA = simData.scoreA ?? 1;
+                m.scoreB = simData.scoreB ?? 1;
               }
 
-              if (m.scoreA != null && m.scoreB != null) {
-                if (m.regularTimeScoreA == null) m.regularTimeScoreA = m.scoreA;
-                if (m.regularTimeScoreB == null) m.regularTimeScoreB = m.scoreB;
-              }
+              if (m.regularTimeScoreA == null) m.regularTimeScoreA = m.scoreA;
+              if (m.regularTimeScoreB == null) m.regularTimeScoreB = m.scoreB;
 
               if (qualifier === 'A') m.qualifiedSide = 'A';
               if (qualifier === 'B') m.qualifiedSide = 'B';
@@ -342,7 +303,21 @@ async function getLeadershipPath(req, res) {
     const displayFutureMatches = matches
       .filter(m => (isLive ? m.status === 'scheduled' : m.status !== 'finished') || m.isSimulated)
       .sort(sortMatchesChronologically);
-    const mathFutureMatches = displayFutureMatches.filter(m => !m.isSimulated);
+    // O Milagre só pode analisar apostas da fase/rodada atualmente liberada.
+    // Uma rodada já iniciada continua válida para o cálculo dos palpites que
+    // já foram feitos nela; o filtro abaixo controla apenas o escopo de aposta,
+    // não o bloqueio temporal da partida.
+    const mathFutureMatches = displayFutureMatches
+      .filter(m => !m.isSimulated)
+      .filter(m => !isMiracleMode || isMatchInMiracleBettingScope(m, settings));
+
+    // Universo matematicamente válido do Milagre. Partidas sem estado simulável
+    // ficam fora, sem inventar resultados. O universo normal de placares é 0x0
+    // até 7x7 e respeita placar parcial, vencedor/classificado pré-existentes.
+    const miracleUniverse = isMiracleMode
+      ? buildScenarioUniverse(mathFutureMatches, champRules)
+      : { included: [], excluded: [] };
+    const miracleSearchMatches = miracleUniverse.included;
 
     // ---------- GHOST POINTS (mata-mata faltante no DB) ----------
     const ghostPhasesOrder = ['16-avos de final', 'Oitavas de final', 'Quartas de final', 'Semifinal', '3º lugar', 'Final'];
@@ -406,13 +381,563 @@ async function getLeadershipPath(req, res) {
     let miracleCriticalMatches = 0;
 
     if ((isMiracleMode || mode === 'simulacao') && activeUserId) {
-      const placarDinamico = {};
-      let jogosParaCalculo = [];
-
       if (isMiracleMode) {
-        currentRanking.forEach(u => { placarDinamico[u.userId] = u.points; });
-        jogosParaCalculo = [...mathFutureMatches].sort(sortMatchesChronologically);
+        // Busca exata: somente combinações válidas entram no universo. A poda usa
+        // limites superiores/inferiores de pontuação por partida; o resultado
+        // final sempre passa pelo motor oficial de pontuação/ranking.
+        const tieBreakers = normalizeTieBreakers(undefined, settings);
+        const baseMatchMap = new Map(matches.map(m => [String(m.matchId), m]));
+        const futureEntries = miracleSearchMatches;
+        const targetBase = targetBet;
+        const allUsers = bets.filter(b => b.user?._id).map(b => b.user._id.toString());
+        // Base segura para Branch & Bound: somente pontuação que não depende
+        // de resultados futuros. Pontos de pódio e de classificação de grupos
+        // atuais são retirados porque podem mudar quando o cenário for aplicado.
+        // Extras e bônus são fixos e permanecem na base.
+        const fixedBaseTotals = new Map();
+        for (const bet of bets) {
+          const uid = bet.user._id.toString();
+          const computed = calculateBetTotal(bet, baseMatchMap, settings, false);
+          fixedBaseTotals.set(uid, Math.max(0,
+            Number(computed.totalPoints || 0)
+            - Number(computed.podiumPoints || 0)
+            - Number(computed.groupQualificationPoints || 0)
+          ));
+        }
+
+        // Limites seguros para pontos que não são atribuídos por partida.
+        // O pódio pode variar com o cenário; usamos o máximo teórico do
+        // campeonato para o alvo. Para o rival, o mínimo seguro é zero.
+        const maxPodiumPoints = (scoringRules.podiumPoints || [])
+          .slice(0, Math.max(0, Number(champRules.podiumSize ?? 4)))
+          .reduce((sum, value) => sum + Math.max(0, Number(value) || 0), 0);
+        const groupQualificationRules = sanitizeGroupQualificationRules(
+          scoringRules.groupQualificationRules
+        );
+        const maxGroupQualificationPerUser = (bet) => {
+          if (!groupQualificationRules.length) return 0;
+          const maxRule = Math.max(...groupQualificationRules.map(r => Number(r.points) || 0), 0);
+          // Uma equipe/predição satisfaz no máximo uma regra; multiplicar pelo
+          // número de previsões é um teto seguro, ainda que deliberadamente amplo.
+          return Math.max(0, (Array.isArray(bet?.groupPredictions) ? bet.groupPredictions.length : 0) * maxRule);
+        };
+
+        // Em confrontos ida/volta, o ponto de classificado só pode aparecer
+        // depois que o confronto agregado for resolvido. Como cada perna futura
+        // individualmente tem qualifier=null, o limite por partida não enxerga
+        // esse ponto. Mantemos um teto separado, por confronto, para que o
+        // Branch & Bound jamais pode uma solução válida por subestimar esse bônus.
+        const futureHomeAwayQualifierBounds = new Map();
+        const qualifierPointsPerMatch = Math.max(0, Number(scoringRules?.matchExtras?.qualifier) || 0);
+        if (qualifierPointsPerMatch > 0) {
+          // O teto precisa considerar confrontos cuja primeira perna já terminou
+          // mas cuja segunda ainda é futura. Por isso os grupos são montados a
+          // partir de TODAS as partidas da liga, e não somente futureEntries.
+          const homeAwayGroups = new Map();
+          for (const match of matches) {
+            const isKO = match?.phase === 'knockout' || match?.phase === 'mata-mata';
+            const format = getEffectiveKnockoutFormat(champRules || {}, match);
+            if (!isKO || format !== 'home_away') continue;
+            const key = getKnockoutConfrontationKey(match);
+            if (!key) continue;
+            if (!homeAwayGroups.has(key)) homeAwayGroups.set(key, []);
+            homeAwayGroups.get(key).push(match);
+          }
+
+          const futureIds = new Set(futureEntries.map(({ match }) => String(match.matchId)));
+          for (const [key, legs] of homeAwayGroups) {
+            const legValidation = validateHomeAwayLegs(legs, 2);
+            if (!legValidation.valid) continue; // configuração inválida não entra no teto
+            const orderedLegs = [...legs].sort((a, b) => {
+              const la = Number(a?.knockoutLeg);
+              const lb = Number(b?.knockoutLeg);
+              if (Number.isFinite(la) && Number.isFinite(lb) && la !== lb) return la - lb;
+              return Number(a?.matchId || 0) - Number(b?.matchId || 0);
+            });
+            const firstLeg = orderedLegs[0];
+            if (!firstLeg || !futureIds.has(String(firstLeg.matchId)) && !futureIds.has(String(orderedLegs[1]?.matchId))) continue;
+
+            const complete = orderedLegs.every(m => m?.status === 'finished' && Number.isFinite(Number(m.scoreA)) && Number.isFinite(Number(m.scoreB)));
+            if (complete) continue; // o ponto já está potencialmente definido oficialmente
+
+            for (const bet of bets) {
+              const uid = bet.user._id.toString();
+              // O extra de classificado do confronto é lançado na primeira perna.
+              // Mesmo que a primeira perna já esteja finished, o ponto continua
+              // sendo potencial enquanto a segunda perna não terminou.
+              const betOnFirstLeg = (bet.groupMatches || []).find(g => String(g.matchId) === String(firstLeg.matchId));
+              if (!betOnFirstLeg || betOnFirstLeg.qualifier == null) continue;
+              const current = futureHomeAwayQualifierBounds.get(uid) || 0;
+              futureHomeAwayQualifierBounds.set(uid, current + qualifierPointsPerMatch);
+            }
+          }
+        }
+
+        const perMatchBounds = futureEntries.map(({ match, outcomes }) => {
+          const mins = new Map();
+          const maxs = new Map();
+          for (const bet of bets) {
+            const uid = bet.user._id.toString();
+            let min = Infinity, max = -Infinity;
+            const pick = (bet.groupMatches || []).find(g => String(g.matchId) === String(match.matchId));
+            for (const outcome of outcomes) {
+              const simulated = {
+                ...match,
+                status: 'finished',
+                isSimulated: true,
+                scoreA: outcome.scoreA,
+                scoreB: outcome.scoreB,
+                regularTimeScoreA: outcome.scoreA,
+                regularTimeScoreB: outcome.scoreB,
+                qualifiedSide: outcome.qualifier || null,
+                penaltiesA: outcome.penaltiesA ?? null,
+                penaltiesB: outcome.penaltiesB ?? null,
+              scenarioConfrontationQualifier: outcome.qualifier === 'A' || outcome.qualifier === 'B'
+            };
+              const pts = pick ? Number(calculateMatchPoints(pick, simulated, scoringRules, champRules).points || 0) : 0;
+              min = Math.min(min, pts);
+              max = Math.max(max, pts);
+            }
+            mins.set(uid, Number.isFinite(min) ? min : 0);
+            maxs.set(uid, Number.isFinite(max) ? max : 0);
+          }
+          return { mins, maxs };
+        });
+
+        const evaluateScenario = (choices) => {
+          const scenarioMap = new Map(baseMatchMap);
+          const miracleScopeMatchIds = new Set(
+            futureEntries.map(({ match }) => String(match.matchId))
+          );
+          const byId = new Map();
+          for (let i = 0; i < futureEntries.length; i++) {
+            const entry = futureEntries[i];
+            const outcome = choices[i];
+            if (!outcome) continue;
+            const simulated = {
+              ...entry.match,
+              status: 'finished',
+              isSimulated: true,
+              scoreA: outcome.scoreA,
+              scoreB: outcome.scoreB,
+              regularTimeScoreA: outcome.scoreA,
+              regularTimeScoreB: outcome.scoreB,
+              qualifiedSide: outcome.qualifier || null,
+              penaltiesA: outcome.penaltiesA ?? null,
+              penaltiesB: outcome.penaltiesB ?? null
+            };
+            scenarioMap.set(String(entry.match.matchId), simulated);
+            byId.set(String(entry.match.matchId), outcome);
+          }
+
+          // Ida/volta é resolvida no nível do confronto. Se o agregado empatar
+          // sem critério determinístico, o resolvedor cria os dois cenários A/B.
+          const confrontationVariants = materializeScenarioConfrontations(
+            scenarioMap,
+            champRules,
+            miracleScopeMatchIds
+          );
+          if (!confrontationVariants.length) return null;
+
+          const evaluateVariant = (variant) => {
+            const variantMap = variant.scenarioMap;
+
+          // Pódio por cenário: nunca carregamos posições futuras de settings.podium.
+          // Uma posição só entra no pódio do cenário quando a partida que a determina
+          // está oficialmente encerrada ou foi materializada pela simulação. Assim,
+          // pontos de pódio não são atribuídos com base em um pódio futuro/congelado.
+          const scenarioHasFutureKnockout = futureEntries.some(({ match }) =>
+            match.phase === 'knockout' || match.phase === 'mata-mata'
+          );
+          const scenarioPodium = scenarioHasFutureKnockout
+            ? new Array(Math.max(0, Number(champRules.podiumSize ?? 4))).fill(null)
+            : [...(settings.podium || [])];
+
+          const materializePodiumMatch = (match, outcome) => {
+            if (!match || !outcome) return;
+            const g = String(match.group || '').trim();
+            const isKO = match.phase === 'knockout' || match.phase === 'mata-mata';
+            if (!isKO || !outcome.qualifier) return;
+            const winnerTeam = outcome.qualifier === 'A' ? match.teamA : match.teamB;
+            const loserTeam = outcome.qualifier === 'A' ? match.teamB : match.teamA;
+            if (winnerTeam == null || loserTeam == null) return;
+
+            if (g === 'Final' && scenarioPodium.length >= 2) {
+              scenarioPodium[0] = winnerTeam;
+              scenarioPodium[1] = loserTeam;
+            } else if (g === '3º lugar' && scenarioPodium.length >= 4) {
+              scenarioPodium[2] = winnerTeam;
+              scenarioPodium[3] = loserTeam;
+            }
+          };
+
+          // Primeiro materializa resultados oficiais já encerrados; depois aplica
+          // os resultados escolhidos para este cenário. Isso evita que um pódio
+          // antigo sobreviva quando a fase final ainda não o determinou.
+          for (const match of matches) {
+            if (match.status !== 'finished') continue;
+            const isKO = match.phase === 'knockout' || match.phase === 'mata-mata';
+            if (!isKO || !['Final', '3º lugar'].includes(String(match.group || '').trim())) continue;
+            const a = Number(match.scoreA);
+            const b = Number(match.scoreB);
+            if (!Number.isFinite(a) || !Number.isFinite(b)) continue;
+            const winner = a > b ? 'A' : b > a ? 'B' : null;
+            const qualifier = match.qualifiedSide === 'A' || match.qualifiedSide === 'B'
+              ? match.qualifiedSide
+              : winner;
+            if (qualifier) materializePodiumMatch(match, { qualifier });
+          }
+
+          for (const entry of futureEntries) {
+            const outcome = byId.get(String(entry.match.matchId));
+            const effective = variantMap.get(String(entry.match.matchId));
+            const resolvedOutcome = effective && (effective.qualifiedSide === 'A' || effective.qualifiedSide === 'B')
+              ? { ...outcome, qualifier: effective.qualifiedSide }
+              : outcome;
+            materializePodiumMatch(entry.match, resolvedOutcome);
+          }
+
+          const scenarioSettings = { ...settings, podium: scenarioPodium };
+          const ranked = bets.map(bet => {
+            const computed = calculateBetTotal(bet, variantMap, scenarioSettings, false);
+            return {
+              userId: bet.user._id.toString(),
+              name: bet.user.name || '',
+              totalPoints: Number(computed.totalPoints || 0),
+              tieBreakerMetrics: getTieBreakerMetrics(bet, computed)
+            };
+          }).sort((a, b) => compareBySportsRanking(a, b, tieBreakers) || a.name.localeCompare(b.name));
+
+          let pos = 0;
+          let previous = null;
+          const rankedWithPosition = ranked.map((item, index) => {
+            const same = previous && compareBySportsRanking(previous, item, tieBreakers) === 0;
+            if (!same) pos = index + 1;
+            previous = item;
+            return { ...item, position: pos };
+          });
+          const target = rankedWithPosition.find(r => r.userId === activeUserId);
+          return {
+            ranked: rankedWithPosition,
+            targetPosition: target?.position || rankedWithPosition.length + 1,
+            scenarioMap: variantMap,
+            scenarioPodium,
+            scenarioConfrontations: variant.confrontations || {}
+          };
+          };
+
+          // Para uma mesma combinação de placares, todos os desempates válidos
+          // do confronto ida/volta também fazem parte do universo.
+          let fallback = null;
+          for (const variant of confrontationVariants) {
+            const result = evaluateVariant(variant);
+            if (!fallback) fallback = result;
+            if (result && result.targetPosition === 1) return result;
+          }
+          return fallback;
+        };
+
+        const upperBoundCanStillWin = (depth, partialTotals) => {
+          // Branch & Bound seguro: target recebe teto de TODAS as fontes que
+          // ainda podem variar; cada rival recebe piso das fontes futuras.
+          // Não usamos uma estimativa otimista do ranking: só podaremos quando
+          // for matematicamente impossível o alvo superar o rival.
+          const targetId = activeUserId;
+          const targetBetForBound = betsByUserMap.get(targetId);
+          let targetUpper = Number(partialTotals.get(targetId) || 0);
+          for (let i = depth; i < perMatchBounds.length; i++) {
+            targetUpper += perMatchBounds[i].maxs.get(targetId) || 0;
+          }
+          targetUpper += maxPodiumPoints + maxGroupQualificationPerUser(targetBetForBound);
+          // Pontos de classificado de ida/volta são resolvidos somente no
+          // confronto completo; adicionamos o teto correspondente ao alvo.
+          targetUpper += futureHomeAwayQualifierBounds.get(targetId) || 0;
+
+          for (const rivalId of allUsers) {
+            if (rivalId === targetId) continue;
+            let rivalLower = Number(partialTotals.get(rivalId) || 0);
+            for (let i = depth; i < perMatchBounds.length; i++) {
+              rivalLower += perMatchBounds[i].mins.get(rivalId) || 0;
+            }
+            // Pódio/classificação futuros podem zerar; portanto não somamos
+            // qualquer parcela variável ao piso do rival.
+            if (targetUpper < rivalLower) return false;
+          }
+          return true;
+        };
+
+        const scenarioChoices = [];
+        let foundScenario = null;
+        const partialTotals = new Map(allUsers.map(id => [
+          id,
+          Number(fixedBaseTotals.get(id) || 0)
+        ]));
+        // NÃO usamos memoização por depth + pontuação parcial.
+        // O estado futuro do campeonato também depende das escolhas anteriores
+        // (por exemplo, ida/volta, classificados e pódio). Duas sequências podem
+        // ter os mesmos totais e ainda assim representar estados matematicamente
+        // diferentes. A única poda aceita aqui é Branch & Bound comprovadamente
+        // segura.
+        let visitedNodes = 0;
+        let prunedNodes = 0;
+
+        // DFS exato sobre o universo válido. A avaliação de ranking só ocorre
+        // nas folhas; a poda acima é apenas uma impossibilidade matemática segura.
+        const dfs = (depth) => {
+          if (foundScenario) return true;
+          visitedNodes++;
+          if (depth === futureEntries.length) {
+            const result = evaluateScenario(scenarioChoices);
+            if (result && result.targetPosition === 1) {
+              foundScenario = { ...result, choices: scenarioChoices.map(x => ({ ...x })) };
+              return true;
+            }
+            return false;
+          }
+          if (!upperBoundCanStillWin(depth, partialTotals)) {
+            prunedNodes++;
+            return false;
+          }
+
+          const { match, outcomes } = futureEntries[depth];
+          const orderedOutcomes = outcomes
+            .map((outcome, originalIndex) => {
+              const simulated = {
+                ...match,
+                status: 'finished', isSimulated: true,
+                scoreA: outcome.scoreA, scoreB: outcome.scoreB,
+                regularTimeScoreA: outcome.scoreA, regularTimeScoreB: outcome.scoreB,
+                qualifiedSide: outcome.qualifier || null,
+                penaltiesA: outcome.penaltiesA ?? null,
+                penaltiesB: outcome.penaltiesB ?? null,
+              scenarioConfrontationQualifier: outcome.qualifier === 'A' || outcome.qualifier === 'B'
+            };
+              const targetPick = (targetBet.groupMatches || [])
+                .find(g => String(g.matchId) === String(match.matchId));
+              const targetDelta = targetPick
+                ? Number(calculateMatchPoints(targetPick, simulated, scoringRules, champRules).points || 0)
+                : 0;
+              return { outcome, originalIndex, targetDelta };
+            })
+            .sort((a, b) => b.targetDelta - a.targetDelta || a.originalIndex - b.originalIndex)
+            .map(item => item.outcome);
+
+          for (const outcome of orderedOutcomes) {
+            scenarioChoices[depth] = outcome;
+            const deltas = [];
+            for (const bet of bets) {
+              const uid = bet.user._id.toString();
+              const pick = (bet.groupMatches || []).find(g => String(g.matchId) === String(match.matchId));
+              const simulated = {
+                ...match,
+                status: 'finished', isSimulated: true,
+                scoreA: outcome.scoreA, scoreB: outcome.scoreB,
+                regularTimeScoreA: outcome.scoreA, regularTimeScoreB: outcome.scoreB,
+                qualifiedSide: outcome.qualifier || null,
+                penaltiesA: outcome.penaltiesA ?? null,
+                penaltiesB: outcome.penaltiesB ?? null,
+              scenarioConfrontationQualifier: outcome.qualifier === 'A' || outcome.qualifier === 'B'
+            };
+              const delta = pick ? Number(calculateMatchPoints(pick, simulated, scoringRules, champRules).points || 0) : 0;
+              partialTotals.set(uid, (partialTotals.get(uid) || 0) + delta);
+              deltas.push([uid, delta]);
+            }
+            if (dfs(depth + 1)) return true;
+            for (const [uid, delta] of deltas) partialTotals.set(uid, (partialTotals.get(uid) || 0) - delta);
+          }
+          return false;
+        };
+
+        // Se não há partidas simuláveis, a posição atual é a posição final.
+        const baseScenario = evaluateScenario([]);
+        if (futureEntries.length === 0) {
+          foundScenario = baseScenario && baseScenario.targetPosition === 1 ? { ...baseScenario, choices: [] } : null;
+        } else {
+          dfs(0);
+        }
+
+        // O retorno step-by-step representa o cenário efetivamente encontrado,
+        // não os palpites do target. Assim o Milagre não fabrica um cenário a
+        // partir da aposta do usuário.
+        if (foundScenario) {
+          console.log(`✅ [MILAGRE] cenário encontrado após ${visitedNodes} nós; ${prunedNodes} podados.`);
+          for (let i = 0; i < futureEntries.length; i++) {
+            const entry = futureEntries[i];
+            const outcome = foundScenario.choices[i];
+            if (!outcome) continue;
+            const midStr = String(entry.match.matchId);
+            const scenarioResolvedQualifier = foundScenario.scenarioMap?.get(midStr)?.qualifiedSide;
+            stepByStepSimulations[midStr] = {
+              winner: outcome.winner,
+              qualifier: (scenarioResolvedQualifier === 'A' || scenarioResolvedQualifier === 'B')
+                ? scenarioResolvedQualifier
+                : (outcome.qualifier || null),
+              scoreA: outcome.scoreA,
+              scoreB: outcome.scoreB,
+              isCritical: false,
+              impact: null
+            };
+          }
+
+          // Necessidade matemática: uma partida só é crítica se NÃO existir
+          // nenhum outro cenário completo, respeitando todas as restrições,
+          // que leve o alvo ao 1º lugar sem o resultado encontrado para ela.
+          //
+          // A implementação anterior alterava somente a partida em questão e
+          // mantinha todas as outras escolhas do primeiro cenário. Isso mede
+          // dependência local, não necessidade global. Aqui fazemos uma nova
+          // busca de existência por partida, usando o mesmo Branch & Bound da
+          // busca principal. A busca para assim que encontra UMA alternativa.
+          const outcomeSignature = (outcome) => JSON.stringify([
+            outcome?.scoreA ?? null,
+            outcome?.scoreB ?? null,
+            outcome?.winner ?? null,
+            outcome?.qualifier ?? null
+          ]);
+
+          const findAlternativeWinningScenario = (forbiddenIndex, forbiddenOutcome) => {
+            const choices = [];
+            const partial = new Map(allUsers.map(id => [
+              id,
+              Number(fixedBaseTotals.get(id) || 0)
+            ]));
+            // Também não memoizamos estados da busca alternativa por
+            // depth + totais. As escolhas anteriores podem alterar confrontos
+            // futuros, portanto essa equivalência não é válida para o solver.
+            const forbiddenSig = outcomeSignature(forbiddenOutcome);
+
+            const canStillWin = (depth) => {
+              const targetId = activeUserId;
+              const targetBetForBound = betsByUserMap.get(targetId);
+              let targetUpper = Number(partial.get(targetId) || 0);
+              for (let j = depth; j < perMatchBounds.length; j++) {
+                targetUpper += perMatchBounds[j].maxs.get(targetId) || 0;
+              }
+              targetUpper += maxPodiumPoints + maxGroupQualificationPerUser(targetBetForBound);
+          // Pontos de classificado de ida/volta são resolvidos somente no
+          // confronto completo; adicionamos o teto correspondente ao alvo.
+          targetUpper += futureHomeAwayQualifierBounds.get(targetId) || 0;
+
+              for (const rivalId of allUsers) {
+                if (rivalId === targetId) continue;
+                let rivalLower = Number(partial.get(rivalId) || 0);
+                for (let j = depth; j < perMatchBounds.length; j++) {
+                  rivalLower += perMatchBounds[j].mins.get(rivalId) || 0;
+                }
+                if (targetUpper < rivalLower) return false;
+              }
+              return true;
+            };
+
+            const dfsAlternative = (depth) => {
+              if (depth === futureEntries.length) {
+                const result = evaluateScenario(choices);
+                if (result && result.targetPosition === 1) return true;
+                return false;
+              }
+
+              if (!canStillWin(depth)) {
+                return false;
+              }
+
+              const { match, outcomes } = futureEntries[depth];
+              let candidates = outcomes;
+              if (depth === forbiddenIndex) {
+                candidates = outcomes.filter(o => outcomeSignature(o) !== forbiddenSig);
+              }
+              if (!candidates.length) {
+                return false;
+              }
+
+              const ordered = candidates
+                .map((outcome, originalIndex) => {
+                  const simulated = {
+                    ...match,
+                    status: 'finished', isSimulated: true,
+                    scoreA: outcome.scoreA, scoreB: outcome.scoreB,
+                    regularTimeScoreA: outcome.scoreA, regularTimeScoreB: outcome.scoreB,
+                    qualifiedSide: outcome.qualifier || null,
+                    penaltiesA: outcome.penaltiesA ?? null,
+                    penaltiesB: outcome.penaltiesB ?? null,
+                    scenarioConfrontationQualifier: outcome.qualifier === 'A' || outcome.qualifier === 'B'
+                  };
+                  const targetPick = (targetBet.groupMatches || [])
+                    .find(g => String(g.matchId) === String(match.matchId));
+                  const targetDelta = targetPick
+                    ? Number(calculateMatchPoints(targetPick, simulated, scoringRules, champRules).points || 0)
+                    : 0;
+                  return { outcome, originalIndex, targetDelta };
+                })
+                .sort((a, b) => b.targetDelta - a.targetDelta || a.originalIndex - b.originalIndex)
+                .map(x => x.outcome);
+
+              for (const outcome of ordered) {
+                choices[depth] = outcome;
+                const deltas = [];
+                for (const bet of bets) {
+                  const uid = bet.user._id.toString();
+                  const pick = (bet.groupMatches || [])
+                    .find(g => String(g.matchId) === String(match.matchId));
+                  const simulated = {
+                    ...match,
+                    status: 'finished', isSimulated: true,
+                    scoreA: outcome.scoreA, scoreB: outcome.scoreB,
+                    regularTimeScoreA: outcome.scoreA, regularTimeScoreB: outcome.scoreB,
+                    qualifiedSide: outcome.qualifier || null,
+                    penaltiesA: outcome.penaltiesA ?? null,
+                    penaltiesB: outcome.penaltiesB ?? null,
+                    scenarioConfrontationQualifier: outcome.qualifier === 'A' || outcome.qualifier === 'B'
+                  };
+                  const delta = pick
+                    ? Number(calculateMatchPoints(pick, simulated, scoringRules, champRules).points || 0)
+                    : 0;
+                  partial.set(uid, (partial.get(uid) || 0) + delta);
+                  deltas.push([uid, delta]);
+                }
+
+                if (dfsAlternative(depth + 1)) return true;
+                for (const [uid, delta] of deltas) {
+                  partial.set(uid, (partial.get(uid) || 0) - delta);
+                }
+              }
+
+              return false;
+            };
+
+            return dfsAlternative(0);
+          };
+
+          const criticalIds = new Set();
+          const alternativeOutcomes = new Map();
+
+          for (let i = 0; i < futureEntries.length; i++) {
+            const entry = futureEntries[i];
+            const original = foundScenario.choices[i];
+            if (!original) continue;
+
+            const hasAlternative = findAlternativeWinningScenario(i, original);
+            if (hasAlternative) {
+              alternativeOutcomes.set(String(entry.match.matchId), true);
+              // Existe outro cenário completo sem este resultado: o resultado
+              // encontrado para esta partida NÃO é matematicamente necessário.
+              continue;
+            }
+
+            criticalIds.add(String(entry.match.matchId));
+          }
+
+          for (const [midStr, data] of Object.entries(stepByStepSimulations)) {
+            data.isCritical = criticalIds.has(midStr);
+          }
+          miracleCriticalMatches = criticalIds.size;
+          miracleAchieved = true;
+        } else {
+          console.log(`ℹ️ [MILAGRE] nenhum cenário encontrado; ${visitedNodes} nós visitados, ${prunedNodes} podados.`);
+          miracleAchieved = false;
+        }
       } else {
+        // Modo simulação continua usando exclusivamente os resultados informados pelo usuário.
+        const placarDinamico = {};
         const basePointsMap = {};
         bets.forEach(b => {
           const betUserId = b.user?._id?.toString();
@@ -421,138 +946,30 @@ async function getLeadershipPath(req, res) {
           basePointsMap[betUserId] = computed.totalPoints;
         });
         Object.assign(placarDinamico, basePointsMap);
-        jogosParaCalculo = matches.filter(m => m.isSimulated).sort(sortMatchesChronologically);
-      }
 
-      const isNoTopo = () => getRankingSnapshot(placarDinamico).targetPosition === 1;
-
-      for (const m of jogosParaCalculo) {
-        if (isMiracleMode && isNoTopo()) break;
-
-        const midStr = String(m.matchId);
-        const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
-        let winChoice, qualChoice;
-        let simScoreA = null, simScoreB = null;
-
-        if (isMiracleMode) {
-          const targetPick = targetPicksMap.get(midStr);
-          if (!targetPick || (!targetPick.winner && !targetPick.qualifier)) continue;
-          winChoice = targetPick.winner;
-          qualChoice = targetPick.qualifier;
-          simScoreA = targetPick.scoreA;
-          simScoreB = targetPick.scoreB;
-        } else {
+        for (const m of matches.filter(x => x.isSimulated).sort(sortMatchesChronologically)) {
+          const midStr = String(m.matchId);
           const simData = parsedSimulations[midStr];
           if (!simData) continue;
-
-          winChoice = simData.winner?.toLowerCase();
-          if (winChoice === 'a') winChoice = 'A';
-          else if (winChoice === 'b') winChoice = 'B';
-          else if (winChoice === 'draw') winChoice = 'draw';
-          else winChoice = null;
-
-          qualChoice = simData.qualifier?.toUpperCase();
-          if (qualChoice !== 'A' && qualChoice !== 'B') qualChoice = null;
-          simScoreA = simData.scoreA;
-          simScoreB = simData.scoreB;
-        }
-
-        if (!winChoice && !qualChoice) continue;
-
-        const isFinal = m.group === 'Final';
-        const isThirdPlace = m.group === '3º lugar';
-        let simWinnerTeam = null;
-        let simLoserTeam = null;
-
-        if (isFinal || isThirdPlace) {
-          const side = qualChoice || winChoice;
-          if (side === 'A') { simWinnerTeam = m.teamA; simLoserTeam = m.teamB; }
-          else if (side === 'B') { simWinnerTeam = m.teamB; simLoserTeam = m.teamA; }
-        }
-
-        const before = getRankingSnapshot(placarDinamico);
-
-        stepByStepSimulations[midStr] = {
-          winner: winChoice || null,
-          qualifier: isKnockoutPhase ? (qualChoice || null) : null,
-          isCritical: false
-        };
-
-        Array.from(betsByUserMap.values()).forEach(bet => {
-          const rivalPick = (bet.groupMatches || []).find(gm => String(gm.matchId) === midStr);
-          const uId = bet.user._id.toString();
-
-          if (rivalPick) {
-            // Simula match com o resultado escolhido
-            const simulatedMatch = {
-              ...m,
-              status: 'finished',
-              isSimulated: true,
-              scoreA: simScoreA ?? (winChoice === 'A' ? 2 : winChoice === 'B' ? 0 : 1),
-              scoreB: simScoreB ?? (winChoice === 'B' ? 2 : winChoice === 'A' ? 0 : 1),
-              regularTimeScoreA: simScoreA ?? (winChoice === 'A' ? 2 : winChoice === 'B' ? 0 : 1),
-              regularTimeScoreB: simScoreB ?? (winChoice === 'B' ? 2 : winChoice === 'A' ? 0 : 1),
-              qualifiedSide: qualChoice || (winChoice !== 'draw' ? winChoice : null)
-            };
-
-            const { points } = calculateMatchPoints(rivalPick, simulatedMatch, scoringRules, champRules);
-            placarDinamico[uId] = (placarDinamico[uId] || 0) + points;
+          const before = getRankingSnapshot(placarDinamico);
+          for (const bet of bets) {
+            const uid = bet.user._id.toString();
+            const pick = (bet.groupMatches || []).find(g => String(g.matchId) === midStr);
+            if (!pick) continue;
+            const { points } = calculateMatchPoints(pick, m, scoringRules, champRules);
+            placarDinamico[uid] = (placarDinamico[uid] || 0) + points;
           }
-
-          // Pódio dinâmico
-          if (simWinnerTeam && simLoserTeam && bet.podium && bet.podium.length > 0) {
-            if (isFinal) {
-              if (!officialPodium[0] && strMatch(bet.podium[0], simWinnerTeam)) {
-                placarDinamico[uId] = (placarDinamico[uId] || 0) + (podiumPointsArr[0] || 0);
-              }
-              if (!officialPodium[1] && strMatch(bet.podium[1], simLoserTeam)) {
-                placarDinamico[uId] = (placarDinamico[uId] || 0) + (podiumPointsArr[1] || 0);
-              }
-            } else if (isThirdPlace) {
-              if (!officialPodium[2] && strMatch(bet.podium[2], simWinnerTeam)) {
-                placarDinamico[uId] = (placarDinamico[uId] || 0) + (podiumPointsArr[2] || 0);
-              }
-              if (!officialPodium[3] && strMatch(bet.podium[3], simLoserTeam)) {
-                placarDinamico[uId] = (placarDinamico[uId] || 0) + (podiumPointsArr[3] || 0);
-              }
-            }
-          }
-        });
-
-        const after = getRankingSnapshot(placarDinamico);
-
-        const changedLeader = before.leaderId !== after.leaderId;
-        const improvedPos = after.targetPosition < before.targetPosition;
-        const worsenedPos = after.targetPosition > before.targetPosition;
-        const reducedGap = after.gapToLeader < before.gapToLeader;
-        const increasedGap = after.gapToLeader > before.gapToLeader;
-
-        const isImpactful = isMiracleMode
-          ? (changedLeader || improvedPos || reducedGap)
-          : (changedLeader || improvedPos || worsenedPos || reducedGap || increasedGap);
-
-        if (isImpactful) {
-          if (isMiracleMode) miracleCriticalMatches++;
-          stepByStepSimulations[midStr].isCritical = true;
+          const after = getRankingSnapshot(placarDinamico);
+          stepByStepSimulations[midStr] = {
+            winner: simData.winner || null,
+            qualifier: simData.qualifier || null,
+            scoreA: simData.scoreA ?? null,
+            scoreB: simData.scoreB ?? null,
+            isCritical: before.targetPosition !== after.targetPosition,
+            impact: { posBefore: before.targetPosition, posAfter: after.targetPosition, gapBefore: before.gapToLeader, gapAfter: after.gapToLeader, type: after.targetPosition < before.targetPosition ? 'positive' : after.targetPosition > before.targetPosition ? 'negative' : 'neutral' }
+          };
         }
-
-        let impactType = 'neutral';
-        if (improvedPos || reducedGap || (changedLeader && after.targetPosition === 1)) {
-          impactType = 'positive';
-        } else if (worsenedPos || increasedGap) {
-          impactType = 'negative';
-        }
-
-        stepByStepSimulations[midStr].impact = {
-          posBefore: before.targetPosition,
-          posAfter: after.targetPosition,
-          gapBefore: before.gapToLeader,
-          gapAfter: after.gapToLeader,
-          type: impactType
-        };
       }
-
-      if (isMiracleMode) miracleAchieved = isNoTopo();
     }
 
     // ---------- POTENCIAL DE PÓDIO E ELIMINAÇÕES POR USUÁRIO ----------
@@ -866,15 +1283,11 @@ async function getLeadershipPath(req, res) {
 
     const targetMinPosition = usersBeatingTargetInWorstCase + 1;
 
-    // Status matemático dos participantes é determinado pela ZONA DE PREMIAÇÃO.
-    // podiumSize pertence ao pódio dos times e não deve ser usado aqui.
     let statusBadge = 'IN_CONTENTION';
-    if (prizeZonePositions > 0) {
-      if (targetMinPosition <= prizeZonePositions) {
-        statusBadge = 'GUARANTEED_PRIZE_ZONE';
-      } else if (targetMaxPosition > prizeZonePositions) {
-        statusBadge = 'ELIMINATED';
-      }
+    if (targetMinPosition <= 2) {
+      statusBadge = 'GUARANTEED_PODIUM';
+    } else if (targetMaxPosition > 2) {
+      statusBadge = 'ELIMINATED';
     }
 
     // ---------- PONTOS EM DISPUTA ----------
@@ -1102,12 +1515,6 @@ async function getLeadershipPath(req, res) {
         status: m.status,
         phase: m.phase,
         group: m.group,
-        // A Estratégia precisa saber se o placar é um campo pontuável.
-        // Isso é derivado das mesmas regras usadas por pointsService.
-        scoreScoring,
-        // Quando ativo, o resultado/vencedor não é um palpite independente:
-        // ele é derivado exclusivamente do placar informado pelo participante.
-        winnerFromScore: champRules.winnerFromScore !== false,
         hasImpact,
         isMiracleResult,
         isCriticalForMiracle: miracleData ? !!miracleData.isCritical : false,
@@ -1145,8 +1552,6 @@ async function getLeadershipPath(req, res) {
           maxPosition: targetMaxPosition,
           minPosition: targetMinPosition,
           statusBadge,
-          prizeZonePositions,
-          prizeZone: settings.prizeZone || { positions: 0, totalAmount: 0, distribution: [] },
           probability,
           currentPoints: targetPoints,
           maxPoints: targetMaxTotal,

@@ -1,4 +1,5 @@
 const { getEffectiveKnockoutFormat } = require('../utils/knockoutFormat');
+const { getKnockoutConfrontationKey, sameKnockoutConfrontation, validateHomeAwayLegs, getCanonicalTeamPair } = require('../utils/knockoutConfrontationKey');
 const Bet = require('../models/Bet');
 const Match = require('../models/Match');
 const Settings = require('../models/Settings');
@@ -1170,53 +1171,81 @@ function getKnockoutConfrontationMatches(realMatch, matchMap, champRules) {
 
   if (effectiveFormat !== 'home_away') return [];
 
-  const a = String(realMatch.teamA || '').trim().toLowerCase();
-  const b = String(realMatch.teamB || '').trim().toLowerCase();
-  const stage = String(realMatch.knockoutTieKey ?? realMatch.roundNumber ?? realMatch.roundName ?? realMatch.group ?? '').trim().toLowerCase();
-  if (!a || !b || !stage) return [];
+  const identity = getKnockoutConfrontationKey(realMatch);
+  if (!identity) return [];
 
   return [...(matchMap instanceof Map ? matchMap.values() : [])]
     .filter(m => {
       if (!m || (m.phase !== 'knockout' && m.phase !== 'mata-mata')) return false;
-      const ca = String(m.teamA || '').trim().toLowerCase();
-      const cb = String(m.teamB || '').trim().toLowerCase();
-      const cs = String(m.knockoutTieKey ?? m.roundNumber ?? m.roundName ?? m.group ?? '').trim().toLowerCase();
-      if (realMatch.knockoutTieKey && m.knockoutTieKey) return cs === stage;
-      return cs === stage && ((ca === a && cb === b) || (ca === b && cb === a));
+      return sameKnockoutConfrontation(realMatch, m);
     })
-    .sort((x, y) => parseConfrontationDate(x) - parseConfrontationDate(y) || Number(x.matchId) - Number(y.matchId));
+    .sort((x, y) => {
+      const lx = Number(x?.knockoutLeg);
+      const ly = Number(y?.knockoutLeg);
+      if (Number.isFinite(lx) && Number.isFinite(ly) && lx !== ly) return lx - ly;
+      return parseConfrontationDate(x) - parseConfrontationDate(y) || Number(x.matchId) - Number(y.matchId);
+    });
 }
 
 function resolveKnockoutConfrontationQualifier(realMatch, matchMap, champRules) {
   const legs = getKnockoutConfrontationMatches(realMatch, matchMap, champRules);
-  if (legs.length < 2 || !legs.every(m => m.status === 'finished')) return null;
+  const validation = validateHomeAwayLegs(legs, 2);
+  if (!validation.valid) return null;
+  if (!legs.every(m => m.status === 'finished')) return null;
+
+  const pair = getCanonicalTeamPair(legs[0]);
+  if (!pair) return null;
   const teamA = String(realMatch.teamA || '').trim().toLowerCase();
   const teamB = String(realMatch.teamB || '').trim().toLowerCase();
+  if (!teamA || !teamB || teamA === teamB) return null;
+
+  const manual = new Set();
+  for (const leg of legs) {
+    if (leg.qualifiedSideManuallySet !== true) continue;
+    const q = leg.qualifiedSide === 'A' || leg.qualifiedSide === 'B' ? leg.qualifiedSide : null;
+    if (!q) continue;
+    const t = q === 'A' ? String(leg.teamA || '').trim().toLowerCase() : String(leg.teamB || '').trim().toLowerCase();
+    if (t === teamA) manual.add('A');
+    else if (t === teamB) manual.add('B');
+    else return null;
+  }
+  if (manual.size !== 1 && manual.size !== 0) return null;
+  if (manual.size === 1) return [...manual][0];
+
   const totalFor = (team) => legs.reduce((sum, m) => {
-    const home = String(m.teamA || '').trim().toLowerCase() === team;
-    return sum + Number(home ? (m.scoreA ?? 0) : (m.scoreB ?? 0));
+    const home = String(m.teamA || '').trim().toLowerCase();
+    const away = String(m.teamB || '').trim().toLowerCase();
+    if (home === team) return sum + Number(m.scoreA ?? 0);
+    if (away === team) return sum + Number(m.scoreB ?? 0);
+    return sum;
   }, 0);
   const totalA = totalFor(teamA);
   const totalB = totalFor(teamB);
   if (totalA !== totalB) return totalA > totalB ? 'A' : 'B';
 
   if (champRules.knockoutAwayGoals) {
-    // Em cada perna, gols fora são os gols marcados quando a equipe foi visitante.
     const awayGoalsFor = (team) => legs.reduce((sum, m) => {
-      const homeTeam = String(m.teamA || '').trim().toLowerCase();
-      return sum + (homeTeam === team ? 0 : Number(m.scoreB ?? 0));
+      const awayTeam = String(m.teamB || '').trim().toLowerCase();
+      return sum + (awayTeam === team ? Number(m.scoreB ?? 0) : 0);
     }, 0);
     const awayA = awayGoalsFor(teamA);
     const awayB = awayGoalsFor(teamB);
     if (awayA !== awayB) return awayA > awayB ? 'A' : 'B';
   }
 
+  // Empate no agregado: pênaltis da última perna resolvem o confronto.
   const last = legs[legs.length - 1];
-  const lastWinner = last.qualifiedSide === 'A' || last.qualifiedSide === 'B' ? last.qualifiedSide : null;
-  if (!lastWinner) return null;
-  const lastTeamA = String(last.teamA || '').trim().toLowerCase();
-  if (lastWinner === 'A') return lastTeamA === teamA ? 'A' : 'B';
-  return lastTeamA === teamA ? 'B' : 'A';
+  if (last.penaltiesA != null && last.penaltiesB != null && Number(last.penaltiesA) !== Number(last.penaltiesB)) {
+    const lastTeamA = String(last.teamA || '').trim().toLowerCase();
+    const winnerTeam = Number(last.penaltiesA) > Number(last.penaltiesB)
+      ? lastTeamA : String(last.teamB || '').trim().toLowerCase();
+    if (winnerTeam === teamA) return 'A';
+    if (winnerTeam === teamB) return 'B';
+    return null;
+  }
+
+  // Se o empate persistir, somente uma decisão manual poderia resolvê-lo.
+  return null;
 }
 
 /**
@@ -1237,7 +1266,12 @@ function calculateBetMatchPoints(betMatch, match, matchMap, scoringRules = DEFAU
       betForCalculation = { ...betMatch };
       if (Number(match.matchId) !== firstLegId || !complete) betForCalculation.qualifier = null;
       if (complete && Number(match.matchId) === firstLegId) {
-        matchForCalculation = { ...match, qualifiedSide: resolveKnockoutConfrontationQualifier(match, matchMap, championshipRules) };
+        const scenarioQualifier = match?.scenarioConfrontationQualifier === true &&
+          (match.qualifiedSide === 'A' || match.qualifiedSide === 'B')
+          ? match.qualifiedSide
+          : null;
+        const resolvedQualifier = scenarioQualifier || resolveKnockoutConfrontationQualifier(match, matchMap, championshipRules);
+        matchForCalculation = { ...match, qualifiedSide: resolvedQualifier };
       }
     }
   }
@@ -1282,7 +1316,12 @@ function calculateBetTotal(
         betForCalculation = { ...betMatch };
         if (Number(match.matchId) !== firstLegId || !complete) betForCalculation.qualifier = null;
         if (complete && Number(match.matchId) === firstLegId) {
-          matchForCalculation = { ...match, qualifiedSide: resolveKnockoutConfrontationQualifier(match, matchMap, champRules) };
+          const scenarioQualifier = match?.scenarioConfrontationQualifier === true &&
+            (match.qualifiedSide === 'A' || match.qualifiedSide === 'B')
+            ? match.qualifiedSide
+            : null;
+          const resolvedQualifier = scenarioQualifier || resolveKnockoutConfrontationQualifier(match, matchMap, champRules);
+          matchForCalculation = { ...match, qualifiedSide: resolvedQualifier };
         }
       }
     }

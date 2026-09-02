@@ -28,49 +28,35 @@ const getGroupStandings = async (req, res) => {
   const leagueId = req.query.leagueId
     ? String(req.query.leagueId).trim()
     : 'default';
+  const requestedPhase =
+    req.query.phase === 'pontos_corridos'
+      ? 'pontos_corridos'
+      : 'group';
+
+  const cacheKey = `${leagueId}:${requestedPhase}`;
+
+  if (
+    !isLiveRequest &&
+    cacheOficial[cacheKey] &&
+    now - lastCacheOficial[cacheKey] < CACHE_DURATION
+  ) {
+    return res.json(cacheOficial[cacheKey]);
+  }
+
+  if (
+    isLiveRequest &&
+    cacheParcial[cacheKey] &&
+    now - lastCacheParcial[cacheKey] < CACHE_DURATION
+  ) {
+    return res.json(cacheParcial[cacheKey]);
+  }
+
   try {
-    // Não existe `hasPointsRun` no modelo.
-    // Um campeonato é de pontos corridos quando não possui fase de grupos
-    // nem mata-mata. A configuração existente é a única fonte de verdade.
-    const explicitPhase = String(req.query.phase || '').trim().toLowerCase();
-    const settings = await Settings.findById(leagueId).lean();
-    const hasGroupPhase = settings?.championshipRules?.hasGroupPhase;
-    const hasKnockoutPhase = settings?.championshipRules?.hasKnockoutPhase;
-
-    let requestedPhase;
-    if (explicitPhase === 'pontos_corridos' || explicitPhase === 'points_run') {
-      requestedPhase = 'pontos_corridos';
-    } else if (explicitPhase === 'group') {
-      requestedPhase = 'group';
-    } else {
-      requestedPhase =
-        hasGroupPhase === false && hasKnockoutPhase === false
-          ? 'pontos_corridos'
-          : 'group';
-    }
-
-    const cacheKey = `${leagueId}:${requestedPhase}`;
-
-    if (
-      !isLiveRequest &&
-      cacheOficial[cacheKey] &&
-      now - lastCacheOficial[cacheKey] < CACHE_DURATION
-    ) {
-      return res.json(cacheOficial[cacheKey]);
-    }
-
-    if (
-      isLiveRequest &&
-      cacheParcial[cacheKey] &&
-      now - lastCacheParcial[cacheKey] < CACHE_DURATION
-    ) {
-      return res.json(cacheParcial[cacheKey]);
-    }
-
     console.log(
-      `[Standings] Calculando liga: ${leagueId} | Phase: ${requestedPhase} | Live: ${isLiveRequest}`
+      `[Standings] Calculando liga: ${leagueId} | Live: ${isLiveRequest}`
     );
 
+    const settings = await Settings.findById(leagueId).lean();
     if (requestedPhase === 'group' && settings?.championshipRules?.hasGroupPhase === false) {
       return res.json({});
     }
@@ -95,7 +81,7 @@ const getGroupStandings = async (req, res) => {
         // Pontos corridos sempre têm uma única classificação lógica.
         group:
           requestedPhase === 'pontos_corridos'
-            ? 'Classificação Geral'
+            ? (m.group || m.leagueName || 'Classificação Geral')
             : m.group
       }));
 
@@ -110,7 +96,7 @@ const getGroupStandings = async (req, res) => {
       ...m,
       group:
         requestedPhase === 'pontos_corridos'
-          ? 'Classificação Geral'
+          ? (m.group || m.leagueName || 'Classificação Geral')
           : m.group
     }));
 
