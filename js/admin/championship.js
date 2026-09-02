@@ -97,9 +97,33 @@ async function openChampionshipRulesModal() {
               <input type="checkbox" id="cr-hasKnockoutPhase" ${cr.hasKnockoutPhase ? 'checked' : ''}>
               <strong>Este campeonato possui fase de mata-mata</strong>
             </label>
+
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-top:8px;">
+              <input type="checkbox" id="cr-hasThirdPlaceMatch" ${cr.hasThirdPlaceMatch !== false ? 'checked' : ''}>
+              <strong>Possui partida pelo 3º lugar</strong>
+            </label>
+            <small style="display:block; margin-top:5px; color:#888;">A fase é criada com o nome fixo <strong>3º lugar</strong> e só se aplica ao mata-mata.</small>
             <small style="display:block; margin-top:5px; color:#888;">
               Se nenhuma das duas fases existir, o campeonato será tratado automaticamente como <strong>pontos corridos</strong>.
             </small>
+
+            <div id="cr-points-run-structure-panel" style="margin-top:14px; padding:10px; border-radius:9px; border:1px solid rgba(255,255,255,.08); background:rgba(0,0,0,.12);">
+              <strong style="display:block; color:#ffda44; margin-bottom:8px;">📋 Estrutura de pontos corridos</strong>
+              <small style="display:block; color:#888; margin-bottom:10px;">Usada quando este campeonato não possui fase de grupos nem mata-mata.</small>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Total de times</label>
+                  <input type="number" id="cr-pointsRunTotalTeams" value="${Number(cr.pointsRun?.totalTeams) || 0}" min="0" step="1" placeholder="Ex.: 20">
+                </div>
+                <div class="form-group">
+                  <label>Confrontos</label>
+                  <select id="cr-pointsRunLegs">
+                    <option value="1" ${Number(cr.pointsRun?.legs || 1) === 1 ? 'selected' : ''}>Turno único</option>
+                    <option value="2" ${Number(cr.pointsRun?.legs || 1) === 2 ? 'selected' : ''}>Turno e returno</option>
+                  </select>
+                </div>
+              </div>
+            </div>
 
             <div id="cr-group-structure-panel" style="margin-top:14px; padding:10px; border-radius:9px; border:1px solid rgba(255,255,255,.08); background:rgba(0,0,0,.12);">
               <strong style="display:block; color:#ffda44; margin-bottom:8px;">📊 Estrutura da fase de grupos</strong>
@@ -307,6 +331,14 @@ async function openChampionshipRulesModal() {
     const hasGroupPhase = document.getElementById('cr-hasGroupPhase')?.checked === true;
     const hasKnockoutPhase = document.getElementById('cr-hasKnockoutPhase')?.checked === true;
     const target = document.getElementById('cr-championship-type');
+    const pointsRunPanel = document.getElementById('cr-points-run-structure-panel');
+    const groupPanel = document.getElementById('cr-group-structure-panel');
+    const knockoutPanel = document.getElementById('cr-knockout-structure-panel');
+    if (pointsRunPanel) pointsRunPanel.style.display = (!hasGroupPhase && !hasKnockoutPhase) ? '' : 'none';
+    if (groupPanel) groupPanel.style.display = hasGroupPhase ? '' : 'none';
+    if (knockoutPanel) knockoutPanel.style.display = hasKnockoutPhase ? '' : 'none';
+    const thirdPlace = document.getElementById('cr-hasThirdPlaceMatch')?.closest('label');
+    if (thirdPlace) thirdPlace.style.display = hasKnockoutPhase ? '' : 'none';
     if (!target) return;
 
     let label = '🏁 Tipo do campeonato: <strong>Pontos corridos</strong>';
@@ -318,6 +350,11 @@ async function openChampionshipRulesModal() {
       label = '🥊 Tipo do campeonato: <strong>Mata-mata</strong>';
     }
     target.innerHTML = label;
+    // Atualiza também o resumo estrutural, inclusive ao editar os campos
+    // exclusivos de pontos corridos.
+    if (typeof updateGroupQualificationSummary === 'function') {
+      updateGroupQualificationSummary();
+    }
   };
 
   const updateGroupQualificationSummary = () => {
@@ -331,9 +368,16 @@ async function openChampionshipRulesModal() {
     if (qualifiedGroup) qualifiedGroup.style.display = hasGroupPhase && hasKnockoutPhase ? '' : 'none';
 
     if (!hasGroupPhase) {
-      if (target) target.textContent = hasKnockoutPhase
-        ? 'Este campeonato possui somente fase de mata-mata.'
-        : 'Nenhuma fase de grupos ou mata-mata: o campeonato será tratado como pontos corridos.';
+      if (hasKnockoutPhase) {
+        if (target) target.textContent = 'Este campeonato possui somente fase de mata-mata.';
+      } else {
+        const prTeams = Number(document.getElementById('cr-pointsRunTotalTeams')?.value || 0);
+        const prLegs = Number(document.getElementById('cr-pointsRunLegs')?.value || 1) === 2 ? 2 : 1;
+        const expected = prTeams >= 2 ? (prTeams * (prTeams - 1) / 2) * prLegs : 0;
+        if (target) target.textContent = prTeams >= 2
+          ? `${prTeams} times • ${prLegs === 2 ? 'turno e returno' : 'turno único'} • ${expected} partidas no campeonato • pontos corridos.`
+          : 'Informe o número de times para pontos corridos.';
+      }
       return;
     }
 
@@ -689,11 +733,22 @@ async function saveChampionshipRules(e) {
   const hasGroupPhase = document.getElementById('cr-hasGroupPhase')?.checked === true;
   const hasKnockoutPhase = document.getElementById('cr-hasKnockoutPhase')?.checked === true;
   const totalTeams = hasGroupPhase ? Math.floor(Number(document.getElementById('cr-totalTeams')?.value || 0)) : 0;
+  const pointsRunTotalTeams = !hasGroupPhase && !hasKnockoutPhase ? Math.floor(Number(document.getElementById('cr-pointsRunTotalTeams')?.value || 0)) : 0;
+  const pointsRunLegs = !hasGroupPhase && !hasKnockoutPhase
+    ? (Number(document.getElementById('cr-pointsRunLegs')?.value || 1) === 2 ? 2 : 1)
+    : 1;
   const groupCount = hasGroupPhase ? Math.floor(Number(document.getElementById('cr-groupCount')?.value || 0)) : 0;
   const totalQualified = hasGroupPhase && hasKnockoutPhase ? Math.floor(Number(document.getElementById('cr-totalQualified')?.value || 0)) : 0;
   const groupLegs = hasGroupPhase
     ? (Number(document.getElementById('cr-group-legs')?.value || 1) === 2 ? 2 : 1)
     : 1;
+
+  if (!hasGroupPhase && !hasKnockoutPhase) {
+    if (!pointsRunTotalTeams || pointsRunTotalTeams < 2) {
+      toast('Em pontos corridos, informe o número de times (mínimo 2).', 'error');
+      return;
+    }
+  }
 
   if (hasGroupPhase) {
     if (!totalTeams || !groupCount) {
@@ -713,6 +768,14 @@ async function saveChampionshipRules(e) {
         toast('O número de classificados não pode ser maior que o número de times.', 'error');
         return;
       }
+      let qualifiedPowerOfTwo = totalQualified >= 2;
+      let qualifiedPowerValue = totalQualified;
+      while (qualifiedPowerOfTwo && qualifiedPowerValue % 2 === 0) qualifiedPowerValue /= 2;
+      qualifiedPowerOfTwo = qualifiedPowerOfTwo && qualifiedPowerValue === 1;
+      if (!qualifiedPowerOfTwo) {
+        toast('O número de classificados para o mata-mata deve ser uma potência de 2 (2, 4, 8, 16, 32...).', 'error');
+        return;
+      }
     }
   }
 
@@ -727,11 +790,16 @@ async function saveChampionshipRules(e) {
         Number(document.getElementById('cr-podiumSize').value) || 4,
       hasGroupPhase,
       hasKnockoutPhase,
+      hasThirdPlaceMatch: hasKnockoutPhase && document.getElementById('cr-hasThirdPlaceMatch')?.checked === true,
       knockoutFormat: hasKnockoutPhase && document.getElementById('cr-knockout-format')?.value === 'home_away' ? 'home_away' : 'single',
       knockoutFinalFormat: hasKnockoutPhase && document.getElementById('cr-knockout-format')?.value === 'home_away'
         ? (document.getElementById('cr-knockout-final-format')?.value === 'single' ? 'single' : 'home_away')
         : 'single',
       knockoutAwayGoals: hasKnockoutPhase && document.getElementById('cr-knockout-format')?.value === 'home_away' && document.getElementById('cr-knockout-away-goals')?.checked === true,
+      pointsRun: {
+        totalTeams: pointsRunTotalTeams,
+        legs: pointsRunLegs
+      },
       groupQualification: {
         totalTeams,
         groupCount,

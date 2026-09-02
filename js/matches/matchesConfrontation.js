@@ -28,7 +28,7 @@ function getTieKey(match) {
   return normalize(match?.knockoutTieKey || '');
 }
 
-function getEffectiveStageFormat(match, settings = {}) {
+export function getEffectiveStageFormat(match, settings = {}) {
   if (match?.stageFormat === 'single' || match?.stageFormat === 'home_away') {
     return match.stageFormat;
   }

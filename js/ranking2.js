@@ -9,6 +9,9 @@ import { renderTeamMedia } from './matches/matchesUtils.js';
 let strategyMode = 'official'; 
 // Guarda as simulações ativas do usuário: { [matchId]: { winner: 'A'|'B'|'Draw', qualifier: 'A'|'B' } }
 let simulatedResults = {}; 
+// Debounce por card: evita múltiplas consultas enquanto o usuário ajusta um cenário completo.
+const simulationRequestTimers = new Map();
+let strategyRequestGeneration = 0;
 // Flag para o Motor do Milagre
 let isMiracleActive = false;
 window.__LAST_SIMULATED_RANKING__ = []; // Guarda o último ranking calculado 
@@ -254,7 +257,7 @@ function animateNumber(el, to) {
 window.showMathExplanation = function() {
     const explanation = `
         <div style="text-align: left; font-size: 0.9rem; line-height: 1.4;">
-            <p>Este percentual reflete sua <b>Capacidade de Alcance</b> baseada no estado atual do torneio:</p>
+            <p>Este percentual é um <b>índice heurístico de alcance</b> baseado no estado atual do torneio; não representa uma probabilidade estatística de resultados:</p>
             <ul style="padding-left: 20px; margin-bottom: 15px;">
                 <li><b>Cenário de Ouro:</b> Simulamos que você acerta 100% dos jogos futuros.</li>
                 <li><b>Fator Pódio:</b> Verificamos se seus times de pódio (1º-4º) ainda estão vivos.</li>
@@ -262,15 +265,15 @@ window.showMathExplanation = function() {
                 <li><b>Fator Kamikaze:</b> Avalia o risco extremo da rota. Se ativo, indica que sua liderança depende ativamente de zebras e de secar diretamente múltiplos rivais.</li>
             </ul>
             <div style="background: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #ddd; font-family: monospace; text-align: center;">
-                Probabilidade = (Potencial_Vivo - Gap_Líder) / Potencial_Vivo
+                Índice = combinação de potencial, gap e fatores de alcance
             </div>
         </div>
     `;
 
     if (window.Swal) {
         Swal.fire({
-            title: 'Análise Estatística',
-            html: explanation,
+            title: 'Lógica do Índice de Alcance',
+            html: `${explanation}<p style="margin-top:12px; font-size:0.82rem; opacity:0.8;"><strong>Importante:</strong> este percentual é um indicador heurístico de alcance, não uma probabilidade estatística de título.</p>`,
             icon: 'info',
             confirmButtonText: 'Entendi!',
             confirmButtonColor: '#1a2a6c'
@@ -306,15 +309,21 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
     const ownerLabel = targetName === "SEU" ? "SEU" : targetName.toUpperCase();
 
     // 🏆 BADGES DE STATUS MATEMÁTICO (Pódio Garantido ou Eliminado)
-    // NOTA: "Top 2" refere-se à ZONA DE PREMIAÇÃO (1º e 2º lugar recebem prêmio).
+    // NOTA: a zona de premiação vem de prizeZone.positions; podiumSize é independente.
     // Isso é independente do podiumSize, que define apenas quantos times o usuário
     // aposta e quantos pontos cada posição do pódio vale.
+    const strategyPrizeZonePositions = Math.max(0, Math.floor(Number(
+        summary.prizeZonePositions ?? data.prizeZone?.positions ?? 0
+    )));
+    const strategyAwardZone = strategyPrizeZonePositions > 0 ? strategyPrizeZonePositions : 0;
+    const strategyAwardLabel = strategyAwardZone > 0 ? `Top ${strategyAwardZone}` : 'zona de premiação';
+
     let statusBadgeHtml = '';
     if (summary.statusBadge === 'GUARANTEED_PODIUM') {
         statusBadgeHtml = `
             <div style="background: linear-gradient(90deg, rgba(255, 215, 0, 0.15), rgba(46, 204, 113, 0.15)); border: 1px solid #ffda44; padding: 15px; border-radius: 12px; text-align: center; margin-bottom: 25px; box-shadow: 0 0 20px rgba(255, 218, 68, 0.2); animation: pulse-gold 2s infinite;">
                 <span style="font-size: 1.2rem; font-weight: 900; color: #ffda44; text-transform: uppercase; display: block; letter-spacing: 1px;"><i class="fas fa-trophy"></i> Pódio Garantido!</span>
-                <div style="font-size: 0.85rem; color: rgba(255,255,255,0.9); margin-top: 8px; line-height: 1.4;">Você está matematicamente garantido no Top 2. A taça (ou o vice) já é realidade!</div>
+                <div style="font-size: 0.85rem; color: rgba(255,255,255,0.9); margin-top: 8px; line-height: 1.4;">Você está matematicamente garantido na ${strategyAwardLabel}. A melhor posição possível já está assegurada!</div>
             </div>
             <style>
                 @keyframes pulse-gold { 0% { box-shadow: 0 0 0 0 rgba(255,218,68,0.4); } 70% { box-shadow: 0 0 0 10px rgba(255,218,68,0); } 100% { box-shadow: 0 0 0 0 rgba(255,218,68,0); } }
@@ -324,7 +333,7 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
         statusBadgeHtml = `
             <div style="background: linear-gradient(90deg, rgba(231, 76, 60, 0.15), rgba(231, 76, 60, 0.05)); border: 1px solid #e74c3c; padding: 15px; border-radius: 12px; text-align: center; margin-bottom: 25px; box-shadow: 0 0 15px rgba(231, 76, 60, 0.2);">
                 <span style="font-size: 1.2rem; font-weight: 900; color: #ff6b6b; text-transform: uppercase; display: block; letter-spacing: 1px;"><i class="fas fa-times-circle"></i> Matematicamente Eliminado</span>
-                <div style="font-size: 0.85rem; color: rgba(255,255,255,0.9); margin-top: 8px; line-height: 1.4;">Não há mais pontos suficientes em disputa para você alcançar a zona de premiação (Top 2).</div>
+                <div style="font-size: 0.85rem; color: rgba(255,255,255,0.9); margin-top: 8px; line-height: 1.4;">Não há mais pontos suficientes em disputa para você alcançar a ${strategyAwardLabel}.</div>
             </div>
         `;
     }
@@ -425,13 +434,13 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
             </div>
 
             <div style="text-align: center; margin-bottom: 20px;">
-                <span style="display: block; font-size: 0.7rem; font-weight: 800; color: rgba(255,255,255,0.6); letter-spacing: 1px;">POSIÇÃO MÁXIMA ALCANÇÁVEL</span>
+                <span style="display: block; font-size: 0.7rem; font-weight: 800; color: rgba(255,255,255,0.6); letter-spacing: 1px;">MELHOR POSIÇÃO ALCANÇÁVEL</span>
                 <div style="font-size: 5rem; font-weight: 900; line-height: 1; background: linear-gradient(180deg, #ffffff 40%, rgba(255,255,255,0.1)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 10px 0; letter-spacing: -2px;">${summary.maxPosition}º</div>
             </div>
 
             <div class="probability-section" style="margin-top: 20px;">
                 <div style="display: flex; justify-content: space-between; font-size: 0.75rem; font-weight: 800; margin-bottom: 8px;">
-                    <span style="opacity: 0.7; text-transform: uppercase;">Chance de Título</span>
+                    <span style="opacity: 0.7; text-transform: uppercase;">Índice de Alcance</span>
                     <span style="color: ${probColor};">${summary.probability}%</span>
                 </div>
                 <div style="height: 4px; background: rgba(255,255,255,0.1); border-radius: 10px; overflow: hidden;">
@@ -480,12 +489,14 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
                         const teamA = teamsArray[0]?.trim() || 'Time A';
                         const teamB = teamsArray[1]?.trim() || 'Time B';
 
+                        const isMiracleCard = isMiracleActive && m.isMiracleResult;
                         const currentSim = simulatedResults[mId] || {};
+                        const displaySim = (isMiracleCard && (m.miracleScoreA != null || m.miracleScoreB != null))
+                            ? { ...currentSim, scoreA: currentSim.scoreA ?? m.miracleScoreA, scoreB: currentSim.scoreB ?? m.miracleScoreB }
+                            : currentSim;
                         const winnerFromScore = m.winnerFromScore === true;
                         let chosenWinner = currentSim.winner;
                         let chosenQualifier = currentSim.qualifier;
-
-                        const isMiracleCard = isMiracleActive && m.isMiracleResult;
 
                         // Se o Milagre estiver ativo, mostramos visualmente os botões do Milagre como "selecionados"
                         if (isMiracleCard && m.miracleChoice) {
@@ -617,14 +628,16 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
                                 <div style="margin-bottom: 12px; background: rgba(0,0,0,0.15); padding: 10px; border-radius: 10px; border: 1px solid ${isMiracleCard ? 'rgba(255, 218, 68, 0.3)' : 'rgba(255, 152, 0, 0.15)'};">
                                     <span style="font-size: 0.55rem; font-weight: 800; color: ${isMiracleCard ? '#ffda44' : '#ff9800'}; text-transform: uppercase; display:block; margin-bottom:6px;">Simular Placar:</span>
                                     <div style="display:flex; align-items:center; justify-content:center; gap:8px;">
-                                        <input type="number" min="0" max="99" step="1" inputmode="numeric" aria-label="Gols de ${teamA}" value="${currentSim.scoreA ?? ''}" onchange="updateSimulationScore('${mId}', 'scoreA', this.value)" style="width:64px; text-align:center; padding:8px 6px; border-radius:8px; border:1px solid rgba(255,152,0,0.35); background:rgba(255,255,255,0.06); color:white; font-weight:800; font-size:0.9rem;">
+                                        <input type="number" min="0" max="99" step="1" inputmode="numeric" aria-label="Gols de ${teamA}" value="${displaySim.scoreA ?? ''}" oninput="updateSimulationScore('${mId}', 'scoreA', this.value)" style="width:64px; text-align:center; padding:8px 6px; border-radius:8px; border:1px solid rgba(255,152,0,0.35); background:rgba(255,255,255,0.06); color:white; font-weight:800; font-size:0.9rem;">
                                         <span style="color:rgba(255,255,255,0.65); font-weight:900;">×</span>
-                                        <input type="number" min="0" max="99" step="1" inputmode="numeric" aria-label="Gols de ${teamB}" value="${currentSim.scoreB ?? ''}" onchange="updateSimulationScore('${mId}', 'scoreB', this.value)" style="width:64px; text-align:center; padding:8px 6px; border-radius:8px; border:1px solid rgba(255,152,0,0.35); background:rgba(255,255,255,0.06); color:white; font-weight:800; font-size:0.9rem;">
+                                        <input type="number" min="0" max="99" step="1" inputmode="numeric" aria-label="Gols de ${teamB}" value="${displaySim.scoreB ?? ''}" oninput="updateSimulationScore('${mId}', 'scoreB', this.value)" style="width:64px; text-align:center; padding:8px 6px; border-radius:8px; border:1px solid rgba(255,152,0,0.35); background:rgba(255,255,255,0.06); color:white; font-weight:800; font-size:0.9rem;">
                                     </div>
                                 </div>
                                 ` : ''}
 
-                                ${isKnockout ? `
+                                ${(() => {
+                                    const req = window.__getSimulationCardRequirements(mId);
+                                    return req?.requiresQualifier ? `
                                 <div style="margin-bottom: 12px; background: rgba(0,0,0,0.15); padding: 10px; border-radius: 10px; border: 1px solid ${isMiracleCard ? 'rgba(255, 218, 68, 0.3)' : 'rgba(255, 152, 0, 0.15)'};">
                                     <span style="font-size: 0.55rem; font-weight: 800; color: ${isMiracleCard ? '#ffda44' : '#ff9800'}; text-transform: uppercase; display:block; margin-bottom:6px;">Simular Classificado:</span>
                                     <div class="sim-btn-group">
@@ -632,7 +645,8 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
                                         <button data-sim-field="qualifier" data-sim-value="B" class="sim-choice-btn ${btnQualB}" onclick="registerSimulation('${mId}', 'qualifier', 'B')"> ${teamB}</button>
                                     </div>
                                 </div>
-                                ` : ''}
+                                ` : '';
+                                })()}
 
                             ` : ''}
 
@@ -666,36 +680,44 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
 /* =====================
     🎮 GERENCIADOR DE ESCOLHAS DA SIMULAÇÃO
 ===================== */
+function enterManualSimulationFromMiracle() {
+    if (!isMiracleActive) return;
+
+    isMiracleActive = false;
+    strategyMode = 'simulacao';
+    simulatedResults = {};
+
+    if (window.__CURRENT_MATCHES__) {
+        window.__CURRENT_MATCHES__.forEach(m => {
+            if (!m.isMiracleResult || !m.miracleChoice) return;
+            const mId = String(m.matchId || m.id);
+            let choice = m.miracleChoice;
+            if (String(choice).toLowerCase() === 'draw') choice = 'Draw';
+
+            const sim = { winner: choice };
+            if (Number.isInteger(m.miracleScoreA)) sim.scoreA = m.miracleScoreA;
+            if (Number.isInteger(m.miracleScoreB)) sim.scoreB = m.miracleScoreB;
+
+            const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
+            const req = window.__getSimulationCardRequirements?.(mId);
+            if (isKnockoutPhase && req?.requiresQualifier && choice !== 'Draw' && m.miracleQualifier) {
+                sim.qualifier = m.miracleQualifier;
+            }
+            simulatedResults[mId] = sim;
+        });
+    }
+
+    document.querySelectorAll('.segment-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.mode === 'simulacao');
+    });
+}
+
 window.registerSimulation = function(matchId, field, value) {
     matchId = String(matchId); // Blindagem de Tipo
 
-    // TRANSIÇÃO SUAVE: Se o milagre estiver ativo e o usuário clicar,
-    // nós herdamos a rota do milagre para a simulação manual!
-    if (isMiracleActive) {
-        isMiracleActive = false;
-        strategyMode = 'simulacao';
-        simulatedResults = {};
-        
-        if (window.__CURRENT_MATCHES__) {
-            window.__CURRENT_MATCHES__.forEach(m => {
-                if (m.isMiracleResult && m.miracleChoice) {
-                    const mId = String(m.matchId || m.id);
-                    let choice = m.miracleChoice;
-                    
-                    if (choice.toLowerCase() === 'draw') choice = 'Draw';
-                    
-                    simulatedResults[mId] = { winner: choice };
-                    if (Number.isInteger(m.miracleScoreA)) simulatedResults[mId].scoreA = m.miracleScoreA;
-                    if (Number.isInteger(m.miracleScoreB)) simulatedResults[mId].scoreB = m.miracleScoreB;
-                    
-                    const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
-                    if (isKnockoutPhase && choice !== 'Draw' && m.miracleQualifier) {
-                        simulatedResults[mId].qualifier = m.miracleQualifier;
-                    }
-                }
-            });
-        }
-    }
+    // Qualquer edição manual da rota do Milagre entra na simulação manual
+    // preservando a rota encontrada antes de alterar o campo clicado.
+    enterManualSimulationFromMiracle();
 
     if (!simulatedResults[matchId]) {
         simulatedResults[matchId] = {};
@@ -725,8 +747,9 @@ window.registerSimulation = function(matchId, field, value) {
     // A consulta só acontece quando TODOS os dados exigidos por este card
     // estiverem preenchidos.
     if (window.__isSimulationCardComplete(matchId)) {
-        loadRanking(selectedId, selectedName);
+        scheduleSimulationRanking(matchId, selectedId, selectedName);
     } else {
+        clearSimulationRequestTimer(matchId);
         window.__refreshSimulationControls?.(matchId);
     }
 };
@@ -747,13 +770,24 @@ window.__getSimulationCardRequirements = function(matchId) {
     const winnerFromScore = match.winnerFromScore === true;
     const scoreRequired = winnerFromScore || match.scoreScoring?.enabled === true;
 
+    // Em ida/volta, o classificado é decidido pelo confronto, não pela perna
+    // individual. O frontend de apostas já usa a mesma regra: a perna de volta
+    // não recebe um campo de classificado.
+    const stageFormat = isStrategyHomeAwayMatch(match) ? 'home_away' : 'single';
+    const knockoutLeg = Number(match.knockoutLeg || 0);
+    const isReturnLeg = isKnockout && stageFormat === 'home_away' && knockoutLeg === 2;
+    const requiresQualifier = isKnockout && !isReturnLeg;
+
     return {
         match,
         isKnockout,
         winnerFromScore,
         scoreRequired,
         requiresWinner: !winnerFromScore,
-        requiresQualifier: isKnockout,
+        requiresQualifier,
+        stageFormat,
+        knockoutLeg,
+        isReturnLeg,
     };
 };
 
@@ -771,8 +805,6 @@ window.__isSimulationCardComplete = function(matchId) {
     if (req.requiresWinner && !hasWinner) return false;
     if (req.requiresQualifier && !hasQualifier) return false;
 
-    // Quando o vencedor vem do placar, ele só é considerado preenchido
-    // depois que os dois lados do placar existem e foram derivados.
     if (req.winnerFromScore && !hasWinner) return false;
 
     return true;
@@ -793,9 +825,47 @@ window.__refreshSimulationControls = function(matchId) {
     });
 };
 
+function isStrategyHomeAwayMatch(match) {
+    if (!match || !(match.phase === 'knockout' || match.phase === 'mata-mata')) return false;
+    if (match.stageFormat === 'home_away') return true;
+    if (match.stageFormat === 'single') return false;
+    return match.knockoutFormat === 'home_away' && !match.isFinalSingle;
+}
+
+function clearAllSimulationRequestTimers() {
+    simulationRequestTimers.forEach(timer => clearTimeout(timer));
+    simulationRequestTimers.clear();
+}
+
+function clearSimulationRequestTimer(matchId) {
+    const id = String(matchId);
+    const timer = simulationRequestTimers.get(id);
+    if (timer) {
+        clearTimeout(timer);
+        simulationRequestTimers.delete(id);
+    }
+}
+
+function scheduleSimulationRanking(matchId, selectedId, selectedName) {
+    const id = String(matchId);
+    clearSimulationRequestTimer(id);
+    if (!window.__isSimulationCardComplete(id)) return;
+
+    // O card já está completo. Um pequeno debounce evita rajadas de requests
+    // quando o usuário troca rapidamente um valor por outro.
+    const timer = setTimeout(() => {
+        simulationRequestTimers.delete(id);
+        if (window.__isSimulationCardComplete(id)) {
+            loadRanking(selectedId, selectedName);
+        }
+    }, 300);
+    simulationRequestTimers.set(id, timer);
+}
+
 window.updateSimulationScore = function(matchId, field, rawValue) {
-    matchId = String(matchId);
     if (field !== 'scoreA' && field !== 'scoreB') return;
+    enterManualSimulationFromMiracle();
+    matchId = String(matchId);
 
     const raw = String(rawValue ?? '').trim();
     if (!simulatedResults[matchId]) simulatedResults[matchId] = {};
@@ -814,8 +884,21 @@ window.updateSimulationScore = function(matchId, field, rawValue) {
         : null;
 
     // Quando a liga usa winnerFromScore, o placar é a fonte única do resultado.
+    // Em mata-mata de jogo único, um vencedor não-empatado também determina
+    // automaticamente o classificado. Em ida/volta isso NÃO é feito por uma
+    // perna isolada, pois o classificado só pode ser decidido pelo confronto.
     if (matchData?.winnerFromScore === true && Number.isInteger(sim.scoreA) && Number.isInteger(sim.scoreB)) {
         sim.winner = sim.scoreA > sim.scoreB ? 'A' : (sim.scoreB > sim.scoreA ? 'B' : 'Draw');
+
+        const isKnockout = matchData.phase === 'knockout' || matchData.phase === 'mata-mata';
+        const isSingleLeg = isKnockout && !isStrategyHomeAwayMatch(matchData);
+        if (isSingleLeg && sim.winner !== 'Draw') {
+            sim.qualifier = sim.winner;
+            sim.__autoQualifier = true;
+        } else if (!isSingleLeg && sim.__autoQualifier) {
+            delete sim.qualifier;
+            delete sim.__autoQualifier;
+        }
     }
 
     if (Object.keys(sim).length === 0) delete simulatedResults[matchId];
@@ -831,16 +914,35 @@ window.updateSimulationScore = function(matchId, field, rawValue) {
 
     // Não dispara request para estado parcial do card.
     if (window.__isSimulationCardComplete(matchId)) {
-        loadRanking(selectedId, selectedName);
+        scheduleSimulationRanking(matchId, selectedId, selectedName);
     } else {
+        clearSimulationRequestTimer(matchId);
         window.__refreshSimulationControls?.(matchId);
     }
 };
+
+function getSimulationPayload() {
+    const payload = {};
+    Object.entries(simulatedResults).forEach(([id, sim]) => {
+        if (!sim || typeof sim !== 'object') return;
+        // Nunca envie ao backend um card parcialmente preenchido. Isso é
+        // importante quando um card A está incompleto e um card B completo
+        // dispara a consulta: o estado local de A continua, mas A não pode
+        // entrar no cenário enviado.
+        if (typeof window.__isSimulationCardComplete === 'function' &&
+            !window.__isSimulationCardComplete(id)) return;
+        const clean = { ...sim };
+        delete clean.__autoQualifier;
+        if (Object.keys(clean).length > 0) payload[id] = clean;
+    });
+    return payload;
+}
 
 /* =====================
     LOAD RANKING
 ===================== */
 export async function loadRanking(targetUserId = null, targetUserName = "SEU") {
+    const requestGeneration = ++strategyRequestGeneration;
     const body = document.getElementById('ranking-body');
     const mobileRoot = document.getElementById('ranking-mobile-root');
     const strategyWrapper = document.getElementById('strategy-desktop-wrapper');
@@ -895,7 +997,7 @@ export async function loadRanking(targetUserId = null, targetUserName = "SEU") {
             let endpoint = `/api/bets/leadership-path?leagueId=${leagueId}${idParaConsulta ? `&userId=${idParaConsulta}` : ''}&mode=${strategyMode}`;
             
             if (strategyMode === 'simulacao') {
-                endpoint += `&simulations=${encodeURIComponent(JSON.stringify(simulatedResults))}`;
+                endpoint += `&simulations=${encodeURIComponent(JSON.stringify(getSimulationPayload()))}`;
             }
             
             if (isMiracleActive) {
@@ -903,6 +1005,7 @@ export async function loadRanking(targetUserId = null, targetUserName = "SEU") {
             }
 
             let res = await api.get(endpoint);
+            if (requestGeneration !== strategyRequestGeneration) return;
 
             /* ========================================================
                🔄 PRESERVAR DADOS DO MILAGRE NO RECÁLCULO
@@ -926,6 +1029,15 @@ export async function loadRanking(targetUserId = null, targetUserName = "SEU") {
                         if (choice.toLowerCase() === 'draw') choice = 'Draw';
 
                         tempSimulations[mId].winner = choice;
+                        // O backend exige um card completo para aceitar a
+                        // simulação. Ao recalcular uma rota do Milagre,
+                        // preservamos também o placar encontrado pelo oráculo.
+                        const miracleScoreA = m.miracleScoreA ?? m.scoreA;
+                        const miracleScoreB = m.miracleScoreB ?? m.scoreB;
+                        if (Number.isInteger(miracleScoreA) && Number.isInteger(miracleScoreB)) {
+                            tempSimulations[mId].scoreA = miracleScoreA;
+                            tempSimulations[mId].scoreB = miracleScoreB;
+                        }
                         
                         const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
                         if (isKnockoutPhase && choice !== 'Draw') {
@@ -938,6 +1050,7 @@ export async function loadRanking(targetUserId = null, targetUserName = "SEU") {
                 recalculateEndpoint += `&simulations=${encodeURIComponent(JSON.stringify(tempSimulations))}`;
                 
                 const resRecalculated = await api.get(recalculateEndpoint);
+                if (requestGeneration !== strategyRequestGeneration) return;
 
                 if (resRecalculated.data?.matches) {
                     // 2. Devolve os dados do milagre e flags para as partidas (incluindo o miracleImpact)
@@ -1076,6 +1189,10 @@ export async function loadRanking(targetUserId = null, targetUserName = "SEU") {
         setTimeout(applyAnimations, 400);
 
     } catch (err) {
+        // Uma resposta de uma requisição anterior nunca pode substituir nem
+        // gerar mensagens sobre o cenário mais novo. O debounce evita rajadas;
+        // esta guarda resolve a condição de corrida entre requests já iniciados.
+        if (requestGeneration !== strategyRequestGeneration) return;
         console.error(err);
 
         // 🔒 Tratamento de bloqueio de estatísticas (HTTP 423)
@@ -1375,6 +1492,7 @@ export function initRanking() {
     const userSelect = document.getElementById('strategy-user-select');
     if (userSelect) {
         userSelect.addEventListener('change', (e) => {
+            clearAllSimulationRequestTimers();
             const selectedId = e.target.value;
             const selectedName = e.target.options[e.target.selectedIndex].text.split(' - ')[1] || "SEU";
             loadRanking(selectedId, selectedName);
@@ -1386,6 +1504,8 @@ export function initRanking() {
     
     segmentButtons.forEach(btn => {
         btn.addEventListener('click', function() {
+            clearAllSimulationRequestTimers();
+            strategyRequestGeneration++;
             segmentButtons.forEach(b => b.classList.remove('active'));
             this.classList.add('active');
             
@@ -1768,6 +1888,8 @@ window.showCriticalMatchesModal = function() {
     🔄 RESET DA SIMULAÇÃO E TOGGLE DO MILAGRE
 ===================== */
 window.resetSimulations = function() {
+    clearAllSimulationRequestTimers();
+    strategyRequestGeneration++;
     simulatedResults = {};
     isMiracleActive = false; 
 
@@ -1783,6 +1905,8 @@ window.resetSimulations = function() {
 };
 
 window.toggleMiracleMode = function() {
+    clearAllSimulationRequestTimers();
+    strategyRequestGeneration++;
     isMiracleActive = !isMiracleActive;
     
     if (isMiracleActive) {

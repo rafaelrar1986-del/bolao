@@ -32,9 +32,11 @@ export const DEFAULT_CHAMPIONSHIP_RULES = {
   podiumSize: 4,
   hasGroupPhase: true,
   hasKnockoutPhase: false,
+  hasThirdPlaceMatch: true,
   knockoutFormat: 'single',
   knockoutFinalFormat: 'single',
   knockoutAwayGoals: false,
+  pointsRun: { totalTeams: 0, legs: 1 },
   groupQualification: {
     totalTeams: 0,
     groupCount: 0,

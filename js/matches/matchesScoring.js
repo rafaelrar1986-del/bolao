@@ -320,8 +320,7 @@ export function createMatchesScoring(ctx = {}) {
   function hasQualifierBet() {
       const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, getScoringRules } = ctx;
     const match = arguments.length ? arguments[0] : null;
-    const phase = String(match?.phase || '').toLowerCase();
-    if (phase !== 'knockout') return false;
+    if (!isKnockoutMatch(match)) return false;
     const rules = getScoringRules?.() || {};
     return Number(rules?.matchExtras?.qualifier || 0) > 0;
   }

@@ -4,7 +4,7 @@
 // O frontend usa este módulo apenas para exibição/simulações locais;
 // a pontuação oficial continua sendo calculada pelo backend.
 
-import { getKnockoutConfrontationPointContext as getConfrontationPointContext } from './matches/matchesConfrontation.js';
+import { getKnockoutConfrontationPointContext as getConfrontationPointContext, getEffectiveStageFormat } from './matches/matchesConfrontation.js';
 
 export const DEFAULT_SCORING = Object.freeze({
   exactScore: 5,
@@ -22,7 +22,12 @@ export const DEFAULT_SCORING = Object.freeze({
 export const DEFAULT_CHAMPIONSHIP_RULES = Object.freeze({
   podiumSize: 4,
   drawIncludesExtraTime: false,
-  winnerFromScore: true
+  winnerFromScore: true,
+  hasGroupPhase: true,
+  hasKnockoutPhase: false,
+  knockoutFormat: 'single',
+  knockoutFinalFormat: 'home_away',
+  knockoutAwayGoals: false
 });
 
 function num(v) {
@@ -48,33 +53,6 @@ export function getChampionshipRules(settings = {}) {
   return { ...DEFAULT_CHAMPIONSHIP_RULES, ...(settings?.championshipRules || {}) };
 }
 
-function scoresAreEnabled(rules = {}) {
-  // Quando matchRules existe, inclusive vazio, somente uma categoria
-  // configurada com pontos > 0 pode exigir placar.
-  if (Array.isArray(rules.matchRules)) {
-    const scoreConditions = new Set([
-      'exactScore',
-      'scoreTeamA',
-      'scoreTeamB',
-      'scoreWinner',
-      'scoreLoser',
-      'totalGoals',
-      'goalDifference'
-    ]);
-
-    return rules.matchRules.some(rule =>
-      Number(rule?.points) > 0 &&
-      Array.isArray(rule?.conditions) &&
-      rule.conditions.some(condition => scoreConditions.has(condition))
-    );
-  }
-
-  // Compatibilidade com configurações antigas que ainda não possuem
-  // matchRules.
-  return (Number(rules.exactScore) || 0) > 0 ||
-    (Number(rules.scoreTeamA) || 0) > 0 ||
-    (Number(rules.scoreTeamB) || 0) > 0;
-}
 
 function winnerFromScores(scoreA, scoreB) {
   const a = num(scoreA);
@@ -87,24 +65,46 @@ export function getEffectiveBetWinner(betMatch, settings = {}) {
   const rules = getScoringRules(settings);
   const champRules = getChampionshipRules(settings);
   const storedWinner = betMatch?.winner ?? betMatch?.choice ?? null;
-  const customRules = Array.isArray(rules.matchRules) && rules.matchRules.length > 0;
+  const scoreWinner = winnerFromScores(
+    betMatch?.scoreA ?? betMatch?.betScoreA,
+    betMatch?.scoreB ?? betMatch?.betScoreB
+  );
 
-  if (customRules) {
-    // Em regras personalizadas, uma escolha explícita de resultado tem
-    // prioridade. Se ela não existir, o placar pode servir como fallback
-    // para condições como gols do vencedor/perdedor.
-    if (storedWinner) return storedWinner;
-    return winnerFromScores(
-      betMatch?.scoreA ?? betMatch?.betScoreA,
-      betMatch?.scoreB ?? betMatch?.betScoreB
-    );
+  // Exatamente como no backend: quando winnerFromScore está habilitado e há
+  // dois gols válidos, o vencedor do palpite é derivado do placar, inclusive
+  // quando existem matchRules personalizadas. O valor salvo pelo usuário só
+  // é usado quando a regra permite um vencedor independente do placar.
+  if (champRules.winnerFromScore !== false && scoreWinner != null) {
+    return scoreWinner;
   }
 
-  if (!scoresAreEnabled(rules) || champRules.winnerFromScore === false) {
-    return storedWinner;
-  }
+  return storedWinner;
+}
 
-  return winnerFromScores(betMatch?.scoreA ?? betMatch?.betScoreA, betMatch?.scoreB ?? betMatch?.betScoreB);
+function isMatchPhaseEnabled(match, settings = {}) {
+  if (!match) return false;
+  const phase = String(match.phase ?? '').trim().toLowerCase();
+  const rules = getChampionshipRules(settings);
+  if (phase === 'group' || phase === 'groups' || phase === 'grupo' || phase === 'grupos') {
+    return rules.hasGroupPhase !== false;
+  }
+  if (phase === 'knockout' || phase === 'mata-mata' || phase === 'mata_mata' || phase.includes('knockout') || phase.includes('mata')) {
+    return rules.hasKnockoutPhase === true;
+  }
+  if (phase === 'pontos_corridos' || phase === 'points_run') {
+    return rules.hasGroupPhase === false && rules.hasKnockoutPhase === false;
+  }
+  return true;
+}
+
+function isQualifierApplicable(match, settings = {}) {
+  if (!match || !isKnockoutMatch(match)) return false;
+  const rules = getChampionshipRules(settings);
+  if (rules.hasKnockoutPhase !== true) return false;
+  const format = getEffectiveStageFormat(match, settings);
+  if (format === 'single') return true;
+  const leg = Number(match.knockoutLeg);
+  return !Number.isFinite(leg) || leg === 1;
 }
 
 export function isKnockoutMatch(match) {
@@ -325,6 +325,7 @@ export function calculateMatchPoints(betMatch, match, settings = {}, isPartial =
   };
 
   if (!betMatch || !match) return { points: 0, breakdown };
+  if (!isMatchPhaseEnabled(match, settings)) return { points: 0, breakdown };
 
   const finished = match.status === 'finished';
   const simulated = Boolean(match.isSimulated);
@@ -351,8 +352,9 @@ export function calculateMatchPoints(betMatch, match, settings = {}, isPartial =
     }))
     .filter(rule => rule.conditions.length > 0);
 
+  const qualifierApplicable = isQualifierApplicable(match, settings);
   const knockoutMatchExtras = getMatchExtrasRules(settings);
-  if (knockout && knockoutMatchExtras.qualifier > 0 && betMatch.qualifier && referenceQualifier &&
+  if (qualifierApplicable && knockoutMatchExtras.qualifier > 0 && betMatch.qualifier && referenceQualifier &&
       String(betMatch.qualifier) === String(referenceQualifier)) {
     breakdown.qualifier = knockoutMatchExtras.qualifier;
   }
@@ -437,7 +439,7 @@ export function getMatchPointStatus(betMatch, match, settings = {}, isPartial = 
     .filter(rule => rule.conditions.length > 0);
 
   if (matchRules.length > 0) {
-    const matchExtraQualifier = knockout
+    const matchExtraQualifier = isQualifierApplicable(match, settings)
       ? getMatchExtrasRules(settings).qualifier
       : 0;
     const maxMatchRulePoints = Math.max(...matchRules.map(rule => Number(rule.points) || 0), 0);
@@ -467,7 +469,7 @@ export function getMatchPointStatus(betMatch, match, settings = {}, isPartial = 
   if (rules.scoreTeamB > 0) active.push('scoreTeamB');
   if (rules.winner > 0) active.push('winner');
 
-  const matchExtraQualifier = knockout
+  const matchExtraQualifier = isQualifierApplicable(match, settings)
     ? getMatchExtrasRules(settings).qualifier
     : 0;
   if (matchExtraQualifier > 0) active.push('qualifier');
@@ -495,7 +497,7 @@ export function getMaxPointsPerMatch(settings = {}, match = null) {
     }))
     .filter(rule => rule.conditions.length > 0);
 
-  const matchExtraQualifier = knockout
+  const matchExtraQualifier = isQualifierApplicable(match, settings)
     ? getMatchExtrasRules(settings).qualifier
     : 0;
 
