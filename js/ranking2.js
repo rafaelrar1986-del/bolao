@@ -564,7 +564,7 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
                         const matchTime = m.time ? `às ${m.time}` : '';
 
                         return `
-                        <div class="secagem-card" style="${borderStyle} border-top: 1px solid rgba(255, 255, 255, 0.05); border-right: 1px solid rgba(255, 255, 255, 0.05); border-bottom: 1px solid rgba(255, 255, 255, 0.05); border-radius: 15px; padding: 15px; margin-bottom: 10px; transition: all 0.3s ease;">
+                        <div class="secagem-card" data-simulation-match-id="${mId}" style="${borderStyle} border-top: 1px solid rgba(255, 255, 255, 0.05); border-right: 1px solid rgba(255, 255, 255, 0.05); border-bottom: 1px solid rgba(255, 255, 255, 0.05); border-radius: 15px; padding: 15px; margin-bottom: 10px; transition: all 0.3s ease;">
                             
                             ${(matchDate || matchTime) ? `<div style="font-size: 0.6rem; color: rgba(255,255,255,0.5); margin-bottom: 8px; text-transform: uppercase; font-weight: 700; display: flex; align-items: center; gap: 4px;"><i class="far fa-calendar-alt"></i> ${matchDate} ${matchTime}</div>` : ''}
 
@@ -606,9 +606,9 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
                                 <div style="margin-bottom: 10px; background: rgba(0,0,0,0.15); padding: 10px; border-radius: 10px; border: 1px solid ${isMiracleCard ? 'rgba(255, 218, 68, 0.3)' : 'rgba(255, 152, 0, 0.15)'};">
                                     <span style="font-size: 0.55rem; font-weight: 800; color: ${isMiracleCard ? '#ffda44' : '#ff9800'}; text-transform: uppercase; display:block; margin-bottom:6px;">Simular Resultado:</span>
                                     <div class="sim-btn-group">
-                                        <button class="sim-choice-btn ${btnWinnerA}" onclick="registerSimulation('${mId}', 'winner', 'A')">${teamA}</button>
-                                        <button class="sim-choice-btn ${btnWinnerDraw}" onclick="registerSimulation('${mId}', 'winner', 'Draw')">Empate</button>
-                                        <button class="sim-choice-btn ${btnWinnerB}" onclick="registerSimulation('${mId}', 'winner', 'B')">${teamB}</button>
+                                        <button data-sim-field="winner" data-sim-value="A" class="sim-choice-btn ${btnWinnerA}" onclick="registerSimulation('${mId}', 'winner', 'A')">${teamA}</button>
+                                        <button data-sim-field="winner" data-sim-value="Draw" class="sim-choice-btn ${btnWinnerDraw}" onclick="registerSimulation('${mId}', 'winner', 'Draw')">Empate</button>
+                                        <button data-sim-field="winner" data-sim-value="B" class="sim-choice-btn ${btnWinnerB}" onclick="registerSimulation('${mId}', 'winner', 'B')">${teamB}</button>
                                     </div>
                                 </div>
                                 ` : ''}
@@ -628,8 +628,8 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
                                 <div style="margin-bottom: 12px; background: rgba(0,0,0,0.15); padding: 10px; border-radius: 10px; border: 1px solid ${isMiracleCard ? 'rgba(255, 218, 68, 0.3)' : 'rgba(255, 152, 0, 0.15)'};">
                                     <span style="font-size: 0.55rem; font-weight: 800; color: ${isMiracleCard ? '#ffda44' : '#ff9800'}; text-transform: uppercase; display:block; margin-bottom:6px;">Simular Classificado:</span>
                                     <div class="sim-btn-group">
-                                        <button class="sim-choice-btn ${btnQualA}" onclick="registerSimulation('${mId}', 'qualifier', 'A')"> ${teamA}</button>
-                                        <button class="sim-choice-btn ${btnQualB}" onclick="registerSimulation('${mId}', 'qualifier', 'B')"> ${teamB}</button>
+                                        <button data-sim-field="qualifier" data-sim-value="A" class="sim-choice-btn ${btnQualA}" onclick="registerSimulation('${mId}', 'qualifier', 'A')"> ${teamA}</button>
+                                        <button data-sim-field="qualifier" data-sim-value="B" class="sim-choice-btn ${btnQualB}" onclick="registerSimulation('${mId}', 'qualifier', 'B')"> ${teamB}</button>
                                     </div>
                                 </div>
                                 ` : ''}
@@ -714,14 +714,83 @@ window.registerSimulation = function(matchId, field, value) {
     const select = document.getElementById('strategy-user-select');
     const selectedId = select ? select.value : null;
     const selectedName = select?.options[select.selectedIndex]?.text.split(' - ')[1] || "SEU";
-    
+
     // Altera visualmente a aba superior para Simulador
     document.querySelectorAll('.segment-btn').forEach(b => {
         b.classList.remove('active');
         if (b.dataset.mode === 'simulacao') b.classList.add('active');
     });
 
-    loadRanking(selectedId, selectedName);
+    // IMPORTANTE: não consulta o backend enquanto o card estiver incompleto.
+    // A consulta só acontece quando TODOS os dados exigidos por este card
+    // estiverem preenchidos.
+    if (window.__isSimulationCardComplete(matchId)) {
+        loadRanking(selectedId, selectedName);
+    } else {
+        window.__refreshSimulationControls?.(matchId);
+    }
+};
+
+/**
+ * Retorna as exigências reais de um card de simulação.
+ * Regra: nenhum request ao backend enquanto faltar qualquer dado obrigatório.
+ */
+window.__getSimulationCardRequirements = function(matchId) {
+    const id = String(matchId);
+    const matches = Array.isArray(window.__LAST_LEADERSHIP_MATCHES__)
+        ? window.__LAST_LEADERSHIP_MATCHES__
+        : [];
+    const match = matches.find(item => String(item.matchId || item.id) === id);
+    if (!match) return null;
+
+    const isKnockout = match.phase === 'knockout' || match.phase === 'mata-mata';
+    const winnerFromScore = match.winnerFromScore === true;
+    const scoreRequired = winnerFromScore || match.scoreScoring?.enabled === true;
+
+    return {
+        match,
+        isKnockout,
+        winnerFromScore,
+        scoreRequired,
+        requiresWinner: !winnerFromScore,
+        requiresQualifier: isKnockout,
+    };
+};
+
+window.__isSimulationCardComplete = function(matchId) {
+    const req = window.__getSimulationCardRequirements(matchId);
+    if (!req) return false;
+
+    const sim = simulatedResults[String(matchId)] || {};
+    const hasWinner = sim.winner === 'A' || sim.winner === 'B' || sim.winner === 'Draw';
+    const hasQualifier = sim.qualifier === 'A' || sim.qualifier === 'B';
+    const hasScoreA = Number.isInteger(sim.scoreA) && sim.scoreA >= 0;
+    const hasScoreB = Number.isInteger(sim.scoreB) && sim.scoreB >= 0;
+
+    if (req.scoreRequired && (!hasScoreA || !hasScoreB)) return false;
+    if (req.requiresWinner && !hasWinner) return false;
+    if (req.requiresQualifier && !hasQualifier) return false;
+
+    // Quando o vencedor vem do placar, ele só é considerado preenchido
+    // depois que os dois lados do placar existem e foram derivados.
+    if (req.winnerFromScore && !hasWinner) return false;
+
+    return true;
+};
+
+window.__refreshSimulationControls = function(matchId) {
+    const id = String(matchId);
+    const sim = simulatedResults[id] || {};
+    const cards = document.querySelectorAll('.secagem-card[data-simulation-match-id]');
+    cards.forEach(card => {
+        if (String(card.dataset.simulationMatchId) !== id) return;
+        card.querySelectorAll('[data-sim-field=\"winner\"]').forEach(btn => {
+            btn.classList.toggle('selected', btn.dataset.simValue === sim.winner);
+        });
+        card.querySelectorAll('[data-sim-field=\"qualifier\"]').forEach(btn => {
+            btn.classList.toggle('selected-qualifier', btn.dataset.simValue === sim.qualifier);
+        });
+    });
 };
 
 window.updateSimulationScore = function(matchId, field, rawValue) {
@@ -760,7 +829,12 @@ window.updateSimulationScore = function(matchId, field, rawValue) {
         if (b.dataset.mode === 'simulacao') b.classList.add('active');
     });
 
-    loadRanking(selectedId, selectedName);
+    // Não dispara request para estado parcial do card.
+    if (window.__isSimulationCardComplete(matchId)) {
+        loadRanking(selectedId, selectedName);
+    } else {
+        window.__refreshSimulationControls?.(matchId);
+    }
 };
 
 /* =====================
