@@ -481,6 +481,7 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
                         const teamB = teamsArray[1]?.trim() || 'Time B';
 
                         const currentSim = simulatedResults[mId] || {};
+                        const winnerFromScore = m.winnerFromScore === true;
                         let chosenWinner = currentSim.winner;
                         let chosenQualifier = currentSim.qualifier;
 
@@ -572,14 +573,28 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
                                 <div style="display: flex; align-items: center; gap: 5px;">${impactHtml}</div>
                             </div>
 
-                            <div style="display: flex; gap: 15px; margin-bottom: 12px;">
-                                <div style="display: flex; flex-direction: column;">
+                            <div style="display: flex; gap: 15px; margin-bottom: 12px; flex-wrap: wrap;">
+                                ${winnerFromScore ? `
+                                <div style="display: flex; flex-direction: column; min-width: 90px;">
+                                    <span style="font-size: 0.55rem; font-weight: 800; color: rgba(255,255,255,0.4); text-transform: uppercase;">Seu Palpite (Placar):</span>
+                                    <span style="font-size: 0.8rem; font-weight: 800; color: #67e8f9;">${m.myChoice?.scoreA != null && m.myChoice?.scoreB != null ? `${m.myChoice.scoreA} x ${m.myChoice.scoreB}` : 'Sem Placar'}</span>
+                                </div>
+                                ` : `
+                                <div style="display: flex; flex-direction: column; min-width: 120px;">
                                     <span style="font-size: 0.55rem; font-weight: 800; color: rgba(255,255,255,0.4); text-transform: uppercase;">Seu Palpite (Resultado):</span>
                                     <span style="font-size: 0.8rem; font-weight: 700; color: #00ffff;">${m.myChoice?.label || 'Sem Palpite'}</span>
                                 </div>
+                                `}
+
+                                ${!winnerFromScore && m.scoreScoring?.enabled && (m.myChoice?.scoreA != null || m.myChoice?.scoreB != null) ? `
+                                <div style="display: flex; flex-direction: column; min-width: 90px;">
+                                    <span style="font-size: 0.55rem; font-weight: 800; color: rgba(255,255,255,0.4); text-transform: uppercase;">Seu Palpite (Placar):</span>
+                                    <span style="font-size: 0.8rem; font-weight: 800; color: #67e8f9;">${m.myChoice?.scoreA ?? '-'} x ${m.myChoice?.scoreB ?? '-'}</span>
+                                </div>
+                                ` : ''}
 
                                 ${isKnockout ? `
-                                <div style="display: flex; flex-direction: column;">
+                                <div style="display: flex; flex-direction: column; min-width: 120px;">
                                     <span style="font-size: 0.55rem; font-weight: 800; color: rgba(255,255,255,0.4); text-transform: uppercase;">Seu Palpite (Classificado):</span>
                                     <span style="font-size: 0.8rem; font-weight: 700; color: #ffda44;">${m.myChoice?.qualifierName || 'Sem Palpite'}</span>
                                 </div>
@@ -587,6 +602,7 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
                             </div>
 
                             ${(strategyMode === 'simulacao' || isMiracleActive) ? `
+                                ${!winnerFromScore ? `
                                 <div style="margin-bottom: 10px; background: rgba(0,0,0,0.15); padding: 10px; border-radius: 10px; border: 1px solid ${isMiracleCard ? 'rgba(255, 218, 68, 0.3)' : 'rgba(255, 152, 0, 0.15)'};">
                                     <span style="font-size: 0.55rem; font-weight: 800; color: ${isMiracleCard ? '#ffda44' : '#ff9800'}; text-transform: uppercase; display:block; margin-bottom:6px;">Simular Resultado:</span>
                                     <div class="sim-btn-group">
@@ -595,6 +611,18 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
                                         <button class="sim-choice-btn ${btnWinnerB}" onclick="registerSimulation('${mId}', 'winner', 'B')">${teamB}</button>
                                     </div>
                                 </div>
+                                ` : ''}
+
+                                ${(m.scoreScoring?.enabled || winnerFromScore) && strategyMode === 'simulacao' ? `
+                                <div style="margin-bottom: 12px; background: rgba(0,0,0,0.15); padding: 10px; border-radius: 10px; border: 1px solid ${isMiracleCard ? 'rgba(255, 218, 68, 0.3)' : 'rgba(255, 152, 0, 0.15)'};">
+                                    <span style="font-size: 0.55rem; font-weight: 800; color: ${isMiracleCard ? '#ffda44' : '#ff9800'}; text-transform: uppercase; display:block; margin-bottom:6px;">Simular Placar:</span>
+                                    <div style="display:flex; align-items:center; justify-content:center; gap:8px;">
+                                        <input type="number" min="0" max="99" step="1" inputmode="numeric" aria-label="Gols de ${teamA}" value="${currentSim.scoreA ?? ''}" onchange="updateSimulationScore('${mId}', 'scoreA', this.value)" style="width:64px; text-align:center; padding:8px 6px; border-radius:8px; border:1px solid rgba(255,152,0,0.35); background:rgba(255,255,255,0.06); color:white; font-weight:800; font-size:0.9rem;">
+                                        <span style="color:rgba(255,255,255,0.65); font-weight:900;">×</span>
+                                        <input type="number" min="0" max="99" step="1" inputmode="numeric" aria-label="Gols de ${teamB}" value="${currentSim.scoreB ?? ''}" onchange="updateSimulationScore('${mId}', 'scoreB', this.value)" style="width:64px; text-align:center; padding:8px 6px; border-radius:8px; border:1px solid rgba(255,152,0,0.35); background:rgba(255,255,255,0.06); color:white; font-weight:800; font-size:0.9rem;">
+                                    </div>
+                                </div>
+                                ` : ''}
 
                                 ${isKnockout ? `
                                 <div style="margin-bottom: 12px; background: rgba(0,0,0,0.15); padding: 10px; border-radius: 10px; border: 1px solid ${isMiracleCard ? 'rgba(255, 218, 68, 0.3)' : 'rgba(255, 152, 0, 0.15)'};">
@@ -657,6 +685,8 @@ window.registerSimulation = function(matchId, field, value) {
                     if (choice.toLowerCase() === 'draw') choice = 'Draw';
                     
                     simulatedResults[mId] = { winner: choice };
+                    if (Number.isInteger(m.miracleScoreA)) simulatedResults[mId].scoreA = m.miracleScoreA;
+                    if (Number.isInteger(m.miracleScoreB)) simulatedResults[mId].scoreB = m.miracleScoreB;
                     
                     const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
                     if (isKnockoutPhase && choice !== 'Draw' && m.miracleQualifier) {
@@ -686,6 +716,45 @@ window.registerSimulation = function(matchId, field, value) {
     const selectedName = select?.options[select.selectedIndex]?.text.split(' - ')[1] || "SEU";
     
     // Altera visualmente a aba superior para Simulador
+    document.querySelectorAll('.segment-btn').forEach(b => {
+        b.classList.remove('active');
+        if (b.dataset.mode === 'simulacao') b.classList.add('active');
+    });
+
+    loadRanking(selectedId, selectedName);
+};
+
+window.updateSimulationScore = function(matchId, field, rawValue) {
+    matchId = String(matchId);
+    if (field !== 'scoreA' && field !== 'scoreB') return;
+
+    const raw = String(rawValue ?? '').trim();
+    if (!simulatedResults[matchId]) simulatedResults[matchId] = {};
+
+    if (raw === '') {
+        delete simulatedResults[matchId][field];
+    } else {
+        const value = Number(raw);
+        if (!Number.isInteger(value) || value < 0 || value > 99) return;
+        simulatedResults[matchId][field] = value;
+    }
+
+    const sim = simulatedResults[matchId];
+    const matchData = Array.isArray(window.__LAST_LEADERSHIP_MATCHES__)
+        ? window.__LAST_LEADERSHIP_MATCHES__.find(item => String(item.matchId) === matchId)
+        : null;
+
+    // Quando a liga usa winnerFromScore, o placar é a fonte única do resultado.
+    if (matchData?.winnerFromScore === true && Number.isInteger(sim.scoreA) && Number.isInteger(sim.scoreB)) {
+        sim.winner = sim.scoreA > sim.scoreB ? 'A' : (sim.scoreB > sim.scoreA ? 'B' : 'Draw');
+    }
+
+    if (Object.keys(sim).length === 0) delete simulatedResults[matchId];
+
+    const select = document.getElementById('strategy-user-select');
+    const selectedId = select ? select.value : null;
+    const selectedName = select?.options[select.selectedIndex]?.text.split(' - ')[1] || 'SEU';
+
     document.querySelectorAll('.segment-btn').forEach(b => {
         b.classList.remove('active');
         if (b.dataset.mode === 'simulacao') b.classList.add('active');
@@ -826,6 +895,7 @@ export async function loadRanking(targetUserId = null, targetUserName = "SEU") {
                 res.data.summary.miracleCriticalMatches = realCriticalMatches;
             }
 
+            window.__LAST_LEADERSHIP_MATCHES__ = Array.isArray(res.data?.matches) ? res.data.matches : [];
             renderStrategyView(res.data, mobileRoot, body, targetUserName);
             return;
         }
