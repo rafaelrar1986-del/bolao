@@ -207,6 +207,9 @@ const SettingsSchema = new mongoose.Schema(
       // Default true preserva o comportamento dos campeonatos antigos.
       hasGroupPhase:        { type: Boolean, default: true },
       hasKnockoutPhase:     { type: Boolean, default: false },
+      // Define se o gerador deve criar/manter a disputa pelo 3º lugar.
+      // O nome da fase é fixo: '3º lugar'.
+      hasThirdPlaceMatch:   { type: Boolean, default: true },
       knockoutFormat: { type: String, enum: ['single', 'home_away'], default: 'single' },
       // Quando o mata-mata geral é ida e volta, permite que a final seja
       // configurada separadamente. Em formato geral de jogo único é ignorado.
@@ -216,6 +219,13 @@ const SettingsSchema = new mongoose.Schema(
       // Estrutura genérica da classificação da fase de grupos.
       // Ex.: 48 times / 12 grupos / 32 classificados =>
       // 2 classificados por grupo + 8 melhores terceiros.
+      // Estrutura independente para campeonatos de pontos corridos.
+      // Sem grupos e sem mata-mata, a classificação geral usa estes valores.
+      pointsRun: {
+        totalTeams: { type: Number, default: 0, min: 0 },
+        legs: { type: Number, enum: [1, 2], default: 1 }
+      },
+
       groupQualification: {
         totalTeams: { type: Number, default: 0, min: 0 },
         groupCount: { type: Number, default: 0, min: 0 },

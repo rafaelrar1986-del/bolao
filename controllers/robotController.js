@@ -255,6 +255,13 @@ exports.fetchAndSyncMatches = async (req, res) => {
             const leagueSettings = await Settings.findById(currentLeagueId).lean();
             const championshipRules = leagueSettings?.championshipRules || {};
 
+            // O ADM decide se a disputa pelo 3º lugar existe. A API pode
+            // continuar retornando 'Match for 3rd place', mas esse jogo não
+            // entra na liga quando a opção está desativada.
+            if (detectedKnockoutRound === '3º lugar' && championshipRules.hasThirdPlaceMatch === false) {
+                continue;
+            }
+
             // group_name preenchido é a fonte para identificar grupos.
             // Quando group_name é nulo e round_name é reconhecido,
             // a própria API identifica o mata-mata.

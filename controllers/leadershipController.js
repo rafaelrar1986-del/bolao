@@ -8,7 +8,7 @@ const { protect, admin, checkPaid } = require('../middleware/auth');
 const { blockStatsIfLocked } = require('../middleware/blockStats');
 
 const { sortMatchesChronologically } = require('../utils/matchSort');
-const { getEffectiveKnockoutFormat } = require('../utils/knockoutFormat');
+const { getEffectiveKnockoutFormat, isFinalStage } = require('../utils/knockoutFormat');
 const { getKnockoutConfrontationKey, validateHomeAwayLegs } = require('../utils/knockoutConfrontationKey');
 const {
   getVisibilityLockState,
@@ -20,19 +20,61 @@ const {
   isMatchInMiracleBettingScope,
   materializeScenarioConfrontations
 } = require('../services/miracleScenarioService');
-const { normalizeTieBreakers, getTieBreakerMetrics, compareBySportsRanking } = require('../services/rankingService');
+const { normalizeTieBreakers, getTieBreakerMetrics, compareBySportsRanking, assignSportsPositions } = require('../services/rankingService');
+const { calculateStrategyNonMatchFuturePotential } = require('../services/strategyFuturePotential');
+const { getPointsRunStructure, getGroupStructure, getUnmaterializedRoundRobinMatchCount } = require('../services/championshipStructureService');
 
 const {
-  DEFAULT_SCORING,
-  DEFAULT_CHAMPIONSHIP_RULES,
+  sanitizeScoringRules,
+  sanitizeChampionshipRules,
   calculateBetTotal,
   calculateMatchPoints,
   getMaxPointsPerMatch,
-  sanitizeGroupQualificationRules
+  sanitizeGroupQualificationRules,
+  getGroupCompletionStatus
 } = require('../services/pointsService');
 function strMatch(a, b) {
   if (a == null || b == null) return false;
   return String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+}
+
+// Mantém a métrica de desempate de placar exatamente alinhada ao pointsService.
+// Algumas regras novas armazenam a pontuação de exactScore em matchRulePoints
+// quando a condição exata é atingida; olhar apenas breakdown.exactScore faria
+// a Estratégia perder esse desempate.
+function getExactScoreMetricFromResult(result) {
+  if (Array.isArray(result?.breakdown?.matchedConditions) &&
+      result.breakdown.matchedConditions.includes('exactScore')) {
+    return Number(result.breakdown?.matchRulePoints || 0);
+  }
+  return Number(result?.breakdown?.exactScore || 0);
+}
+
+// O cálculo isolado usado pelos limites da Estratégia nunca deve atribuir
+// novamente o bônus de classificado de uma confrontação ida/volta. O bônus
+// desse formato é resolvido pelo confronto completo e tratado separadamente
+// em futureHomeAwayQualifierBounds. Para jogo único, o motor oficial continua
+// recebendo o qualifier normalmente.
+function calculateStrategyMatchOutcomeResult(pick, simulatedMatch, scoringRules, championshipRules) {
+  if (!pick || !simulatedMatch) {
+    return { points: 0, breakdown: {} };
+  }
+  const isKnockout = simulatedMatch.phase === 'knockout' || simulatedMatch.phase === 'mata-mata';
+  if (isKnockout && getEffectiveKnockoutFormat(championshipRules || {}, simulatedMatch) === 'home_away') {
+    return calculateMatchPoints(
+      { ...pick, qualifier: null },
+      simulatedMatch,
+      scoringRules,
+      championshipRules
+    );
+  }
+  return calculateMatchPoints(pick, simulatedMatch, scoringRules, championshipRules);
+}
+
+function calculateStrategyMatchOutcomePoints(pick, simulatedMatch, scoringRules, championshipRules) {
+  return Number(calculateStrategyMatchOutcomeResult(
+    pick, simulatedMatch, scoringRules, championshipRules
+  ).points || 0);
 }
 
 function toLeagueId(leagueId) {
@@ -59,7 +101,7 @@ async function getLeadershipPath(req, res) {
     const [settings, matches, bets] = await Promise.all([
       Settings.findById(configId).lean(),
       Match.find({ leagueId: toLeagueId(leagueId) })
-        .select('matchId date time status scoreA scoreB regularTimeScoreA regularTimeScoreB penaltiesA penaltiesB phase teamA teamB logoA logoB group qualifiedSide qualifiedSideManuallySet stageFormat knockoutTieKey knockoutLeg knockoutExpectedLegs')
+        .select('matchId date time status scoreA scoreB regularTimeScoreA regularTimeScoreB penaltiesA penaltiesB phase phaseName roundNumber roundName teamA teamB logoA logoB group qualifiedSide qualifiedSideManuallySet stageFormat knockoutTieKey knockoutLeg knockoutExpectedLegs')
         .lean(),
       Bet.find({ hasSubmitted: true, $or: [{ leagueId: lIdStr }, { leagueId: lIdNum }] })
         .select('user groupMatches matchId podium extras bonusPoints')
@@ -71,11 +113,16 @@ async function getLeadershipPath(req, res) {
       return res.status(404).json({ success: false, message: 'Configurações da liga não encontradas' });
     }
 
-    const scoringRules = { ...DEFAULT_SCORING, ...(settings.scoringRules || {}) };
-    const champRules = { ...DEFAULT_CHAMPIONSHIP_RULES, ...(settings.championshipRules || {}) };
+    const scoringRules = sanitizeScoringRules(settings.scoringRules);
+    const champRules = sanitizeChampionshipRules(settings.championshipRules);
+    const hasThirdPlaceMatch = champRules.hasThirdPlaceMatch === true;
     const champResults = settings.championshipResults || {};
     const officialPodium = settings.podium || [];
     const podiumSize = champRules.podiumSize ?? 4;
+    const prizeZonePositions = Math.max(0, Math.floor(Number(settings.prizeZone?.positions ?? 0)));
+    // A zona de premiação é configurável. Zero significa que não há zona ativa;
+    // não inventamos um Top 2 no backend, pois o frontend usa a mesma fonte.
+    const awardZonePositions = prizeZonePositions;
     const podiumPointsArr = scoringRules.podiumPoints || [];
 
     // A Estratégia precisa saber quando o placar é um campo pontuável e
@@ -108,21 +155,39 @@ async function getLeadershipPath(req, res) {
       enabled: scoreRulePoints > 0 || legacyScorePoints > 0,
       points: Math.max(scoreRulePoints, legacyScorePoints)
     };
-    // Teto máximo de pontuação por partida.
-    // O leadership-path usa esse valor nos ghost points e nas margens de
-    // perigo. Como o teto máximo possível precisa contemplar também a
-    // pontuação de classificado, calculamos sobre uma partida de mata-mata.
-    // A regra fica centralizada no pointsService.
-    const maxPointsPerMatch = getMaxPointsPerMatch(
-      scoringRules,
-      champRules,
-      'knockout'
-    );
-
     let parsedSimulations = {};
     if (mode === 'simulacao' && simulations && simulations.length < 50000) {
       try {
-        parsedSimulations = JSON.parse(simulations);
+        const rawSimulations = JSON.parse(simulations);
+        // O frontend bloqueia requests até o card estar completo. O backend
+        // repete a mesma validação para impedir que um payload manual/antigo
+        // transforme um card parcial em resultado simulado. Cards incompletos
+        // são simplesmente ignorados e não contaminam o restante do cenário.
+        const validSimulations = {};
+        matches.forEach(m => {
+          const midStr = String(m.matchId);
+          const simData = rawSimulations?.[midStr];
+          if (!simData || typeof simData !== 'object' || m.status === 'finished') return;
+
+          const isKnockout = m.phase === 'knockout' || m.phase === 'mata-mata';
+          const format = getEffectiveKnockoutFormat(champRules, m);
+          const knockoutLeg = Number(m.knockoutLeg || 0);
+          const isReturnLeg = isKnockout && format === 'home_away' && knockoutLeg === 2;
+          const hasWinner = ['a', 'b', 'draw'].includes(String(simData.winner || '').trim().toLowerCase());
+          const hasQualifier = ['A', 'B'].includes(String(simData.qualifier || '').trim().toUpperCase());
+          const hasScoreA = Number.isInteger(simData.scoreA) && simData.scoreA >= 0 && simData.scoreA <= 99;
+          const hasScoreB = Number.isInteger(simData.scoreB) && simData.scoreB >= 0 && simData.scoreB <= 99;
+          const scoreRequired = champRules.winnerFromScore !== false || scoreScoring.enabled;
+          const requiresWinner = champRules.winnerFromScore === false;
+          const requiresQualifier = isKnockout && !isReturnLeg;
+
+          if (scoreRequired && (!hasScoreA || !hasScoreB)) return;
+          if (requiresWinner && !hasWinner) return;
+          if (requiresQualifier && !hasQualifier) return;
+
+          validSimulations[midStr] = simData;
+        });
+        parsedSimulations = validSimulations;
         matches.forEach(m => {
           const midStr = String(m.matchId);
           const simData = parsedSimulations[midStr];
@@ -133,12 +198,23 @@ async function getLeadershipPath(req, res) {
             const hasScoreB = Number.isInteger(simData.scoreB) && simData.scoreB >= 0;
 
             // Um placar preenchido também constitui uma simulação. Quando
-            // winnerFromScore está ativo, o vencedor é derivado do placar.
-            if (!winner && hasScoreA && hasScoreB && champRules.winnerFromScore !== false) {
+            // winnerFromScore está ativo, o placar é a fonte única do vencedor;
+            // um winner enviado pelo cliente não pode contradizê-lo.
+            if (hasScoreA && hasScoreB && champRules.winnerFromScore !== false) {
               winner = simData.scoreA > simData.scoreB ? 'a' : (simData.scoreB > simData.scoreA ? 'b' : 'draw');
             }
 
-            if (winner || qualifier || hasScoreA || hasScoreB) {
+            // Em mata-mata de jogo único, um vencedor não-empatado determina
+            // o classificado. Em ida/volta, uma perna isolada nunca determina
+            // o classificado; o confronto precisa ser resolvido em conjunto.
+            let effectiveQualifier = qualifier;
+            if ((m.phase === 'knockout' || m.phase === 'mata-mata') &&
+                getEffectiveKnockoutFormat(champRules, m) === 'single' &&
+                (winner === 'a' || winner === 'b')) {
+              effectiveQualifier = winner.toUpperCase();
+            }
+
+            if (winner || effectiveQualifier || hasScoreA || hasScoreB) {
               m.isSimulated = true;
               if (winner === 'a') {
                 m.scoreA = hasScoreA ? simData.scoreA : 2;
@@ -159,8 +235,8 @@ async function getLeadershipPath(req, res) {
                 if (m.regularTimeScoreB == null) m.regularTimeScoreB = m.scoreB;
               }
 
-              if (qualifier === 'A') m.qualifiedSide = 'A';
-              if (qualifier === 'B') m.qualifiedSide = 'B';
+              if (effectiveQualifier === 'A') m.qualifiedSide = 'A';
+              if (effectiveQualifier === 'B') m.qualifiedSide = 'B';
             }
           }
         });
@@ -215,31 +291,41 @@ async function getLeadershipPath(req, res) {
       }
     });
 
-    const knockoutQuotas = { '16-avos de final': 16, 'Oitavas de final': 8, 'Quartas de final': 4, 'Semifinal': 2, '3º lugar': 1, 'Final': 1 };
-    let initialKnockoutGroup = null;
-    let requiredMatchCount = 0;
+    // Descobre a primeira etapa do mata-mata pela cronologia real das partidas,
+    // nunca por uma tabela fixa de quotas. Isso permite que o ADM use outro
+    // número de classificados ou nomes de fases sem quebrar a Estratégia.
+    const knockoutMatches = matches.filter(m => m.phase === 'knockout' || m.phase === 'mata-mata');
+    const knockoutStageInfo = new Map();
+    for (const m of knockoutMatches) {
+      const stage = String(m.group || '').trim();
+      if (!stage) continue;
+      const current = knockoutStageInfo.get(stage) || { firstTime: Number.MAX_SAFE_INTEGER, teams: new Set() };
+      const parsedTime = (() => {
+        const [d, mo, y] = String(m.date || '').split('/').map(Number);
+        const [hh, mm] = String(m.time || '00:00').split(':').map(Number);
+        return d && mo && y ? new Date(y, mo - 1, d, hh || 0, mm || 0).getTime() : Number.MAX_SAFE_INTEGER;
+      })();
+      current.firstTime = Math.min(current.firstTime, parsedTime);
+      if (m.teamA) current.teams.add(String(m.teamA));
+      if (m.teamB) current.teams.add(String(m.teamB));
+      knockoutStageInfo.set(stage, current);
+    }
 
-    matches.forEach(m => {
-      const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
-      if (isKnockoutPhase && knockoutQuotas[m.group] > requiredMatchCount) {
-        requiredMatchCount = knockoutQuotas[m.group];
-        initialKnockoutGroup = m.group;
-      }
-    });
+    const initialKnockoutGroup = [...knockoutStageInfo.entries()]
+      .sort((a, b) => a[1].firstTime - b[1].firstTime || a[0].localeCompare(b[0]))[0]?.[0] || null;
 
-    if (initialKnockoutGroup && requiredMatchCount > 0) {
-      const initialMatches = matches.filter(m => (m.phase === 'knockout' || m.phase === 'mata-mata') && m.group === initialKnockoutGroup);
-      if (initialMatches.length === requiredMatchCount) {
-        const teamsInKnockout = new Set();
-        initialMatches.forEach(m => {
-          if (m.teamA) teamsInKnockout.add(m.teamA);
-          if (m.teamB) teamsInKnockout.add(m.teamB);
-        });
+    if (initialKnockoutGroup) {
+      const initialMatches = knockoutMatches.filter(m => String(m.group || '').trim() === initialKnockoutGroup);
+      const teamsInKnockout = new Set();
+      initialMatches.forEach(m => {
+        if (m.teamA) teamsInKnockout.add(String(m.teamA));
+        if (m.teamB) teamsInKnockout.add(String(m.teamB));
+      });
+      if (teamsInKnockout.size > 0) {
         matches.forEach(m => {
-          if (m.phase === 'group') {
-            if (m.teamA && !teamsInKnockout.has(m.teamA)) eliminatedTeams.add(m.teamA);
-            if (m.teamB && !teamsInKnockout.has(m.teamB)) eliminatedTeams.add(m.teamB);
-          }
+          if (m.phase !== 'group') return;
+          if (m.teamA && !teamsInKnockout.has(String(m.teamA))) eliminatedTeams.add(m.teamA);
+          if (m.teamB && !teamsInKnockout.has(String(m.teamB))) eliminatedTeams.add(m.teamB);
         });
       }
     }
@@ -254,7 +340,7 @@ async function getLeadershipPath(req, res) {
     const thirdLosers = new Set();
 
     matches.forEach(m => {
-      if (['Semifinal', 'Final', '3º lugar'].includes(m.group)) {
+      if (['Semifinal', 'Final'].includes(m.group) || (hasThirdPlaceMatch && m.group === '3º lugar')) {
         const isMatchValid = isLive ? (m.status !== 'scheduled' || m.isSimulated) : (m.status === 'finished' || m.isSimulated);
 
         if (isMatchValid) {
@@ -295,6 +381,8 @@ async function getLeadershipPath(req, res) {
       }
     });
 
+    const tieBreakers = normalizeTieBreakers(undefined, settings);
+
     // ---------- RANKING ATUAL (com regras dinâmicas) ----------
     const currentRanking = bets
       .map(b => {
@@ -303,6 +391,14 @@ async function getLeadershipPath(req, res) {
 
         const computed = calculateBetTotal(b, matchMap, settings, isLive);
 
+        const groupQualificationByGroup = {};
+        for (const item of (computed.groupQualificationBreakdown || [])) {
+          const group = String(item?.group || '').trim();
+          if (!group) continue;
+          groupQualificationByGroup[group] =
+            (groupQualificationByGroup[group] || 0) + Math.max(0, Number(item?.points) || 0);
+        }
+
         return {
           userId: betUserId,
           points: computed.totalPoints,
@@ -310,36 +406,43 @@ async function getLeadershipPath(req, res) {
           knockoutPoints: computed.knockoutPoints,
           podiumPoints: computed.podiumPoints,
           extrasPoints: computed.extrasPoints,
+          exactScorePoints: computed.exactScorePoints,
           bonusPoints: computed.bonusPoints,
+          groupQualificationByGroup,
           name: b.user?.name || ''
         };
       })
       .filter(Boolean);
 
-    const sortedCurrentRanking = [...currentRanking].sort((a, b) => b.points - a.points || a.name.localeCompare(b.name));
+    const currentRankingWithTieMetrics = currentRanking.map(item => ({
+      ...item,
+      totalPoints: item.points,
+      tieBreakerMetrics: {
+        exactScorePoints: Number(item.exactScorePoints || 0),
+        podiumPoints: Number(item.podiumPoints || 0),
+        extraPoints: Number(item.extrasPoints || 0),
+        knockoutPoints: Number(item.knockoutPoints || 0)
+      }
+    }));
+    const sortedCurrentRanking = [...currentRankingWithTieMetrics].sort((a, b) =>
+      compareBySportsRanking(a, b, tieBreakers) || a.name.localeCompare(b.name)
+    );
 
     const targetPoints = sortedCurrentRanking.find(r => r.userId === activeUserId)?.points || 0;
     const leaderPoints = sortedCurrentRanking[0]?.points || 0;
 
-    let currentPosition = 1;
-    let lastPoints = null;
-    let posToAssign = 0;
-    const simulatedRankingList = [];
-
-    sortedCurrentRanking.forEach((item, i) => {
-      if (lastPoints === null || item.points !== lastPoints) {
-        posToAssign = i + 1;
-        lastPoints = item.points;
-      }
-      if (item.userId === activeUserId) currentPosition = posToAssign;
-
-      simulatedRankingList.push({
-        position: posToAssign,
-        userId: item.userId,
-        points: item.points,
-        name: item.name
-      });
-    });
+    const rankedCurrentWithPositions = assignSportsPositions(sortedCurrentRanking.map(item => ({
+      ...item,
+      __rankingTieKey: tieBreakers.map(key => Number(item.tieBreakerMetrics?.[key] || 0)).join('|')
+    })));
+    const currentTarget = rankedCurrentWithPositions.find(r => r.userId === activeUserId);
+    const currentPosition = currentTarget?.position || rankedCurrentWithPositions.length + 1;
+    const simulatedRankingList = rankedCurrentWithPositions.map(item => ({
+      position: item.position,
+      userId: item.userId,
+      points: item.points,
+      name: item.name
+    }));
 
     const positionMap = new Map();
     simulatedRankingList.forEach(r => positionMap.set(r.userId, r.position));
@@ -363,48 +466,260 @@ async function getLeadershipPath(req, res) {
       : { included: [], excluded: [] };
     const miracleSearchMatches = miracleUniverse.included;
 
-    // ---------- GHOST POINTS (mata-mata faltante no DB) ----------
-    const ghostPhasesOrder = ['16-avos de final', 'Oitavas de final', 'Quartas de final', 'Semifinal', '3º lugar', 'Final'];
-    let startedKnockoutAt = null;
+    // ---------- GHOST POINTS (mata-mata futuro) ----------
+    // O teto é derivado da estrutura real do campeonato. Não existe mais uma
+    // tabela fixa (16/8/4/2/1/1): o número de jogos por etapa é calculado a
+    // partir dos times realmente presentes e, quando uma etapa ainda não foi
+    // materializada, a quantidade de classificados do ADM é usada apenas para
+    // projetar o bracket padrão. O bônus de classificado de ida/volta é contado
+    // uma única vez por confronto, nunca uma vez por perna.
+    const strategyGhostPointsByUser = new Map();
+    const nowForGhost = new Date();
+    const targetPickIdsByUser = new Map();
+    for (const bet of bets) {
+      const uid = bet.user?._id?.toString();
+      if (!uid) continue;
+      targetPickIdsByUser.set(uid, new Set(
+        (bet.groupMatches || []).map(gm => String(gm.matchId))
+      ));
+      strategyGhostPointsByUser.set(uid, 0);
+    }
 
-    for (const phase of ghostPhasesOrder) {
-      if (matches.some(m => (m.phase === 'knockout' || m.phase === 'mata-mata') && m.group === phase)) {
-        startedKnockoutAt = phase;
-        break;
+    const stageExpectedMatches = new Map();
+
+    // A quantidade esperada de jogos de cada etapa é derivada dos próprios
+    // confrontos materializados. Cada confronto carrega knockoutExpectedLegs
+    // (ou pode ser derivado da regra do ADM), portanto não precisamos assumir
+    // 32/16/8/4/2, nem uma quantidade fixa de equipes por etapa.
+    //
+    // Importante: não inventamos uma etapa que ainda não possui nenhuma
+    // partida materializada. Nesse caso não existe uma partida concreta à qual
+    // atribuir ghost points. Quando uma etapa já começou a ser materializada,
+    // contamos as pernas faltantes de cada confronto pelo knockoutTieKey.
+    for (const [stage] of knockoutStageInfo.entries()) {
+      const stageMatches = knockoutMatches.filter(m => String(m.group || '').trim() === stage);
+      if (!stageMatches.length) continue;
+
+      const ties = new Map();
+      for (const match of stageMatches) {
+        const key = match.knockoutTieKey || getKnockoutConfrontationKey(match) || `match::${match.matchId}`;
+        const format = getEffectiveKnockoutFormat(champRules, match);
+        const expectedLegs = Number(match.knockoutExpectedLegs) === 2
+          ? 2
+          : (format === 'home_away' ? 2 : 1);
+        const entry = ties.get(String(key)) || { expectedLegs, matches: 0 };
+        entry.expectedLegs = Math.max(entry.expectedLegs, expectedLegs);
+        entry.matches += 1;
+        ties.set(String(key), entry);
+      }
+
+      const expected = [...ties.values()].reduce(
+        (sum, tie) => sum + Math.max(1, tie.expectedLegs),
+        0
+      );
+      stageExpectedMatches.set(stage, Math.max(stageMatches.length, expected));
+    }
+
+    // Não fabricamos etapas com base em uma tabela fixa de 32/16/8/4/2.
+    // A geração das partidas é a fonte de verdade da estrutura do mata-mata.
+    // Os números definidos pelo ADM (times, grupos e classificados) determinam
+    // quais confrontos o gerador deve materializar; a Estratégia apenas mede
+    // o inventário real dessa liga e as pernas efetivamente previstas nele.
+
+    if (champRules?.hasKnockoutPhase === true && stageExpectedMatches.size > 0) {
+      for (const [stage, expectedMatches] of stageExpectedMatches.entries()) {
+        const phaseMatches = knockoutMatches.filter(m => String(m.group || '').trim() === stage);
+
+        // Cada partida futura/locked pode render no máximo a regra da partida.
+        // O qualifier só é incluído na primeira perna (ou jogo único).
+        for (const match of phaseMatches) {
+          if (match.status === 'finished') continue;
+          const lockState = getBetLockState(match, settings, nowForGhost, matches);
+          const isReleaseLocked = lockState?.locked && [
+            'round_not_released',
+            'round_locked',
+            'grade_locked'
+          ].includes(lockState.reason);
+          if (!isReleaseLocked) continue;
+
+          const maxForThisMatch = getMaxPointsPerMatch(scoringRules, champRules, match);
+          const midStr = String(match.matchId);
+          for (const [uid, pickIds] of targetPickIdsByUser.entries()) {
+            if (!pickIds.has(midStr)) {
+              strategyGhostPointsByUser.set(uid, (strategyGhostPointsByUser.get(uid) || 0) + maxForThisMatch);
+            }
+          }
+        }
+
+        // Para partidas ainda não materializadas, derivamos exatamente quais
+        // pernas faltam em cada confronto materializado. Isso evita o erro de
+        // atribuir o bônus de classificado à perna 2 ou de assumir que todo
+        // bloco faltante contém um par completo de partidas.
+        let maxMissing = 0;
+        const ties = new Map();
+        for (const match of phaseMatches) {
+          const key = match.knockoutTieKey || getKnockoutConfrontationKey(match) || `match::${match.matchId}`;
+          const format = getEffectiveKnockoutFormat(champRules, match);
+          const expectedLegsForTie = Number(match.knockoutExpectedLegs) === 2
+            ? 2
+            : (format === 'home_away' ? 2 : 1);
+          const entry = ties.get(String(key)) || {
+            sample: match,
+            expectedLegs: expectedLegsForTie,
+            legs: new Set()
+          };
+          entry.expectedLegs = Math.max(entry.expectedLegs, expectedLegsForTie);
+          const leg = Number(match.knockoutLeg);
+          if (entry.expectedLegs === 1) {
+            entry.legs.add(1);
+          } else if (Number.isFinite(leg) && leg >= 1 && leg <= entry.expectedLegs) {
+            entry.legs.add(leg);
+          } else {
+            // Dados legados sem knockoutLeg: cada documento já representa uma
+            // perna materializada. Não inventamos qual perna é; se faltar uma
+            // perna, usamos o maior teto possível entre as duas posições.
+            entry.legs.add(entry.legs.size + 1);
+          }
+          ties.set(String(key), entry);
+        }
+
+        for (const tie of ties.values()) {
+          const format = getEffectiveKnockoutFormat(champRules, tie.sample);
+          const expectedLegsForTie = tie.expectedLegs;
+          const presentLegs = [...tie.legs];
+          const missingLegs = [];
+          for (let leg = 1; leg <= expectedLegsForTie; leg++) {
+            if (!presentLegs.includes(leg)) missingLegs.push(leg);
+          }
+
+          for (const leg of missingLegs) {
+            maxMissing += getMaxPointsPerMatch(
+              scoringRules,
+              champRules,
+              { ...tie.sample, phase: 'knockout', knockoutLeg: format === 'home_away' ? leg : 1 }
+            );
+          }
+        }
+
+        for (const uid of strategyGhostPointsByUser.keys()) {
+          strategyGhostPointsByUser.set(uid, (strategyGhostPointsByUser.get(uid) || 0) + maxMissing);
+        }
       }
     }
 
-    let ghostPoints = 0;
-    if (startedKnockoutAt) {
-      const startIndex = ghostPhasesOrder.indexOf(startedKnockoutAt);
-      for (let i = startIndex; i < ghostPhasesOrder.length; i++) {
-        const phaseName = ghostPhasesOrder[i];
-        const expectedMatches = knockoutQuotas[phaseName];
-        const actualMatchesInDb = matches.filter(m => (m.phase === 'knockout' || m.phase === 'mata-mata') && m.group === phaseName).length;
-        const missingMatches = Math.max(0, expectedMatches - actualMatchesInDb);
-        ghostPoints += missingMatches * maxPointsPerMatch;
+    const targetGhostPoints = strategyGhostPointsByUser.get(activeUserId) || 0;
+
+    // ---------- TETO ESTRUTURAL DE ROUND-ROBIN NÃO MATERIALIZADO ----------
+    // O ADM pode liberar partidas rodada a rodada. Portanto, o número total de
+    // times/legs não obriga o robô a criar todas as partidas antecipadamente.
+    // Para a Estratégia, porém, essas regras definem o universo total do
+    // campeonato e, consequentemente, quantos jogos ainda podem gerar pontos.
+    // Contamos apenas partidas realmente materializadas; o restante é um teto
+    // estrutural e não depende de documentos futuros existirem no MongoDB.
+    const strategyRoundRobinUnmaterializedPointsByUser = new Map();
+    for (const bet of bets) {
+      const uid = bet.user?._id?.toString();
+      if (uid) strategyRoundRobinUnmaterializedPointsByUser.set(uid, 0);
+    }
+
+    if (champRules?.hasGroupPhase === true) {
+      const groupStructure = getGroupStructure(champRules);
+      if (groupStructure.expectedMatches > 0 && groupStructure.divisible) {
+        const materializedGroupMatches = matches.filter(m => String(m.phase || '').trim().toLowerCase() === 'group');
+        const missingGroupMatches = getUnmaterializedRoundRobinMatchCount(
+          groupStructure.expectedMatches,
+          materializedGroupMatches
+        );
+        const groupMax = getMaxPointsPerMatch(scoringRules, champRules, { phase: 'group' });
+        const missingPoints = missingGroupMatches * groupMax;
+        if (missingPoints > 0) {
+          for (const uid of strategyRoundRobinUnmaterializedPointsByUser.keys()) {
+            strategyRoundRobinUnmaterializedPointsByUser.set(uid, missingPoints);
+          }
+        }
+      }
+    } else if (champRules?.hasGroupPhase === false && champRules?.hasKnockoutPhase === false) {
+      const pointsRunStructure = getPointsRunStructure(champRules);
+      if (pointsRunStructure.expectedMatches > 0) {
+        const materializedPointsRunMatches = matches.filter(m => {
+          const phase = String(m.phase || '').trim().toLowerCase();
+          return phase === 'pontos_corridos' || phase === 'points_run';
+        });
+        const missingPointsRunMatches = getUnmaterializedRoundRobinMatchCount(
+          pointsRunStructure.expectedMatches,
+          materializedPointsRunMatches
+        );
+        const pointsRunMax = getMaxPointsPerMatch(scoringRules, champRules, { phase: 'pontos_corridos' });
+        const missingPoints = missingPointsRunMatches * pointsRunMax;
+        if (missingPoints > 0) {
+          for (const uid of strategyRoundRobinUnmaterializedPointsByUser.keys()) {
+            strategyRoundRobinUnmaterializedPointsByUser.set(uid, missingPoints);
+          }
+        }
       }
     }
+
+    // ---------- POTENCIAL FUTURO FORA DE PARTIDAS ----------
+    // Centraliza as fontes que o teto da Estratégia precisa considerar além de
+    // partidas/ghosts. O total atual já contém resultados oficiais; aqui entram
+    // apenas pontos que ainda podem nascer no futuro.
+    const groupCompletionByGroup = new Map(
+      getGroupCompletionStatus(matches, champRules).map(state => [String(state.group), state])
+    );
+    const strategyGroupQualificationRules = sanitizeGroupQualificationRules(
+      scoringRules.groupQualificationRules
+    );
+    const strategyFutureNonMatchPotential = new Map();
+    for (const bet of bets) {
+      const uid = bet.user?._id?.toString();
+      if (!uid) continue;
+      const currentRankingEntry = currentRanking.find(r => r.userId === uid);
+      strategyFutureNonMatchPotential.set(uid, calculateStrategyNonMatchFuturePotential(bet, {
+        groupCompletionByGroup,
+        groupQualificationRules: strategyGroupQualificationRules,
+        scoringRules,
+        championshipResults: champResults,
+        hasGroupPhase: champRules?.hasGroupPhase !== false,
+        currentGroupQualificationByGroup: currentRankingEntry?.groupQualificationByGroup || {}
+      }));
+    }
+    const targetFutureNonMatch = strategyFutureNonMatchPotential.get(activeUserId) || { total: 0, groupQualificationPoints: 0, extraPoints: 0 };
+    const targetFutureNonMatchPotential = Number(targetFutureNonMatch.total || 0);
 
     // ---------- HELPERS DE RANKING SIMULADO ----------
-    const getRankingSnapshot = (pointsMap) => {
+    // A Estratégia deve usar exatamente as mesmas regras de desempate do ranking
+    // oficial. O snapshot recebe também os indicadores de desempate dinâmicos,
+    // porque somente o total de pontos não é suficiente para determinar a posição.
+    const getRankingSnapshot = (pointsMap, tieMetricsMap = null) => {
       const list = Object.entries(pointsMap)
         .map(([userId, points]) => {
           const bet = betsByUserMap.get(userId);
-          return { userId, points, name: bet?.user?.name || '' };
+          const base = currentRankingWithTieMetrics.find(r => r.userId === userId);
+          const dynamicMetrics = tieMetricsMap?.get(userId);
+          return {
+            userId,
+            points: Number(points || 0),
+            totalPoints: Number(points || 0),
+            name: bet?.user?.name || '',
+            tieBreakerMetrics: dynamicMetrics || base?.tieBreakerMetrics || {
+              exactScorePoints: 0,
+              podiumPoints: 0,
+              extraPoints: 0,
+              knockoutPoints: 0
+            }
+          };
         })
-        .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name));
+        .sort((a, b) =>
+          compareBySportsRanking(a, b, tieBreakers) ||
+          a.name.localeCompare(b.name)
+        );
 
-      let posToAssign = 0;
-      let lastPts = null;
-
-      const ranked = list.map((item, index) => {
-        if (lastPts === null || item.points !== lastPts) {
-          posToAssign = index + 1;
-          lastPts = item.points;
-        }
-        return { ...item, position: posToAssign };
-      });
+      const ranked = assignSportsPositions(list.map(item => ({
+        ...item,
+        __rankingTieKey: tieBreakers
+          .map(key => Number(item.tieBreakerMetrics?.[key] || 0))
+          .join('|')
+      })));
 
       const target = ranked.find(r => r.userId === activeUserId);
       const leader = ranked[0] || null;
@@ -429,7 +744,6 @@ async function getLeadershipPath(req, res) {
         // Busca exata: somente combinações válidas entram no universo. A poda usa
         // limites superiores/inferiores de pontuação por partida; o resultado
         // final sempre passa pelo motor oficial de pontuação/ranking.
-        const tieBreakers = normalizeTieBreakers(undefined, settings);
         const baseMatchMap = new Map(matches.map(m => [String(m.matchId), m]));
         const futureEntries = miracleSearchMatches;
         const targetBase = targetBet;
@@ -459,6 +773,7 @@ async function getLeadershipPath(req, res) {
           scoringRules.groupQualificationRules
         );
         const maxGroupQualificationPerUser = (bet) => {
+          if (champRules?.hasGroupPhase === false) return 0;
           if (!groupQualificationRules.length) return 0;
           const maxRule = Math.max(...groupQualificationRules.map(r => Number(r.points) || 0), 0);
           // Uma equipe/predição satisfaz no máximo uma regra; multiplicar pelo
@@ -538,7 +853,7 @@ async function getLeadershipPath(req, res) {
                 penaltiesB: outcome.penaltiesB ?? null,
               scenarioConfrontationQualifier: outcome.qualifier === 'A' || outcome.qualifier === 'B'
             };
-              const pts = pick ? Number(calculateMatchPoints(pick, simulated, scoringRules, champRules).points || 0) : 0;
+              const pts = pick ? Number(calculateStrategyMatchOutcomePoints(pick, simulated, scoringRules, champRules) || 0) : 0;
               min = Math.min(min, pts);
               max = Math.max(max, pts);
             }
@@ -621,7 +936,7 @@ async function getLeadershipPath(req, res) {
           for (const match of matches) {
             if (match.status !== 'finished') continue;
             const isKO = match.phase === 'knockout' || match.phase === 'mata-mata';
-            if (!isKO || !['Final', '3º lugar'].includes(String(match.group || '').trim())) continue;
+            if (!isKO || !(String(match.group || '').trim() === 'Final' || (hasThirdPlaceMatch && String(match.group || '').trim() === '3º lugar'))) continue;
             const a = Number(match.scoreA);
             const b = Number(match.scoreB);
             if (!Number.isFinite(a) || !Number.isFinite(b)) continue;
@@ -759,7 +1074,7 @@ async function getLeadershipPath(req, res) {
               const targetPick = (targetBet.groupMatches || [])
                 .find(g => String(g.matchId) === String(match.matchId));
               const targetDelta = targetPick
-                ? Number(calculateMatchPoints(targetPick, simulated, scoringRules, champRules).points || 0)
+                ? Number(calculateStrategyMatchOutcomePoints(targetPick, simulated, scoringRules, champRules) || 0)
                 : 0;
               return { outcome, originalIndex, targetDelta };
             })
@@ -782,7 +1097,7 @@ async function getLeadershipPath(req, res) {
                 penaltiesB: outcome.penaltiesB ?? null,
               scenarioConfrontationQualifier: outcome.qualifier === 'A' || outcome.qualifier === 'B'
             };
-              const delta = pick ? Number(calculateMatchPoints(pick, simulated, scoringRules, champRules).points || 0) : 0;
+              const delta = pick ? Number(calculateStrategyMatchOutcomePoints(pick, simulated, scoringRules, champRules) || 0) : 0;
               partialTotals.set(uid, (partialTotals.get(uid) || 0) + delta);
               deltas.push([uid, delta]);
             }
@@ -908,7 +1223,7 @@ async function getLeadershipPath(req, res) {
                   const targetPick = (targetBet.groupMatches || [])
                     .find(g => String(g.matchId) === String(match.matchId));
                   const targetDelta = targetPick
-                    ? Number(calculateMatchPoints(targetPick, simulated, scoringRules, champRules).points || 0)
+                    ? Number(calculateStrategyMatchOutcomePoints(targetPick, simulated, scoringRules, champRules) || 0)
                     : 0;
                   return { outcome, originalIndex, targetDelta };
                 })
@@ -933,7 +1248,7 @@ async function getLeadershipPath(req, res) {
                     scenarioConfrontationQualifier: outcome.qualifier === 'A' || outcome.qualifier === 'B'
                   };
                   const delta = pick
-                    ? Number(calculateMatchPoints(pick, simulated, scoringRules, champRules).points || 0)
+                    ? Number(calculateStrategyMatchOutcomePoints(pick, simulated, scoringRules, champRules) || 0)
                     : 0;
                   partial.set(uid, (partial.get(uid) || 0) + delta);
                   deltas.push([uid, delta]);
@@ -980,47 +1295,176 @@ async function getLeadershipPath(req, res) {
           miracleAchieved = false;
         }
       } else {
-        // Modo simulação continua usando exclusivamente os resultados informados pelo usuário.
-        const placarDinamico = {};
-        const basePointsMap = {};
-        bets.forEach(b => {
-          const betUserId = b.user?._id?.toString();
-          if (!betUserId) return;
-          const computed = calculateBetTotal(b, matchMap, settings, isLive);
-          basePointsMap[betUserId] = computed.totalPoints;
-        });
-        Object.assign(placarDinamico, basePointsMap);
+        // Modo simulação: cada passo é recalculado pelo MESMO motor oficial
+        // de pontuação. Isso é essencial para ida/volta, pódio dinâmico,
+        // extras e regras customizadas: nunca somamos pontos de uma perna
+        // isoladamente quando o resultado oficial depende do confronto.
+        const baseSimulationMatchMap = new Map(
+          matches.map(m => {
+            if (!m.isSimulated) return [String(m.matchId), m];
+            return [String(m.matchId), {
+              ...m,
+              status: 'scheduled',
+              isSimulated: false,
+              scoreA: null,
+              scoreB: null,
+              regularTimeScoreA: null,
+              regularTimeScoreB: null,
+              penaltiesA: null,
+              penaltiesB: null,
+              qualifiedSide: null
+            }];
+          })
+        );
 
-        for (const m of matches.filter(x => x.isSimulated).sort(sortMatchesChronologically)) {
-          const midStr = String(m.matchId);
-          const simData = parsedSimulations[midStr];
-          if (!simData) continue;
-          const before = getRankingSnapshot(placarDinamico);
-          for (const bet of bets) {
-            const uid = bet.user._id.toString();
-            const pick = (bet.groupMatches || []).find(g => String(g.matchId) === midStr);
-            if (!pick) continue;
-            const { points } = calculateMatchPoints(pick, m, scoringRules, champRules);
-            placarDinamico[uid] = (placarDinamico[uid] || 0) + points;
+        const simulationEntries = matches
+          .filter(m => m.isSimulated && parsedSimulations[String(m.matchId)])
+          .sort(sortMatchesChronologically);
+
+        const buildPrefixState = (prefixMatches) => {
+          const rawMap = new Map(baseSimulationMatchMap);
+          const scopeIds = new Set(prefixMatches.map(m => String(m.matchId)));
+          for (const match of prefixMatches) {
+            const simData = parsedSimulations[String(match.matchId)];
+            if (!simData) continue;
+
+            let winner = String(simData.winner || '').trim().toLowerCase();
+            const scoreA = Number.isInteger(simData.scoreA) ? simData.scoreA : null;
+            const scoreB = Number.isInteger(simData.scoreB) ? simData.scoreB : null;
+            if (scoreA != null && scoreB != null && champRules.winnerFromScore !== false) {
+              winner = scoreA > scoreB ? 'a' : scoreB > scoreA ? 'b' : 'draw';
+            }
+
+            const effectiveQualifier =
+              simData.qualifier === 'A' || simData.qualifier === 'B'
+                ? simData.qualifier
+                : null;
+
+            rawMap.set(String(match.matchId), {
+              ...match,
+              status: 'finished',
+              isSimulated: true,
+              scoreA,
+              scoreB,
+              regularTimeScoreA: scoreA,
+              regularTimeScoreB: scoreB,
+              qualifiedSide: effectiveQualifier,
+              penaltiesA: simData.penaltiesA ?? null,
+              penaltiesB: simData.penaltiesB ?? null,
+              scenarioConfrontationQualifier: effectiveQualifier === 'A' || effectiveQualifier === 'B'
+            });
           }
-          const after = getRankingSnapshot(placarDinamico);
-          stepByStepSimulations[midStr] = {
+
+          // O resolvedor compartilhado é a fonte de verdade para confrontos
+          // ida/volta. Em confronto incompleto ele preserva qualifier=null;
+          // em confronto completo materializa a decisão uma única vez.
+          const variants = materializeScenarioConfrontations(
+            rawMap,
+            champRules,
+            scopeIds
+          );
+          const variant = variants[0] || { scenarioMap: rawMap, confrontations: {} };
+          return { scenarioMap: variant.scenarioMap, confrontations: variant.confrontations || {} };
+        };
+
+        const buildPrefixPodium = (scenarioMap) => {
+          const size = Math.max(0, Math.floor(Number(champRules.podiumSize ?? 4)));
+          const podium = new Array(size).fill(null);
+          if (size === 0) return podium;
+
+          const stageMatches = [...scenarioMap.values()]
+            .filter(m => (m.phase === 'knockout' || m.phase === 'mata-mata') &&
+              (String(m.group || '').trim() === 'Final' || (hasThirdPlaceMatch && String(m.group || '').trim() === '3º lugar')) &&
+              (m.status === 'finished' || m.isSimulated))
+            .sort(sortMatchesChronologically);
+
+          for (const match of stageMatches) {
+            const qualifier = match.qualifiedSide === 'A' || match.qualifiedSide === 'B'
+              ? match.qualifiedSide
+              : null;
+            if (!qualifier) continue;
+            const winnerTeam = qualifier === 'A' ? match.teamA : match.teamB;
+            const loserTeam = qualifier === 'A' ? match.teamB : match.teamA;
+            if (!winnerTeam || !loserTeam) continue;
+
+            if (String(match.group || '').trim() === 'Final') {
+              if (size >= 1) podium[0] = winnerTeam;
+              if (size >= 2) podium[1] = loserTeam;
+            } else if (String(match.group || '').trim() === '3º lugar') {
+              if (size >= 3) podium[2] = winnerTeam;
+              if (size >= 4) podium[3] = loserTeam;
+            }
+          }
+          return podium;
+        };
+
+        const evaluateSimulationPrefix = (prefixMatches) => {
+          const { scenarioMap } = buildPrefixState(prefixMatches);
+          const scenarioPodium = buildPrefixPodium(scenarioMap);
+          const scenarioSettings = { ...settings, podium: scenarioPodium };
+          const rows = bets.map(bet => {
+            const computed = calculateBetTotal(bet, scenarioMap, scenarioSettings, false);
+            return {
+              userId: bet.user._id.toString(),
+              name: bet.user.name || '',
+              points: Number(computed.totalPoints || 0),
+              totalPoints: Number(computed.totalPoints || 0),
+              tieBreakerMetrics: getTieBreakerMetrics(bet, computed)
+            };
+          }).sort((a, b) => compareBySportsRanking(a, b, tieBreakers) || a.name.localeCompare(b.name));
+
+          const ranked = assignSportsPositions(rows.map(row => ({
+            ...row,
+            __rankingTieKey: tieBreakers
+              .map(key => Number(row.tieBreakerMetrics?.[key] || 0))
+              .join('|')
+          })));
+          const target = ranked.find(r => r.userId === activeUserId);
+          const leader = ranked[0] || null;
+          return {
+            targetPosition: target?.position || ranked.length + 1,
+            targetPoints: target?.points || 0,
+            leaderPoints: leader?.points || 0,
+            gapToLeader: (leader?.points || 0) - (target?.points || 0),
+            ranked,
+            scenarioMap,
+            scenarioPodium
+          };
+        };
+
+        let previous = evaluateSimulationPrefix([]);
+        for (let i = 0; i < simulationEntries.length; i++) {
+          const currentPrefix = simulationEntries.slice(0, i + 1);
+          const after = evaluateSimulationPrefix(currentPrefix);
+          const match = simulationEntries[i];
+          const simData = parsedSimulations[String(match.matchId)] || {};
+          stepByStepSimulations[String(match.matchId)] = {
             winner: simData.winner || null,
             qualifier: simData.qualifier || null,
             scoreA: simData.scoreA ?? null,
             scoreB: simData.scoreB ?? null,
-            isCritical: before.targetPosition !== after.targetPosition,
-            impact: { posBefore: before.targetPosition, posAfter: after.targetPosition, gapBefore: before.gapToLeader, gapAfter: after.gapToLeader, type: after.targetPosition < before.targetPosition ? 'positive' : after.targetPosition > before.targetPosition ? 'negative' : 'neutral' }
+            isCritical: previous.targetPosition !== after.targetPosition,
+            impact: {
+              posBefore: previous.targetPosition,
+              posAfter: after.targetPosition,
+              gapBefore: previous.gapToLeader,
+              gapAfter: after.gapToLeader,
+              type: after.targetPosition < previous.targetPosition
+                ? 'positive'
+                : after.targetPosition > previous.targetPosition
+                  ? 'negative'
+                  : 'neutral'
+            }
           };
+          previous = after;
         }
       }
+
     }
 
     // ---------- POTENCIAL DE PÓDIO E ELIMINAÇÕES POR USUÁRIO ----------
     const userPodiumPotentialMap = new Map();
     const userSpecificEliminatedMap = new Map();
-    const userConflictingMatchIds = new Map();
-
     bets.forEach(b => {
       const betUserId = b.user?._id?.toString();
       if (!betUserId) return;
@@ -1032,7 +1476,7 @@ async function getLeadershipPath(req, res) {
         // Força matemática: eliminações diretas quando 2 times do pódio se enfrentam precocemente
         mathFutureMatches.forEach(m => {
           const isEarlyKnockout = (m.phase === 'knockout' || m.phase === 'mata-mata') &&
-            !['Semifinal', 'Final', '3º lugar'].includes(m.group);
+            !(['Semifinal', 'Final'].includes(m.group) || (hasThirdPlaceMatch && m.group === '3º lugar'));
 
           if (isEarlyKnockout && m.teamA && m.teamB) {
             const idxA = b.podium.findIndex(t => strMatch(t, m.teamA));
@@ -1078,33 +1522,6 @@ async function getLeadershipPath(req, res) {
 
         pot = Object.values(teamMaxPotential).reduce((acc, val) => acc + val, 0);
 
-        // Identificação de contradições
-        const conflictingMatches = new Set();
-        const validPodiumTeams = new Set(Object.keys(teamMaxPotential));
-
-        mathFutureMatches.forEach(m => {
-          const gm = (b.groupMatches || []).find(g => String(g.matchId) === String(m.matchId));
-          if (!gm) return;
-
-          const isEarlyKnockout = (m.phase === 'knockout' || m.phase === 'mata-mata') &&
-            !['Semifinal', 'Final', '3º lugar'].includes(m.group);
-
-          if (isEarlyKnockout && m.teamA && m.teamB) {
-            let predictedLoser = null;
-            if (gm.qualifier === 'B') predictedLoser = m.teamA;
-            else if (gm.qualifier === 'A') predictedLoser = m.teamB;
-            else if (gm.winner === 'B') predictedLoser = m.teamA;
-            else if (gm.winner === 'A') predictedLoser = m.teamB;
-
-            if (predictedLoser && validPodiumTeams.has(predictedLoser)) {
-              conflictingMatches.add(String(m.matchId));
-            }
-          }
-        });
-
-        userConflictingMatchIds.set(betUserId, conflictingMatches);
-      } else {
-        userConflictingMatchIds.set(betUserId, new Set());
       }
 
       userPodiumPotentialMap.set(betUserId, pot);
@@ -1113,7 +1530,6 @@ async function getLeadershipPath(req, res) {
 
     const targetPodiumPotential = userPodiumPotentialMap.get(activeUserId) || 0;
     const targetEliminatedTeams = userSpecificEliminatedMap.get(activeUserId) || eliminatedTeams;
-    const targetConflicting = userConflictingMatchIds.get(activeUserId) || new Set();
 
     const isPodiumLocked = !isAdmin && getGlobalPredictionVisibilityState(
       settings,
@@ -1158,6 +1574,12 @@ async function getLeadershipPath(req, res) {
       let projPts = r.points;
       const isTarget = r.userId === activeUserId;
       const bRef = betsByUserMap.get(r.userId);
+      const projectedTieMetrics = {
+        exactScorePoints: Number(r.exactScorePoints || 0),
+        podiumPoints: Number(r.podiumPoints || 0),
+        extraPoints: Number(r.extrasPoints || 0),
+        knockoutPoints: Number(r.knockoutPoints || 0)
+      };
 
       mathFutureMatches.forEach(m => {
         const midStr = String(m.matchId);
@@ -1165,58 +1587,35 @@ async function getLeadershipPath(req, res) {
         const rivalPick = (bRef?.groupMatches || []).find(gm => String(gm.matchId) === midStr);
         const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
 
-        if (isTarget) {
-          if (!targetConflicting.has(midStr) && targetPick) {
-            const simulatedMatch = {
-              ...m,
-              status: 'finished',
-              isSimulated: true,
-              scoreA: targetPick.scoreA,
-              scoreB: targetPick.scoreB,
-              regularTimeScoreA: targetPick.scoreA,
-              regularTimeScoreB: targetPick.scoreB,
-              qualifiedSide: targetPick.qualifier || (targetPick.winner !== 'draw' ? targetPick.winner : null)
-            };
-            const { points } = calculateMatchPoints(targetPick, simulatedMatch, scoringRules, champRules);
-            projPts += points;
-          }
-        } else if (targetPick && rivalPick) {
-          if (targetConflicting.has(midStr)) {
-            // Universo perfeito: resultado é o inverso do palpite do target
-            const invertedWinner = targetPick.winner === 'A' ? 'B' : targetPick.winner === 'B' ? 'A' : targetPick.winner;
-            const invertedQual = targetPick.qualifier === 'A' ? 'B' : targetPick.qualifier === 'B' ? 'A' : targetPick.qualifier;
-            const simulatedMatch = {
-              ...m,
-              status: 'finished',
-              isSimulated: true,
-              scoreA: targetPick.scoreA,
-              scoreB: targetPick.scoreB,
-              regularTimeScoreA: targetPick.scoreA,
-              regularTimeScoreB: targetPick.scoreB,
-              qualifiedSide: invertedQual || (invertedWinner !== 'draw' ? invertedWinner : null)
-            };
-            const rivalSimulatedPick = { ...rivalPick, winner: invertedWinner, qualifier: invertedQual };
-            const { points } = calculateMatchPoints(rivalSimulatedPick, simulatedMatch, scoringRules, champRules);
-            projPts += points;
-          } else {
-            const simulatedMatch = {
-              ...m,
-              status: 'finished',
-              isSimulated: true,
-              scoreA: targetPick.scoreA,
-              scoreB: targetPick.scoreB,
-              regularTimeScoreA: targetPick.scoreA,
-              regularTimeScoreB: targetPick.scoreB,
-              qualifiedSide: targetPick.qualifier || (targetPick.winner !== 'draw' ? targetPick.winner : null)
-            };
-            const { points } = calculateMatchPoints(rivalPick, simulatedMatch, scoringRules, champRules);
-            projPts += points;
-          }
+        if (targetPick && (isTarget || rivalPick)) {
+          // O Universo Perfeito é o cenário definido pelos próprios palpites
+          // do alvo. Uma contradição entre o palpite de resultado e o pódio
+          // reduz o potencial de pódio, mas NÃO elimina os pontos da partida.
+          // Para os rivais, usamos exatamente o mesmo resultado do alvo; nunca
+          // invertamos o resultado apenas porque há uma contradição de pódio.
+          const simulatedMatch = {
+            ...m,
+            status: 'finished',
+            isSimulated: true,
+            scoreA: targetPick.scoreA,
+            scoreB: targetPick.scoreB,
+            regularTimeScoreA: targetPick.scoreA,
+            regularTimeScoreB: targetPick.scoreB,
+            qualifiedSide: targetPick.qualifier || (targetPick.winner !== 'draw' ? targetPick.winner : null)
+          };
+          const pickForProjection = isTarget ? targetPick : rivalPick;
+          const result = calculateStrategyMatchOutcomeResult(pickForProjection, simulatedMatch, scoringRules, champRules);
+          projPts += Number(result.points || 0);
+          projectedTieMetrics.exactScorePoints += getExactScoreMetricFromResult(result);
+          if (isKnockoutPhase) projectedTieMetrics.knockoutPoints += Number(result.points || 0);
         }
       });
 
       if (isTarget) {
-        projPts += targetPodiumPotential + ghostPoints;
+        const targetRoundRobinUnmaterialized = strategyRoundRobinUnmaterializedPointsByUser.get(r.userId) || 0;
+        projPts += targetPodiumPotential + targetFutureNonMatchPotential + targetGhostPoints + targetRoundRobinUnmaterialized;
+        projectedTieMetrics.podiumPoints += Number(targetPodiumPotential || 0);
+        projectedTieMetrics.extraPoints += Number(targetFutureNonMatch.extraPoints || 0);
       } else {
         let rivalPodiumInTargetUniverse = 0;
         const rivalEliminated = userSpecificEliminatedMap.get(r.userId) || eliminatedTeams;
@@ -1274,71 +1673,43 @@ async function getLeadershipPath(req, res) {
           rivalPodiumInTargetUniverse = userPodiumPotentialMap.get(r.userId) || 0;
         }
 
-        projPts += rivalPodiumInTargetUniverse;
+        const rivalFutureNonMatch = strategyFutureNonMatchPotential.get(r.userId) || { total: 0, groupQualificationPoints: 0, extraPoints: 0 };
+        const rivalFutureNonMatchPotential = Number(rivalFutureNonMatch.total || 0);
+        projPts += rivalPodiumInTargetUniverse + rivalFutureNonMatchPotential;
+        projectedTieMetrics.podiumPoints += Number(rivalPodiumInTargetUniverse || 0);
+        projectedTieMetrics.extraPoints += Number(rivalFutureNonMatch.extraPoints || 0);
+
+        // Ghost é específico do rival: partidas materializadas e bloqueadas
+        // só são ghost quando ele ainda não possui palpite; as partidas não
+        // materializadas são comuns a todos.
+        const rivalGhostPoints = strategyGhostPointsByUser.get(r.userId) || 0;
+        const rivalRoundRobinUnmaterialized = strategyRoundRobinUnmaterializedPointsByUser.get(r.userId) || 0;
+        projPts += rivalGhostPoints + rivalRoundRobinUnmaterialized;
       }
 
-      return { userId: r.userId, totalPoints: projPts, name: r.name };
+      return {
+        userId: r.userId,
+        totalPoints: projPts,
+        name: r.name,
+        tieBreakerMetrics: projectedTieMetrics
+      };
     });
 
-    projectedRanking.sort((a, b) => b.totalPoints - a.totalPoints || a.name.localeCompare(b.name));
-    const targetUserProj = projectedRanking.find(r => r.userId === activeUserId);
-    const usersBetter = projectedRanking.filter(r => r.totalPoints > (targetUserProj?.totalPoints ?? 0)).length;
-    const targetMaxPosition = usersBetter + 1;
+    projectedRanking.sort((a, b) =>
+      compareBySportsRanking(a, b, tieBreakers) || a.name.localeCompare(b.name)
+    );
+    const projectedWithPositions = assignSportsPositions(projectedRanking.map(item => ({
+      ...item,
+      __rankingTieKey: tieBreakers.map(key => Number(item.tieBreakerMetrics?.[key] || 0)).join('|')
+    })));
+    const targetUserProj = projectedWithPositions.find(r => r.userId === activeUserId);
+    const targetMaxPosition = targetUserProj?.position || projectedWithPositions.length + 1;
 
-    // ---------- CENÁRIO PESSIMISTA ----------
-    const worstCaseTargetPoints = targetPoints;
-    let usersBeatingTargetInWorstCase = 0;
-    let maxRivalPotential = 0;
-
-    currentRanking.forEach(r => {
-      if (r.userId !== activeUserId) {
-        const bRef = betsByUserMap.get(r.userId);
-        let rivalMaxPts = r.points;
-        const rivalConflicting = userConflictingMatchIds.get(r.userId) || new Set();
-
-        mathFutureMatches.forEach(m => {
-          const midStr = String(m.matchId);
-          const rivalPick = (bRef?.groupMatches || []).find(gm => String(gm.matchId) === midStr);
-          if (!rivalPick) return;
-
-          if (!rivalConflicting.has(midStr)) {
-            const simulatedMatch = {
-              ...m,
-              status: 'finished',
-              isSimulated: true,
-              scoreA: rivalPick.scoreA,
-              scoreB: rivalPick.scoreB,
-              regularTimeScoreA: rivalPick.scoreA,
-              regularTimeScoreB: rivalPick.scoreB,
-              qualifiedSide: rivalPick.qualifier || (rivalPick.winner !== 'draw' ? rivalPick.winner : null)
-            };
-            const { points } = calculateMatchPoints(rivalPick, simulatedMatch, scoringRules, champRules);
-            rivalMaxPts += points;
-          }
-        });
-
-        const rivalPodium = userPodiumPotentialMap.get(r.userId) || 0;
-        rivalMaxPts += rivalPodium + ghostPoints;
-
-        if (rivalMaxPts > maxRivalPotential) maxRivalPotential = rivalMaxPts;
-        if (rivalMaxPts > worstCaseTargetPoints) usersBeatingTargetInWorstCase++;
-      }
-    });
-
-    const targetMinPosition = usersBeatingTargetInWorstCase + 1;
-
-    let statusBadge = 'IN_CONTENTION';
-    if (targetMinPosition <= 2) {
-      statusBadge = 'GUARANTEED_PODIUM';
-    } else if (targetMaxPosition > 2) {
-      statusBadge = 'ELIMINATED';
-    }
-
-    // ---------- PONTOS EM DISPUTA ----------
+    // ---------- TETO FUTURO DO ALVO ----------
+    // Todas as fontes futuras passam pela mesma composição usada pela Estratégia.
+    // Isso evita que status/posição usem um teto diferente do exibido no card.
     const matchPointsLeft = mathFutureMatches.reduce((acc, m) => {
       const midStr = String(m.matchId);
-      if (targetConflicting.has(midStr)) return acc;
-
       const targetPick = targetPicksMap.get(midStr);
       if (!targetPick) return acc;
 
@@ -1352,26 +1723,133 @@ async function getLeadershipPath(req, res) {
         regularTimeScoreB: targetPick.scoreB,
         qualifiedSide: targetPick.qualifier || (targetPick.winner !== 'draw' ? targetPick.winner : null)
       };
-      const { points } = calculateMatchPoints(targetPick, simulatedMatch, scoringRules, champRules);
-      return acc + points;
+      const { points } = calculateStrategyMatchOutcomeResult(targetPick, simulatedMatch, scoringRules, champRules);
+      return acc + Number(points || 0);
     }, 0);
 
-    const totalPotential = matchPointsLeft + targetPodiumPotential + ghostPoints;
+    const totalPotential =
+      matchPointsLeft +
+      targetPodiumPotential +
+      targetFutureNonMatchPotential +
+      targetGhostPoints +
+      (strategyRoundRobinUnmaterializedPointsByUser.get(activeUserId) || 0);
     const targetMaxTotal = targetPoints + totalPotential;
+
+    // ---------- CENÁRIO PESSIMISTA ----------
+    const worstCaseTargetPoints = targetMaxTotal;
+    // Para garantir a melhor posição possível, o alvo precisa ser comparado
+    // ao próprio TETO futuro, não aos pontos atuais. Um rival só pode ser
+    // considerado capaz de permanecer à frente no pior caso se seu teto for
+    // pelo menos igual ao teto do alvo.
+    // O teto do alvo é calculado abaixo, antes deste bloco, para que a mesma
+    // fonte de verdade seja usada tanto no status quanto na posição mínima.
+    let usersBeatingTargetInWorstCase = 0;
+    let maxRivalPotential = 0;
+
+    currentRanking.forEach(r => {
+      if (r.userId !== activeUserId) {
+        const bRef = betsByUserMap.get(r.userId);
+        let rivalMaxPts = Number(r.points || 0);
+        // Para o pior caso, só usamos um teto de pontos totais. Não fabricamos
+        // um cenário impossível combinando simultaneamente os máximos futuros
+        // de exactScore, knockout, extras e pódio, pois esses máximos podem
+        // depender de resultados incompatíveis entre si.
+        const rivalMaxTieMetrics = {
+          exactScorePoints: Number(r.exactScorePoints || 0),
+          podiumPoints: Number(r.podiumPoints || 0),
+          extraPoints: Number(r.extrasPoints || 0),
+          knockoutPoints: Number(r.knockoutPoints || 0)
+        };
+        mathFutureMatches.forEach(m => {
+          const midStr = String(m.matchId);
+          const rivalPick = (bRef?.groupMatches || []).find(gm => String(gm.matchId) === midStr);
+          if (!rivalPick) return;
+
+          const simulatedMatch = {
+            ...m,
+            status: 'finished',
+            isSimulated: true,
+            scoreA: rivalPick.scoreA,
+            scoreB: rivalPick.scoreB,
+            regularTimeScoreA: rivalPick.scoreA,
+            regularTimeScoreB: rivalPick.scoreB,
+            qualifiedSide: rivalPick.qualifier || (rivalPick.winner !== 'draw' ? rivalPick.winner : null)
+          };
+          const result = calculateStrategyMatchOutcomeResult(rivalPick, simulatedMatch, scoringRules, champRules);
+          const points = Number(result.points || 0);
+          rivalMaxPts += points;
+          rivalMaxTieMetrics.exactScorePoints += Math.max(0, getExactScoreMetricFromResult(result));
+          if (m.phase === 'knockout' || m.phase === 'mata-mata') {
+            rivalMaxTieMetrics.knockoutPoints += Math.max(0, points);
+          }
+        });
+
+        const rivalPodium = userPodiumPotentialMap.get(r.userId) || 0;
+        const rivalFutureNonMatch = strategyFutureNonMatchPotential.get(r.userId) || { total: 0, groupQualificationPoints: 0, extraPoints: 0 };
+        const rivalFutureNonMatchPotential = Number(rivalFutureNonMatch.total || 0);
+        const rivalGhostPoints = strategyGhostPointsByUser.get(r.userId) || 0;
+        const rivalRoundRobinUnmaterialized = strategyRoundRobinUnmaterializedPointsByUser.get(r.userId) || 0;
+        rivalMaxPts += rivalPodium + rivalFutureNonMatchPotential + rivalGhostPoints + rivalRoundRobinUnmaterialized;
+        rivalMaxTieMetrics.podiumPoints += Number(rivalPodium || 0);
+        rivalMaxTieMetrics.extraPoints += Number(rivalFutureNonMatch.extraPoints || 0);
+
+        // ghostPoints é um teto de PONTOS TOTAIS futuros. Como as partidas ainda
+        // não foram liberadas/materializadas, não existe informação suficiente
+        // para afirmar qual desempate futuro o rival terá. Para uma posição
+        // garantida, um empate no teto também precisa ser tratado como ameaça:
+        // o desempate futuro pode favorecer o rival. Assim evitamos construir
+        // um ranking fictício somando máximos incompatíveis de vários critérios.
+
+        const rivalPotential = rivalMaxPts;
+        if (rivalPotential > maxRivalPotential) maxRivalPotential = rivalPotential;
+
+        // O limite inferior de posição é deliberadamente conservador. Se o rival
+        // pode chegar a mais pontos, certamente pode terminar à frente. Se pode
+        // chegar ao mesmo total, o desempate futuro é desconhecido e portanto
+        // também não podemos garantir que o alvo ficará à frente.
+        if (rivalPotential >= worstCaseTargetPoints) {
+          usersBeatingTargetInWorstCase++;
+        }
+      }
+    });
+
+    const targetMinPosition = usersBeatingTargetInWorstCase + 1;
+
+    // ---------- STATUS MATEMÁTICO ----------
+    // targetMaxPosition é uma projeção baseada no universo de palpites do alvo;
+    // ele não é suficiente para declarar eliminação. Para eliminar alguém de
+    // forma segura, contamos apenas rivais que JÁ estão acima do teto total que
+    // o alvo ainda pode atingir. Empates no teto não são tratados como prova de
+    // eliminação porque desempates futuros ainda não foram liberados.
+    const guaranteedOutsidePrizeZonePosition = 1 + currentRanking.filter(r =>
+      r.userId !== activeUserId && Number(r.points || 0) > Number(targetMaxTotal || 0)
+    ).length;
+
+    let statusBadge = 'IN_CONTENTION';
+    if (awardZonePositions > 0) {
+      if (targetMinPosition <= awardZonePositions) {
+        statusBadge = 'GUARANTEED_PODIUM';
+      } else if (guaranteedOutsidePrizeZonePosition > awardZonePositions) {
+        statusBadge = 'ELIMINATED';
+      }
+    }
 
     // ---------- PROBABILIDADE ----------
     let probability = 0;
     if (targetMaxPosition === 1) {
-      if (targetPoints >= maxRivalPotential) {
+      if (targetPoints > maxRivalPotential) {
         probability = 100;
       } else if (targetPoints > leaderPoints) {
         const margem = targetPoints - leaderPoints;
         probability = Math.min(99, 80 + (margem * 2));
       } else {
-        const leaders = sortedCurrentRanking.filter(r => r.points === leaderPoints && r.userId !== activeUserId);
+        const leaders = sortedCurrentRanking.filter(r =>
+          r.userId !== activeUserId &&
+          compareBySportsRanking(r, sortedCurrentRanking[0], tieBreakers) === 0
+        );
         if (leaders.length === 0) {
           const ameaca = maxRivalPotential - targetPoints;
-          if (ameaca <= 0) {
+          if (ameaca < 0) {
             probability = 100;
           } else {
             const pontosEmDisputa = totalPotential > 0 ? totalPotential : 1;
@@ -1386,16 +1864,15 @@ async function getLeadershipPath(req, res) {
 
             mathFutureMatches.forEach(m => {
               const midStr = String(m.matchId);
-              const isKnockout = m.phase === 'knockout' || m.phase === 'mata-mata';
               const targetPick = targetPicksMap.get(midStr);
               const leaderPick = (leaderBet?.groupMatches || []).find(gm => String(gm.matchId) === midStr);
 
               if (targetPick && leaderPick) {
-                if (targetPick.winner !== leaderPick.winner) contestedPoints += (scoringRules.winner || 0);
-                if (isKnockout && targetPick.qualifier !== leaderPick.qualifier) contestedPoints += (scoringRules.qualifier || 0);
-                if (targetPick.scoreA !== leaderPick.scoreA || targetPick.scoreB !== leaderPick.scoreB) {
-                  contestedPoints += (scoringRules.exactScore || 0) + (scoringRules.scoreTeamA || 0) + (scoringRules.scoreTeamB || 0);
-                }
+                // A disputa potencial entre dois palpites usa o teto real da
+                // partida configurada pelo ADM. Isso cobre regras customizadas
+                // (matchRules), regras legadas e o bônus de classificado, sem
+                // reintroduzir valores fixos de exactScore/winner.
+                contestedPoints += getMaxPointsPerMatch(scoringRules, champRules, m);
               }
             });
 
@@ -1415,7 +1892,8 @@ async function getLeadershipPath(req, res) {
               contestedPoints += Object.values(targetPodiumTeamsMaxContested).reduce((acc, val) => acc + val, 0);
             }
 
-            contestedPoints += ghostPoints;
+            const leaderGhostPoints = strategyGhostPointsByUser.get(leader.userId) || 0;
+            contestedPoints += Math.max(targetGhostPoints, leaderGhostPoints);
 
             const gap = leader.points - targetPoints;
             if (contestedPoints >= gap) {
@@ -1451,29 +1929,24 @@ async function getLeadershipPath(req, res) {
       ).locked;
       const targetPick = targetPicksMap.get(midStr);
 
-      let MARGEM_DE_PERIGO_PARTIDAS = 3;
-      if (m.phase === 'group') {
-        MARGEM_DE_PERIGO_PARTIDAS = 2;
-      } else if (isKnockoutPhase) {
-        switch (m.group) {
-          case '16-avos de final': MARGEM_DE_PERIGO_PARTIDAS = 4; break;
-          case 'Oitavas de final': MARGEM_DE_PERIGO_PARTIDAS = 3; break;
-          case 'Quartas de final': MARGEM_DE_PERIGO_PARTIDAS = 3; break;
-          case 'Semifinal':
-          case '3º lugar':
-          case 'Final': MARGEM_DE_PERIGO_PARTIDAS = 2; break;
-        }
-      }
-
-      const meuPotencialMaximo = targetPoints + targetPodiumPotential + ghostPoints;
-      const MARGEM_DE_PERIGO_PONTOS = MARGEM_DE_PERIGO_PARTIDAS * maxPointsPerMatch;
+      // Janela de perigo derivada do formato da partida, e não do nome fixo
+      // da etapa. Em ida/volta o confronto pode envolver as duas pernas; em
+      // jogo único/rodada simples uma partida basta para alterar o ranking.
+      const dangerMatchWindow = isKnockoutPhase &&
+        getEffectiveKnockoutFormat(champRules, m) === 'home_away'
+        ? 2
+        : 1;
+      const meuPotencialMaximo = targetPoints + targetPodiumPotential + targetFutureNonMatchPotential + targetGhostPoints + (strategyRoundRobinUnmaterializedPointsByUser.get(activeUserId) || 0);
+      const MARGEM_DE_PERIGO_PONTOS = dangerMatchWindow * getMaxPointsPerMatch(scoringRules, champRules, m);
 
       const rivalsToWatch = currentRanking.filter(r => {
         if (r.userId === activeUserId) return false;
         if (r.points > targetPoints) return true;
 
         const rivalPodium = userPodiumPotentialMap.get(r.userId) || 0;
-        const rivalPotencialMaximo = r.points + rivalPodium + ghostPoints;
+        const rivalFutureNonMatch = strategyFutureNonMatchPotential.get(r.userId) || { total: 0, groupQualificationPoints: 0, extraPoints: 0 };
+        const rivalFutureNonMatchPotential = Number(rivalFutureNonMatch.total || 0);
+        const rivalPotencialMaximo = r.points + rivalPodium + rivalFutureNonMatchPotential + (strategyGhostPointsByUser.get(r.userId) || 0) + (strategyRoundRobinUnmaterializedPointsByUser.get(r.userId) || 0);
 
         return rivalPotencialMaximo >= (meuPotencialMaximo - MARGEM_DE_PERIGO_PONTOS);
       });
@@ -1559,6 +2032,12 @@ async function getLeadershipPath(req, res) {
         status: m.status,
         phase: m.phase,
         group: m.group,
+        stageFormat: m.stageFormat || null,
+        knockoutFormat: getEffectiveKnockoutFormat(champRules, m),
+        knockoutLeg: m.knockoutLeg ?? null,
+        knockoutExpectedLegs: m.knockoutExpectedLegs ?? null,
+        knockoutTieKey: m.knockoutTieKey || null,
+        isFinalSingle: m.phase === 'knockout' && String(m.phaseName || m.group || '').trim().toLowerCase() === 'final' && getEffectiveKnockoutFormat(champRules, m) === 'single',
         scoreScoring,
         winnerFromScore: champRules.winnerFromScore !== false,
         hasImpact,
@@ -1605,12 +2084,19 @@ async function getLeadershipPath(req, res) {
           maxPoints: targetMaxTotal,
           podiumPotential: targetPodiumPotential,
           totalMatches: displayFutureMatches.length,
+          unmaterializedRoundRobinMatches: (champRules?.hasGroupPhase === true
+            ? getUnmaterializedRoundRobinMatchCount(getGroupStructure(champRules).expectedMatches, matches.filter(m => String(m.phase || '').trim().toLowerCase() === 'group'))
+            : getUnmaterializedRoundRobinMatchCount(getPointsRunStructure(champRules).expectedMatches, matches.filter(m => ['pontos_corridos','points_run'].includes(String(m.phase || '').trim().toLowerCase())))),
           podiumDetails,
           miracleAchieved,
           miracleTotalMatchesNeeded,
           miracleCriticalMatches,
           simulatedRanking: simulatedRankingList,
-          nemesis: null
+          nemesis: null,
+          prizeZonePositions: awardZonePositions,
+          positionBoundsAreConservative: true,
+          maxPositionIsProjection: true,
+          guaranteedOutsidePrizeZonePosition
         },
         matches: matchesAnalysis
       }

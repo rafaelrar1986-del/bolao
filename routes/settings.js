@@ -9,6 +9,7 @@ const { materializeKnockoutConfrontation } = require('../services/knockoutConfro
 const { buildKnockoutTieKey } = require('../utils/knockoutFormat');
 const PointsService = require('../services/pointsService');
 const { rebuildLeagueDailyHistory } = require('../services/dailyHistoryService');
+const { toBooleanFlag } = require('../services/pointsService');
 
 const { protect, admin } = require('../middleware/auth');
 
@@ -464,9 +465,17 @@ router.post('/global', protect, admin, async (req, res) => {
     if (req.body.championshipRules && typeof req.body.championshipRules === 'object') {
       const currentChampionship = currentSettingsForRules?.championshipRules || {};
       const incoming = { ...req.body.championshipRules };
+      incoming.hasGroupPhase = toBooleanFlag(incoming.hasGroupPhase ?? currentChampionship.hasGroupPhase ?? true, true);
+      incoming.hasKnockoutPhase = toBooleanFlag(incoming.hasKnockoutPhase ?? currentChampionship.hasKnockoutPhase ?? false, false);
+      incoming.hasThirdPlaceMatch = incoming.hasKnockoutPhase && toBooleanFlag(incoming.hasThirdPlaceMatch ?? currentChampionship.hasThirdPlaceMatch ?? true, true);
       const currentGroup = currentChampionship.groupQualification || {};
+      const currentPointsRun = currentChampionship.pointsRun || {};
       const incomingGroup = incoming.groupQualification || {};
       const legs = Number(incomingGroup.legs ?? currentGroup.legs ?? 1) === 2 ? 2 : 1;
+      const pointsRun = incoming.pointsRun && typeof incoming.pointsRun === 'object' ? incoming.pointsRun : {};
+      const pointsRunTotalTeams = Math.max(0, Math.floor(Number(pointsRun.totalTeams ?? currentPointsRun.totalTeams ?? 0) || 0));
+      const pointsRunLegs = Number(pointsRun.legs ?? currentPointsRun.legs ?? 1) === 2 ? 2 : 1;
+      incoming.pointsRun = { ...currentPointsRun, ...pointsRun, totalTeams: pointsRunTotalTeams, legs: pointsRunLegs };
 
       if (incoming.knockoutFormat !== undefined && !['single', 'home_away'].includes(incoming.knockoutFormat)) {
         return res.status(400).json({ success: false, message: 'Formato do mata-mata inválido.' });
@@ -494,6 +503,36 @@ router.post('/global', protect, admin, async (req, res) => {
         legs
       };
 
+      const normalizedPodiumSize = Math.floor(Number(incoming.podiumSize ?? currentChampionship.podiumSize ?? 4));
+      if (!Number.isFinite(normalizedPodiumSize) || normalizedPodiumSize < 1 || normalizedPodiumSize > 4) {
+        return res.status(400).json({ success: false, message: 'O pódio deve ter entre 1 e 4 posições.' });
+      }
+      incoming.podiumSize = normalizedPodiumSize;
+
+      const finalGroup = incoming.groupQualification;
+      if (incoming.hasGroupPhase === true) {
+        const gt = Number(finalGroup.totalTeams || 0);
+        const gc = Number(finalGroup.groupCount || 0);
+        if (!(gt > 0) || !(gc > 0) || gt % gc !== 0) {
+          return res.status(400).json({ success: false, message: 'A fase de grupos exige total de times e número de grupos válidos, com divisão exata.' });
+        }
+        if (incoming.hasKnockoutPhase === true) {
+          const tq = Number(finalGroup.totalQualified || 0);
+          const isPowerOfTwo = (() => {
+            if (!Number.isInteger(tq) || tq < 2) return false;
+            let value = tq;
+            while (value % 2 === 0) value /= 2;
+            return value === 1;
+          })();
+          if (!isPowerOfTwo) {
+            return res.status(400).json({ success: false, message: 'O número de classificados para o mata-mata deve ser uma potência de 2.' });
+          }
+          if (tq > gt) {
+            return res.status(400).json({ success: false, message: 'O número de classificados não pode ser maior que o total de times.' });
+          }
+        }
+      }
+
       lockUpdates.championshipRules = {
         ...currentChampionship,
         ...incoming
@@ -512,8 +551,18 @@ router.post('/global', protect, admin, async (req, res) => {
       ...(currentSettingsForRules?.championshipRules || {}),
       ...(lockUpdates.championshipRules || {})
     };
-    const hasGroupPhase = effectiveChampionshipRules.hasGroupPhase !== false;
+    const hasGroupPhase = effectiveChampionshipRules.hasGroupPhase === true;
     const hasKnockoutPhase = effectiveChampionshipRules.hasKnockoutPhase === true;
+
+    if (effectiveChampionshipRules.hasGroupPhase === false && effectiveChampionshipRules.hasKnockoutPhase === false) {
+      const pr = effectiveChampionshipRules.pointsRun || {};
+      if (!(Number(pr.totalTeams) > 1)) {
+        return res.status(400).json({ success: false, message: 'Em pontos corridos, informe o número de times (mínimo 2).' });
+      }
+      if (![1, 2].includes(Number(pr.legs))) {
+        return res.status(400).json({ success: false, message: 'Em pontos corridos, os confrontos devem ser turno único ou turno e returno.' });
+      }
+    }
 
     if (
       req.body.scoringRules &&

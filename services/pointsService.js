@@ -5,6 +5,7 @@ const Match = require('../models/Match');
 const Settings = require('../models/Settings');
 const mongoose = require('mongoose');
 const { calculateGroupStandings } = require('./groupStandingsService');
+const { getRoundRobinExpectedMatchCount, isPowerOfTwo } = require('./championshipStructureService');
 
 // ================================================================
 // CONFIGURAÇÕES / DEFAULTS
@@ -28,9 +29,11 @@ const DEFAULT_CHAMPIONSHIP_RULES = Object.freeze({
   podiumSize: 4,
   hasGroupPhase: true,
   hasKnockoutPhase: false,
+  hasThirdPlaceMatch: true,
   knockoutFormat: 'single',
   knockoutFinalFormat: 'home_away',
   knockoutAwayGoals: false,
+  pointsRun: { totalTeams: 0, legs: 1 },
   groupQualification: {
     totalTeams: 0,
     groupCount: 0,
@@ -195,19 +198,44 @@ function sanitizeScoringRules(rawRules) {
   return rules;
 }
 
+function toBooleanFlag(value, fallback = false) {
+  if (value === undefined || value === null) return Boolean(fallback);
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  const normalized = String(value).trim().toLowerCase();
+  if (['true', '1', 'yes', 'sim', 'on'].includes(normalized)) return true;
+  if (['false', '0', 'no', 'nao', 'não', 'off', ''].includes(normalized)) return false;
+  return Boolean(fallback);
+}
+
 function sanitizeChampionshipRules(rawRules) {
   const rules = {
     ...DEFAULT_CHAMPIONSHIP_RULES,
     ...(rawRules || {})
   };
 
-  rules.drawIncludesExtraTime = Boolean(rules.drawIncludesExtraTime);
-  rules.hasKnockoutPhase = Boolean(rules.hasKnockoutPhase);
+  rules.drawIncludesExtraTime = toBooleanFlag(rules.drawIncludesExtraTime);
+  rules.hasGroupPhase = toBooleanFlag(rules.hasGroupPhase, DEFAULT_CHAMPIONSHIP_RULES.hasGroupPhase);
+  rules.hasKnockoutPhase = toBooleanFlag(rules.hasKnockoutPhase, DEFAULT_CHAMPIONSHIP_RULES.hasKnockoutPhase);
+  rules.hasThirdPlaceMatch = rules.hasKnockoutPhase && toBooleanFlag(rules.hasThirdPlaceMatch, DEFAULT_CHAMPIONSHIP_RULES.hasThirdPlaceMatch);
   rules.knockoutFormat = rules.knockoutFormat === 'home_away' ? 'home_away' : 'single';
-  rules.knockoutFinalFormat = rules.knockoutFormat === 'home_away' && rules.knockoutFinalFormat === 'single'
+  // A final só pode ser ida/volta quando o mata-mata geral também é
+  // ida/volta. Quando o formato geral é jogo único, a final é
+  // necessariamente jogo único, independentemente de valor legado no campo.
+  // Quando o formato geral é ida/volta, preservamos a configuração explícita
+  // da final e mantemos home_away como fallback para campeonatos antigos.
+  rules.knockoutFinalFormat = rules.knockoutFormat === 'single'
     ? 'single'
-    : 'home_away';
+    : (rules.knockoutFinalFormat === 'single' ? 'single' : 'home_away');
   rules.knockoutAwayGoals = rules.knockoutFormat === 'home_away' && Boolean(rules.knockoutAwayGoals);
+
+  const pointsRun = {
+    ...(DEFAULT_CHAMPIONSHIP_RULES.pointsRun || {}),
+    ...(rules.pointsRun || {})
+  };
+  pointsRun.totalTeams = Math.max(0, Math.floor(Number(pointsRun.totalTeams) || 0));
+  pointsRun.legs = Number(pointsRun.legs) === 2 ? 2 : 1;
+  rules.pointsRun = pointsRun;
 
   const groupQualification = {
     ...(DEFAULT_CHAMPIONSHIP_RULES.groupQualification || {}),
@@ -219,7 +247,7 @@ function sanitizeChampionshipRules(rawRules) {
 
   const podiumSize = Number(rules.podiumSize);
   rules.podiumSize = Number.isFinite(podiumSize)
-    ? Math.max(0, Math.floor(podiumSize))
+    ? Math.min(4, Math.max(0, Math.floor(podiumSize)))
     : DEFAULT_CHAMPIONSHIP_RULES.podiumSize;
 
   return rules;
@@ -364,39 +392,63 @@ function getMatchReferenceQualifier(match, refA, refB, isFinished) {
  * Retorna o máximo teórico de pontos de uma partida segundo as regras atuais.
  * Mantém essa regra derivada centralizada para telas de estatísticas/simulação.
  */
+function isConfiguredMatchPhaseEnabled(match, championshipRules = DEFAULT_CHAMPIONSHIP_RULES) {
+  const phase = String(match?.phase || '').trim().toLowerCase();
+  if (phase === 'group') return championshipRules?.hasGroupPhase === true;
+  if (phase === 'knockout' || phase === 'mata-mata' || phase === 'mata_mata') {
+    if (championshipRules?.hasKnockoutPhase !== true) return false;
+    if (String(match?.group || match?.phaseName || '').trim() === '3º lugar' && championshipRules?.hasThirdPlaceMatch !== true) return false;
+    return true;
+  }
+  if (phase === 'pontos_corridos' || phase === 'points_run') {
+    return championshipRules?.hasGroupPhase === false && championshipRules?.hasKnockoutPhase === false;
+  }
+  return false;
+}
+
 function getMaxPointsPerMatch(
   scoringRules = DEFAULT_SCORING,
   championshipRules = DEFAULT_CHAMPIONSHIP_RULES,
-  phase = 'knockout'
+  phaseOrMatch = 'knockout'
 ) {
   const rules = sanitizeScoringRules(scoringRules);
   const champRules = sanitizeChampionshipRules(championshipRules);
-
-  // O classificado só existe no mata-mata.
-  const isKnockout = phase === 'knockout';
-
-  void champRules;
+  const isMatchObject = phaseOrMatch && typeof phaseOrMatch === 'object';
+  const phase = isMatchObject
+    ? String(phaseOrMatch.phase || '').trim().toLowerCase()
+    : String(phaseOrMatch || '').trim().toLowerCase();
+  const isKnockout = phase === 'knockout' || phase === 'mata-mata' || phase === 'mata_mata';
+  const matchForGate = isMatchObject ? phaseOrMatch : { phase };
+  if (!isConfiguredMatchPhaseEnabled(matchForGate, champRules)) return 0;
 
   const matchRules = sanitizeMatchRules(rules.matchRules, {
     ...champRules,
     hasKnockoutPhase: isKnockout
   });
 
-  const matchExtraQualifier = isKnockout
-    ? Number(rules.matchExtras?.qualifier || 0)
+  const maxMatchRule = matchRules.length > 0
+    ? Math.max(...matchRules.map(rule => Number(rule.points) || 0), 0)
+    : (
+      Number(rules.exactScore || 0) +
+      Number(rules.scoreTeamA || 0) +
+      Number(rules.scoreTeamB || 0) +
+      Number(rules.winner || 0)
+    );
+
+  // Em ida/volta o bônus de classificado é do CONFRONTO e vale uma única vez.
+  // Para um objeto de partida, somente a primeira perna pode receber esse teto.
+  let includeQualifier = isKnockout;
+  if (isMatchObject && isKnockout) {
+    const format = getEffectiveKnockoutFormat(champRules, phaseOrMatch);
+    const leg = Number(phaseOrMatch.knockoutLeg);
+    includeQualifier = format === 'single' || !Number.isFinite(leg) || leg === 1;
+  }
+
+  const matchExtraQualifier = includeQualifier
+    ? Math.max(0, Number(rules.matchExtras?.qualifier || 0))
     : 0;
 
-  if (matchRules.length > 0) {
-    const maxMatchRule = Math.max(...matchRules.map(rule => Number(rule.points) || 0), 0);
-    return maxMatchRule + matchExtraQualifier;
-  }
-  return (
-    rules.exactScore +
-    rules.scoreTeamA +
-    rules.scoreTeamB +
-    rules.winner +
-    matchExtraQualifier
-  );
+  return Math.max(0, maxMatchRule + matchExtraQualifier);
 }
 
 /**
@@ -417,7 +469,8 @@ function getMatchExtraQualifierPoints(scoringRules, championshipRules, realMatch
   if (!championshipRules?.hasKnockoutPhase) return 0;
   if (!realMatch) return 0;
   const phase = String(realMatch.phase || '').trim().toLowerCase();
-  if (phase !== 'knockout' && phase !== 'mata-mata') return 0;
+  if (phase !== 'knockout' && phase !== 'mata-mata' && phase !== 'mata_mata') return 0;
+  if (String(realMatch.group || realMatch.phaseName || '').trim() === '3º lugar' && championshipRules?.hasThirdPlaceMatch !== true) return 0;
   const value = Number(scoringRules?.matchExtras?.qualifier);
   return Number.isFinite(value) ? Math.max(0, value) : 0;
 }
@@ -451,6 +504,17 @@ function calculateMatchPoints(
         refWinner: null,
         refQualifier: null
       }
+    };
+  }
+
+  // O cálculo oficial e o teto estratégico precisam usar exatamente o mesmo
+  // gate estrutural. Fase desconhecida/ilegítima nunca pode ser pontuada.
+  if (!isConfiguredMatchPhaseEnabled(realMatch, champRules)) {
+    return {
+      points: 0,
+      total: 0,
+      breakdown,
+      reference: { refA: null, refB: null, refWinner: null, refQualifier: null }
     };
   }
 
@@ -779,7 +843,13 @@ function getGroupCompletionStatus(allGroupMatches = [], championshipRules = {}) 
   const source = (allGroupMatches || []).filter(m =>
     String(m.phase || '').toLowerCase() === 'group'
   );
-  const legs = Number(championshipRules?.groupQualification?.legs) === 2 ? 2 : 1;
+  const qualification = championshipRules?.groupQualification || {};
+  const configuredTotalTeams = Math.floor(Number(qualification.totalTeams) || 0);
+  const configuredGroupCount = Math.floor(Number(qualification.groupCount) || 0);
+  const configuredTeamsPerGroup = configuredTotalTeams > 0 && configuredGroupCount > 0 && configuredTotalTeams % configuredGroupCount === 0
+    ? configuredTotalTeams / configuredGroupCount
+    : 0;
+  const legs = Number(qualification.legs) === 2 ? 2 : 1;
   const byGroup = {};
 
   for (const m of source) {
@@ -807,11 +877,15 @@ function getGroupCompletionStatus(allGroupMatches = [], championshipRules = {}) 
   }
 
   return Object.values(byGroup).map(item => {
-    const teamCount = item.teams.size;
-    const expectedMatches =
-      teamCount >= 2 ? (teamCount * (teamCount - 1) / 2) * legs : 0;
-    const expectedPairs =
-      teamCount >= 2 ? teamCount * (teamCount - 1) / 2 : 0;
+    // Quando o campeonato é liberado rodada a rodada, nem todos os times
+    // precisam aparecer nos documentos já materializados. Se o ADM informou
+    // uma estrutura válida, ela é a fonte de verdade para o tamanho do grupo.
+    const observedTeamCount = item.teams.size;
+    const teamCount = configuredTeamsPerGroup >= 2
+      ? Math.max(configuredTeamsPerGroup, observedTeamCount)
+      : observedTeamCount;
+    const expectedMatches = getRoundRobinExpectedMatchCount(teamCount, legs);
+    const expectedPairs = getRoundRobinExpectedMatchCount(teamCount, 1);
 
     const configuredMatches = [...item.pairs.values()]
       .reduce((sum, pair) => sum + pair.configured, 0);
@@ -855,7 +929,7 @@ function calculateGroupQualificationPoints(
 
   // Sem fase de grupos não existe classificação prevista nem pontuação
   // de classificação, mesmo que regras antigas ainda estejam armazenadas.
-  if (championshipRules?.hasGroupPhase === false) {
+  if (championshipRules?.hasGroupPhase !== true || championshipRules?.hasKnockoutPhase !== true) {
     return { points: 0, breakdown: [], byGroup: [] };
   }
 
@@ -1306,28 +1380,10 @@ function calculateBetTotal(
     const match = matchMap?.get(String(betMatch.matchId));
     if (!match) continue;
 
-    let betForCalculation = betMatch;
-    let matchForCalculation = match;
-    if ((match.phase === 'knockout' || match.phase === 'mata-mata') && champRules.knockoutFormat === 'home_away') {
-      const legs = getKnockoutConfrontationMatches(match, matchMap, champRules);
-      if (legs.length >= 2) {
-        const firstLegId = Number(legs[0].matchId);
-        const complete = legs.every(m => m.status === 'finished');
-        betForCalculation = { ...betMatch };
-        if (Number(match.matchId) !== firstLegId || !complete) betForCalculation.qualifier = null;
-        if (complete && Number(match.matchId) === firstLegId) {
-          const scenarioQualifier = match?.scenarioConfrontationQualifier === true &&
-            (match.qualifiedSide === 'A' || match.qualifiedSide === 'B')
-            ? match.qualifiedSide
-            : null;
-          const resolvedQualifier = scenarioQualifier || resolveKnockoutConfrontationQualifier(match, matchMap, champRules);
-          matchForCalculation = { ...match, qualifiedSide: resolvedQualifier };
-        }
-      }
-    }
-    const result = calculateMatchPoints(
-      betForCalculation,
-      matchForCalculation,
+    const result = calculateBetMatchPoints(
+      betMatch,
+      match,
+      matchMap,
       rules,
       champRules,
       isPartial
@@ -1530,24 +1586,10 @@ async function recalculateAllPoints(
       for (const groupMatch of bet.groupMatches || []) {
         const match = matchesMap.get(String(groupMatch.matchId));
 
-        let betForCalculation = groupMatch;
-        let matchForCalculation = match;
-        if ((match?.phase === 'knockout' || match?.phase === 'mata-mata') && champRules.knockoutFormat === 'home_away') {
-          const legs = getKnockoutConfrontationMatches(match, matchesMap, champRules);
-          if (legs.length >= 2) {
-            const firstLegId = Number(legs[0].matchId);
-            const complete = legs.every(m => m.status === 'finished');
-            betForCalculation = { ...groupMatch };
-            if (Number(match.matchId) !== firstLegId || !complete) betForCalculation.qualifier = null;
-            if (complete && Number(match.matchId) === firstLegId) {
-              matchForCalculation = { ...match, qualifiedSide: resolveKnockoutConfrontationQualifier(match, matchesMap, champRules) };
-            }
-          }
-        }
-
-        const result = calculateMatchPoints(
-          betForCalculation,
-          matchForCalculation,
+        const result = calculateBetMatchPoints(
+          groupMatch,
+          match,
+          matchesMap,
           scoringRules,
           champRules,
           false
@@ -1829,6 +1871,9 @@ async function resetPodium(leagueId) {
 }
 
 module.exports = {
+  toBooleanFlag,
+  getRoundRobinExpectedMatchCount,
+  isPowerOfTwo,
   DEFAULT_SCORING,
   DEFAULT_SCORING_RULES,
   DEFAULT_CHAMPIONSHIP_RULES,
