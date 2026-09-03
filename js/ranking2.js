@@ -1,7 +1,7 @@
 import { api } from './api.js';
 import { toast } from './ui.js';
 import { initUserProfile } from './userProfile.js?v=1.06';
-import { renderTeamMedia, flagOnly, parseMatchDate } from './matches/matchesUtils.js';
+import { renderTeamMedia, parseMatchDate } from './matches/matchesUtils.js';
 
 /* =====================
     Helpers & State
@@ -325,7 +325,7 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
                 .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             valueHtml = safeValue;
         } else if (extra.value) {
-            valueHtml = flagOnly(extra.value) || '🏳️';
+            valueHtml = renderTeamMedia(extra.value, extra.logoUrl || null) || '—';
         }
 
         let scoreStyle = 'color: #ffffff; font-weight: 700;';
@@ -378,7 +378,7 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
 
                 const teamMediaHtml = pick.status === 'locked'
                     ? '<span class="strategy-locked-flag">🔒</span>'
-                    : `<span class="strategy-flag-only">${flagOnly(pick.team) || '🏳️'}</span>`;
+                    : renderTeamMedia(pick.team, pick.logoUrl || null);
 
                 return `
                     <div class="strategy-podium-item" style="width: ${podiumItemWidth}%;">
