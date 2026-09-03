@@ -17075,14 +17075,23 @@ body:has(#admin) .modal-content .setting-section {
 /* ============================================================
    ARTILHEIROS — CLASSIFICAÇÃO
    ============================================================ */
-#classificacao .top-scorers-section {
-  grid-column: 1 / -1;
-  margin-top: 8px;
+#classificacao .points-run-layout .top-scorers-section {
+  grid-column: 2 !important;
+  grid-row: 1;
+  align-self: start;
+  margin-top: 0;
   background: #1a1a1a;
   border: 1px solid #333;
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+}
+
+
+/* Em grupos/copa, os artilheiros continuam abaixo da classificação.
+   Em pontos corridos, a regra acima posiciona a seção na coluna 2. */
+#classificacao > .top-scorers-section {
+  grid-column: 1 / -1;
 }
 
 #classificacao .top-scorers-title {

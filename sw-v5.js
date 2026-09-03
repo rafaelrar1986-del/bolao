@@ -1,10 +1,10 @@
-const CACHE_NAME = "bolao-k-bwalya-refactor-full-v7";
+const CACHE_NAME = "bolao-k-bwalya-refactor-full-v8";
 
 const APP_SHELL = [
   "./",
   "./index.html",
   "./manifest.webmanifest",
-  "./css/styles4.css?v=1.43",
+  "./css/styles4.css?v=1.44",
   "./js/app4.js?v=1.12",
   "./js/api.js",
   "./js/auth.js",
