@@ -2,6 +2,7 @@ import { api } from './api.js';
 import { toast } from './ui.js';
 import { initUserProfile } from './userProfile.js?v=1.06';
 import { renderTeamMedia, parseMatchDate } from './matches/matchesUtils.js';
+import { flagEmoji } from './flags.js';
 
 /* =====================
     Helpers & State
@@ -20,6 +21,50 @@ window.__CURRENT_MATCHES__ = []; // Guarda a lista de jogos atual para a transi�
 
 function isMobile() {
     return window.matchMedia('(max-width: 768px)').matches;
+}
+
+// A Estratégia nunca renderiza uma bandeira própria. Este helper apenas
+// resolve a URL da mídia existente nas partidas para que a apresentação
+// continue sendo feita exclusivamente por renderTeamMedia().
+function normalizeStrategyTeamName(value) {
+    return String(value ?? '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ');
+}
+
+function resolveStrategyTeamLogo(teamName, explicitLogoUrl = null, sourceMatches = []) {
+    if (explicitLogoUrl) return explicitLogoUrl;
+
+    const wanted = normalizeStrategyTeamName(teamName);
+    if (!wanted) return null;
+
+    const matches = Array.isArray(sourceMatches) ? sourceMatches : [];
+    const exact = matches.find(m =>
+        normalizeStrategyTeamName(m?.teamA) === wanted ||
+        normalizeStrategyTeamName(m?.teamB) === wanted
+    );
+    if (exact) {
+        if (normalizeStrategyTeamName(exact.teamA) === wanted) return exact.logoA || null;
+        if (normalizeStrategyTeamName(exact.teamB) === wanted) return exact.logoB || null;
+    }
+
+    // Alguns pontos do sistema usam o nome em inglês e outros em português.
+    // A bandeira é usada somente como chave de equivalência; nunca é exibida.
+    const wantedFlag = flagEmoji(teamName);
+    if (wantedFlag) {
+        const byFlag = matches.find(m =>
+            flagEmoji(m?.teamA) === wantedFlag || flagEmoji(m?.teamB) === wantedFlag
+        );
+        if (byFlag) {
+            if (flagEmoji(byFlag.teamA) === wantedFlag) return byFlag.logoA || null;
+            if (flagEmoji(byFlag.teamB) === wantedFlag) return byFlag.logoB || null;
+        }
+    }
+
+    return null;
 }
 
 function getMedal(pos) {
@@ -325,7 +370,13 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
                 .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             valueHtml = safeValue;
         } else if (extra.value) {
-            valueHtml = renderTeamMedia(extra.value, extra.logoUrl || null) || '—';
+            valueHtml = renderTeamMedia(
+                extra.value,
+                resolveStrategyTeamLogo(extra.value, extra.logoUrl || null, [
+                    ...(Array.isArray(summary.teamMediaCatalog) ? summary.teamMediaCatalog : []),
+                    ...(Array.isArray(matches) ? matches : [])
+                ])
+            ) || '—';
         }
 
         let scoreStyle = 'color: #ffffff; font-weight: 700;';
@@ -378,7 +429,13 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
 
                 const teamMediaHtml = pick.status === 'locked'
                     ? '<span class="strategy-locked-flag">🔒</span>'
-                    : renderTeamMedia(pick.team, pick.logoUrl || null);
+                    : renderTeamMedia(
+                        pick.team,
+                        resolveStrategyTeamLogo(pick.team, pick.logoUrl || null, [
+                            ...(Array.isArray(summary.teamMediaCatalog) ? summary.teamMediaCatalog : []),
+                            ...(Array.isArray(matches) ? matches : [])
+                        ])
+                    );
 
                 return `
                     <div class="strategy-podium-item" style="width: ${podiumItemWidth}%;">
