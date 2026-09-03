@@ -247,6 +247,111 @@ async function fetchAndRenderStandings(targetElement, isParcial, leagueId) {
             }
         }
 
+        // ================================================================
+        // MELHOR ATAQUE / PIOR DEFESA
+        // Reutiliza EXATAMENTE os dados já recebidos da classificação:
+        // gp = gols marcados | gc = gols sofridos.
+        // Não faz nova chamada ao backend nem duplica regras de cálculo.
+        // A mídia da seleção passa exclusivamente por renderTeamMedia().
+        // ================================================================
+        const allStandingTeams = [];
+        const standingTeamKeys = new Set();
+        Object.values(groups).forEach(groupTeams => {
+            if (!Array.isArray(groupTeams)) return;
+            groupTeams.forEach(team => {
+                const key = normalizeTeamKey(team?.name);
+                if (!key || standingTeamKeys.has(key)) return;
+                standingTeamKeys.add(key);
+                allStandingTeams.push(team);
+            });
+        });
+
+        const renderPerformanceSection = ({ title, valueLabel, teams, valueGetter, emptyMessage }) => {
+            const section = document.createElement('section');
+            section.className = 'team-performance-section';
+            section.innerHTML = `
+                <div class="team-performance-title">${title}</div>
+                <div class="team-performance-table-wrap">
+                    <table class="team-performance-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 42px;">Pos</th>
+                                <th class="text-left">Seleção</th>
+                                <th>${valueLabel}</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            `;
+
+            const tbody = section.querySelector('tbody');
+            if (!teams.length) {
+                tbody.innerHTML = `<tr><td colspan="3" class="team-performance-empty">${emptyMessage}</td></tr>`;
+                return section;
+            }
+
+            tbody.innerHTML = teams.slice(0, 4).map((team, index) => {
+                const apiLogo = logoMap.get(normalizeTeamKey(team.name)) || team.logoUrl || '';
+                const media = renderTeamMedia(team.name, apiLogo);
+                const value = Number(valueGetter(team)) || 0;
+                return `
+                    <tr>
+                        <td class="performance-position">${index + 1}º</td>
+                        <td class="text-left performance-team">
+                            <div class="performance-team-media">${media}<span>${team.name}</span></div>
+                        </td>
+                        <td class="performance-value">${value}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            return section;
+        };
+
+        const bestAttackTeams = [...allStandingTeams].sort((a, b) => {
+            const gpDiff = (Number(b.gp) || 0) - (Number(a.gp) || 0);
+            if (gpDiff !== 0) return gpDiff;
+            const sgDiff = (Number(b.sg) || 0) - (Number(a.sg) || 0);
+            if (sgDiff !== 0) return sgDiff;
+            const ptsDiff = (Number(b.pts) || 0) - (Number(a.pts) || 0);
+            if (ptsDiff !== 0) return ptsDiff;
+            return String(a.name || '').localeCompare(String(b.name || ''));
+        });
+
+        const worstDefenseTeams = [...allStandingTeams].sort((a, b) => {
+            const gcDiff = (Number(b.gc) || 0) - (Number(a.gc) || 0);
+            if (gcDiff !== 0) return gcDiff;
+            const gpDiff = (Number(a.gp) || 0) - (Number(b.gp) || 0);
+            if (gpDiff !== 0) return gpDiff;
+            const ptsDiff = (Number(a.pts) || 0) - (Number(b.pts) || 0);
+            if (ptsDiff !== 0) return ptsDiff;
+            return String(a.name || '').localeCompare(String(b.name || ''));
+        });
+
+        const performanceRow = document.createElement('div');
+        performanceRow.className = 'team-performance-row';
+        performanceRow.appendChild(renderPerformanceSection({
+            title: 'Melhor Ataque',
+            valueLabel: 'GP',
+            teams: bestAttackTeams,
+            valueGetter: team => team.gp,
+            emptyMessage: 'Nenhum dado disponível.'
+        }));
+        performanceRow.appendChild(renderPerformanceSection({
+            title: 'Pior Defesa',
+            valueLabel: 'GC',
+            teams: worstDefenseTeams,
+            valueGetter: team => team.gc,
+            emptyMessage: 'Nenhum dado disponível.'
+        }));
+
+        if (pointsRunLayout) {
+            document.getElementById('classification-layout').appendChild(performanceRow);
+        } else {
+            targetElement.appendChild(performanceRow);
+        }
+
         // Rodape
         const footer = document.createElement('div');
         footer.className = 'table-footer';
