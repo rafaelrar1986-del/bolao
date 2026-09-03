@@ -288,32 +288,22 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
 
     const ownerLabel = targetName === "SEU" ? "SEU" : targetName.toUpperCase();
 
-    // 🏆 BADGES DE STATUS MATEMÁTICO (Pódio Garantido ou Eliminado)
-    // NOTA: a zona de premiação vem de prizeZone.positions; podiumSize é independente.
-    // Isso é independente do podiumSize, que define apenas quantos times o usuário
-    // aposta e quantos pontos cada posição do pódio vale.
-    const strategyPrizeZonePositions = Math.max(0, Math.floor(Number(
-        summary.prizeZonePositions ?? data.prizeZone?.positions ?? 0
-    )));
-    const strategyAwardZone = strategyPrizeZonePositions > 0 ? strategyPrizeZonePositions : 0;
-    const strategyAwardLabel = strategyAwardZone > 0 ? `Top ${strategyAwardZone}` : 'zona de premiação';
+    // 🏆 STATUS MATEMÁTICO — apresentação compacta; a explicação detalhada fica fora do card.
 
     let statusBadgeHtml = '';
     if (summary.statusBadge === 'GUARANTEED_PODIUM') {
         statusBadgeHtml = `
-            <div style="background: linear-gradient(90deg, rgba(255, 215, 0, 0.15), rgba(46, 204, 113, 0.15)); border: 1px solid #ffda44; padding: 15px; border-radius: 12px; text-align: center; margin-bottom: 25px; box-shadow: 0 0 20px rgba(255, 218, 68, 0.2); animation: pulse-gold 2s infinite;">
-                <span style="font-size: 1.2rem; font-weight: 900; color: #ffda44; text-transform: uppercase; display: block; letter-spacing: 1px;"><i class="fas fa-trophy"></i> Pódio Garantido!</span>
-                <div style="font-size: 0.85rem; color: rgba(255,255,255,0.9); margin-top: 8px; line-height: 1.4;">Você está matematicamente garantido na ${strategyAwardLabel}. A melhor posição possível já está assegurada!</div>
+            <div class="strategy-status-badge strategy-status-guaranteed" role="status" aria-label="Pódio garantido">
+                <span><i class="fas fa-trophy"></i> Pódio Garantido!</span>
             </div>
             <style>
-                @keyframes pulse-gold { 0% { box-shadow: 0 0 0 0 rgba(255,218,68,0.4); } 70% { box-shadow: 0 0 0 10px rgba(255,218,68,0); } 100% { box-shadow: 0 0 0 0 rgba(255,218,68,0); } }
+                @keyframes pulse-gold { 0% { box-shadow: 0 0 0 0 rgba(255,218,68,0.4); } 70% { box-shadow: 0 0 0 7px rgba(255,218,68,0); } 100% { box-shadow: 0 0 0 0 rgba(255,218,68,0); } }
             </style>
         `;
     } else if (summary.statusBadge === 'ELIMINATED') {
         statusBadgeHtml = `
-            <div style="background: linear-gradient(90deg, rgba(231, 76, 60, 0.15), rgba(231, 76, 60, 0.05)); border: 1px solid #e74c3c; padding: 15px; border-radius: 12px; text-align: center; margin-bottom: 25px; box-shadow: 0 0 15px rgba(231, 76, 60, 0.2);">
-                <span style="font-size: 1.2rem; font-weight: 900; color: #ff6b6b; text-transform: uppercase; display: block; letter-spacing: 1px;"><i class="fas fa-times-circle"></i> Matematicamente Eliminado</span>
-                <div style="font-size: 0.85rem; color: rgba(255,255,255,0.9); margin-top: 8px; line-height: 1.4;">Não há mais pontos suficientes em disputa para você alcançar a ${strategyAwardLabel}.</div>
+            <div class="strategy-status-badge strategy-status-eliminated" role="status" aria-label="Matematicamente eliminado">
+                <span><i class="fas fa-times-circle"></i> Matematicamente Eliminado</span>
             </div>
         `;
     }
@@ -426,12 +416,12 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
     const html = `
     <div class="strategy-container" style="animation: fadeIn 0.3s ease-in-out; padding: 15px;">
         
-        <div class="strategy-glass-card" style="background: rgba(0, 0, 0, 0.3); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 20px; padding: 25px; margin-bottom: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); color: white;">
+        <div class="strategy-glass-card" style="background: rgba(0, 0, 0, 0.3); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 20px; padding: 16px; margin-bottom: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); color: white;">
             
             ${statusBadgeHtml}
             ${miracleAlertHtml}
 
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 15px; flex-wrap: wrap; gap: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 10px; flex-wrap: wrap; gap: 10px;">
                 
                 <div class="stat-box" style="text-align: center; flex: 1; min-width: 22%;">
                     <span style="display: block; font-size: 0.55rem; font-weight: 800; color: rgba(255,255,255,0.4); letter-spacing: 0.5px; text-transform: uppercase;">RANKING</span>

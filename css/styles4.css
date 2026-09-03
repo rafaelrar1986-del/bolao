@@ -16569,6 +16569,37 @@ body:has(#admin) .modal-content .setting-section {
 }
 
 
+
+/* Estratégia — status compacto: o título comunica o estado sem repetir a explicação. */
+.strategy-status-badge {
+  padding: 10px 14px;
+  border-radius: 12px;
+  text-align: center;
+  margin-bottom: 14px;
+  box-sizing: border-box;
+}
+.strategy-status-badge > span {
+  display: block;
+  font-size: 1rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .7px;
+  line-height: 1.15;
+}
+.strategy-status-guaranteed {
+  background: linear-gradient(90deg, rgba(255,215,0,.12), rgba(46,204,113,.10));
+  border: 1px solid #ffda44;
+  box-shadow: 0 0 14px rgba(255,218,68,.16);
+  animation: pulse-gold 2s infinite;
+}
+.strategy-status-guaranteed > span { color: #ffda44; }
+.strategy-status-eliminated {
+  background: linear-gradient(90deg, rgba(231,76,60,.12), rgba(231,76,60,.04));
+  border: 1px solid #e74c3c;
+  box-shadow: 0 0 12px rgba(231,76,60,.14);
+}
+.strategy-status-eliminated > span { color: #ff6b6b; }
+
 /* ================================================================
    ESTRATÉGIA — CARD COM EXTRAS 2x2
    O pódio permanece no rodapé; os extras ocupam a coluna direita.
@@ -16582,10 +16613,10 @@ body:has(#admin) .modal-content .setting-section {
 }
 
 .strategy-reach-card {
-  min-height: 285px;
+  min-height: 250px;
   border: 1px solid rgba(255,255,255,0.14);
   border-radius: 16px;
-  padding: 20px 16px 14px;
+  padding: 15px 14px 11px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -16615,7 +16646,7 @@ body:has(#admin) .modal-content .setting-section {
   margin: 8px 0;
 }
 
-.strategy-probability { margin-top: 12px; }
+.strategy-probability { margin-top: 8px; }
 .strategy-probability-head {
   display: flex;
   justify-content: space-between;
@@ -16640,7 +16671,7 @@ body:has(#admin) .modal-content .setting-section {
   font-size: 0.64rem;
   color: rgba(255,255,255,0.3);
   text-align: center;
-  margin-top: 11px;
+  margin-top: 7px;
   cursor: pointer;
 }
 
@@ -16648,12 +16679,12 @@ body:has(#admin) .modal-content .setting-section {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-template-rows: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 9px;
   min-width: 0;
 }
 
 .strategy-extra-card {
-  min-height: 136px;
+  min-height: 120px;
   border: 1px solid rgba(74,222,128,0.78);
   border-radius: 15px;
   padding: 11px 8px 10px;
@@ -16699,8 +16730,8 @@ body:has(#admin) .modal-content .setting-section {
 }
 
 .podium-strategy-footer {
-  margin-top: 16px;
-  padding: 13px 10px;
+  margin-top: 10px;
+  padding: 9px 10px;
   border-radius: 12px;
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.08);
@@ -16751,23 +16782,31 @@ body:has(#admin) .modal-content .setting-section {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1.12fr);
     gap: 8px;
   }
-  .strategy-reach-card { min-height: 250px; padding: 16px 10px 12px; }
+  .strategy-reach-card { min-height: 220px; padding: 11px 8px 9px; }
   .strategy-reach-title { font-size: 0.64rem; }
-  .strategy-reach-position { font-size: 4.3rem; }
+  .strategy-reach-position { font-size: 3.9rem; margin: 4px 0; }
   .strategy-extras-grid { gap: 8px; }
-  .strategy-extra-card { min-height: 118px; padding: 8px 5px; }
-  .strategy-extra-icon { font-size: 1.9rem; }
+  .strategy-extra-card { min-height: 102px; padding: 6px 4px; }
+  .strategy-extra-icon { font-size: 1.65rem; margin-bottom: 4px; }
   .strategy-extra-label { font-size: 0.56rem; }
-  .strategy-extra-value { font-size: 0.92rem; }
-  .strategy-extra-points { font-size: 1rem; }
+  .strategy-extra-value { font-size: 0.86rem; min-height: 23px; margin-top: 3px; }
+  .strategy-extra-points { font-size: 0.95rem; margin-top: 4px; }
 }
 
 @media (max-width: 390px) {
   .strategy-main-grid { grid-template-columns: 1fr 1fr; }
-  .strategy-reach-card { min-height: 230px; }
+  .strategy-reach-card { min-height: 205px; }
   .strategy-reach-position { font-size: 3.8rem; }
-  .strategy-extra-card { min-height: 108px; }
-  .strategy-extra-icon { font-size: 1.7rem; }
+  .strategy-extra-card { min-height: 94px; }
+  .strategy-extra-icon { font-size: 1.55rem; }
 }
 
 .strategy-flag-only { font-size: 26px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; }
+
+@media (max-width: 600px) {
+  .strategy-status-badge {
+    padding: 8px 10px;
+    margin-bottom: 10px;
+  }
+  .strategy-status-badge > span { font-size: .88rem; letter-spacing: .45px; }
+}
