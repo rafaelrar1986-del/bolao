@@ -4,6 +4,7 @@ const Settings = require('../models/Settings');
 const { getEffectiveKnockoutFormat, getEffectiveKnockoutLegCount, buildKnockoutTieKey } = require('../utils/knockoutFormat');
 const { materializeKnockoutConfrontation } = require('../services/knockoutConfrontationService');
 const { API_KNOCKOUT_ROUND_MAP } = require('../utils/knockoutStageNames');
+const { getMatchTimestamp } = require('../utils/matchDateTime');
 
 /**
  * Mapeia os status da API para os Enums do seu MatchSchema
@@ -32,10 +33,8 @@ const mapStatus = (apiStatus) => {
  */
 
 function parseRobotMatchDate(match) {
-    const md = String(match?.date || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-    const mt = String(match?.time || '00:00').match(/^(\d{1,2}):(\d{2})/);
-    if (!md) return 0;
-    return Date.parse(`${md[3]}-${md[2]}-${md[1]}T${String(mt?.[1] || '0').padStart(2, '0')}:${mt?.[2] || '00'}:00Z`) || 0;
+    const timestamp = getMatchTimestamp(match?.date, match?.time);
+    return timestamp == null ? 0 : timestamp;
 }
 
 exports.getAvailableLeagues = async (req, res) => {

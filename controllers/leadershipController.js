@@ -8,6 +8,7 @@ const { protect, admin, checkPaid } = require('../middleware/auth');
 const { blockStatsIfLocked } = require('../middleware/blockStats');
 
 const { sortMatchesChronologically } = require('../utils/matchSort');
+const { getMatchTimestamp } = require('../utils/matchDateTime');
 const { getEffectiveKnockoutFormat, isFinalStage } = require('../utils/knockoutFormat');
 const { getKnockoutConfrontationKey, validateHomeAwayLegs } = require('../utils/knockoutConfrontationKey');
 const {
@@ -323,12 +324,9 @@ async function getLeadershipPath(req, res) {
       const stage = String(m.group || '').trim();
       if (!stage) continue;
       const current = knockoutStageInfo.get(stage) || { firstTime: Number.MAX_SAFE_INTEGER, teams: new Set() };
-      const parsedTime = (() => {
-        const [d, mo, y] = String(m.date || '').split('/').map(Number);
-        const [hh, mm] = String(m.time || '00:00').split(':').map(Number);
-        return d && mo && y ? new Date(y, mo - 1, d, hh || 0, mm || 0).getTime() : Number.MAX_SAFE_INTEGER;
-      })();
-      current.firstTime = Math.min(current.firstTime, parsedTime);
+      const parsedTime = getMatchTimestamp(m.date, m.time);
+      const safeParsedTime = parsedTime == null ? Number.MAX_SAFE_INTEGER : parsedTime;
+      current.firstTime = Math.min(current.firstTime, safeParsedTime);
       if (m.teamA) current.teams.add(String(m.teamA));
       if (m.teamB) current.teams.add(String(m.teamB));
       knockoutStageInfo.set(stage, current);
@@ -1730,6 +1728,61 @@ async function getLeadershipPath(req, res) {
     const hidePodium = !isViewingSelf && isPodiumLocked;
     const podiumDetails = [];
 
+    // Extras do campeonato: o card do Estratégia usa a mesma fonte de verdade
+    // do cálculo de pontos. Cada extra recebe um estado independente:
+    // alive (ainda possível), conquered (acertado) ou dead (perdido).
+    // Para terceiros, a mesma trava de visibilidade usada para os palpites
+    // impede que o Estratégia revele a escolha antes da liberação administrativa.
+    const extraDefinitions = [
+      { key: 'topScorer', label: 'ARTILHEIRO', icon: '⚽', kind: 'player' },
+      { key: 'bestAttack', label: 'MELHOR ATAQUE', icon: '🥅', kind: 'team' },
+      { key: 'worstDefense', label: 'PIOR DEFESA', icon: '🛡️', kind: 'team' },
+      { key: 'upset', label: 'ZEBRA', icon: '🦓', kind: 'team' }
+    ];
+    const extrasVisibility = getGlobalPredictionVisibilityState(
+      settings,
+      isAdmin,
+      isViewingSelf,
+      'extras'
+    );
+    const hideExtras = !isViewingSelf && extrasVisibility.locked;
+    const extrasDetails = extraDefinitions
+      .map(def => {
+        const points = Math.max(0, Number(scoringRules?.[def.key]) || 0);
+        if (points <= 0) return null;
+
+        const predicted = String(targetBet?.extras?.[def.key] ?? '').trim();
+        const official = String(champResults?.[def.key] ?? '').trim();
+
+        if (hideExtras) {
+          return {
+            key: def.key,
+            label: def.label,
+            icon: def.icon,
+            kind: def.kind,
+            value: null,
+            points,
+            status: 'locked'
+          };
+        }
+
+        let status = 'alive';
+        if (predicted && official) {
+          status = strMatch(predicted, official) ? 'conquered' : 'dead';
+        }
+
+        return {
+          key: def.key,
+          label: def.label,
+          icon: def.icon,
+          kind: def.kind,
+          value: predicted || null,
+          points,
+          status
+        };
+      })
+      .filter(Boolean);
+
     if (targetBet.podium && targetBet.podium.length > 0) {
       for (let i = 0; i < podiumSize; i++) {
         if (hidePodium) {
@@ -2348,6 +2401,7 @@ async function getLeadershipPath(req, res) {
             ? getUnmaterializedRoundRobinMatchCount(getGroupStructure(champRules).expectedMatches, matches.filter(m => String(m.phase || '').trim().toLowerCase() === 'group'))
             : getUnmaterializedRoundRobinMatchCount(getPointsRunStructure(champRules).expectedMatches, matches.filter(m => ['pontos_corridos','points_run'].includes(String(m.phase || '').trim().toLowerCase())))),
           podiumDetails,
+          extrasDetails,
           miracleAchieved,
           miracleTotalMatchesNeeded,
           miracleCriticalMatches,

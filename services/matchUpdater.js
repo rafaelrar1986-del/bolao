@@ -596,10 +596,8 @@ function normalizeEventCore(event) {
 
 
 function parseUpdaterMatchDate(match) {
-  const md = String(match?.date || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  const mt = String(match?.time || '00:00').match(/^(\d{1,2}):(\d{2})/);
-  if (!md) return 0;
-  return Date.parse(`${md[3]}-${md[2]}-${md[1]}T${String(mt?.[1] || '0').padStart(2, '0')}:${mt?.[2] || '00'}:00Z`) || 0;
+  const timestamp = getMatchTimestamp(match?.date, match?.time);
+  return timestamp == null ? 0 : timestamp;
 }
 
 async function resolveKnockoutConfrontation(match, rules) {

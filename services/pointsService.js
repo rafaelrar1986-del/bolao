@@ -1,4 +1,5 @@
 const { getEffectiveKnockoutFormat } = require('../utils/knockoutFormat');
+const { getMatchTimestamp } = require('../utils/matchDateTime');
 const { getKnockoutConfrontationKey, sameKnockoutConfrontation, validateHomeAwayLegs, getCanonicalTeamPair } = require('../utils/knockoutConfrontationKey');
 const Bet = require('../models/Bet');
 const Match = require('../models/Match');
@@ -1233,10 +1234,9 @@ function calculateGroupQualificationPoints(
  * independentemente de quem é mandante em cada jogo.
  */
 function parseConfrontationDate(match) {
+  const timestamp = getMatchTimestamp(match?.date, match?.time);
+  if (timestamp != null) return timestamp;
   const raw = String(match?.date || '').trim();
-  const md = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  const mt = String(match?.time || '00:00').match(/^(\d{1,2}):(\d{2})/);
-  if (md) return Date.parse(`${md[3]}-${md[2]}-${md[1]}T${String(mt ? mt[1] : '0').padStart(2,'0')}:${mt ? mt[2] : '00'}:00Z`) || 0;
   return Date.parse(raw) || 0;
 }
 
