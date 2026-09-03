@@ -1,4 +1,4 @@
-const CACHE_NAME = "bolao-k-bwalya-refactor-full-v6";
+const CACHE_NAME = "bolao-k-bwalya-refactor-full-v7";
 
 const APP_SHELL = [
   "./",

@@ -16855,3 +16855,26 @@ body:has(#admin) .modal-content .setting-section {
     padding: 6px 8px !important;
   }
 }
+
+/* ============================================================
+   RANKING — CONTAINER EXTERNO ULTRA COMPACTO
+   Último override intencional: elimina espaço vertical herdado
+   sem alterar os cards internos do Estratégia.
+   ============================================================ */
+#ranking.tab-content {
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    padding: 0 !important;
+}
+
+@media (max-width: 700px) {
+    #ranking.tab-content {
+        margin-top: 0 !important;
+        margin-bottom: 0 !important;
+        padding: 0 !important;
+    }
+}
