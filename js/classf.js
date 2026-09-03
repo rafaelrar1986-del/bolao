@@ -77,6 +77,7 @@ async function fetchAndRenderStandings(targetElement, isParcial, leagueId) {
     try {
         // 1. BUSCA OS LOGOS das partidas da liga
         const logoMap = new Map();
+        let leagueMatches = [];
         const normalizeTeamKey = (name) => String(name || '')
             .normalize('NFD')
             .replace(/[\u0300-\u036f]/g, '')
@@ -86,6 +87,7 @@ async function fetchAndRenderStandings(targetElement, isParcial, leagueId) {
         try {
             const matchesRes = await api.listMatches(leagueId);
             if (matchesRes?.success && Array.isArray(matchesRes.data)) {
+                leagueMatches = matchesRes.data;
                 matchesRes.data.forEach(m => {
                     if (m.teamA && m.logoA) logoMap.set(normalizeTeamKey(m.teamA), m.logoA);
                     if (m.teamB && m.logoB) logoMap.set(normalizeTeamKey(m.teamB), m.logoB);
@@ -95,8 +97,26 @@ async function fetchAndRenderStandings(targetElement, isParcial, leagueId) {
             console.warn('Nao foi possivel carregar logos:', e.message);
         }
 
-        // 2. BUSCA OS DADOS DA TABELA
-        const groups = await api.getGroupStandings(leagueId, isParcial);
+        // 2. IDENTIFICA A FASE REAL DA CLASSIFICAÇÃO PELAS PARTIDAS DA LIGA.
+        // Não podemos assumir 'group': uma liga de pontos corridos pode ter
+        // partidas criadas antes de qualquer resultado ser finalizado.
+        const hasPointsRunMatches = (() => {
+            try {
+                // Reutiliza a mesma consulta feita acima sem depender de regras
+                // de campeonato, que podem estar desatualizadas.
+                return leagueMatches.some(m => {
+                    const phase = String(m?.phase || '').trim().toLowerCase();
+                    return phase === 'pontos_corridos' || phase === 'points_run';
+                });
+            } catch (_) {
+                return false;
+            }
+        })();
+
+        const classificationPhase = hasPointsRunMatches ? 'pontos_corridos' : 'group';
+
+        // 3. BUSCA OS DADOS DA TABELA usando a fase correta.
+        const groups = await api.getGroupStandings(leagueId, isParcial, classificationPhase);
 
         if (!groups || typeof groups !== 'object' || Object.keys(groups).length === 0) {
             targetElement.innerHTML = `<p style="text-align:center; padding: 40px; color: #888;">Sem dados para esta liga.</p>`;
