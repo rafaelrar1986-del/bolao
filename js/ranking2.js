@@ -503,6 +503,14 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
                         const teamA = teamsArray[0]?.trim() || 'Time A';
                         const teamB = teamsArray[1]?.trim() || 'Time B';
 
+                        // A Estratégia deve usar a mesma fonte visual de equipes dos
+                        // cards oficiais: renderTeamMedia(). O backend devolve logoA/logoB
+                        // junto da partida; nunca montamos bandeiras diretamente aqui.
+                        const teamAMedia = renderTeamMedia(teamA, m.logoA || null);
+                        const teamBMedia = renderTeamMedia(teamB, m.logoB || null);
+                        const teamADisplay = `${teamAMedia}${teamAMedia ? ' ' : ''}${teamA}`;
+                        const teamBDisplay = `${teamBMedia}${teamBMedia ? ' ' : ''}${teamB}`;
+
                         const isMiracleCard = isMiracleActive && m.isMiracleResult;
                         const currentSim = simulatedResults[mId] || {};
                         const displaySim = (isMiracleCard && (m.miracleScoreA != null || m.miracleScoreB != null))
@@ -594,7 +602,7 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
                             ${(matchDate || matchTime) ? `<div style="font-size: 0.6rem; color: rgba(255,255,255,0.5); margin-bottom: 8px; text-transform: uppercase; font-weight: 700; display: flex; align-items: center; gap: 4px;"><i class="far fa-calendar-alt"></i> ${matchDate} ${matchTime}</div>` : ''}
 
                             <div style="display: flex; justify-content: space-between; align-items: center; font-weight: 800; color: white; font-size: 0.9rem; margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 5px;">
-                                <span>${m.teams}</span>
+                                <span style="display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap;">${teamADisplay} <span style="opacity:0.55;">x</span> ${teamBDisplay}</span>
                                 <div style="display: flex; align-items: center; gap: 5px;">${impactHtml}</div>
                             </div>
 
@@ -631,9 +639,9 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
                                 <div style="margin-bottom: 10px; background: rgba(0,0,0,0.15); padding: 10px; border-radius: 10px; border: 1px solid ${isMiracleCard ? 'rgba(255, 218, 68, 0.3)' : 'rgba(255, 152, 0, 0.15)'};">
                                     <span style="font-size: 0.55rem; font-weight: 800; color: ${isMiracleCard ? '#ffda44' : '#ff9800'}; text-transform: uppercase; display:block; margin-bottom:6px;">Simular Resultado:</span>
                                     <div class="sim-btn-group">
-                                        <button data-sim-field="winner" data-sim-value="A" class="sim-choice-btn ${btnWinnerA}" onclick="registerSimulation('${mId}', 'winner', 'A')">${teamA}</button>
+                                        <button data-sim-field="winner" data-sim-value="A" class="sim-choice-btn ${btnWinnerA}" onclick="registerSimulation('${mId}', 'winner', 'A')">${teamADisplay}</button>
                                         <button data-sim-field="winner" data-sim-value="Draw" class="sim-choice-btn ${btnWinnerDraw}" onclick="registerSimulation('${mId}', 'winner', 'Draw')">Empate</button>
-                                        <button data-sim-field="winner" data-sim-value="B" class="sim-choice-btn ${btnWinnerB}" onclick="registerSimulation('${mId}', 'winner', 'B')">${teamB}</button>
+                                        <button data-sim-field="winner" data-sim-value="B" class="sim-choice-btn ${btnWinnerB}" onclick="registerSimulation('${mId}', 'winner', 'B')">${teamBDisplay}</button>
                                     </div>
                                 </div>
                                 ` : ''}
@@ -655,8 +663,8 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
                                 <div style="margin-bottom: 12px; background: rgba(0,0,0,0.15); padding: 10px; border-radius: 10px; border: 1px solid ${isMiracleCard ? 'rgba(255, 218, 68, 0.3)' : 'rgba(255, 152, 0, 0.15)'};">
                                     <span style="font-size: 0.55rem; font-weight: 800; color: ${isMiracleCard ? '#ffda44' : '#ff9800'}; text-transform: uppercase; display:block; margin-bottom:6px;">Simular Classificado:</span>
                                     <div class="sim-btn-group">
-                                        <button data-sim-field="qualifier" data-sim-value="A" class="sim-choice-btn ${btnQualA}" onclick="registerSimulation('${mId}', 'qualifier', 'A')"> ${teamA}</button>
-                                        <button data-sim-field="qualifier" data-sim-value="B" class="sim-choice-btn ${btnQualB}" onclick="registerSimulation('${mId}', 'qualifier', 'B')"> ${teamB}</button>
+                                        <button data-sim-field="qualifier" data-sim-value="A" class="sim-choice-btn ${btnQualA}" onclick="registerSimulation('${mId}', 'qualifier', 'A')"> ${teamADisplay}</button>
+                                        <button data-sim-field="qualifier" data-sim-value="B" class="sim-choice-btn ${btnQualB}" onclick="registerSimulation('${mId}', 'qualifier', 'B')"> ${teamBDisplay}</button>
                                     </div>
                                 </div>
                                 ` : '';
