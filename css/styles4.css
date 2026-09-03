@@ -15935,7 +15935,8 @@ body:has(#login-section:not([hidden])){
   justify-content:space-between; padding:10px; background:rgba(8,13,22,.96);
   backdrop-filter:blur(12px); border-bottom:1px solid rgba(255,255,255,.08);
 }
-#admin .admin-match-tabs {display:flex; gap:5px; flex:1;}
+#admin .admin-match-tabs {display:flex; gap:5px; flex:1; min-width:0; overflow-x:auto; scrollbar-width:thin;}
+#admin .admin-match-tab {white-space:nowrap; flex:0 0 auto;}
 #admin .admin-match-tab {
   border:0; border-radius:11px; padding:9px 12px; background:rgba(255,255,255,.04);
   color:#94a3b8; font-weight:800; font-size:12px;
@@ -17035,4 +17036,95 @@ body:has(#admin) .modal-content .setting-section {
   #ranking .strategy-extra-label { font-size: .49rem !important; }
   #ranking .strategy-extra-value { font-size: .73rem !important; }
   #ranking .strategy-extra-points { font-size: .82rem !important; }
+}
+
+/* ============================================================
+   ARTILHEIROS — CLASSIFICAÇÃO
+   ============================================================ */
+#classificacao .top-scorers-section {
+  grid-column: 1 / -1;
+  margin-top: 8px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+}
+
+#classificacao .top-scorers-title {
+  background: linear-gradient(90deg, #1e40af, #3b82f6);
+  padding: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-size: 0.8rem;
+  text-align: center;
+  border-bottom: 2px solid #2563eb;
+}
+
+#classificacao .top-scorers-table-wrap {
+  overflow-x: auto;
+}
+
+#classificacao .top-scorers-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+#classificacao .top-scorers-table th {
+  background: #262626;
+  color: #888;
+  text-transform: uppercase;
+  font-size: 0.58rem;
+  padding: 8px 6px;
+  text-align: center;
+}
+
+#classificacao .top-scorers-table td {
+  padding: 9px 6px;
+  text-align: center;
+  border-bottom: 1px solid #262626;
+}
+
+#classificacao .top-scorers-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+#classificacao .scorer-position {
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+#classificacao .scorer-player {
+  font-weight: 700;
+}
+
+#classificacao .scorer-team-media {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+#classificacao .scorer-team-media .logo-wrapper {
+  width: 22px !important;
+  height: 22px !important;
+  flex: 0 0 22px;
+}
+
+#classificacao .scorer-team-media .team-emoji {
+  display: inline-block;
+  width: 22px;
+  text-align: center;
+}
+
+#classificacao .scorer-goals {
+  font-weight: 900;
+  font-size: 0.9rem;
+}
+
+#classificacao .top-scorers-loading,
+#classificacao .top-scorers-empty {
+  padding: 16px !important;
+  color: #888;
 }

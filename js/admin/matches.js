@@ -25,33 +25,65 @@ async function loadAdminMatches() {
   }
 }
 
+function normalizeAdminMatchPhase(value) {
+  const phase = String(value || '').trim().toLowerCase();
+  if (phase === 'pontos_corridos' || phase === 'points_run' || phase === 'pontos-corridos' || phase === 'pontos corridos') {
+    return 'points_run';
+  }
+  if (phase === 'knockout') return 'knockout';
+  if (phase === 'group' || phase === 'groups' || phase === 'grupos') return 'group';
+  return '';
+}
+
 function getAdminChampionshipMode(matchesList = []) {
   const rules = R.CurrentSettings?.championshipRules || {};
   const explicitGroup = rules.hasGroupPhase === true;
   const explicitKnockout = rules.hasKnockoutPhase === true;
+  const normalizedPhases = new Set(
+    (matchesList || []).map(m => normalizeAdminMatchPhase(m?.phase)).filter(Boolean)
+  );
 
-  // A configuração salva é a autoridade. Quando não existe uma configuração
-  // explícita (ex.: liga antiga), usamos as partidas como fallback seguro.
-  const hasRuleFields =
-    Object.prototype.hasOwnProperty.call(rules, 'hasGroupPhase') ||
-    Object.prototype.hasOwnProperty.call(rules, 'hasKnockoutPhase');
+  // As próprias partidas são a fonte de verdade para o que precisa aparecer
+  // no painel. Isso é essencial para ligas em que o administrador criou
+  // partidas de Pontos Corridos antes de (ou independentemente de) atualizar
+  // as regras gerais do campeonato.
+  const hasPointsRunMatches = normalizedPhases.has('points_run');
+  const hasGroupMatches = normalizedPhases.has('group');
+  const hasKnockoutMatches = normalizedPhases.has('knockout');
 
-  if (hasRuleFields) {
-    if (!explicitGroup && !explicitKnockout) return 'points_run';
-    if (explicitGroup && explicitKnockout) return 'group+knockout';
-    if (explicitGroup) return 'group';
-    return 'knockout';
+  if (hasPointsRunMatches) {
+    if (hasGroupMatches && hasKnockoutMatches) return 'group+points_run+knockout';
+    if (hasGroupMatches) return 'group+points_run';
+    if (hasKnockoutMatches) return 'points_run+knockout';
+    return 'points_run';
   }
+  if (hasGroupMatches && hasKnockoutMatches) return 'group+knockout';
+  if (hasGroupMatches) return 'group';
+  if (hasKnockoutMatches) return 'knockout';
 
-  const regular = (matchesList || []).filter(m => String(m?.phase || '').toLowerCase() !== 'knockout');
-  const hasPointsRun = regular.some(m => {
-    const phase = String(m?.phase || '').toLowerCase();
-    return phase === 'pontos_corridos' || phase === 'points_run';
+  // Sem partidas suficientes para detectar a fase, usamos as regras salvas.
+  if (!explicitGroup && !explicitKnockout) return 'points_run';
+  if (explicitGroup && explicitKnockout) return 'group+knockout';
+  if (explicitGroup) return 'group';
+  return 'knockout';
+}
+
+function getAvailableAdminTabs(matchesList = []) {
+  const mode = R.getAdminChampionshipMode(matchesList);
+  const configured = new Set();
+
+  if (mode.includes('group')) configured.add('group');
+  if (mode.includes('points_run')) configured.add('points_run');
+  if (mode.includes('knockout')) configured.add('knockout');
+
+  // Segurança adicional: se houver uma fase nas partidas, ela sempre aparece,
+  // mesmo que a configuração antiga da liga ainda esteja desatualizada.
+  (matchesList || []).forEach(m => {
+    const phase = normalizeAdminMatchPhase(m?.phase);
+    if (phase) configured.add(phase);
   });
-  const hasKnockoutMatches = (matchesList || []).some(m => String(m?.phase || '').toLowerCase() === 'knockout');
-  if (hasPointsRun && !hasKnockoutMatches) return 'points_run';
-  if (!hasPointsRun && hasKnockoutMatches) return 'knockout';
-  return 'group';
+
+  return ['group', 'points_run', 'knockout'].filter(tab => configured.has(tab));
 }
 
 function renderAdminMatches(matchesList) {
@@ -69,14 +101,7 @@ function renderAdminMatches(matchesList) {
     if (!validIds.has(String(id))) R.selectedAdminMatchIds.delete(String(id));
   });
 
-  const championshipMode = R.getAdminChampionshipMode(matchesList);
-  const availableAdminTabs = championshipMode === 'points_run'
-    ? ['points_run']
-    : championshipMode === 'knockout'
-      ? ['knockout']
-      : championshipMode === 'group+knockout'
-        ? ['group', 'knockout']
-        : ['group'];
+  const availableAdminTabs = R.getAvailableAdminTabs(matchesList);
 
   if (!availableAdminTabs.includes(R.activeAdminTab)) {
     R.activeAdminTab = availableAdminTabs[0];
@@ -110,13 +135,9 @@ function renderAdminMatches(matchesList) {
   `;
 
   const filteredMatches = matchesList.filter(m => {
-    const phase = String(m?.phase || '').toLowerCase();
-    if (R.activeAdminTab === 'points_run') {
-      return phase === 'pontos_corridos' || phase === 'points_run';
-    }
-    if (R.activeAdminTab === 'group') {
-      return phase === 'group' || (!phase && championshipMode !== 'points_run');
-    }
+    const phase = normalizeAdminMatchPhase(m?.phase);
+    if (R.activeAdminTab === 'points_run') return phase === 'points_run';
+    if (R.activeAdminTab === 'group') return phase === 'group' || (!phase && !availableAdminTabs.includes('points_run'));
     return phase === 'knockout';
   });
 
@@ -792,4 +813,4 @@ async function checkDataIntegrity() {
   }
 }
 
-registerAdminFunctions({loadAdminMatches: loadAdminMatches, getAdminChampionshipMode: getAdminChampionshipMode, renderAdminMatches: renderAdminMatches, renderSingleMatchRow: renderSingleMatchRow, getConfiguredPodiumSize: getConfiguredPodiumSize, getPodiumFieldConfig: getPodiumFieldConfig, renderOfficialPodiumFields: renderOfficialPodiumFields, populatePodiumSelects: populatePodiumSelects, openAddMatchModal: openAddMatchModal, setupPhaseToggle: setupPhaseToggle, loadOfficialPodiumIntoModal: loadOfficialPodiumIntoModal, handleAddMatch: handleAddMatch, openFinishMatchModal: openFinishMatchModal, prepareFinishMatch: prepareFinishMatch, finishMatch: finishMatch, editMatch: editMatch, handleEditMatch: handleEditMatch, adminUnfinishMatch: adminUnfinishMatch, adminDeleteMatchForce: adminDeleteMatchForce, setPodium: setPodium, resetOfficialPodium: resetOfficialPodium, recalculateAllPoints: recalculateAllPoints, checkDataIntegrity: checkDataIntegrity});
+registerAdminFunctions({loadAdminMatches: loadAdminMatches, getAdminChampionshipMode: getAdminChampionshipMode, getAvailableAdminTabs: getAvailableAdminTabs, renderAdminMatches: renderAdminMatches, renderSingleMatchRow: renderSingleMatchRow, getConfiguredPodiumSize: getConfiguredPodiumSize, getPodiumFieldConfig: getPodiumFieldConfig, renderOfficialPodiumFields: renderOfficialPodiumFields, populatePodiumSelects: populatePodiumSelects, openAddMatchModal: openAddMatchModal, setupPhaseToggle: setupPhaseToggle, loadOfficialPodiumIntoModal: loadOfficialPodiumIntoModal, handleAddMatch: handleAddMatch, openFinishMatchModal: openFinishMatchModal, prepareFinishMatch: prepareFinishMatch, finishMatch: finishMatch, editMatch: editMatch, handleEditMatch: handleEditMatch, adminUnfinishMatch: adminUnfinishMatch, adminDeleteMatchForce: adminDeleteMatchForce, setPodium: setPodium, resetOfficialPodium: resetOfficialPodium, recalculateAllPoints: recalculateAllPoints, checkDataIntegrity: checkDataIntegrity});

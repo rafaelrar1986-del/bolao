@@ -1,36 +1,5 @@
 import { api } from './api.js';
-import { flagEmoji } from './flags.js';
-
-/**
- * Renderiza a midia do time (Prioridade: Logo API > Emoji)
- */
-function renderTableMedia(teamName, logoUrl) {
-    const bandeiraLocal = flagEmoji(teamName);
-
-    // 1. Prioridade: Se existe a string do Logo
-    if (logoUrl && logoUrl.trim() !== "" && logoUrl !== "null") {
-        return `
-            <div class="table-logo-wrapper" style="display: inline-flex; vertical-align: middle; position: relative; width: 18px; height: 18px; min-width: 18px; max-width: 18px; justify-content: center; align-items: center; margin-right: 8px; overflow: hidden;">
-                <img src="${logoUrl}"
-                     class="team-logo-api"
-                     style="display: block; width: 100%; height: 100%; object-fit: contain; position: absolute; top: 0; left: 0;"
-                     onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='inline-block';">
-
-                <span class="team-emoji" style="display: none; font-size: 14px; line-height: 18px;">
-                    ${bandeiraLocal || ''}
-                </span>
-            </div>
-        `;
-    }
-
-    // 2. Segunda opcao: Apenas se o logo nao existir no banco
-    if (bandeiraLocal) {
-        return `<span class="team-emoji" style="margin-right: 8px; font-size: 14px; vertical-align: middle; display: inline-block; width: 18px; text-align: center;">${bandeiraLocal}</span>`;
-    }
-
-    // 3. Terceira opcao: Se nao tem nada, nao mostra nada
-    return '';
-}
+import { renderTeamMedia } from './matches/matchesUtils.js';
 
 /**
  * Pagina de Classificacao
@@ -65,11 +34,40 @@ export default async function ClassificacaoPage() {
     const contentDiv = document.getElementById('classificacao-content');
     const toggleInput = document.getElementById('toggle-tabela-parcial');
 
-    toggleInput.addEventListener('change', () => {
-        fetchAndRenderStandings(contentDiv, toggleInput.checked, selectedLeagueId);
+    let refreshTimer = null;
+    let refreshInFlight = false;
+
+    const refresh = async () => {
+        if (refreshInFlight) return;
+        refreshInFlight = true;
+        try {
+            await fetchAndRenderStandings(contentDiv, toggleInput.checked, selectedLeagueId);
+        } finally {
+            refreshInFlight = false;
+        }
+    };
+
+    const restartLiveRefresh = () => {
+        if (refreshTimer) {
+            clearInterval(refreshTimer);
+            refreshTimer = null;
+        }
+        if (toggleInput.checked) {
+            refreshTimer = setInterval(refresh, 15000);
+        }
+    };
+
+    toggleInput.addEventListener('change', async () => {
+        await refresh();
+        restartLiveRefresh();
     });
 
-    fetchAndRenderStandings(contentDiv, false, selectedLeagueId);
+    await refresh();
+    restartLiveRefresh();
+
+    window.addEventListener('beforeunload', () => {
+        if (refreshTimer) clearInterval(refreshTimer);
+    }, { once: true });
 }
 
 async function fetchAndRenderStandings(targetElement, isParcial, leagueId) {
@@ -79,12 +77,18 @@ async function fetchAndRenderStandings(targetElement, isParcial, leagueId) {
     try {
         // 1. BUSCA OS LOGOS das partidas da liga
         const logoMap = new Map();
+        const normalizeTeamKey = (name) => String(name || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .replace(/\s+/g, ' ')
+            .trim();
         try {
             const matchesRes = await api.listMatches(leagueId);
             if (matchesRes?.success && Array.isArray(matchesRes.data)) {
                 matchesRes.data.forEach(m => {
-                    if (m.teamA && m.logoA) logoMap.set(m.teamA, m.logoA);
-                    if (m.teamB && m.logoB) logoMap.set(m.teamB, m.logoB);
+                    if (m.teamA && m.logoA) logoMap.set(normalizeTeamKey(m.teamA), m.logoA);
+                    if (m.teamB && m.logoB) logoMap.set(normalizeTeamKey(m.teamB), m.logoB);
                 });
             }
         } catch (e) {
@@ -126,14 +130,15 @@ async function fetchAndRenderStandings(targetElement, isParcial, leagueId) {
                                 const sg = parseInt(team.sg) || 0;
                                 const sgClass = sg > 0 ? 'sg-positive' : (sg < 0 ? 'sg-negative' : 'sg-neutral');
                                 const qualifiedClass = team.qualified ? 'qualified-row' : '';
-                                const apiLogo = logoMap.get(team.name);
+                                const apiLogo = logoMap.get(normalizeTeamKey(team.name)) || '';
+                                const teamMedia = renderTeamMedia(team.name, apiLogo);
 
                                 return `
                                     <tr class="${qualifiedClass}">
                                         <td class="pos-cell">${index + 1}o</td>
                                         <td class="text-left team-cell">
                                             <div style="display: flex; align-items: center;">
-                                                ${renderTableMedia(team.name, apiLogo)}
+                                                ${teamMedia}
                                                 <span class="team-name-table">${team.name}</span>
                                             </div>
                                         </td>
@@ -151,6 +156,69 @@ async function fetchAndRenderStandings(targetElement, isParcial, leagueId) {
         });
 
         grid.innerHTML = fullHtml;
+
+        // ================================================================
+        // ARTILHEIROS — dados reais do backend (goalsDetail)
+        // A mídia da seleção passa exclusivamente por renderTeamMedia().
+        // ================================================================
+        const scorersSection = document.createElement('section');
+        scorersSection.className = 'top-scorers-section';
+        scorersSection.innerHTML = `
+            <div class="top-scorers-title">Artilheiros</div>
+            <div class="top-scorers-table-wrap">
+                <table class="top-scorers-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 42px;">Pos</th>
+                            <th class="text-left">Jogador</th>
+                            <th class="text-left">Seleção</th>
+                            <th>Gols</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="4" class="top-scorers-loading">
+                            <i class="fas fa-circle-notch fa-spin"></i> Carregando...
+                        </td></tr>
+                    </tbody>
+                </table>
+            </div>
+        `;
+        targetElement.appendChild(scorersSection);
+
+        try {
+            const scorers = await api.getTopScorers(leagueId, isParcial ? 'live' : 'official');
+            const topFour = Array.isArray(scorers?.data) ? scorers.data.slice(0, 4) : [];
+            const tbody = scorersSection.querySelector('tbody');
+
+            if (!topFour.length) {
+                tbody.innerHTML = '<tr><td colspan="4" class="top-scorers-empty">Nenhum gol registrado.</td></tr>';
+            } else {
+                tbody.innerHTML = topFour.map((scorer, index) => {
+                    const position = scorer.position || index + 1;
+                    const player = scorer.player || scorer.name || 'Desconhecido';
+                    const team = scorer.team || '-';
+                    const logoUrl = scorer.logoUrl || '';
+                    const media = renderTeamMedia(team, logoUrl);
+
+                    return `
+                        <tr>
+                            <td class="scorer-position">${position}º</td>
+                            <td class="text-left scorer-player">${player}</td>
+                            <td class="text-left scorer-team">
+                                <div class="scorer-team-media">${media}<span>${team}</span></div>
+                            </td>
+                            <td class="scorer-goals">${Number(scorer.goals) || 0}</td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+        } catch (scorerError) {
+            console.error('Erro ao carregar artilheiros:', scorerError);
+            const tbody = scorersSection.querySelector('tbody');
+            if (tbody) {
+                tbody.innerHTML = '<tr><td colspan="4" class="top-scorers-empty">Não foi possível carregar os artilheiros.</td></tr>';
+            }
+        }
 
         // Rodape
         const footer = document.createElement('div');

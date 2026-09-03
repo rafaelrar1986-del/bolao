@@ -170,6 +170,15 @@ export const api = {
   // ================================================================
   // 🏆 PUBLIC MATCHES
   // ================================================================
+  getTopScorers: (leagueId, mode = 'official') => {
+    if (leagueId == null || String(leagueId).trim() === '') {
+      throw new Error('leagueId é obrigatório para artilheiros');
+    }
+    return request(
+      'GET',
+      `/api/matches/top-scorers?leagueId=${encodeURIComponent(String(leagueId).trim())}&mode=${encodeURIComponent(mode === 'live' ? 'live' : 'official')}`
+    );
+  },
   listMatches: (leagueId) => {
     if (leagueId == null || String(leagueId).trim() === '') {
       throw new Error('leagueId é obrigatório para listar partidas');
