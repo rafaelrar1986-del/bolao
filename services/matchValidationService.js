@@ -3,11 +3,12 @@
 // Fase 1 da refatoração de matches.js.
 // Região extraída sem alteração de regras de negócio.
 
+const { getMatchTimestamp: getBrazilMatchTimestamp } = require('../utils/matchDateTime');
+
 function parseMatchDate(dateStr) {
-  if (!dateStr || typeof dateStr !== 'string') return null;
-  const [day, month, year] = dateStr.split('/');
-  if (!day || !month || !year) return null;
-  return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), 0, 0, 0));
+  return getBrazilMatchTimestamp(dateStr, '00:00') == null
+    ? null
+    : new Date(getBrazilMatchTimestamp(dateStr, '00:00'));
 }
 
 function parseMatchTime(timeStr) {
@@ -18,9 +19,7 @@ function parseMatchTime(timeStr) {
 }
 
 function getMatchTimestamp(dateStr, timeStr) {
-  const d = parseMatchDate(dateStr);
-  if (!d) return null;
-  return d.getTime() + parseMatchTime(timeStr);
+  return getBrazilMatchTimestamp(dateStr, timeStr);
 }
 
 function compareMatchesChronologically(a, b) {

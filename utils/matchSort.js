@@ -1,34 +1,22 @@
 'use strict';
 
+const { getMatchTimestamp } = require('./matchDateTime');
+
 function sortMatchesChronologically(a, b) {
-  const parseDate = (dStr) => {
-    if (!dStr) return '1970-01-01';
+  const dateA = getMatchTimestamp(a?.date, a?.time);
+  const dateB = getMatchTimestamp(b?.date, b?.time);
 
-    if (dStr.includes('/')) {
-      const [day, month, year] = dStr.split('/');
-      return `${year}-${month}-${day}`;
-    }
-
-    return dStr;
-  };
-
-  const dateA = new Date(
-    `${parseDate(a.date)}T${a.time || '00:00'}`
-  );
-
-  const dateB = new Date(
-    `${parseDate(b.date)}T${b.time || '00:00'}`
-  );
-
-  if (dateA - dateB !== 0) {
+  if (dateA !== dateB) {
+    if (dateA == null) return 1;
+    if (dateB == null) return -1;
     return dateA - dateB;
   }
 
   const idA =
-    parseInt(String(a.matchId).replace(/\D/g, ''), 10) || 0;
+    parseInt(String(a?.matchId).replace(/\D/g, ''), 10) || 0;
 
   const idB =
-    parseInt(String(b.matchId).replace(/\D/g, ''), 10) || 0;
+    parseInt(String(b?.matchId).replace(/\D/g, ''), 10) || 0;
 
   return idA - idB;
 }

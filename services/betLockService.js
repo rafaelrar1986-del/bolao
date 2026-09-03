@@ -10,44 +10,10 @@
  * blockSaveBets continua sendo uma trava global separada e não pertence a este service.
  */
 
+const { parseMatchDateTime } = require('../utils/matchDateTime');
+
 function parseMatchDate(dateStr, timeStr) {
-  if (!dateStr || typeof dateStr !== 'string') return null;
-
-  const [day, month, year] = dateStr.split('/');
-  if (!day || !month || !year) return null;
-
-  let hours = 0;
-  let minutes = 0;
-
-  if (typeof timeStr === 'string' && timeStr.trim()) {
-    const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})$/);
-
-    if (!match) return null;
-
-    hours = Number(match[1]);
-    minutes = Number(match[2]);
-
-    if (
-      hours < 0 ||
-      hours > 23 ||
-      minutes < 0 ||
-      minutes > 59
-    ) {
-      return null;
-    }
-  }
-
-  return new Date(
-    Date.UTC(
-      Number(year),
-      Number(month) - 1,
-      Number(day),
-      hours,
-      minutes,
-      0,
-      0
-    )
-  );
+  return parseMatchDateTime(dateStr, timeStr);
 }
 
 function getBetLockMode(settings) {

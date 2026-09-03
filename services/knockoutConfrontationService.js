@@ -7,11 +7,10 @@ const {
   buildKnockoutTieKey
 } = require('../utils/knockoutFormat');
 
+const { getMatchTimestamp } = require('../utils/matchDateTime');
+
 function parseDateTime(match) {
-  const [d, m, y] = String(match?.date || '').split('/').map(Number);
-  const [hh, mm] = String(match?.time || '00:00').split(':').map(Number);
-  if (!d || !m || !y) return Number.MAX_SAFE_INTEGER;
-  return new Date(y, m - 1, d, hh || 0, mm || 0).getTime();
+  return getMatchTimestamp(match?.date, match?.time) ?? Number.MAX_SAFE_INTEGER;
 }
 
 /**
