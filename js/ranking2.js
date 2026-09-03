@@ -1,7 +1,7 @@
 import { api } from './api.js';
 import { toast } from './ui.js';
 import { initUserProfile } from './userProfile.js?v=1.06';
-import { renderTeamMedia } from './matches/matchesUtils.js';
+import { renderTeamMedia, parseMatchDate } from './matches/matchesUtils.js';
 
 /* =====================
     Helpers & State
@@ -208,28 +208,8 @@ function getMovement(userId, currentPos, prevRanking) {
 
 // Helper global para converter data e hora das partidas em Timestamp (Usado para ordenação cronológica)
 function parseMatchTime(match) {
-    if (!match.date) return 0; 
-    try {
-        const cleanDate = match.date.trim(); 
-        if (!cleanDate.includes('/')) return 0;
-
-        const parts = cleanDate.split('/');
-        const dia = parseInt(parts[0], 10);
-        const mes = parseInt(parts[1], 10) - 1; 
-        const ano = parts[2] ? parseInt(parts[2], 10) : new Date().getFullYear();
-
-        let hora = 0, min = 0;
-        if (match.time) {
-            const timeParts = match.time.trim().split(':');
-            hora = parseInt(timeParts[0], 10) || 0;
-            min = parseInt(timeParts[1], 10) || 0;
-        }
-
-        const timeMs = Date.UTC(ano, mes, dia, hora, min, 0, 0);
-        return isNaN(timeMs) ? 0 : timeMs;
-    } catch (e) {
-        return 0; 
-    }
+    const d = parseMatchDate(match);
+    return d && Number.isFinite(d.getTime()) ? d.getTime() : 0;
 }
 
 /* =====================

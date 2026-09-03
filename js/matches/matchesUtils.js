@@ -80,9 +80,10 @@ export function resultWinnerFromScore(a, b) {
   return 'draw';
 }
 
-export function parseMatchDate(match) {
+export const MATCH_TIME_ZONE = 'America/Sao_Paulo';
+
+function parseCivilMatchParts(match) {
   if (!match || !match.date) return null;
-  if (match.date instanceof Date) return new Date(match.date.getTime());
 
   const dateStr = String(match.date).trim();
   const timeStr = match.time ? String(match.time).trim() : '00:00';
@@ -91,13 +92,9 @@ export function parseMatchDate(match) {
 
   const hours = Number(timeMatch[1]);
   const minutes = Number(timeMatch[2]);
-
   if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
 
-  let day;
-  let month;
-  let year;
-
+  let day, month, year;
   if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
     [year, month, day] = dateStr.split('-').map(Number);
   } else if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
@@ -106,30 +103,78 @@ export function parseMatchDate(match) {
     return null;
   }
 
-  const timestamp = Date.UTC(year, month - 1, day, hours, minutes, 0, 0);
-  const d = new Date(timestamp);
+  const probe = new Date(Date.UTC(year, month - 1, day, hours, minutes, 0, 0));
+  if (
+    probe.getUTCFullYear() !== year ||
+    probe.getUTCMonth() !== month - 1 ||
+    probe.getUTCDate() !== day
+  ) return null;
+
+  return { year, month, day, hours, minutes };
+}
+
+function getTimeZoneOffsetMs(date, timeZone = MATCH_TIME_ZONE) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(date);
+
+  const values = {};
+  for (const part of parts) {
+    if (part.type !== 'literal') values[part.type] = Number(part.value);
+  }
+
+  const asUtc = Date.UTC(
+    values.year,
+    values.month - 1,
+    values.day,
+    values.hour,
+    values.minute,
+    values.second
+  );
+
+  return asUtc - date.getTime();
+}
+
+/**
+ * Converts the civil Match date/time (always America/Sao_Paulo)
+ * into an absolute instant, independently of the browser timezone.
+ */
+export function parseMatchDate(match) {
+  const parts = parseCivilMatchParts(match);
+  if (!parts) return null;
+
+  const utcGuess = new Date(Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hours,
+    parts.minutes,
+    0,
+    0
+  ));
+
+  const offset = getTimeZoneOffsetMs(utcGuess, MATCH_TIME_ZONE);
+  const d = new Date(utcGuess.getTime() - offset);
   return isNaN(d.getTime()) ? null : d;
 }
 
-// O instante acima é sempre UTC, alinhado ao betLockService.
-// A interface, porém, continua mostrando o horário local do navegador.
+// Match.date + Match.time are civil values in America/Sao_Paulo.
+// Never let the browser timezone shift the scheduled kickoff.
 export function formatMatchTimeLocal(match) {
-  const d = parseMatchDate(match);
-  if (!d || isNaN(d.getTime())) return '--:--';
-
-  return d.toLocaleTimeString('pt-BR', {
-    hour: '2-digit',
-    minute: '2-digit'
-  });
+  const parts = parseCivilMatchParts(match);
+  if (!parts) return '--:--';
+  return `${String(parts.hours).padStart(2, '0')}:${String(parts.minutes).padStart(2, '0')}`;
 }
 
 export function formatMatchDateLocal(match) {
-  const d = parseMatchDate(match);
-  if (!d || isNaN(d.getTime())) return 'Data inválida';
-
-  return d.toLocaleDateString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric'
-  });
+  const parts = parseCivilMatchParts(match);
+  if (!parts) return 'Data inválida';
+  return `${String(parts.day).padStart(2, '0')}/${String(parts.month).padStart(2, '0')}/${parts.year}`;
 }
