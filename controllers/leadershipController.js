@@ -835,6 +835,20 @@ async function getLeadershipPath(req, res) {
       scoringRules, champRules
     );
 
+    // Este limite individual da classificacao precisa existir antes da projecao
+    // simulada (que ocorre abaixo). Mantemos a mesma regra conservadora usada
+    // no teto final: nunca ultrapassa o maximo estrutural restante da
+    // classificacao do campeonato.
+    const currentGroupQualificationPoints = Number(
+      currentRanking.find(r => r.userId === activeUserId)?.groupQualificationPoints || 0
+    );
+    const cappedGroupQualificationPotential = structuralGroupQualificationMaximum > 0
+      ? Math.min(
+          Number(targetFutureNonMatch.groupQualificationPoints || 0),
+          Math.max(0, structuralGroupQualificationMaximum - currentGroupQualificationPoints)
+        )
+      : Number(targetFutureNonMatch.groupQualificationPoints || 0);
+
     // Limite absoluto e dinâmico do campeonato. É calculado uma única vez a
     // partir das regras do ADM e reutilizado tanto para o alvo quanto para os
     // rivais, garantindo que uma consulta da Estratégia a outro participante
@@ -1935,16 +1949,6 @@ async function getLeadershipPath(req, res) {
       }
       return acc + getMaxPointsPerMatch(scoringRules, champRules, m);
     }, 0);
-
-    const currentGroupQualificationPoints = Number(
-      currentRanking.find(r => r.userId === activeUserId)?.groupQualificationPoints || 0
-    );
-    const cappedGroupQualificationPotential = structuralGroupQualificationMaximum > 0
-      ? Math.min(
-          Number(targetFutureNonMatch.groupQualificationPoints || 0),
-          Math.max(0, structuralGroupQualificationMaximum - currentGroupQualificationPoints)
-        )
-      : Number(targetFutureNonMatch.groupQualificationPoints || 0);
 
     const rawTotalPotential =
       matchPointsLeft +
