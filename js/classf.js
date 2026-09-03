@@ -207,7 +207,10 @@ async function fetchAndRenderStandings(targetElement, isParcial, leagueId) {
             </div>
         `;
         if (pointsRunLayout) {
-            document.getElementById('classification-layout').appendChild(scorersSection);
+            const sidePanel = document.createElement('div');
+            sidePanel.className = 'points-run-side-panel';
+            document.getElementById('classification-layout').appendChild(sidePanel);
+            sidePanel.appendChild(scorersSection);
         } else {
             targetElement.appendChild(scorersSection);
         }
@@ -347,7 +350,12 @@ async function fetchAndRenderStandings(targetElement, isParcial, leagueId) {
         }));
 
         if (pointsRunLayout) {
-            document.getElementById('classification-layout').appendChild(performanceRow);
+            const sidePanel = document.querySelector('#classification-layout .points-run-side-panel');
+            if (sidePanel) {
+                sidePanel.appendChild(performanceRow);
+            } else {
+                document.getElementById('classification-layout').appendChild(performanceRow);
+            }
         } else {
             targetElement.appendChild(performanceRow);
         }

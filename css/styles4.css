@@ -17292,3 +17292,60 @@ body:has(#admin) .modal-content .setting-section {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 }
+
+/* ============================================================
+   PONTOS CORRIDOS — COLUNA LATERAL DE ESTATÍSTICAS
+   A classificação ocupa a coluna esquerda e as 3 tabelas
+   (Artilheiros, Melhor Ataque e Pior Defesa) ficam empilhadas
+   na coluna direita, todas com a mesma largura.
+   ============================================================ */
+#classificacao .points-run-layout {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  align-items: start;
+}
+
+#classificacao .points-run-layout .classification-standings-panel {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
+
+#classificacao .points-run-layout .points-run-side-panel {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+}
+
+#classificacao .points-run-layout .points-run-side-panel .top-scorers-section,
+#classificacao .points-run-layout .points-run-side-panel .team-performance-row {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+}
+
+#classificacao .points-run-layout .points-run-side-panel .team-performance-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  grid-column: auto;
+  grid-row: auto;
+}
+
+#classificacao .points-run-layout .points-run-side-panel .team-performance-section {
+  width: 100%;
+  min-width: 0;
+}
+
+@media (min-width: 768px) {
+  #classificacao .points-run-layout .points-run-side-panel {
+    gap: 20px;
+  }
+
+  #classificacao .points-run-layout .points-run-side-panel .team-performance-row {
+    gap: 20px;
+  }
+}
