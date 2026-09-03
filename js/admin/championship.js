@@ -180,12 +180,12 @@ async function openChampionshipRulesModal() {
               </div>
               <div id="cr-knockout-final-format-wrap" style="margin-top:10px; ${cr.knockoutFormat === 'home_away' ? '' : 'display:none;'}">
                 <label>Formato da final</label>
-                <select id="cr-knockout-final-format">
-                  <option value="home_away" ${(cr.knockoutFinalFormat || 'single') !== 'single' ? 'selected' : ''}>Ida e volta</option>
-                  <option value="single" ${cr.knockoutFinalFormat === 'single' ? 'selected' : ''}>Jogo único</option>
+                <select id="cr-knockout-final-format" ${cr.knockoutFormat === 'home_away' ? '' : 'disabled'}>
+                  <option value="home_away" ${(cr.knockoutFormat === 'home_away' && (cr.knockoutFinalFormat || 'home_away') !== 'single') ? 'selected' : ''}>Ida e volta</option>
+                  <option value="single" ${(cr.knockoutFormat !== 'home_away' || cr.knockoutFinalFormat === 'single') ? 'selected' : ''}>Jogo único</option>
                 </select>
                 <small style="display:block; margin-top:5px; color:#888;">
-                  Disponível somente quando o formato geral é ida e volta.
+                  A Final pode ter formato próprio somente quando o mata-mata geral é ida e volta.
                 </small>
               </div>
               <div id="cr-knockout-away-goals-wrap" style="margin-top:10px; ${cr.knockoutFormat === 'home_away' ? '' : 'display:none;'}">
@@ -565,8 +565,13 @@ async function openChampionshipRulesModal() {
     if (knockoutAwayGoalsWrap) {
       knockoutAwayGoalsWrap.style.display = homeAway ? '' : 'none';
     }
+    const finalFormatSelect = document.getElementById('cr-knockout-final-format');
     if (knockoutFinalFormatWrap) {
       knockoutFinalFormatWrap.style.display = homeAway ? '' : 'none';
+    }
+    if (finalFormatSelect) {
+      finalFormatSelect.disabled = !homeAway;
+      if (!homeAway) finalFormatSelect.value = 'single';
     }
   };
   knockoutFormatSelect?.addEventListener('change', syncKnockoutFormatUI);
@@ -795,6 +800,7 @@ async function saveChampionshipRules(e) {
       knockoutFinalFormat: hasKnockoutPhase && document.getElementById('cr-knockout-format')?.value === 'home_away'
         ? (document.getElementById('cr-knockout-final-format')?.value === 'single' ? 'single' : 'home_away')
         : 'single',
+      // Gol fora só existe quando o formato global aplicável tem ida/volta.
       knockoutAwayGoals: hasKnockoutPhase && document.getElementById('cr-knockout-format')?.value === 'home_away' && document.getElementById('cr-knockout-away-goals')?.checked === true,
       pointsRun: {
         totalTeams: pointsRunTotalTeams,

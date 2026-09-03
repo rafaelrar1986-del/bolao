@@ -1,3 +1,4 @@
+import { getEffectiveStageFormat } from './matchesConfrontation.js';
 /* Rebuilt from the pre-refactor matches4.js baseline. Business logic preserved verbatim. */
 export function createMatchesKnockoutRenderer(ctx = {}) {
   const get = (name) => ctx[name];
@@ -71,7 +72,7 @@ export function createMatchesKnockoutRenderer(ctx = {}) {
           
           const choice = STATE.betsMap.get(mId) || STATE.betsMap.get(Number(mId));
           const info = getKnockoutConfrontationInfo(m);
-          const isReturnLeg = getChampionshipRules()?.knockoutFormat === 'home_away' && info.index > 0;
+          const isReturnLeg = getEffectiveStageFormat(m, getChampionshipRules()) === 'home_away' && info.index > 0;
           const userQ = isReturnLeg ? null : (STATE.knockoutQualifiers.get(mId) || STATE.knockoutQualifiers.get(Number(mId)));
           const scoreData = STATE.scoresMap.get(Number(mId)) || STATE.scoresMap.get(mId) || {};
           
@@ -182,7 +183,7 @@ export function createMatchesKnockoutRenderer(ctx = {}) {
     // Acesso seguro ao STATE e declaração antecipada das apostas/placares
     const storedChoice = STATE.betsMap ? (STATE.betsMap.get(mId) || STATE.betsMap.get(idNum)) : null;
     const confrontationInfo = getKnockoutConfrontationInfo(m);
-    const isReturnLeg = (m?.stageFormat === 'home_away' || (getChampionshipRules()?.knockoutFormat === 'home_away' && m?.stageFormat !== 'single')) && confrontationInfo.index > 0;
+    const isReturnLeg = getEffectiveStageFormat(m, getChampionshipRules()) === 'home_away' && confrontationInfo.index > 0;
     const firstLegQualifier = getConfrontationQualifierBet(m);
     const userQualifier = isReturnLeg ? firstLegQualifier : (STATE.knockoutQualifiers ? (STATE.knockoutQualifiers.get(mId) || STATE.knockoutQualifiers.get(idNum)) : null);
     const scoreData = STATE.scoresMap ? (STATE.scoresMap.get(idNum) || STATE.scoresMap.get(mId) || {}) : {};

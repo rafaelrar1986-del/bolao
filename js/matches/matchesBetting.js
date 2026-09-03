@@ -1,3 +1,4 @@
+import { getEffectiveStageFormat } from './matchesConfrontation.js';
 /* Rebuilt from the pre-refactor matches4.js baseline. Business logic preserved verbatim. */
 export function createMatchesBetting(ctx = {}) {
   const get = (name) => ctx[name];
@@ -213,7 +214,7 @@ export function createMatchesBetting(ctx = {}) {
       .filter(m => isKnockoutMatchAvailableForBetting(m))
       .filter(m => {
         const info = getKnockoutConfrontationInfo(m);
-        const isReturnLeg = (m?.stageFormat === 'home_away' || (getChampionshipRules()?.knockoutFormat === 'home_away' && m?.stageFormat !== 'single')) && info.index > 0;
+        const isReturnLeg = getEffectiveStageFormat(m, getChampionshipRules()) === 'home_away' && info.index > 0;
         const id = Number(m.matchId);
         const rawId = String(m.matchId);
         const missingWinner = hasWinnerBet() && !STATE.betsMap.has(id) && !STATE.betsMap.has(rawId);
@@ -250,7 +251,7 @@ export function createMatchesBetting(ctx = {}) {
         if (hasWinnerBet() && !STATE.betsMap.has(id) && !STATE.betsMap.has(rawId)) missing++;
 
         const info = getKnockoutConfrontationInfo(m);
-        const isReturnLeg = (m?.stageFormat === 'home_away' || (getChampionshipRules()?.knockoutFormat === 'home_away' && m?.stageFormat !== 'single')) && info.index > 0;
+        const isReturnLeg = getEffectiveStageFormat(m, getChampionshipRules()) === 'home_away' && info.index > 0;
         if (hasQualifierBet(m) && !isReturnLeg) {
           const key = String(info.first?.matchId ?? id);
           if (!seenConfrontations.has(key)) {

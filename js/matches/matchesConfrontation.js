@@ -29,18 +29,24 @@ function getTieKey(match) {
 }
 
 export function getEffectiveStageFormat(match, settings = {}) {
-  if (match?.stageFormat === 'single' || match?.stageFormat === 'home_away') {
-    return match.stageFormat;
-  }
   const rules = getRules(settings);
-  if (rules?.knockoutFormat !== 'home_away') return 'single';
   const stage = normalize(match?.phaseName ?? match?.roundName ?? match?.group ?? '');
   const isFinal = stage === 'final' || stage.startsWith('final ') ||
     stage.startsWith('final-') || stage === 'finalissima' || stage === 'finalíssima';
+
+  // A Final só é uma exceção quando o formato geral é ida e volta.
+  // Se o mata-mata geral for jogo único, a Final obrigatoriamente é jogo único.
   if (isFinal) {
-    return rules?.knockoutFinalFormat === 'single' ? 'single' : 'home_away';
+    const globalFormat = rules?.knockoutFormat === 'home_away' ? 'home_away' : 'single';
+    if (globalFormat === 'single') return 'single';
+    if (rules?.knockoutFinalFormat === 'single') return 'single';
+    if (rules?.knockoutFinalFormat === 'home_away') return 'home_away';
+    return globalFormat;
   }
-  return 'home_away';
+
+  // A regra do ADM é a fonte de verdade; stageFormat é somente um campo
+  // materializado/derivado e não pode divergir da configuração atual.
+  return rules?.knockoutFormat === 'home_away' ? 'home_away' : 'single';
 }
 
 export function getKnockoutConfrontationInfo(match, allMatches = [], settings = {}) {

@@ -4,7 +4,7 @@ import { flagEmoji } from './flags.js';
 import { $, toast } from './ui.js';
 import { getReferenceQualifier as getBackendAlignedQualifier, getMatchPointStatus as getFrontendMatchPointStatus, getEffectiveBetWinner, calculateMatchPoints as calculateScoringMatchPoints } from './frontendScoring.js?v=1.19';
 import { withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal } from './matches/matchesUtils.js';
-import { createKnockoutConfrontationHelpers } from './matches/matchesConfrontation.js';
+import { createKnockoutConfrontationHelpers, getEffectiveStageFormat } from './matches/matchesConfrontation.js';
 import { createMatchesScoring } from './matches/matchesScoring.js';
 import { createMatchesRules } from './matches/matchesRules.js';
 import { createMatchesVisuals } from './matches/matchesVisuals.js';
@@ -66,7 +66,7 @@ const STATE = {
 };
 
 window.STATE = STATE;
-const CTX = { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal };
+const CTX = { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, getEffectiveStageFormat, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal };
 const rules = createMatchesRules(CTX); Object.assign(CTX, rules);
 const confrontation = createKnockoutConfrontationHelpers({ STATE, getChampionshipRules: CTX.getChampionshipRules, isKnockoutMatch, parseMatchDate, calculateScoringMatchPoints, getFrontendMatchPointStatus }); Object.assign(CTX, confrontation);
 const visuals = createMatchesVisuals(CTX); Object.assign(CTX, visuals);
