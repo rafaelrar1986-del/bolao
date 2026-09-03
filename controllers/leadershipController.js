@@ -829,6 +829,12 @@ async function getLeadershipPath(req, res) {
     const targetFutureNonMatch = strategyFutureNonMatchPotential.get(activeUserId) || { total: 0, groupQualificationPoints: 0, extraPoints: 0 };
     const targetFutureNonMatchPotential = Number(targetFutureNonMatch.total || 0);
 
+    // Precisa existir antes do primeiro cálculo de projeção do alvo/rivais.
+    // Este valor é estrutural e vale para todos os usuários da consulta.
+    const structuralGroupQualificationMaximum = calculateStructuralGroupQualificationMaximum(
+      scoringRules, champRules
+    );
+
     // Limite absoluto e dinâmico do campeonato. É calculado uma única vez a
     // partir das regras do ADM e reutilizado tanto para o alvo quanto para os
     // rivais, garantindo que uma consulta da Estratégia a outro participante
@@ -1930,7 +1936,6 @@ async function getLeadershipPath(req, res) {
       return acc + getMaxPointsPerMatch(scoringRules, champRules, m);
     }, 0);
 
-    const structuralGroupQualificationMaximum = calculateStructuralGroupQualificationMaximum(scoringRules, champRules);
     const currentGroupQualificationPoints = Number(
       currentRanking.find(r => r.userId === activeUserId)?.groupQualificationPoints || 0
     );
