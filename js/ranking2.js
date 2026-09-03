@@ -2,7 +2,6 @@ import { api } from './api.js';
 import { toast } from './ui.js';
 import { initUserProfile } from './userProfile.js?v=1.06';
 import { renderTeamMedia, parseMatchDate } from './matches/matchesUtils.js';
-import { flagEmoji } from './flags.js';
 
 /* =====================
     Helpers & State
@@ -42,26 +41,45 @@ function resolveStrategyTeamLogo(teamName, explicitLogoUrl = null, sourceMatches
     if (!wanted) return null;
 
     const matches = Array.isArray(sourceMatches) ? sourceMatches : [];
-    const exact = matches.find(m =>
-        normalizeStrategyTeamName(m?.teamA) === wanted ||
-        normalizeStrategyTeamName(m?.teamB) === wanted
-    );
-    if (exact) {
-        if (normalizeStrategyTeamName(exact.teamA) === wanted) return exact.logoA || null;
-        if (normalizeStrategyTeamName(exact.teamB) === wanted) return exact.logoB || null;
-    }
 
-    // Alguns pontos do sistema usam o nome em inglês e outros em português.
-    // A bandeira é usada somente como chave de equivalência; nunca é exibida.
-    const wantedFlag = flagEmoji(teamName);
-    if (wantedFlag) {
-        const byFlag = matches.find(m =>
-            flagEmoji(m?.teamA) === wantedFlag || flagEmoji(m?.teamB) === wantedFlag
-        );
-        if (byFlag) {
-            if (flagEmoji(byFlag.teamA) === wantedFlag) return byFlag.logoA || null;
-            if (flagEmoji(byFlag.teamB) === wantedFlag) return byFlag.logoB || null;
-        }
+    // Nunca usamos emoji para resolver mídia. Procuramos a primeira URL válida
+    // da própria API, inclusive quando a primeira partida da equipe está sem
+    // logo e uma partida posterior possui a mídia preenchida.
+    const exact = matches.find(m =>
+        normalizeStrategyTeamName(m?.team) === wanted && m?.logoUrl
+    );
+    if (exact?.logoUrl) return exact.logoUrl;
+
+    const matchWithLogo = matches.find(m =>
+        normalizeStrategyTeamName(m?.teamA) === wanted && m?.logoA
+    );
+    if (matchWithLogo?.logoA) return matchWithLogo.logoA;
+
+    const matchWithLogoB = matches.find(m =>
+        normalizeStrategyTeamName(m?.teamB) === wanted && m?.logoB
+    );
+    if (matchWithLogoB?.logoB) return matchWithLogoB.logoB;
+
+    // Equivalências de nomes não criam bandeira: apenas permitem localizar a
+    // URL real que já existe no catálogo da API.
+    const aliases = {
+        brazil: 'brasil', brasil: 'brasil',
+        germany: 'alemanha', alemanha: 'alemanha',
+        spain: 'espanha', espanha: 'espanha',
+        france: 'franca', franca: 'franca',
+        england: 'inglaterra', inglaterra: 'inglaterra'
+    };
+    const canonical = aliases[wanted] || wanted;
+    const aliasRef = matches.find(m => {
+        const a = aliases[normalizeStrategyTeamName(m?.teamA)] || normalizeStrategyTeamName(m?.teamA);
+        const b = aliases[normalizeStrategyTeamName(m?.teamB)] || normalizeStrategyTeamName(m?.teamB);
+        return (a === canonical && m?.logoA) || (b === canonical && m?.logoB);
+    });
+    if (aliasRef) {
+        const a = aliases[normalizeStrategyTeamName(aliasRef.teamA)] || normalizeStrategyTeamName(aliasRef.teamA);
+        if (a === canonical && aliasRef.logoA) return aliasRef.logoA;
+        const b = aliases[normalizeStrategyTeamName(aliasRef.teamB)] || normalizeStrategyTeamName(aliasRef.teamB);
+        if (b === canonical && aliasRef.logoB) return aliasRef.logoB;
     }
 
     return null;
@@ -312,6 +330,8 @@ window.showMathExplanation = function() {
     🧠 RENDER ESTRATÉGIA / SIMULAÇÃO
 ===================== */
 function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
+    const strategyMatches = Array.isArray(data?.matches) ? data.matches :
+        (Array.isArray(window.__LAST_LEADERSHIP_MATCHES__) ? window.__LAST_LEADERSHIP_MATCHES__ : []);
     const { summary, matches } = data;
     window.__LAST_SIMULATED_RANKING__ = summary.simulatedRanking || [];
     
@@ -374,7 +394,7 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
                 extra.value,
                 resolveStrategyTeamLogo(extra.value, extra.logoUrl || null, [
                     ...(Array.isArray(summary.teamMediaCatalog) ? summary.teamMediaCatalog : []),
-                    ...(Array.isArray(matches) ? matches : [])
+                    ...strategyMatches
                 ])
             ) || '—';
         }
@@ -433,7 +453,7 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
                         pick.team,
                         resolveStrategyTeamLogo(pick.team, pick.logoUrl || null, [
                             ...(Array.isArray(summary.teamMediaCatalog) ? summary.teamMediaCatalog : []),
-                            ...(Array.isArray(matches) ? matches : [])
+                            ...strategyMatches
                         ])
                     );
 
