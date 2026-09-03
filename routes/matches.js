@@ -14,6 +14,8 @@ const {
   getStats
 } = require('../controllers/matchesController');
 
+const { getTopScorers } = require('../controllers/topScorersController');
+
 const {
   addMatch,
   editMatch,
@@ -37,6 +39,7 @@ router.get('/match-technical/:matchId', getMatchTechnical);
 
 router.get('/admin/all', protect, admin, getAllMatches);
 router.get('/stats', getStats);
+router.get('/top-scorers', getTopScorers);
 router.get('/rules/:leagueId', getRules);
 
 module.exports = router;
