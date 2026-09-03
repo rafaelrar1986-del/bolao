@@ -1728,6 +1728,65 @@ async function getLeadershipPath(req, res) {
     const hidePodium = !isViewingSelf && isPodiumLocked;
     const podiumDetails = [];
 
+    // Catálogo completo de mídia das equipes. A Estratégia pode ter extras
+    // cujo time não aparece entre as partidas de impacto; por isso a fonte é
+    // a coleção completa de partidas, sempre com logoA/logoB. O frontend
+    // continua responsável por renderizar exclusivamente via renderTeamMedia().
+    const teamMediaCatalog = [];
+    const teamMediaIndex = new Map();
+    const normalizeTeamMediaKey = value => String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ');
+
+    // Não congelamos a primeira ocorrência de uma equipe. É possível que a
+    // primeira partida cadastrada tenha logoA/logoB vazio e uma partida
+    // posterior tenha a mídia preenchida. O catálogo precisa conservar a
+    // primeira logo válida encontrada.
+    for (const match of matches) {
+      for (const side of ['A', 'B']) {
+        const team = side === 'A' ? match.teamA : match.teamB;
+        const logoUrl = side === 'A' ? match.logoA : match.logoB;
+        if (!team) continue;
+        const key = normalizeTeamMediaKey(team);
+        if (!key) continue;
+
+        const existingIndex = teamMediaIndex.get(key);
+        if (existingIndex == null) {
+          teamMediaIndex.set(key, teamMediaCatalog.length);
+          teamMediaCatalog.push({ team, logoUrl: logoUrl || null });
+        } else if (!teamMediaCatalog[existingIndex].logoUrl && logoUrl) {
+          teamMediaCatalog[existingIndex].logoUrl = logoUrl;
+        }
+      }
+    }
+
+    // Fonte única de mídia para o restante deste endpoint. Só retorna uma
+    // logo quando ela realmente existe em uma partida da API.
+    const findTeamMedia = teamName => {
+      const key = normalizeTeamMediaKey(teamName);
+      if (!key) return null;
+
+      const catalogItem = teamMediaCatalog.find(item =>
+        normalizeTeamMediaKey(item.team) === key && item.logoUrl
+      );
+      if (catalogItem?.logoUrl) {
+        return { team: catalogItem.team, logoUrl: catalogItem.logoUrl };
+      }
+
+      for (const match of matches) {
+        if (normalizeTeamMediaKey(match.teamA) === key && match.logoA) {
+          return { team: match.teamA, logoUrl: match.logoA };
+        }
+        if (normalizeTeamMediaKey(match.teamB) === key && match.logoB) {
+          return { team: match.teamB, logoUrl: match.logoB };
+        }
+      }
+      return null;
+    };
+
     // Extras do campeonato: o card do Estratégia usa a mesma fonte de verdade
     // do cálculo de pontos. Cada extra recebe um estado independente:
     // alive (ainda possível), conquered (acertado) ou dead (perdido).
@@ -1771,12 +1830,55 @@ async function getLeadershipPath(req, res) {
           status = strMatch(predicted, official) ? 'conquered' : 'dead';
         }
 
+        let logoUrl = null;
+        if (def.kind === 'team' && predicted) {
+          // IMPORTANTE: os extras devem usar exatamente a mesma mídia das partidas.
+          // Não dependemos de igualdade literal do nome (acentos, maiúsculas,
+          // espaços ou pequenas diferenças podem impedir a localização da logo).
+          const normalizeTeamName = value => String(value ?? '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .trim()
+            .toLowerCase()
+            .replace(/\s+/g, ' ');
+          const predictedKey = normalizeTeamName(predicted);
+          // Procura uma ocorrência que tenha logo válida, em vez de parar na
+          // primeira partida da equipe quando aquela ocorrência estiver sem
+          // logo. A mídia continua vindo exclusivamente das partidas da API.
+          const mediaRef = findTeamMedia(predicted);
+          if (mediaRef?.logoUrl) logoUrl = mediaRef.logoUrl;
+
+          // Alguns dados antigos usam o nome em inglês e outros em português.
+          // O alias abaixo só normaliza a chave; a URL continua vindo da API.
+          if (!logoUrl) {
+            const aliases = {
+              brazil: 'brasil',
+              brasil: 'brasil',
+              germany: 'alemanha',
+              alemanha: 'alemanha',
+              spain: 'espanha',
+              espanha: 'espanha',
+              france: 'franca',
+              franca: 'franca',
+              england: 'inglaterra',
+              inglaterra: 'inglaterra'
+            };
+            const canonicalKey = aliases[predictedKey] || predictedKey;
+            const aliasRef = teamMediaCatalog.find(item =>
+              (aliases[normalizeTeamName(item.team)] || normalizeTeamName(item.team)) === canonicalKey &&
+              item.logoUrl
+            );
+            if (aliasRef?.logoUrl) logoUrl = aliasRef.logoUrl;
+          }
+        }
+
         return {
           key: def.key,
           label: def.label,
           icon: def.icon,
           kind: def.kind,
           value: predicted || null,
+          logoUrl: logoUrl || null,
           points,
           status
         };
@@ -1806,8 +1908,8 @@ async function getLeadershipPath(req, res) {
             status = 'dead';
           }
 
-          const matchRef = matches.find(m => m.teamA === teamName || m.teamB === teamName);
-          const logoUrl = matchRef ? (matchRef.teamA === teamName ? matchRef.logoA : matchRef.logoB) : null;
+          const mediaRef = findTeamMedia(teamName);
+          const logoUrl = mediaRef?.logoUrl || null;
           podiumDetails.push({ team: teamName, logoUrl, position: i + 1, points: podiumPointsArr[i] || 0, status });
         }
       }
@@ -2342,6 +2444,10 @@ async function getLeadershipPath(req, res) {
         date: m.date,
         time: m.time,
         teams: `${m.teamA} x ${m.teamB}`,
+        // Mantém a mídia da equipe disponível para o frontend da Estratégia,
+        // que deve delegar a renderização da bandeira/logo a renderTeamMedia().
+        logoA: m.logoA || null,
+        logoB: m.logoB || null,
         status: m.status,
         phase: m.phase,
         group: m.group,
@@ -2401,6 +2507,7 @@ async function getLeadershipPath(req, res) {
             ? getUnmaterializedRoundRobinMatchCount(getGroupStructure(champRules).expectedMatches, matches.filter(m => String(m.phase || '').trim().toLowerCase() === 'group'))
             : getUnmaterializedRoundRobinMatchCount(getPointsRunStructure(champRules).expectedMatches, matches.filter(m => ['pontos_corridos','points_run'].includes(String(m.phase || '').trim().toLowerCase())))),
           podiumDetails,
+          teamMediaCatalog,
           extrasDetails,
           miracleAchieved,
           miracleTotalMatchesNeeded,
