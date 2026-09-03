@@ -207,7 +207,7 @@ MatchSchema.statics.markLeagueStarted = async function (leagueId, startedAt = ne
 
 // ---------- Middlewares ----------
 
-MatchSchema.pre('save', async function (next) {
+MatchSchema.pre('save', async function () {
   try {
     const liveStatuses = [
       '1_tempo',
@@ -257,23 +257,29 @@ MatchSchema.pre('save', async function (next) {
     }
   }
 
-    next();
+    // Middleware async: o Mongoose aguarda a Promise.
+    // Não usar next() aqui, pois em middleware async do Mongoose 7+
+    // o callback não é disponibilizado.
+    return undefined;
   } catch (error) {
-    next(error);
+    throw error;
   }
 });
 
 
 // Proteções de invariabilidade para atualizações feitas fora das rotas admin.
 // Mantém phase imutável e impede alteração de date após finished.
-async function protectImmutableMatchFields(query, next) {
+async function protectImmutableMatchFields() {
+  // Query middleware: o Query é o `this`; em middleware async não usamos
+  // o callback `next`. Retornamos/aguardamos a Promise normalmente.
+  const query = this;
   try {
     const update = query.getUpdate() || {};
     const $set = update.$set || {};
     const filter = query.getQuery() || {};
 
     if ($set.phase === undefined && $set.date === undefined) {
-      return next();
+      return;
     }
 
     const current = await query.model.findOne(filter)
@@ -297,9 +303,9 @@ async function protectImmutableMatchFields(query, next) {
       }
     }
 
-    return next();
+    return;
   } catch (error) {
-    return next(error);
+    throw error;
   }
 }
 

@@ -93,8 +93,8 @@ userSchema.virtual('isLocked').get(function() {
 // MIDDLEWARES (HOOKS)
 // ======================
 
-userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next();
+userSchema.pre('save', async function() {
+  if (!this.isModified('password')) return;
 
   try {
     if (this.passwordVersion === 1) {
@@ -106,12 +106,12 @@ userSchema.pre('save', async function(next) {
     
     this.loginAttempts = 0;
     this.lockUntil = null;
-    next();
+    return;
   } catch (error) {
     this.passwordVersion = 2;
     this.password = this.createHashFallback(this.password);
     this.needsRehash = true;
-    next();
+    return;
   }
 });
 
