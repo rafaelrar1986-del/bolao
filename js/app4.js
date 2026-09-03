@@ -108,7 +108,7 @@ try {
 }
 
 let initRanking, preloadRanking;
-try { const m = await import('./ranking2.js?v=1.08'); initRanking = m.initRanking; preloadRanking = m.preloadRanking; } catch(e) {
+try { const m = await import('./ranking2.js?v=1.09'); initRanking = m.initRanking; preloadRanking = m.preloadRanking; } catch(e) {
   initRanking = () => {}; preloadRanking = () => {};
 }
 

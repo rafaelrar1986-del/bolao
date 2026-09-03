@@ -8820,8 +8820,8 @@ body, html {
     -webkit-backdrop-filter: blur(20px) !important;
     border: 1px solid rgba(255, 255, 255, 0.12) !important;
     border-radius: 24px !important;
-    padding: 25px !important;
-    margin-bottom: 25px !important;
+    padding: 14px !important;
+    margin-bottom: 14px !important;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4) !important;
 }
 
@@ -16804,9 +16804,54 @@ body:has(#admin) .modal-content .setting-section {
 .strategy-flag-only { font-size: 26px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; }
 
 @media (max-width: 600px) {
-  .strategy-status-badge {
-    padding: 8px 10px;
-    margin-bottom: 10px;
+  #ranking .strategy-glass-card {
+    padding: 10px !important;
+    margin-bottom: 10px !important;
   }
-  .strategy-status-badge > span { font-size: .88rem; letter-spacing: .45px; }
+  #ranking .strategy-status-badge {
+    padding: 6px 8px !important;
+    margin: 0 0 7px !important;
+    min-height: 0 !important;
+  }
+  #ranking .strategy-status-badge > span {
+    font-size: .82rem !important;
+    line-height: 1.05 !important;
+    letter-spacing: .35px !important;
+  }
+  #ranking .strategy-main-grid {
+    gap: 6px !important;
+  }
+  #ranking .strategy-reach-card {
+    min-height: 190px !important;
+    padding: 8px 7px 7px !important;
+  }
+  #ranking .strategy-reach-position {
+    font-size: 3.55rem !important;
+    margin: 2px 0 !important;
+  }
+  #ranking .strategy-extras-grid {
+    gap: 6px !important;
+  }
+  #ranking .strategy-extra-card {
+    min-height: 88px !important;
+    padding: 5px 3px !important;
+    border-radius: 12px !important;
+  }
+  #ranking .strategy-extra-icon {
+    font-size: 1.45rem !important;
+    margin-bottom: 2px !important;
+  }
+  #ranking .strategy-extra-value {
+    font-size: .82rem !important;
+    min-height: 20px !important;
+    margin-top: 2px !important;
+  }
+  #ranking .strategy-extra-points {
+    font-size: .9rem !important;
+    margin-top: 2px !important;
+  }
+  #ranking .podium-strategy-footer {
+    margin-top: 7px !important;
+    padding: 6px 8px !important;
+  }
 }
