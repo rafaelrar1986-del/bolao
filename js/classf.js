@@ -123,7 +123,10 @@ async function fetchAndRenderStandings(targetElement, isParcial, leagueId) {
             return;
         }
 
-        targetElement.innerHTML = '<div class="classificacao-grid" id="groups-grid"></div>';
+        const pointsRunLayout = hasPointsRunMatches;
+        targetElement.innerHTML = pointsRunLayout
+            ? '<div class="classification-layout points-run-layout" id="classification-layout"><div class="classification-standings-panel"><div class="classificacao-grid" id="groups-grid"></div></div></div>'
+            : '<div class="classificacao-grid" id="groups-grid"></div>';
         const grid = document.getElementById('groups-grid');
         let fullHtml = '';
 
@@ -203,7 +206,11 @@ async function fetchAndRenderStandings(targetElement, isParcial, leagueId) {
                 </table>
             </div>
         `;
-        targetElement.appendChild(scorersSection);
+        if (pointsRunLayout) {
+            document.getElementById('classification-layout').appendChild(scorersSection);
+        } else {
+            targetElement.appendChild(scorersSection);
+        }
 
         try {
             const scorers = await api.getTopScorers(leagueId, isParcial ? 'live' : 'official');

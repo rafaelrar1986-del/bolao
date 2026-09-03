@@ -17038,6 +17038,41 @@ body:has(#admin) .modal-content .setting-section {
 }
 
 /* ============================================================
+   LAYOUT PONTOS CORRIDOS + ARTILHEIROS
+   Mantém as duas tabelas com a mesma largura e lado a lado,
+   inclusive em telas estreitas.
+   ============================================================ */
+#classificacao .classification-layout.points-run-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  width: 100%;
+}
+
+#classificacao .points-run-layout .classification-standings-panel,
+#classificacao .points-run-layout .top-scorers-section {
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+}
+
+#classificacao .points-run-layout .classificacao-grid {
+  display: block !important;
+  width: 100%;
+}
+
+#classificacao .points-run-layout .group-container {
+  width: 100%;
+}
+
+@media (min-width: 768px) {
+  #classificacao .classification-layout.points-run-layout {
+    gap: 20px;
+  }
+}
+
+/* ============================================================
    ARTILHEIROS — CLASSIFICAÇÃO
    ============================================================ */
 #classificacao .top-scorers-section {
