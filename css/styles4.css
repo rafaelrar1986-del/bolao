@@ -16567,3 +16567,207 @@ body:has(#admin) .modal-content .setting-section {
 .tabs .tab[hidden] {
   display: none !important;
 }
+
+
+/* ================================================================
+   ESTRATÉGIA — CARD COM EXTRAS 2x2
+   O pódio permanece no rodapé; os extras ocupam a coluna direita.
+   ================================================================ */
+.strategy-main-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 1.08fr);
+  gap: 12px;
+  align-items: stretch;
+  margin-bottom: 0;
+}
+
+.strategy-reach-card {
+  min-height: 285px;
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 16px;
+  padding: 20px 16px 14px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  text-align: center;
+  background: rgba(0,0,0,0.16);
+}
+
+.strategy-reach-title {
+  display: block;
+  font-size: 0.76rem;
+  font-weight: 800;
+  color: rgba(255,255,255,0.64);
+  letter-spacing: 1px;
+  line-height: 1.45;
+}
+
+.strategy-reach-position {
+  font-size: clamp(4.2rem, 7vw, 5.8rem);
+  font-weight: 900;
+  line-height: 0.95;
+  background: linear-gradient(180deg, #fff 40%, rgba(255,255,255,0.12));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: -3px;
+  margin: 8px 0;
+}
+
+.strategy-probability { margin-top: 12px; }
+.strategy-probability-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.72rem;
+  font-weight: 800;
+  margin-bottom: 8px;
+  letter-spacing: .2px;
+}
+.strategy-probability-head span:first-child { color: rgba(255,255,255,0.68); }
+.strategy-probability-bar {
+  height: 5px;
+  background: rgba(255,255,255,0.10);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.strategy-probability-bar > div {
+  height: 100%;
+  transition: width 1s ease-in-out;
+}
+.strategy-math-link {
+  font-size: 0.64rem;
+  color: rgba(255,255,255,0.3);
+  text-align: center;
+  margin-top: 11px;
+  cursor: pointer;
+}
+
+.strategy-extras-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+
+.strategy-extra-card {
+  min-height: 136px;
+  border: 1px solid rgba(74,222,128,0.78);
+  border-radius: 15px;
+  padding: 11px 8px 10px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  background: rgba(0,0,0,0.12);
+  overflow: hidden;
+}
+
+.strategy-extra-card.is-dead { border-color: #ef4444; }
+.strategy-extra-icon {
+  font-size: 2.35rem;
+  line-height: 1;
+  margin-bottom: 7px;
+}
+.strategy-extra-label {
+  color: rgba(255,255,255,0.62);
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: .7px;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+.strategy-extra-value {
+  min-height: 27px;
+  margin-top: 5px;
+  color: #fff;
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 1.2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.strategy-extra-points {
+  margin-top: 6px;
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.podium-strategy-footer {
+  margin-top: 16px;
+  padding: 13px 10px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  box-shadow: inset 0 1px 2px rgba(255,255,255,0.02);
+  width: 100%;
+  box-sizing: border-box;
+}
+.strategy-podium-item {
+  min-width: 60px;
+  text-align: center;
+  font-family: system-ui, sans-serif;
+  padding: 2px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.strategy-podium-position {
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.1;
+  margin-bottom: 4px;
+}
+.strategy-podium-flag {
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.strategy-podium-flag .logo-wrapper,
+.strategy-podium-flag .team-emoji {
+  width: 30px !important;
+  height: 30px !important;
+  font-size: 25px !important;
+}
+.strategy-podium-points {
+  font-size: 15px;
+  line-height: 1.1;
+  margin-top: 5px;
+}
+.strategy-locked-flag { font-size: 23px; }
+
+@media (max-width: 600px) {
+  .strategy-main-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.12fr);
+    gap: 8px;
+  }
+  .strategy-reach-card { min-height: 250px; padding: 16px 10px 12px; }
+  .strategy-reach-title { font-size: 0.64rem; }
+  .strategy-reach-position { font-size: 4.3rem; }
+  .strategy-extras-grid { gap: 8px; }
+  .strategy-extra-card { min-height: 118px; padding: 8px 5px; }
+  .strategy-extra-icon { font-size: 1.9rem; }
+  .strategy-extra-label { font-size: 0.56rem; }
+  .strategy-extra-value { font-size: 0.92rem; }
+  .strategy-extra-points { font-size: 1rem; }
+}
+
+@media (max-width: 390px) {
+  .strategy-main-grid { grid-template-columns: 1fr 1fr; }
+  .strategy-reach-card { min-height: 230px; }
+  .strategy-reach-position { font-size: 3.8rem; }
+  .strategy-extra-card { min-height: 108px; }
+  .strategy-extra-icon { font-size: 1.7rem; }
+}
+
+.strategy-flag-only { font-size: 26px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; }

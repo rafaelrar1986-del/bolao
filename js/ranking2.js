@@ -1,7 +1,7 @@
 import { api } from './api.js';
 import { toast } from './ui.js';
 import { initUserProfile } from './userProfile.js?v=1.06';
-import { renderTeamMedia, parseMatchDate } from './matches/matchesUtils.js';
+import { renderTeamMedia, flagOnly, parseMatchDate } from './matches/matchesUtils.js';
 
 /* =====================
     Helpers & State
@@ -322,37 +322,79 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
     const probColor = summary.statusBadge === 'ELIMINATED' ? '#ff6b6b' : '#2ecc71';
     const probShadow = summary.statusBadge === 'ELIMINATED' ? 'rgba(255, 107, 107, 0.6)' : 'rgba(46, 204, 113, 0.6)';
 
-    // GERAÇÃO DINÂMICA DO RODAPÉ DO PÓDIO (respeita podiumSize configurado pelo admin)
+    // EXTRAS DO CAMPEONATO: grade 2x2 ao lado da melhor posição.
+    // Os estados usam a mesma linguagem visual do pódio: vivo = branco,
+    // acertado = verde, perdido = vermelho/tachado, bloqueado = cadeado.
+    const extrasDetails = Array.isArray(summary.extrasDetails) ? summary.extrasDetails : [];
+    const extraCardsHtml = extrasDetails.length > 0 ? extrasDetails.map(extra => {
+        let valueHtml = '—';
+        if (extra.status === 'locked') {
+            valueHtml = '🔒';
+        } else if (extra.kind === 'player') {
+            const safeValue = String(extra.value || '—')
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            valueHtml = safeValue;
+        } else if (extra.value) {
+            valueHtml = flagOnly(extra.value) || '🏳️';
+        }
+
+        let scoreStyle = 'color: #ffffff; font-weight: 700;';
+        let valueClass = '';
+        if (extra.status === 'dead') {
+            scoreStyle = 'color: #ef4444; font-weight: 500; text-decoration: line-through; opacity: 0.65;';
+            valueClass = ' is-dead';
+        } else if (extra.status === 'conquered') {
+            scoreStyle = 'color: #4ade80; font-weight: 800;';
+        }
+
+        const safeLabel = String(extra.label || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return `
+            <div class="strategy-extra-card${valueClass}">
+                <div class="strategy-extra-icon" aria-hidden="true">${extra.icon || ''}</div>
+                <div class="strategy-extra-label">${safeLabel}</div>
+                <div class="strategy-extra-value">${valueHtml}</div>
+                <div class="strategy-extra-points" style="${scoreStyle}">+${Number(extra.points || 0)}</div>
+            </div>
+        `;
+    }).join('') : '';
+
+    const extrasGridHtml = extraCardsHtml ? `
+        <div class="strategy-extras-grid">${extraCardsHtml}</div>
+    ` : '';
+
+    // RODAPÉ DO PÓDIO: somente posição, bandeira e pontuação. Nunca exibe nome
+    // do time e não cria uma legenda separada para os estados.
     const podiumCount = summary.podiumDetails?.length || 0;
     const podiumItemWidth = podiumCount > 0 ? Math.floor(100 / podiumCount) : 25;
     const podiumFooterHtml = podiumCount > 0
         ? `
-        <div class="podium-strategy-footer" style="margin-top: 16px; padding: 12px; border-radius: 12px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); display: flex; justify-content: space-between; flex-wrap: wrap; box-shadow: inset 0 1px 2px rgba(255,255,255,0.02); width: 100%; box-sizing: border-box;">
+        <div class="podium-strategy-footer">
             ${summary.podiumDetails.map(pick => {
                 const displayPos = `${pick.position}º`;
 
-                let positionStyle = 'color: #9ca3af;'; 
+                let positionStyle = 'color: #9ca3af;';
                 let scoreStyle = 'color: #ffffff; font-weight: 600;';
                 let pointsText = `+${pick.points}`;
 
                 if (pick.status === 'dead') {
-                    positionStyle = 'color: #ef4444; text-decoration: line-through; opacity: 0.6;'; 
+                    positionStyle = 'color: #ef4444; text-decoration: line-through; opacity: 0.6;';
                     scoreStyle = 'color: #ef4444; text-decoration: line-through; opacity: 0.6; font-weight: 400;';
                 } else if (pick.status === 'conquered') {
                     scoreStyle = 'color: #4ade80; font-weight: 700;';
+                } else if (pick.status === 'locked') {
+                    pointsText = '🔒';
+                    scoreStyle = 'color: #9ca3af;';
                 }
 
-                const teamMediaHtml = renderTeamMedia(pick.team, pick.logoUrl) || '';
+                const teamMediaHtml = pick.status === 'locked'
+                    ? '<span class="strategy-locked-flag">🔒</span>'
+                    : `<span class="strategy-flag-only">${flagOnly(pick.team) || '🏳️'}</span>`;
 
                 return `
-                    <div style="display: flex; flex-direction: column; align-items: center; width: ${podiumItemWidth}%; min-width: 60px; text-align: center; font-family: system-ui, sans-serif; padding: 4px 2px; box-sizing: border-box;">
-                        <div style="font-size: 11px; display: flex; align-items: center; justify-content: center; gap: 4px; margin-bottom: 2px;">
-                            <span style="${positionStyle}">${displayPos}</span>
-                            ${teamMediaHtml}
-                        </div>
-                        <span style="font-size: 13px; ${scoreStyle}">
-                            ${pointsText}
-                        </span>
+                    <div class="strategy-podium-item" style="width: ${podiumItemWidth}%;">
+                        <span class="strategy-podium-position" style="${positionStyle}">${displayPos}</span>
+                        <div class="strategy-podium-flag">${teamMediaHtml}</div>
+                        <span class="strategy-podium-points" style="${scoreStyle}">${pointsText}</span>
                     </div>
                 `;
             }).join('')}
@@ -413,22 +455,24 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
 
             </div>
 
-            <div style="text-align: center; margin-bottom: 20px;">
-                <span style="display: block; font-size: 0.7rem; font-weight: 800; color: rgba(255,255,255,0.6); letter-spacing: 1px;">MELHOR POSIÇÃO ALCANÇÁVEL</span>
-                <div style="font-size: 5rem; font-weight: 900; line-height: 1; background: linear-gradient(180deg, #ffffff 40%, rgba(255,255,255,0.1)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 10px 0; letter-spacing: -2px;">${summary.maxPosition}º</div>
-            </div>
-
-            <div class="probability-section" style="margin-top: 20px;">
-                <div style="display: flex; justify-content: space-between; font-size: 0.75rem; font-weight: 800; margin-bottom: 8px;">
-                    <span style="opacity: 0.7; text-transform: uppercase;">Índice de Alcance</span>
-                    <span style="color: ${probColor};">${summary.probability}%</span>
+            <div class="strategy-main-grid">
+                <div class="strategy-reach-card">
+                    <span class="strategy-reach-title">MELHOR POSIÇÃO ALCANÇÁVEL</span>
+                    <div class="strategy-reach-position">${summary.maxPosition}º</div>
+                    <div class="probability-section strategy-probability">
+                        <div class="strategy-probability-head">
+                            <span>ÍNDICE DE ALCANCE</span>
+                            <span style="color: ${probColor};">${summary.probability}%</span>
+                        </div>
+                        <div class="strategy-probability-bar">
+                            <div style="width: ${summary.probability}%; background: ${probColor}; box-shadow: 0 0 15px ${probShadow};"></div>
+                        </div>
+                        <div class="strategy-math-link" onclick="showMathExplanation()">
+                            <i class="fas fa-microchip"></i> Ver lógica do cálculo
+                        </div>
+                    </div>
                 </div>
-                <div style="height: 4px; background: rgba(255,255,255,0.1); border-radius: 10px; overflow: hidden;">
-                    <div style="width: ${summary.probability}%; height: 100%; background: ${probColor}; box-shadow: 0 0 15px ${probShadow}; transition: width 1s ease-in-out; background-color: ${probColor};"></div>
-                </div>
-                <div style="font-size: 0.65rem; color: rgba(255,255,255,0.3); text-align: center; margin-top: 12px; cursor: pointer;" onclick="showMathExplanation()">
-                    <i class="fas fa-microchip"></i> Ver lógica do cálculo
-                </div>
+                ${extrasGridHtml}
             </div>
 
             ${podiumFooterHtml}
