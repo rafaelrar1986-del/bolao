@@ -4858,12 +4858,14 @@ input:checked + .slider:before {
 
 /* 1. Alvo: A aba de ranking (ajuste o ID #ranking se for diferente no seu HTML) */
 #ranking.tab-content {
-    background: #fff !important;    /* Devolve o fundo branco */
-    border: 1px solid #e9ecef !important; /* Devolve a borda leve */
-    border-radius: 12px !important;  /* Arredonda as pontas */
-    box-shadow: 0 4px 12px rgba(0,0,0,.06) !important; /* Sombra sutil */
-    margin-top: 16px;
-    padding: 16px !important;
+    /* Container da aba: compacto, sem criar um segundo card ao redor do ranking */
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 8px !important;
+    box-shadow: none !important;
+    margin-top: -10px !important;
+    margin-bottom: 84px !important;
+    padding: 2px !important;
 }
 
 /* 2. Ajuste para o Mobile (Itens individuais) */
@@ -15337,6 +15339,30 @@ body:has(#login-section:not([hidden])){
 }
 
 /* ============================================================
+   RANKING — CONTAINER DA ABA COMPACTO (override final)
+   Evita que regras históricas de #ranking.tab-content aumentem
+   novamente padding, margem ou criem um card externo.
+   ============================================================ */
+#ranking.tab-content {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+  margin-top: -10px !important;
+  margin-bottom: 84px !important;
+  padding: 2px !important;
+}
+
+@media (max-width: 768px) {
+  #ranking.tab-content {
+    margin-top: -12px !important;
+    margin-bottom: 84px !important;
+    padding: 0 !important;
+    border-radius: 8px !important;
+  }
+}
+
+/* ============================================================
    RANKING FINAL — VISUAL DE REFERÊNCIA (MOBILE 9:16)
    ============================================================ */
 #ranking {
@@ -16856,25 +16882,136 @@ body:has(#admin) .modal-content .setting-section {
   }
 }
 
+
 /* ============================================================
-   RANKING — CONTAINER EXTERNO ULTRA COMPACTO
-   Último override intencional: elimina espaço vertical herdado
-   sem alterar os cards internos do Estratégia.
+   ESTRATÉGIA — COMPACTAÇÃO VERTICAL FINAL (v45)
+   Mantém a estrutura 2x2 dos Extras e reduz apenas espaços/alturas.
    ============================================================ */
-#ranking.tab-content {
-    background: transparent !important;
-    border: none !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-    margin-top: 0 !important;
-    margin-bottom: 0 !important;
-    padding: 0 !important;
+#ranking .strategy-container {
+  padding: 8px !important;
+}
+#ranking .strategy-glass-card {
+  padding: 9px !important;
+  margin-bottom: 8px !important;
+  border-radius: 16px !important;
+}
+#ranking .strategy-status-badge {
+  padding: 5px 8px !important;
+  margin-bottom: 6px !important;
+  min-height: 0 !important;
+}
+#ranking .strategy-status-badge > span {
+  font-size: .78rem !important;
+  line-height: 1 !important;
+}
+#ranking .strategy-glass-card > div[style*="border-bottom"] {
+  margin-bottom: 6px !important;
+  padding-bottom: 5px !important;
+  gap: 3px !important;
+}
+#ranking .strategy-glass-card .stat-box span:last-child {
+  font-size: 1.08rem !important;
+  line-height: 1 !important;
+}
+#ranking .strategy-glass-card .stat-box span:first-child {
+  line-height: 1 !important;
+  margin-bottom: 2px !important;
+}
+#ranking .strategy-main-grid {
+  gap: 5px !important;
+}
+#ranking .strategy-reach-card {
+  min-height: 172px !important;
+  padding: 7px 6px 6px !important;
+  border-radius: 13px !important;
+}
+#ranking .strategy-reach-title {
+  font-size: .60rem !important;
+  line-height: 1.25 !important;
+}
+#ranking .strategy-reach-position {
+  font-size: 3.25rem !important;
+  line-height: .88 !important;
+  margin: 1px 0 !important;
+}
+#ranking .strategy-probability {
+  margin-top: 3px !important;
+}
+#ranking .strategy-probability-head {
+  font-size: .62rem !important;
+  margin-bottom: 4px !important;
+}
+#ranking .strategy-probability-bar {
+  height: 4px !important;
+}
+#ranking .strategy-math-link {
+  font-size: .56rem !important;
+  margin-top: 4px !important;
+}
+#ranking .strategy-extras-grid {
+  gap: 5px !important;
+}
+#ranking .strategy-extra-card {
+  min-height: 83px !important;
+  padding: 4px 3px !important;
+  border-radius: 11px !important;
+}
+#ranking .strategy-extra-icon {
+  font-size: 1.30rem !important;
+  margin-bottom: 1px !important;
+}
+#ranking .strategy-extra-label {
+  font-size: .53rem !important;
+  line-height: 1.05 !important;
+}
+#ranking .strategy-extra-value {
+  font-size: .78rem !important;
+  min-height: 18px !important;
+  margin-top: 1px !important;
+  line-height: 1.05 !important;
+}
+#ranking .strategy-extra-points {
+  font-size: .86rem !important;
+  margin-top: 1px !important;
+  line-height: 1 !important;
+}
+#ranking .podium-strategy-footer {
+  margin-top: 5px !important;
+  padding: 5px 6px !important;
+  border-radius: 10px !important;
+}
+#ranking .strategy-podium-item {
+  padding: 1px !important;
+}
+#ranking .strategy-podium-position {
+  font-size: 12px !important;
+  margin-bottom: 2px !important;
+}
+#ranking .strategy-podium-flag {
+  height: 25px !important;
+}
+#ranking .strategy-podium-flag .logo-wrapper,
+#ranking .strategy-podium-flag .team-emoji {
+  width: 25px !important;
+  height: 25px !important;
+  font-size: 21px !important;
+}
+#ranking .strategy-flag-only {
+  font-size: 22px !important;
+}
+#ranking .strategy-podium-points {
+  font-size: 14px !important;
+  margin-top: 3px !important;
 }
 
-@media (max-width: 700px) {
-    #ranking.tab-content {
-        margin-top: 0 !important;
-        margin-bottom: 0 !important;
-        padding: 0 !important;
-    }
+@media (max-width: 390px) {
+  #ranking .strategy-container { padding: 5px !important; }
+  #ranking .strategy-glass-card { padding: 7px !important; }
+  #ranking .strategy-reach-card { min-height: 158px !important; }
+  #ranking .strategy-reach-position { font-size: 3rem !important; }
+  #ranking .strategy-extra-card { min-height: 76px !important; }
+  #ranking .strategy-extra-icon { font-size: 1.18rem !important; }
+  #ranking .strategy-extra-label { font-size: .49rem !important; }
+  #ranking .strategy-extra-value { font-size: .73rem !important; }
+  #ranking .strategy-extra-points { font-size: .82rem !important; }
 }

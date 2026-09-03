@@ -414,14 +414,14 @@ function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
 
     // MONTAGEM COMPLETA DA STRING TEMPLATE
     const html = `
-    <div class="strategy-container" style="animation: fadeIn 0.3s ease-in-out; padding: 15px;">
+    <div class="strategy-container" style="animation: fadeIn 0.3s ease-in-out; padding: 8px;">
         
-        <div class="strategy-glass-card" style="background: rgba(0, 0, 0, 0.3); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 20px; padding: 16px; margin-bottom: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); color: white;">
+        <div class="strategy-glass-card" style="background: rgba(0, 0, 0, 0.3); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 18px; padding: 10px; margin-bottom: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); color: white;">
             
             ${statusBadgeHtml}
             ${miracleAlertHtml}
 
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 10px; flex-wrap: wrap; gap: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px; flex-wrap: wrap; gap: 5px;">
                 
                 <div class="stat-box" style="text-align: center; flex: 1; min-width: 22%;">
                     <span style="display: block; font-size: 0.55rem; font-weight: 800; color: rgba(255,255,255,0.4); letter-spacing: 0.5px; text-transform: uppercase;">RANKING</span>
