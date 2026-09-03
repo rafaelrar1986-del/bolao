@@ -9,6 +9,105 @@
  * inventário de partidas de mata-mata ainda não materializadas/bloqueadas.
  * Esta função nunca inclui pontos já persistidos/calculados.
  */
+function getRulePointsForItem(rule, item) {
+  if (!rule || !Array.isArray(rule.conditions)) return 0;
+  const possible = rule.conditions.every(condition => {
+    switch (condition) {
+      case 'positionCorrect': return item.positionCorrectPossible === true;
+      case 'positionIncorrect': return item.positionIncorrectPossible === true;
+      case 'teamQualified': return item.predictedQualified === true && item.actualQualifiedPossible === true;
+      case 'teamNotQualified': return item.predictedQualified === false && item.actualNotQualifiedPossible === true;
+      default: return false;
+    }
+  });
+  return possible ? Math.max(0, Number(rule.points) || 0) : 0;
+}
+
+/**
+ * Teto futuro de classificação por grupo.
+ *
+ * Diferentemente da versão anterior, não atribuímos automaticamente a maior
+ * regra a cada posição. O status de classificação é derivado da estrutura do
+ * ADM: posições diretas são sempre classificadas e a posição adicional pode
+ * representar apenas as vagas extras que realmente existem.
+ *
+ * A função continua sendo um teto: não simula uma tabela inteira, mas respeita
+ * as restrições de vagas extras entre grupos e o que o próprio usuário marcou
+ * em additionalQualifiedTeams.
+ */
+function calculateGroupPredictionMaximum(prediction, state, rules, qualificationConfig) {
+  if (!prediction || !state || state.complete === true) return { maximum: 0, baseline: 0, optionalGain: 0 };
+
+  const totalTeams = Math.floor(Number(qualificationConfig?.totalTeams) || 0);
+  const groupCount = Math.floor(Number(qualificationConfig?.groupCount) || 0);
+  const totalQualified = Math.floor(Number(qualificationConfig?.totalQualified) || 0);
+  if (!totalTeams || !groupCount || !totalQualified || totalTeams % groupCount !== 0 || totalQualified > totalTeams) {
+    return { maximum: 0, baseline: 0, optionalGain: 0 };
+  }
+
+  const teamsPerGroup = totalTeams / groupCount;
+  const directCount = Math.min(teamsPerGroup, Math.floor(totalQualified / groupCount));
+  const additionalCount = totalQualified % groupCount;
+  const additionalPosition = additionalCount > 0 ? directCount + 1 : null;
+  const additionalSelected = new Set(
+    Array.isArray(prediction.additionalQualifiedTeams)
+      ? prediction.additionalQualifiedTeams.map(v => String(v).trim()).filter(Boolean)
+      : []
+  );
+
+  const positions = Array.isArray(prediction.positions) ? prediction.positions : [];
+  let maximum = 0;
+  let baseline = 0;
+  let optionalGain = 0;
+
+  for (const raw of positions) {
+    const team = String(raw?.team ?? '').trim();
+    const pos = Number(raw?.position);
+    if (!team || !Number.isInteger(pos) || pos <= 0 || pos > teamsPerGroup) continue;
+
+    const isDirect = pos <= directCount;
+    const predictedQualified = isDirect || additionalSelected.has(team);
+    const positionCorrectPossible = true;
+    const positionIncorrectPossible = teamsPerGroup > 1;
+
+    const ruleValue = (actualQualified, actualNotQualified) => Math.max(
+      ...rules.map(rule => getRulePointsForItem(rule, {
+        team,
+        predictedQualified,
+        actualQualifiedPossible: actualQualified,
+        actualNotQualifiedPossible: actualNotQualified,
+        positionCorrectPossible,
+        positionIncorrectPossible
+      })),
+      0
+    );
+
+    if (isDirect) {
+      const value = ruleValue(true, false);
+      maximum += value;
+      baseline += value;
+      continue;
+    }
+
+    const notQualifiedValue = ruleValue(false, true);
+    baseline += notQualifiedValue;
+
+    if (additionalCount > 0 && pos === additionalPosition && predictedQualified) {
+      const qualifiedValue = ruleValue(true, false);
+      maximum += qualifiedValue;
+      optionalGain += Math.max(0, qualifiedValue - notQualifiedValue);
+    } else {
+      maximum += notQualifiedValue;
+    }
+  }
+
+  return {
+    maximum: Math.max(0, maximum),
+    baseline: Math.max(0, baseline),
+    optionalGain: Math.max(0, optionalGain)
+  };
+}
+
 function calculateStrategyNonMatchFuturePotential(bet, {
   groupCompletionByGroup = new Map(),
   groupQualificationRules = [],
@@ -21,92 +120,65 @@ function calculateStrategyNonMatchFuturePotential(bet, {
   if (!bet) return { total: 0, groupQualificationPoints: 0, extraPoints: 0 };
 
   const rules = Array.isArray(groupQualificationRules) ? groupQualificationRules : [];
-  const maxGroupRule = Math.max(
-    ...rules.map(rule => Math.max(0, Number(rule?.points) || 0)),
-    0
-  );
-
   let groupQualificationPoints = 0;
   let extraPoints = 0;
 
-  // O motor oficial zera toda a pontuação de classificação quando não há
-  // fase de grupos. A Estratégia precisa respeitar exatamente essa regra.
   const groupPhaseEnabled = hasGroupPhase !== false && championshipRules?.hasGroupPhase !== false;
   const knockoutPhaseEnabled = championshipRules?.hasKnockoutPhase !== false;
-  if (groupPhaseEnabled && knockoutPhaseEnabled && maxGroupRule > 0 && Array.isArray(bet.groupPredictions)) {
-    // Sem uma configuração válida de total de equipes/grupos/vagas, o motor
-    // oficial não pontua regras que dependem de status de classificação.
-    // Para manter o teto seguro, retiramos essas regras do máximo quando a
-    // configuração correspondente não é válida. Regras puramente posicionais
-    // continuam elegíveis.
-    // A configuração estrutural da classificação pertence ao campeonato,
-    // não às regras de pontuação. O motor oficial lê championshipRules.groupQualification;
-    // a Estratégia precisa usar a mesma fonte para que o teto futuro nunca diverja.
+  if (groupPhaseEnabled && knockoutPhaseEnabled && rules.length && Array.isArray(bet.groupPredictions)) {
     const qualificationConfig = championshipRules?.groupQualification || {};
     const totalTeams = Number(qualificationConfig.totalTeams || 0);
     const groupCount = Number(qualificationConfig.groupCount || 0);
     const totalQualified = Number(qualificationConfig.totalQualified || 0);
     const validQualificationConfig =
-      totalTeams > 0 &&
-      groupCount > 0 &&
-      totalQualified > 0 &&
-      totalTeams % groupCount === 0 &&
-      totalQualified <= totalTeams;
+      totalTeams > 0 && groupCount > 0 && totalQualified > 0 &&
+      totalTeams % groupCount === 0 && totalQualified <= totalTeams;
 
-    // O cálculo oficial retorna imediatamente zero quando a configuração é
-    // inválida e existe QUALQUER regra dependente de status de classificação.
-    // Não podemos manter uma regra de posição isoladamente nesse cenário,
-    // porque ela também fica sem pontuação no motor oficial.
-    const hasStatusRule = rules.some(rule => rule.conditions.some(c =>
-      c === 'teamQualified' || c === 'teamNotQualified'
-    ));
-    const eligibleRules = !validQualificationConfig && hasStatusRule
-      ? []
-      : rules;
-    const eligibleMaxRule = Math.max(
-      ...eligibleRules.map(rule => Math.max(0, Number(rule.points) || 0)),
-      0
-    );
+    const hasStatusRule = rules.some(rule => rule.conditions.some(c => c === 'teamQualified' || c === 'teamNotQualified'));
+    if (validQualificationConfig || !hasStatusRule) {
+      const optionalCandidates = [];
+      const groupResults = [];
+      for (const prediction of bet.groupPredictions) {
+        const group = String(prediction?.group || '').trim();
+        if (!group) continue;
+        const state = groupCompletionByGroup.get(group);
+        if (state?.complete === true) continue;
 
-    // O cálculo oficial só consegue atribuir pontos a posições preenchidas
-    // por entradas normalizadas (posição inteira positiva + equipe). Não
-    // contamos lixo de dados como potencial futuro. Duplicatas continuam
-    // sendo contadas como entradas separadas aqui porque o motor oficial
-    // avalia cada posição individualmente.
-    for (const prediction of bet.groupPredictions) {
-      const group = String(prediction?.group || '').trim();
-      if (!group) continue;
-      const state = groupCompletionByGroup.get(group);
-      if (state?.complete === true) continue;
+        const result = calculateGroupPredictionMaximum(
+          prediction,
+          state || { complete: false },
+          rules,
+          qualificationConfig
+        );
+        const alreadyAwarded = Math.max(0, Number(currentGroupQualificationByGroup?.[group] || 0));
+        groupResults.push({ result, alreadyAwarded });
+        const optionalAlreadyConsumed = Math.max(0, alreadyAwarded - result.baseline);
+        const remainingOptionalGain = Math.max(0, result.optionalGain - optionalAlreadyConsumed);
+        if (remainingOptionalGain > 0) optionalCandidates.push(remainingOptionalGain);
+      }
 
-      const positions = Array.isArray(prediction?.positions)
-        ? prediction.positions.filter(p =>
-            Number.isInteger(Number(p?.position)) &&
-            Number(p.position) > 0 &&
-            String(p?.team ?? '').trim() !== ''
-          )
-        : [];
+      // As vagas adicionais são globais entre os grupos. Uma configuração
+      // 48/12/32 possui somente 8 vagas de terceiro lugar, portanto o teto não
+      // pode conceder o bônus de terceiro lugar a 12 grupos simultaneamente.
+      const additionalCount = totalQualified % groupCount;
+      const allowedOptionalGain = optionalCandidates
+        .sort((a, b) => b - a)
+        .slice(0, additionalCount)
+        .reduce((sum, value) => sum + value, 0);
 
-      const theoreticalMaximum = positions.length * eligibleMaxRule;
-      const alreadyAwarded = Math.max(
-        0,
-        Number(currentGroupQualificationByGroup?.[group] || 0)
-      );
-      // Em modo LIVE, o motor oficial pode já ter atribuído pontos de
-      // classificação antes do grupo terminar. O futuro só pode conter o
-      // restante do teto, nunca o teto inteiro novamente.
-      groupQualificationPoints += Math.max(0, theoreticalMaximum - alreadyAwarded);
+      groupQualificationPoints = groupResults.reduce((sum, item) => {
+        const baselineFuture = Math.max(0, item.result.baseline - item.alreadyAwarded);
+        return sum + baselineFuture;
+      }, 0) + allowedOptionalGain;
+
     }
   }
 
-  // Extras só podem gerar pontos futuros se o usuário realmente possui a
-  // previsão e o resultado oficial ainda não foi definido.
   const extraKeys = ['topScorer', 'bestAttack', 'worstDefense', 'upset'];
   for (const key of extraKeys) {
     const predicted = bet?.extras?.[key];
     const official = championshipResults?.[key];
     const points = Math.max(0, Number(scoringRules?.[key]) || 0);
-
     if (points > 0 && String(predicted ?? '').trim() !== '' && String(official ?? '').trim() === '') {
       extraPoints += points;
     }
@@ -119,4 +191,7 @@ function calculateStrategyNonMatchFuturePotential(bet, {
   };
 }
 
-module.exports = { calculateStrategyNonMatchFuturePotential };
+module.exports = {
+  calculateStrategyNonMatchFuturePotential,
+  calculateGroupPredictionMaximum
+};

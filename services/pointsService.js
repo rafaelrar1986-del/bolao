@@ -219,15 +219,20 @@ function sanitizeChampionshipRules(rawRules) {
   rules.hasKnockoutPhase = toBooleanFlag(rules.hasKnockoutPhase, DEFAULT_CHAMPIONSHIP_RULES.hasKnockoutPhase);
   rules.hasThirdPlaceMatch = rules.hasKnockoutPhase && toBooleanFlag(rules.hasThirdPlaceMatch, DEFAULT_CHAMPIONSHIP_RULES.hasThirdPlaceMatch);
   rules.knockoutFormat = rules.knockoutFormat === 'home_away' ? 'home_away' : 'single';
-  // A final só pode ser ida/volta quando o mata-mata geral também é
-  // ida/volta. Quando o formato geral é jogo único, a final é
-  // necessariamente jogo único, independentemente de valor legado no campo.
-  // Quando o formato geral é ida/volta, preservamos a configuração explícita
-  // da final e mantemos home_away como fallback para campeonatos antigos.
-  rules.knockoutFinalFormat = rules.knockoutFormat === 'single'
-    ? 'single'
-    : (rules.knockoutFinalFormat === 'single' ? 'single' : 'home_away');
-  rules.knockoutAwayGoals = rules.knockoutFormat === 'home_away' && Boolean(rules.knockoutAwayGoals);
+  // A Final só pode ser uma exceção quando o mata-mata geral é ida/volta.
+  // Se o mata-mata geral for jogo único, a Final obrigatoriamente também é
+  // jogo único. Isso mantém backend, Estratégia e criador de partidas na
+  // mesma regra de negócio.
+  rules.knockoutFinalFormat = rules.knockoutFormat === 'home_away'
+    ? (rules.knockoutFinalFormat === 'single' ? 'single' : 'home_away')
+    : 'single';
+  // A regra de gols fora é válida sempre que ALGUMA etapa do mata-mata
+  // configurada em ida/volta puder usá-la, inclusive quando somente a Final
+  // é a exceção ao formato geral.
+  const anyKnockoutHomeAway =
+    rules.knockoutFormat === 'home_away' ||
+    rules.knockoutFinalFormat === 'home_away';
+  rules.knockoutAwayGoals = anyKnockoutHomeAway && toBooleanFlag(rules.knockoutAwayGoals);
 
   const pointsRun = {
     ...(DEFAULT_CHAMPIONSHIP_RULES.pointsRun || {}),
@@ -1239,9 +1244,10 @@ function getKnockoutConfrontationMatches(realMatch, matchMap, champRules) {
   if (!realMatch) return [];
   if (realMatch.phase !== 'knockout' && realMatch.phase !== 'mata-mata') return [];
 
-  const effectiveFormat = realMatch.stageFormat === 'single' || realMatch.stageFormat === 'home_away'
-    ? realMatch.stageFormat
-    : getEffectiveKnockoutFormat(champRules || {}, realMatch);
+  // A configuração do campeonato é a fonte de verdade. stageFormat é apenas
+  // um campo materializado/derivado e não pode reativar ida/volta quando o ADM
+  // configurou jogo único (nem alterar a regra específica da Final).
+  const effectiveFormat = getEffectiveKnockoutFormat(champRules || {}, realMatch);
 
   if (effectiveFormat !== 'home_away') return [];
 
@@ -1891,6 +1897,8 @@ module.exports = {
   getMaxPointsPerMatch,
   calculateMatchPoints,
   calculateBetMatchPoints,
+  getKnockoutConfrontationMatches,
+  resolveKnockoutConfrontationQualifier,
   calculatePodiumPoints,
   calculateExtrasPoints,
   calculateBetTotal,

@@ -3,6 +3,7 @@ const Match = require('../models/Match');
 const Settings = require('../models/Settings');
 const { getEffectiveKnockoutFormat, getEffectiveKnockoutLegCount, buildKnockoutTieKey } = require('../utils/knockoutFormat');
 const { materializeKnockoutConfrontation } = require('../services/knockoutConfrontationService');
+const { API_KNOCKOUT_ROUND_MAP } = require('../utils/knockoutStageNames');
 
 /**
  * Mapeia os status da API para os Enums do seu MatchSchema
@@ -233,14 +234,7 @@ exports.fetchAndSyncMatches = async (req, res) => {
             // Não exigimos mais que o administrador escolha manualmente
             // a etapa durante a importação, mas preservamos exatamente
             // os nomes internos que o sistema já utiliza.
-            const knockoutRoundMap = {
-                'Round of 32': '16-avos de final',
-                'Round of 16': 'Oitavas de final',
-                'Quarterfinals': 'Quartas de final',
-                'Semifinals': 'Semifinal',
-                'Match for 3rd place': '3º lugar',
-                'Final': 'Final'
-            };
+            const knockoutRoundMap = API_KNOCKOUT_ROUND_MAP;
 
             const apiRoundName = item.round_name
                 ? String(item.round_name).trim()

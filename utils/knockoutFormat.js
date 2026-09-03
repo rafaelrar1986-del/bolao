@@ -2,7 +2,7 @@
 
 /**
  * Regras centrais do formato do mata-mata.
- * knockoutFinalFormat só tem efeito quando o formato geral é ida/volta.
+ * knockoutFinalFormat é a única exceção e pode ser diferente do formato geral.
  */
 function normalizeKnockoutFormat(value) {
   return value === 'home_away' ? 'home_away' : 'single';
@@ -32,15 +32,20 @@ function isFinalStage(matchOrStage) {
 function getEffectiveKnockoutFormat(championshipRules = {}, matchOrStage = {}) {
   const globalFormat = normalizeKnockoutFormat(championshipRules?.knockoutFormat);
 
-  if (globalFormat === 'single') return 'single';
-
+  // A Final é a única exceção ao formato geral e pode ser configurada
+  // independentemente dele. Ex.: mata-mata inteiro em jogo único + Final
+  // em ida/volta, ou vice-versa.
   if (isFinalStage(matchOrStage)) {
+    // Regra do campeonato: se o mata-mata geral for jogo único, a Final
+    // obrigatoriamente também é jogo único. A exceção de formato da Final
+    // só pode existir quando o formato geral é ida e volta.
+    if (globalFormat === 'single') return 'single';
     return normalizeKnockoutFormat(
-      championshipRules?.knockoutFinalFormat || 'home_away'
+      championshipRules?.knockoutFinalFormat || globalFormat
     );
   }
 
-  return 'home_away';
+  return globalFormat;
 }
 
 function getEffectiveKnockoutLegCount(championshipRules = {}, matchOrStage = {}) {
