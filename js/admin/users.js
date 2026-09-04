@@ -207,19 +207,24 @@ async function loadAdminUsers(forceReload = false) {
 
     if (section.style.display === 'block' && !forceReload) {
         section.style.display = 'none';
-        return; 
+        return;
     }
 
     section.style.display = 'block';
-    container.innerHTML = '<p style="text-align:center; color:#888; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Carregando...</p>';
+    container.innerHTML = '<p class="admin-users-loading"><i class="fas fa-spinner fa-spin"></i> Carregando...</p>';
 
     try {
         const leagueId = R.getAdminLeagueId();
+        if (!leagueId) {
+            container.innerHTML = '<p class="admin-users-empty">Selecione um campeonato para visualizar os usuários.</p>';
+            return;
+        }
+
         const response = await api.get(`/api/admin/users?leagueId=${encodeURIComponent(leagueId)}`);
         const users = response.users || [];
 
-        if (!users || users.length === 0) {
-            container.innerHTML = '<p style="text-align:center; color:#888;">Nenhum usuário encontrado.</p>';
+        if (!users.length) {
+            container.innerHTML = '<p class="admin-users-empty">Nenhum usuário encontrado.</p>';
             return;
         }
 
@@ -232,47 +237,83 @@ async function loadAdminUsers(forceReload = false) {
         container.innerHTML = users.map(user => {
             const safeId = String(user._id);
             const safeName = jsArg(user.name || 'Sem Nome');
+            const displayName = escapeText(user.name || 'Sem Nome');
+            const displayEmail = escapeText(user.email || '');
             const isSelf = currentUserId && currentUserId === safeId;
-            const paymentAction = user.paymentRequired === false
-              ? `<span style="color:#61dafb;font-weight:bold;">🆓 GRATUITO</span>`
-              : user.hasPaid
-              ? `<span style="color:#00ff00;font-weight:bold;">✅ PAGO</span>
-                 <button class="btn btn-outline-danger btn-sm" onclick="handleDisapproveUser('${safeId}', ${safeName})">Desaprovar PIX</button>`
-              : `<button class="btn btn-success btn-sm" onclick="handleApproveUser('${safeId}', ${safeName})">Aprovar PIX</button>`;
+            const isAdmin = user.isAdmin === true;
+            const hasPaid = user.hasPaid === true;
+            const paymentRequired = user.paymentRequired !== false;
+            const isFreeLeague = user.paymentRequired === false;
 
-            const adminAction = user.isAdmin
+            let paymentStatus;
+            let paymentAction;
+            if (isFreeLeague) {
+                paymentStatus = '<span class="admin-user-status admin-user-status-free">🆓 GRATUITO</span>';
+                paymentAction = '<span class="admin-user-menu-note">Pagamento não é exigido nesta liga.</span>';
+            } else if (hasPaid) {
+                paymentStatus = '<span class="admin-user-status admin-user-status-paid">🟢 PAGO</span>';
+                paymentAction = `<button type="button" class="admin-user-menu-btn" onclick="handleDisapproveUser('${safeId}', ${safeName})">✕ Desaprovar PIX</button>`;
+            } else {
+                paymentStatus = '<span class="admin-user-status admin-user-status-pending">🟡 PENDENTE</span>';
+                paymentAction = `<button type="button" class="admin-user-menu-btn admin-user-menu-btn-success" onclick="handleApproveUser('${safeId}', ${safeName})">✓ Aprovar PIX</button>`;
+            }
+
+            const adminAction = isAdmin
               ? (isSelf
-                ? `<button class="btn btn-secondary btn-sm" disabled title="Não é permitido remover o próprio privilégio">👑 ADMIN ATUAL</button>`
-                : `<button class="btn btn-warning btn-sm" onclick="handleDemoteUser('${safeId}', ${safeName})">Remover admin</button>`)
-              : `<button class="btn btn-info btn-sm" onclick="handlePromoteUser('${safeId}', ${safeName})">Tornar admin</button>`;
+                ? '<button type="button" class="admin-user-menu-btn" disabled title="Não é permitido remover o próprio privilégio">👑 Admin atual</button>'
+                : `<button type="button" class="admin-user-menu-btn" onclick="handleDemoteUser('${safeId}', ${safeName})">↓ Remover administrador</button>`)
+              : `<button type="button" class="admin-user-menu-btn" onclick="handlePromoteUser('${safeId}', ${safeName})">👑 Tornar administrador</button>`;
 
             const leagueRemoveAction = isSelf
-              ? `<button class="btn btn-secondary btn-sm" disabled title="Não é permitido remover a própria conta">Excluir da liga</button>`
-              : `<button class="btn btn-outline-warning btn-sm" onclick="handleRemoveUserFromLeague('${safeId}', ${safeName})">Excluir da liga</button>`;
+              ? '<button type="button" class="admin-user-menu-btn admin-user-menu-danger" disabled title="Não é permitido remover a própria conta">🚪 Excluir da liga</button>'
+              : `<button type="button" class="admin-user-menu-btn admin-user-menu-danger" onclick="handleRemoveUserFromLeague('${safeId}', ${safeName})">🚪 Excluir da liga</button>`;
 
             const systemDeleteAction = isSelf
-              ? `<button class="btn btn-secondary btn-sm" disabled title="Não é permitido excluir a própria conta">Excluir sistema</button>`
-              : `<button class="btn btn-danger btn-sm" onclick="handleDeleteUser('${safeId}', ${safeName})">Excluir sistema</button>`;
+              ? '<button type="button" class="admin-user-menu-btn admin-user-menu-danger" disabled title="Não é permitido excluir a própria conta">🔥 Excluir sistema</button>'
+              : `<button type="button" class="admin-user-menu-btn admin-user-menu-danger" onclick="handleDeleteUser('${safeId}', ${safeName})">🔥 Excluir sistema</button>`;
 
             return `
-            <div class="user-row" style="display:flex;justify-content:space-between;align-items:center;gap:14px;padding:12px;background:#222;border-radius:8px;margin-bottom:8px;border-left:4px solid ${user.hasPaid ? '#00ff00' : '#ffcc00'};">
-                <div style="display:flex;flex-direction:column;min-width:180px;">
-                    <strong style="color:#fff;">${escapeText(user.name || 'Sem Nome')} ${user.isAdmin ? '<span style=\"color:#ffd43b;font-size:11px;">👑 ADMIN</span>' : ''}</strong>
-                    <span style="font-size:12px;color:#888;">${escapeText(user.email || '')}</span>
+            <div class="admin-user-row ${isAdmin ? 'admin-user-row-admin' : ''} ${hasPaid ? 'admin-user-row-paid' : 'admin-user-row-pending'}">
+                <div class="admin-user-main">
+                    <div class="admin-user-name-line">
+                        <span class="admin-user-avatar" aria-hidden="true">${isAdmin ? '👑' : '👤'}</span>
+                        <strong>${displayName}</strong>
+                    </div>
+                    <span class="admin-user-email">${displayEmail}</span>
+                    <div class="admin-user-meta">
+                        ${paymentStatus}
+                        ${isAdmin ? '<span class="admin-user-admin-badge">ADMIN</span>' : ''}
+                    </div>
                 </div>
-                <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;">
-                    ${paymentAction}
-                    ${adminAction}
-                    ${leagueRemoveAction}
-                    ${systemDeleteAction}
-                </div>
+
+                <details class="admin-user-actions">
+                    <summary class="admin-user-actions-trigger" aria-label="Abrir ações de ${displayName}" title="Ações">
+                        <span aria-hidden="true">⋮</span>
+                    </summary>
+                    <div class="admin-user-actions-menu">
+                        <div class="admin-user-menu-section">
+                            <span class="admin-user-menu-label">Pagamento</span>
+                            ${paymentAction}
+                        </div>
+                        <div class="admin-user-menu-divider"></div>
+                        <div class="admin-user-menu-section">
+                            <span class="admin-user-menu-label">Administrador</span>
+                            ${adminAction}
+                        </div>
+                        <div class="admin-user-menu-divider"></div>
+                        <div class="admin-user-menu-section">
+                            <span class="admin-user-menu-label">Conta na liga</span>
+                            ${leagueRemoveAction}
+                            ${systemDeleteAction}
+                        </div>
+                    </div>
+                </details>
             </div>`;
         }).join('');
     } catch (err) {
-        console.error("Erro ao carregar usuários:", err);
-        toast("Erro ao carregar usuários", "error");
+        console.error('Erro ao carregar usuários:', err);
+        toast('Erro ao carregar usuários', 'error');
         section.style.display = 'none';
     }
 }
-
 registerAdminFunctions({openSetPodiumModal: openSetPodiumModal, resetAllBets: resetAllBets, openWhitelistModal: openWhitelistModal, loadWhitelist: loadWhitelist, loadStatsLockStatus: loadStatsLockStatus, updateStatsBtnUI: updateStatsBtnUI, toggleStatsLock: toggleStatsLock, openEmailModal: openEmailModal, loadAdminUsers: loadAdminUsers});

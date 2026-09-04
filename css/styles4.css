@@ -17513,3 +17513,254 @@ body:has(#admin) .modal-content .setting-section {
   }
   #admin .admin-league-dropdown-trigger { padding-left:11px; padding-right:11px; }
 }
+
+
+/* ================================================================
+   ADMIN — lista compacta de usuários e pagamentos
+   Mantém todas as ações, mas evita quatro botões empilhados por usuário.
+   ================================================================ */
+#admin-users-section {
+    overflow: visible;
+}
+
+#admin-users-section > h3 {
+    margin-bottom: 12px;
+}
+
+#admin-users-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow: visible;
+}
+
+.admin-users-loading,
+.admin-users-empty {
+    text-align: center;
+    color: #888;
+    padding: 14px 10px;
+    margin: 0;
+}
+
+.admin-user-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 70px;
+    padding: 10px 10px 10px 13px;
+    background: #222;
+    border-radius: 10px;
+    border-left: 4px solid #ffcc00;
+    box-sizing: border-box;
+}
+
+.admin-user-row-paid {
+    border-left-color: #4ade4a;
+}
+
+.admin-user-row-admin {
+    background: #242424;
+}
+
+.admin-user-main {
+    min-width: 0;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.admin-user-name-line {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+}
+
+.admin-user-name-line strong {
+    color: #fff;
+    font-size: 15px;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.admin-user-avatar {
+    flex: 0 0 auto;
+    font-size: 15px;
+}
+
+.admin-user-email {
+    color: #888;
+    font-size: 12px;
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.admin-user-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 2px;
+    min-height: 17px;
+}
+
+.admin-user-status,
+.admin-user-admin-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 11px;
+    line-height: 1;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.admin-user-status-paid { color: #62e962; }
+.admin-user-status-pending { color: #ffd34d; }
+.admin-user-status-free { color: #61dafb; }
+
+.admin-user-admin-badge {
+    color: #ffd43b;
+    border: 1px solid rgba(255, 212, 59, .25);
+    border-radius: 999px;
+    padding: 3px 6px;
+}
+
+.admin-user-actions {
+    position: relative;
+    flex: 0 0 auto;
+    align-self: center;
+}
+
+.admin-user-actions > summary {
+    list-style: none;
+}
+
+.admin-user-actions > summary::-webkit-details-marker {
+    display: none;
+}
+
+.admin-user-actions-trigger {
+    width: 38px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255,255,255,.14);
+    border-radius: 9px;
+    color: #ddd;
+    background: rgba(255,255,255,.05);
+    cursor: pointer;
+    font-size: 23px;
+    line-height: 1;
+    user-select: none;
+}
+
+.admin-user-actions-trigger:hover,
+.admin-user-actions[open] .admin-user-actions-trigger {
+    background: rgba(255,255,255,.12);
+    border-color: rgba(255,255,255,.24);
+}
+
+.admin-user-actions-menu {
+    position: absolute;
+    z-index: 1000;
+    top: calc(100% + 6px);
+    right: 0;
+    width: min(250px, calc(100vw - 44px));
+    padding: 8px;
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 11px;
+    background: #171717;
+    box-shadow: 0 12px 30px rgba(0,0,0,.42);
+}
+
+.admin-user-menu-section {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.admin-user-menu-label {
+    padding: 2px 8px 4px;
+    color: #777;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
+.admin-user-menu-divider {
+    height: 1px;
+    margin: 7px 2px;
+    background: rgba(255,255,255,.08);
+}
+
+.admin-user-menu-btn {
+    width: 100%;
+    min-height: 34px;
+    padding: 7px 9px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: #ddd;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+}
+
+.admin-user-menu-btn:hover:not(:disabled) {
+    background: rgba(255,255,255,.09);
+}
+
+.admin-user-menu-btn:disabled {
+    color: #777;
+    cursor: not-allowed;
+}
+
+.admin-user-menu-btn-success {
+    color: #70e070;
+}
+
+.admin-user-menu-danger {
+    color: #ff8b7c;
+}
+
+.admin-user-menu-note {
+    padding: 7px 8px;
+    color: #888;
+    font-size: 11px;
+    line-height: 1.3;
+}
+
+@media (max-width: 600px) {
+    .admin-user-row {
+        min-height: 72px;
+        padding: 9px 8px 9px 11px;
+        gap: 8px;
+    }
+
+    .admin-user-name-line strong {
+        font-size: 14px;
+    }
+
+    .admin-user-email {
+        font-size: 11px;
+    }
+
+    .admin-user-actions-trigger {
+        width: 36px;
+        height: 36px;
+    }
+
+    .admin-user-actions-menu {
+        width: min(245px, calc(100vw - 42px));
+    }
+}
