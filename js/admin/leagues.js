@@ -2,6 +2,38 @@ import { api } from '../api.js';
 import { toast, closeModal } from '../ui.js';
 import { R, registerAdminFunctions } from './adminRuntime.js';
 
+
+function getLeagueLogoUrl(leagueId) {
+  return String(leagueId) === '27'
+    ? './img/27.jpg'
+    : `https://sports.bzzoiro.com/img/league/${encodeURIComponent(String(leagueId))}`;
+}
+
+function updateAdminLeagueLogo(leagueId, leagueName = '') {
+  const img = document.getElementById('admin-dashboard-league-logo');
+  const fallback = document.getElementById('admin-dashboard-league-fallback');
+  const holder = img?.closest('.admin-dashboard-league-icon');
+  if (!img || !fallback || !holder) return;
+
+  const id = String(leagueId || '').trim();
+  img.hidden = true;
+  fallback.hidden = false;
+  img.alt = leagueName ? `Símbolo de ${leagueName}` : 'Símbolo da liga';
+  img.onload = () => {
+    img.hidden = false;
+    fallback.hidden = true;
+  };
+  img.onerror = () => {
+    img.hidden = true;
+    fallback.hidden = false;
+  };
+  if (!id) {
+    img.removeAttribute('src');
+    return;
+  }
+  img.src = getLeagueLogoUrl(id);
+}
+
 function setAdminLeague(id, name = '') {
   const leagueId = String(id);
   localStorage.setItem('adminSelectedLeagueId', leagueId);
@@ -27,7 +59,12 @@ async function loadAdminLeagues({ selectCurrent = true } = {}) {
       R.setAdminLeagueId(leagues[0].leagueId, leagues[0].name);
     }
     const currentLeague = leagues.find(l => String(l.leagueId) === String(select.value));
-    if (currentLeague) R.setAdminLeagueId(currentLeague.leagueId, currentLeague.name);
+    if (currentLeague) {
+      R.setAdminLeagueId(currentLeague.leagueId, currentLeague.name);
+      updateAdminLeagueLogo(currentLeague.leagueId, currentLeague.name);
+    } else {
+      updateAdminLeagueLogo('', '');
+    }
     return leagues;
   } catch (err) {
     console.error('Erro ao carregar campeonatos do Admin:', err);
@@ -41,6 +78,7 @@ async function switchAdminLeague() {
   const option = select?.selectedOptions?.[0];
   if (!select?.value) return;
   R.setAdminLeagueId(select.value, option?.textContent || '');
+  updateAdminLeagueLogo(select.value, option?.textContent || '');
   R.activeAdminTab = 'group';
   R.selectedAdminMatchIds.clear();
   R.CurrentSettings = { ...R.CurrentSettings };
@@ -159,4 +197,4 @@ async function openCreateLeagueModal() {
   });
 }
 
-registerAdminFunctions({ loadAdminLeagues, switchAdminLeague, openCreateLeagueModal });
+registerAdminFunctions({ loadAdminLeagues, switchAdminLeague, openCreateLeagueModal, updateAdminLeagueLogo });

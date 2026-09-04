@@ -624,19 +624,20 @@
         <span class="admin-dashboard-kicker">ADMINISTRAÇÃO</span>
         <h2><i class="fas fa-shield-alt"></i> Painel do torneio</h2>
       </div>
-      <button type="button" class="admin-dashboard-refresh" onclick="window.loadAdminMatches()" title="Atualizar">
-        <i class="fas fa-sync-alt"></i>
-      </button>
+      <div class="admin-dashboard-league-icon" title="Liga em gerenciamento" aria-label="Liga em gerenciamento">
+        <img id="admin-dashboard-league-logo" src="" alt="Liga em gerenciamento" loading="lazy" hidden>
+        <i id="admin-dashboard-league-fallback" class="fas fa-trophy" aria-hidden="true"></i>
+      </div>
     </div>
 
     <section class="admin-league-manager" aria-label="Seleção do campeonato em gerenciamento">
-      <label for="admin-league-selector">CAMPEONATO EM GERENCIAMENTO</label>
+      <label for="admin-league-selector">Gerenciando</label>
       <div class="admin-league-manager-row">
-        <select id="admin-league-selector" aria-label="Campeonato em gerenciamento">
+        <select id="admin-league-selector" aria-label="Liga em gerenciamento">
           <option value="">Carregando...</option>
         </select>
-        <button type="button" class="admin-league-create-btn" onclick="window.openCreateLeagueModal()" title="Criar novo campeonato">
-          <i class="fas fa-plus"></i><span>Novo campeonato</span>
+        <button type="button" class="admin-league-create-btn" onclick="window.openCreateLeagueModal()" title="Criar nova liga">
+          <i class="fas fa-plus"></i><span>Liga</span>
         </button>
       </div>
     </section>

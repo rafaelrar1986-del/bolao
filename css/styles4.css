@@ -15882,9 +15882,27 @@ body:has(#login-section:not([hidden])){
 #admin .admin-dashboard-kicker {font-size:10px; letter-spacing:1.4px; color:#60a5fa; font-weight:800;}
 #admin .admin-dashboard h2 {margin:3px 0 0; font-size:20px;}
 #admin .admin-dashboard h2 i {color:#60a5fa; margin-right:6px;}
-#admin .admin-dashboard-refresh {
-  width:42px;height:42px;border-radius:12px;border:1px solid rgba(255,255,255,.1);
-  background:rgba(255,255,255,.05);color:#cbd5e1;font-size:16px;
+#admin .admin-dashboard-league-icon {
+  width:42px;
+  height:42px;
+  flex:0 0 42px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.1);
+  background:rgba(255,255,255,.05);
+  color:#cbd5e1;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+}
+#admin .admin-dashboard-league-icon img {
+  width:32px;
+  height:32px;
+  object-fit:contain;
+  filter:drop-shadow(0 4px 6px rgba(0,0,0,.35));
+}
+#admin .admin-dashboard-league-icon i {
+  font-size:19px;
 }
 #admin .admin-section-heading {
   font-size:10px; letter-spacing:1.2px; font-weight:800; color:#94a3b8;
@@ -17357,11 +17375,11 @@ body:has(#admin) .modal-content .setting-section {
 #admin .admin-league-manager {
   width:100%;
   margin:0 0 14px;
-  padding:12px 14px 14px;
+  padding:10px 12px 11px;
   box-sizing:border-box;
   display:flex;
   flex-direction:column;
-  gap:7px;
+  gap:5px;
   border:1px solid rgba(255,255,255,.07);
   border-radius:16px;
   background:rgba(8,13,22,.55);
@@ -17417,12 +17435,14 @@ body:has(#admin) .modal-content .setting-section {
     font-size:19px;
   }
   #admin .admin-league-manager {
-    padding:11px 12px 12px;
+    padding:9px 10px 10px;
   }
   #admin .admin-league-manager-row {
-    grid-template-columns:minmax(0,1fr);
+    grid-template-columns:minmax(0,1fr) auto;
+    gap:6px;
   }
   #admin .admin-league-create-btn {
-    width:100%;
+    min-width:72px;
+    padding:0 12px;
   }
 }
