@@ -1074,6 +1074,37 @@ router.post('/global', protect, admin, async (req, res) => {
 
     /*
      * ============================================================
+     * 3A. 💰 PAGAMENTO / PIX DA LIGA
+     * ============================================================
+     *
+     * O frontend histórico envia pixKey/pixQrCode no nível raiz.
+     * Também aceitamos payment:{ pixKey, pixQrCode } para manter
+     * a API explícita. Ambos são gravados em Settings.payment,
+     * que pertence ao leagueId alvo.
+     */
+    if (req.body.pixKey !== undefined || req.body.pixQrCode !== undefined || req.body.payment !== undefined) {
+      const currentPayment = currentSettingsForRules?.payment || {};
+      const incomingPayment = req.body.payment && typeof req.body.payment === 'object'
+        ? req.body.payment
+        : {};
+      lockUpdates.payment = {
+        pixKey: String(
+          incomingPayment.pixKey ??
+          req.body.pixKey ??
+          currentPayment.pixKey ??
+          ''
+        ).trim(),
+        pixQrCode: String(
+          incomingPayment.pixQrCode ??
+          req.body.pixQrCode ??
+          currentPayment.pixQrCode ??
+          ''
+        )
+      };
+    }
+
+    /*
+     * ============================================================
      * 4. SALVA AS CONFIGURAÇÕES DA LIGA
      * ============================================================
      */

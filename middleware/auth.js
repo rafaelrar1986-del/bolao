@@ -72,19 +72,50 @@ const protect = async (req, res, next) => {
   }
 };
 
+const normalizeLeagueId = (value) =>
+  value == null ? '' : String(value).trim();
+
+const getRequestedLeagueId = (req) =>
+  normalizeLeagueId(
+    req.query?.leagueId ??
+    req.body?.leagueId ??
+    req.params?.leagueId
+  );
+
+const isUserPaidForLeague = (user, leagueId) => {
+  const id = normalizeLeagueId(leagueId);
+  if (!id || !user) return false;
+
+  // Compatibilidade: usuários antigos com hasPaid=true estavam pagos
+  // no campeonato legado principal (leagueId 1). Não liberamos outras ligas.
+  if (Array.isArray(user.paidLeagues) && user.paidLeagues.some(v => normalizeLeagueId(v) === id)) {
+    return true;
+  }
+  return id === '1' && user.hasPaid === true;
+};
+
 const checkPaid = (req, res, next) => {
   if (!req.user) {
     return res.status(401).json({ success: false, message: 'Autenticação necessária.' });
   }
 
-  if (req.user.isAdmin || req.user.hasPaid) {
-    return next();
+  if (req.user.isAdmin) return next();
+
+  const leagueId = getRequestedLeagueId(req);
+  if (!leagueId) {
+    return res.status(400).json({
+      success: false,
+      message: 'leagueId é obrigatório para verificar o pagamento.'
+    });
   }
+
+  if (isUserPaidForLeague(req.user, leagueId)) return next();
 
   return res.status(402).json({
     success: false,
-    message: 'Acesso bloqueado: Pagamento da cota pendente.',
-    requiresPayment: true
+    message: 'Acesso bloqueado: Pagamento da cota desta liga pendente.',
+    requiresPayment: true,
+    leagueId
   });
 };
 
@@ -112,6 +143,8 @@ const requirePermission = (permission) => {
 module.exports = {
   protect,
   admin,
-  checkPaid, 
+  checkPaid,
+  getRequestedLeagueId,
+  isUserPaidForLeague,
   requirePermission,
 };

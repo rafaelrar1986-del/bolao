@@ -33,6 +33,14 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+
+  // 💰 PAGAMENTOS INDIVIDUAIS POR CAMPEONAMENTO.
+  // Mantemos hasPaid apenas para compatibilidade com usuários legados.
+  // A autorização atual usa paidLeagues + leagueId.
+  paidLeagues: {
+    type: [String],
+    default: []
+  },
   passwordVersion: {
     type: Number,
     default: 1, // 1 = bcrypt, 2 = crypto fallback
@@ -120,8 +128,16 @@ userSchema.pre('save', async function() {
 // ======================
 
 // 🔥 NOVO MÉTODO: Aprovar pagamento do usuário
-userSchema.methods.approvePayment = async function() {
-  this.hasPaid = true;
+userSchema.methods.approvePayment = async function(leagueId) {
+  const id = leagueId == null ? '' : String(leagueId).trim();
+  if (!id) throw new Error('leagueId é obrigatório para aprovar pagamento.');
+
+  const paidLeagues = Array.isArray(this.paidLeagues)
+    ? this.paidLeagues.map(String)
+    : [];
+  if (!paidLeagues.includes(id)) paidLeagues.push(id);
+
+  this.paidLeagues = paidLeagues;
   return await this.save();
 };
 
@@ -196,7 +212,12 @@ userSchema.statics.getSecurityStats = async function() {
   const totalUsers = await this.countDocuments();
   const bcryptUsers = await this.countDocuments({ passwordVersion: 1 });
   const cryptoUsers = await this.countDocuments({ passwordVersion: 2 });
-  const unpaidUsers = await this.countDocuments({ hasPaid: false }); // 📊 Adicionado estatística de pagamento
+  const unpaidUsers = await this.countDocuments({
+    $and: [
+      { hasPaid: { $ne: true } },
+      { $or: [{ paidLeagues: { $exists: false } }, { paidLeagues: { $size: 0 } }] }
+    ]
+  }); // Usuário sem pagamento em qualquer liga
   
   return {
     totalUsers,
@@ -210,6 +231,7 @@ userSchema.statics.getSecurityStats = async function() {
 
 userSchema.index({ email: 1 });
 userSchema.index({ lockUntil: 1 });
-userSchema.index({ hasPaid: 1 }); // 🚀 Índice para busca rápida de devedores no ADM
+userSchema.index({ hasPaid: 1 });
+userSchema.index({ paidLeagues: 1 });
 
 module.exports = mongoose.model('User', userSchema);

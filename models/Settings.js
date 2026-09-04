@@ -197,6 +197,18 @@ const SettingsSchema = new mongoose.Schema(
       }
     },
 
+    // 💰 PAGAMENTO / PIX EXCLUSIVO DESTA LIGA
+    payment: {
+      pixKey: {
+        type: String,
+        default: ''
+      },
+      pixQrCode: {
+        type: String,
+        default: ''
+      }
+    },
+
     // 🏆 REGRAS DO CAMPEONATO (configurações adicionais)
     // Alinhado com pointsService.js e bets.js
     championshipRules: {

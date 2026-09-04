@@ -5,7 +5,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto'); 
 const User = require('../models/User');
 const AllowedEmail = require('../models/AllowedEmail');
-const { protect } = require('../middleware/auth');
+const { protect, isUserPaidForLeague } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -101,6 +101,7 @@ router.post('/register', async (req, res) => {
         email: user.email,
         isAdmin: user.isAdmin,
         hasPaid: user.hasPaid,
+        paidLeagues: Array.isArray(user.paidLeagues) ? user.paidLeagues : [],
         createdAt: user.createdAt,
         avatar: user.avatar || null
       },
@@ -141,6 +142,7 @@ router.post('/login', async (req, res) => {
         email: user.email,
         isAdmin: user.isAdmin,
         hasPaid: user.hasPaid,
+        paidLeagues: Array.isArray(user.paidLeagues) ? user.paidLeagues : [],
         createdAt: user.createdAt,
         avatar: user.avatar || null
       },
@@ -198,6 +200,13 @@ router.get('/me', protect, async (req, res) => {
     const user = await User.findById(req.user._id);
     if (!user) return res.status(404).json({ success: false, message: 'Usuário não encontrado' });
 
+    const leagueId = req.query?.leagueId != null
+      ? String(req.query.leagueId).trim()
+      : '';
+    const currentLeaguePaid = user.isAdmin
+      ? true
+      : (leagueId ? isUserPaidForLeague(user, leagueId) : false);
+
     res.json({
       success: true,
       user: {
@@ -206,6 +215,9 @@ router.get('/me', protect, async (req, res) => {
         email: user.email,
         isAdmin: user.isAdmin,
         hasPaid: user.hasPaid,
+        paidLeagues: Array.isArray(user.paidLeagues) ? user.paidLeagues : [],
+        currentLeagueId: leagueId || null,
+        currentLeaguePaid,
         createdAt: user.createdAt,
         avatar: user.avatar || null
       }
@@ -214,7 +226,6 @@ router.get('/me', protect, async (req, res) => {
     res.status(500).json({ success: false, message: 'Erro ao buscar dados' });
   }
 });
-
 
 // ======================
 // 🖼️ AVATAR DO PRÓPRIO PERFIL

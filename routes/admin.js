@@ -12,7 +12,7 @@ const Settings = require('../models/Settings');
 const League = require('../models/League');
 const BetReceipt = require('../models/BetReceipt');
 const { sendBroadcastEmail } = require('../services/emailService');
-const { protect, admin } = require('../middleware/auth');
+const { protect, admin, isUserPaidForLeague } = require('../middleware/auth');
 
 // Importação do Controller do Robô
 const robotController = require('../controllers/robotController');
@@ -192,14 +192,30 @@ router.post('/robot/sync', protect, admin, robotController.fetchAndSyncMatches);
  */
 router.get('/users', protect, admin, async (req, res) => {
   try {
-    // Buscamos os campos necessários, incluindo o hasPaid que estava faltando antes
-    const users = await User.find({}, 'name email isAdmin hasPaid createdAt').sort({ createdAt: -1 });
-    
-    // IMPORTANTE: O frontend espera um objeto com a propriedade "users"
-    res.json({
-      success: true,
-      users: users 
-    });
+    const leagueId = req.query?.leagueId != null
+      ? String(req.query.leagueId).trim()
+      : '';
+
+    if (!leagueId) {
+      return res.status(400).json({
+        success: false,
+        message: 'leagueId é obrigatório para listar pagamentos.'
+      });
+    }
+
+    const users = await User.find(
+      {},
+      'name email isAdmin hasPaid paidLeagues leagues createdAt'
+    ).sort({ createdAt: -1 }).lean();
+
+    const enrichedUsers = users.map(user => ({
+      ...user,
+      hasPaid: isUserPaidForLeague(user, leagueId),
+      paidLeagues: Array.isArray(user.paidLeagues) ? user.paidLeagues : [],
+      leagueId
+    }));
+
+    res.json({ success: true, users: enrichedUsers });
   } catch (error) {
     console.error('❌ Erro ao buscar usuários:', error);
     res.status(500).json({ success: false, message: 'Erro ao buscar usuários.' });
@@ -208,22 +224,78 @@ router.get('/users', protect, admin, async (req, res) => {
 
 /**
  * @route    PUT /api/admin/approve-user/:id
- * @desc     Aprova manualmente o pagamento de um usuário
+ * @desc     Aprova manualmente o pagamento do usuário na liga selecionada
  */
 router.put('/approve-user/:id', protect, admin, async (req, res) => {
   try {
-    const user = await User.findById(req.params.id);
+    const leagueId = req.body?.leagueId != null
+      ? String(req.body.leagueId).trim()
+      : '';
+    if (!leagueId) {
+      return res.status(400).json({
+        success: false,
+        message: 'leagueId é obrigatório para aprovar o pagamento.'
+      });
+    }
 
+    const user = await User.findById(req.params.id);
     if (!user) {
       return res.status(404).json({ success: false, message: 'Usuário não encontrado.' });
     }
 
-    user.hasPaid = true; 
+    const paidLeagues = Array.isArray(user.paidLeagues)
+      ? user.paidLeagues.map(String)
+      : [];
+    if (!paidLeagues.includes(leagueId)) paidLeagues.push(leagueId);
+    user.paidLeagues = paidLeagues;
     await user.save();
 
-    console.log(`💰 Usuário aprovado: ${user.email}`);
-    res.json({ success: true, message: `Pagamento de ${user.name} aprovado!` });
+    res.json({
+      success: true,
+      message: `Pagamento de ${user.name} aprovado na liga ${leagueId}!`,
+      leagueId,
+      hasPaid: true
+    });
   } catch (error) {
+    console.error('❌ Erro ao aprovar pagamento:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * @route    PUT /api/admin/disapprove-user/:id
+ * @desc     Remove a aprovação de pagamento do usuário na liga selecionada
+ */
+router.put('/disapprove-user/:id', protect, admin, async (req, res) => {
+  try {
+    const leagueId = req.body?.leagueId != null
+      ? String(req.body.leagueId).trim()
+      : '';
+    if (!leagueId) {
+      return res.status(400).json({
+        success: false,
+        message: 'leagueId é obrigatório para desaprovar o pagamento.'
+      });
+    }
+
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Usuário não encontrado.' });
+    }
+
+    user.paidLeagues = (Array.isArray(user.paidLeagues) ? user.paidLeagues : [])
+      .map(String)
+      .filter(id => id !== leagueId);
+    await user.save();
+
+    res.json({
+      success: true,
+      message: `Pagamento de ${user.name} desaprovado na liga ${leagueId}.`,
+      leagueId,
+      hasPaid: false
+    });
+  } catch (error) {
+    console.error('❌ Erro ao desaprovar pagamento:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
