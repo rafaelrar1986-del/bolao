@@ -1088,6 +1088,11 @@ router.post('/global', protect, admin, async (req, res) => {
         ? req.body.payment
         : {};
       lockUpdates.payment = {
+        required: incomingPayment.required !== undefined
+          ? Boolean(incomingPayment.required)
+          : (req.body.paymentRequired !== undefined
+              ? Boolean(req.body.paymentRequired)
+              : (currentPayment.required !== false)),
         pixKey: String(
           incomingPayment.pixKey ??
           req.body.pixKey ??

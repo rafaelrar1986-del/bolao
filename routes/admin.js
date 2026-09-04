@@ -203,15 +203,37 @@ router.get('/users', protect, admin, async (req, res) => {
       });
     }
 
+    // Mostramos somente usuários que têm relação com a liga administrada:
+    // pedido pendente, pagamento aprovado ou participação. Nunca listamos
+    // usuários de outras ligas sem relação com a liga atual.
+    const leagueSettings = await Settings.findById(leagueId).select('payment.required').lean();
+    if (!leagueSettings) {
+      return res.status(404).json({
+        success: false,
+        message: 'Configuração do campeonato não encontrada.'
+      });
+    }
+    const paymentRequired = leagueSettings.payment?.required !== false;
+
     const users = await User.find(
-      {},
-      'name email isAdmin hasPaid paidLeagues leagues createdAt'
+      {
+        $or: [
+          { leaguePaymentRequests: leagueId },
+          { paidLeagues: leagueId },
+          { leagues: leagueId },
+          // Compatibilidade com o campeonato legado principal.
+          ...(leagueId === '1' ? [{ hasPaid: true }] : [])
+        ]
+      },
+      'name email isAdmin hasPaid paidLeagues leaguePaymentRequests leagues createdAt'
     ).sort({ createdAt: -1 }).lean();
 
     const enrichedUsers = users.map(user => ({
       ...user,
       hasPaid: isUserPaidForLeague(user, leagueId),
       paidLeagues: Array.isArray(user.paidLeagues) ? user.paidLeagues : [],
+      leaguePaymentRequests: Array.isArray(user.leaguePaymentRequests) ? user.leaguePaymentRequests : [],
+      paymentRequired,
       leagueId
     }));
 
@@ -248,6 +270,17 @@ router.put('/approve-user/:id', protect, admin, async (req, res) => {
       : [];
     if (!paidLeagues.includes(leagueId)) paidLeagues.push(leagueId);
     user.paidLeagues = paidLeagues;
+    // A aprovação transforma o pedido em acesso efetivo e remove o pedido
+    // pendente, conforme a regra definida para o campeonato.
+    user.leaguePaymentRequests = (Array.isArray(user.leaguePaymentRequests)
+      ? user.leaguePaymentRequests
+      : [])
+      .map(String)
+      .filter(id => id !== leagueId);
+
+    const leagues = Array.isArray(user.leagues) ? user.leagues.map(String) : [];
+    if (!leagues.includes(leagueId)) leagues.push(leagueId);
+    user.leagues = leagues;
     await user.save();
 
     res.json({
@@ -286,6 +319,17 @@ router.put('/disapprove-user/:id', protect, admin, async (req, res) => {
     user.paidLeagues = (Array.isArray(user.paidLeagues) ? user.paidLeagues : [])
       .map(String)
       .filter(id => id !== leagueId);
+
+    // Desaprovação revoga imediatamente a participação e remove o pedido.
+    user.leagues = (Array.isArray(user.leagues) ? user.leagues : [])
+      .map(String)
+      .filter(id => id !== leagueId);
+    user.leaguePaymentRequests = (Array.isArray(user.leaguePaymentRequests)
+      ? user.leaguePaymentRequests
+      : [])
+      .map(String)
+      .filter(id => id !== leagueId);
+
     await user.save();
 
     res.json({

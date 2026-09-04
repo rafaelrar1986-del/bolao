@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto'); 
 const User = require('../models/User');
+const Settings = require('../models/Settings');
 const AllowedEmail = require('../models/AllowedEmail');
 const { protect, isUserPaidForLeague } = require('../middleware/auth');
 
@@ -216,14 +217,127 @@ router.get('/me', protect, async (req, res) => {
         isAdmin: user.isAdmin,
         hasPaid: user.hasPaid,
         paidLeagues: Array.isArray(user.paidLeagues) ? user.paidLeagues : [],
+        leaguePaymentRequests: Array.isArray(user.leaguePaymentRequests) ? user.leaguePaymentRequests : [],
         currentLeagueId: leagueId || null,
         currentLeaguePaid,
+        currentLeaguePaymentRequired: leagueId
+          ? ((await Settings.findById(leagueId).select('payment.required').lean())?.payment?.required !== false)
+          : false,
         createdAt: user.createdAt,
         avatar: user.avatar || null
       }
     });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Erro ao buscar dados' });
+  }
+});
+
+// ======================
+// 💰 SOLICITAR ENTRADA/PAGAMENTO DE UMA LIGA
+// ======================
+router.post('/league-payment-request', protect, async (req, res) => {
+  try {
+    const leagueId = req.body?.leagueId != null
+      ? String(req.body.leagueId).trim()
+      : '';
+
+    if (!leagueId) {
+      return res.status(400).json({
+        success: false,
+        message: 'leagueId é obrigatório.'
+      });
+    }
+
+    const settings = await Settings.findById(leagueId).lean();
+    if (!settings) {
+      return res.status(404).json({
+        success: false,
+        message: 'Campeonato não encontrado.'
+      });
+    }
+
+    const requiresPayment = settings.payment?.required !== false;
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Usuário não encontrado.'
+      });
+    }
+
+    // Administradores não precisam solicitar acesso.
+    if (user.isAdmin) {
+      return res.json({
+        success: true,
+        leagueId,
+        requiresPayment,
+        alreadyPaid: true,
+        requested: false
+      });
+    }
+
+    // Liga gratuita: não cria pedido de PIX. A entrada é liberada pelo próprio
+    // status da liga, sem alterar o estado de pagamento.
+    if (!requiresPayment) {
+      const leagues = Array.isArray(user.leagues) ? user.leagues.map(String) : [];
+      if (!leagues.includes(leagueId)) {
+        leagues.push(leagueId);
+        user.leagues = leagues;
+        await user.save();
+      }
+      return res.json({
+        success: true,
+        leagueId,
+        requiresPayment: false,
+        alreadyPaid: false,
+        requested: false,
+        accessGranted: true
+      });
+    }
+
+    const paidLeagues = Array.isArray(user.paidLeagues)
+      ? user.paidLeagues.map(String)
+      : [];
+
+    if (paidLeagues.includes(leagueId)) {
+      const leagues = Array.isArray(user.leagues) ? user.leagues.map(String) : [];
+      if (!leagues.includes(leagueId)) {
+        leagues.push(leagueId);
+        user.leagues = leagues;
+        await user.save();
+      }
+      return res.json({
+        success: true,
+        leagueId,
+        requiresPayment: true,
+        alreadyPaid: true,
+        requested: false
+      });
+    }
+
+    const requests = Array.isArray(user.leaguePaymentRequests)
+      ? user.leaguePaymentRequests.map(String)
+      : [];
+
+    if (!requests.includes(leagueId)) {
+      requests.push(leagueId);
+      user.leaguePaymentRequests = requests;
+      await user.save();
+    }
+
+    return res.json({
+      success: true,
+      leagueId,
+      requiresPayment: true,
+      alreadyPaid: false,
+      requested: true
+    });
+  } catch (error) {
+    console.error('❌ Erro ao registrar solicitação de pagamento da liga:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro ao registrar solicitação de pagamento.'
+    });
   }
 });
 

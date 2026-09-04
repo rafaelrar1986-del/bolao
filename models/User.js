@@ -41,6 +41,13 @@ const userSchema = new mongoose.Schema({
     type: [String],
     default: []
   },
+  // 📋 SOLICITAÇÕES DE ENTRADA/PAGAMENTO POR CAMPEONAMENTO.
+  // Uma solicitação existe apenas enquanto está pendente. Ao aprovar ou
+  // desaprovar, ela é removida; paidLeagues/leagues representam o estado atual.
+  leaguePaymentRequests: {
+    type: [String],
+    default: []
+  },
   passwordVersion: {
     type: Number,
     default: 1, // 1 = bcrypt, 2 = crypto fallback

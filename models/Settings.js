@@ -199,6 +199,12 @@ const SettingsSchema = new mongoose.Schema(
 
     // 💰 PAGAMENTO / PIX EXCLUSIVO DESTA LIGA
     payment: {
+      // true = campeonato exige pagamento; false = acesso gratuito.
+      // O padrão true preserva o comportamento dos campeonatos pagos existentes.
+      required: {
+        type: Boolean,
+        default: true
+      },
       pixKey: {
         type: String,
         default: ''
