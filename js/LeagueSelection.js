@@ -1,5 +1,6 @@
 // js/LeagueSelection.js — adaptado para vanilla JS + API nova
 import { api } from './api.js';
+import { getLeagueLogoUrl } from './leagueLogo.js';
 
 function getTimeRemaining(dateString) {
   if (!dateString) return "Indefinido";
@@ -38,10 +39,7 @@ export async function showLeagueSelection() {
     }
 
     leagues.forEach(league => {
-      const leagueLogoUrl =
-        league.id == 27
-          ? '../img/27.jpg'
-          : `https://sports.bzzoiro.com/img/league/${league.id}`;
+      const leagueLogoUrl = getLeagueLogoUrl(league);
 
       const timeDisplay = getTimeRemaining(league.nextMatchDate);
       const hasNoMatches = Number(league.totalMatches || 0) === 0;

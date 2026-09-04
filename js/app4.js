@@ -1,3 +1,4 @@
+import { getLeagueLogoUrl } from './leagueLogo.js';
 const API_BASE_URL = window.CONFIG?.API_BASE_URL || "https://bolao-62rz.onrender.com";
 
 /* =====================
@@ -307,10 +308,7 @@ async function showLeagueSelection() {
     }
 
     leagues.forEach(league => {
-      const leagueLogoUrl =
-        league.id == 27
-          ? '../img/27.jpg'
-          : `https://sports.bzzoiro.com/img/league/${league.id}`;
+      const leagueLogoUrl = getLeagueLogoUrl(league);
 
       const timeDisplay = getTimeRemaining(league.nextMatchDate);
       const isClosed = league.count === 0;

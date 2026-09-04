@@ -1,24 +1,23 @@
 import { api } from '../api.js';
 import { toast, closeModal } from '../ui.js';
 import { R, registerAdminFunctions } from './adminRuntime.js';
+import { getLeagueLogoUrl } from '../leagueLogo.js';
 
 
-function getLeagueLogoUrl(leagueId) {
-  return String(leagueId) === '27'
-    ? './img/27.jpg'
-    : `https://sports.bzzoiro.com/img/league/${encodeURIComponent(String(leagueId))}`;
-}
-
-function updateAdminLeagueLogo(leagueId, leagueName = '') {
+function updateAdminLeagueLogo(leagueOrId, leagueName = '') {
   const img = document.getElementById('admin-dashboard-league-logo');
   const fallback = document.getElementById('admin-dashboard-league-fallback');
   const holder = img?.closest('.admin-dashboard-league-icon');
   if (!img || !fallback || !holder) return;
 
-  const id = String(leagueId || '').trim();
+  const league = leagueOrId && typeof leagueOrId === 'object'
+    ? leagueOrId
+    : { id: leagueOrId, name: leagueName };
+  const logoUrl = getLeagueLogoUrl(league);
+
   img.hidden = true;
   fallback.hidden = false;
-  img.alt = leagueName ? `Símbolo de ${leagueName}` : 'Símbolo da liga';
+  img.alt = league.name ? `Símbolo de ${league.name}` : 'Símbolo da liga';
   img.onload = () => {
     img.hidden = false;
     fallback.hidden = true;
@@ -27,11 +26,12 @@ function updateAdminLeagueLogo(leagueId, leagueName = '') {
     img.hidden = true;
     fallback.hidden = false;
   };
-  if (!id) {
+
+  if (!logoUrl) {
     img.removeAttribute('src');
     return;
   }
-  img.src = getLeagueLogoUrl(id);
+  img.src = logoUrl;
 }
 
 function setAdminLeague(id, name = '') {
@@ -61,7 +61,7 @@ async function loadAdminLeagues({ selectCurrent = true } = {}) {
     const currentLeague = leagues.find(l => String(l.leagueId) === String(select.value));
     if (currentLeague) {
       R.setAdminLeagueId(currentLeague.leagueId, currentLeague.name);
-      updateAdminLeagueLogo(currentLeague.leagueId, currentLeague.name);
+      updateAdminLeagueLogo(currentLeague);
     } else {
       updateAdminLeagueLogo('', '');
     }
@@ -78,7 +78,8 @@ async function switchAdminLeague() {
   const option = select?.selectedOptions?.[0];
   if (!select?.value) return;
   R.setAdminLeagueId(select.value, option?.textContent || '');
-  updateAdminLeagueLogo(select.value, option?.textContent || '');
+  const currentLeague = R.AdminState.leagues.find(l => String(l.leagueId) === String(select.value));
+  updateAdminLeagueLogo(currentLeague || { leagueId: select.value, id: select.value, name: option?.textContent || '' });
   R.activeAdminTab = 'group';
   R.selectedAdminMatchIds.clear();
   R.CurrentSettings = { ...R.CurrentSettings };
