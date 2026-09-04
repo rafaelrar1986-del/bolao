@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const router = express.Router();
 const multer = require('multer');
 const fs = require('fs');
@@ -11,6 +12,9 @@ const Match = require('../models/Match');
 const Settings = require('../models/Settings');
 const League = require('../models/League');
 const BetReceipt = require('../models/BetReceipt');
+const Bet = require('../models/Bet');
+const PointsHistory = require('../models/PointsHistory');
+const NewsMessage = require('../models/NewsMessage');
 const { sendBroadcastEmail } = require('../services/emailService');
 const { protect, admin, isUserPaidForLeague } = require('../middleware/auth');
 
@@ -341,6 +345,94 @@ router.put('/disapprove-user/:id', protect, admin, async (req, res) => {
   } catch (error) {
     console.error('❌ Erro ao desaprovar pagamento:', error);
     res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * @route    POST /api/admin/make-admin
+ * @desc     Promove um usuário existente a administrador.
+ *           A operação é protegida por autenticação + privilégio de Admin.
+ */
+router.post('/make-admin', protect, admin, async (req, res) => {
+  try {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'E-mail é obrigatório.' });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Usuário não encontrado.' });
+    }
+
+    if (user.isAdmin) {
+      return res.json({ success: true, message: 'Usuário já é administrador.', user: { _id: user._id, name: user.name, email: user.email, isAdmin: true } });
+    }
+
+    user.isAdmin = true;
+    await user.save();
+
+    return res.json({
+      success: true,
+      message: `${user.name || user.email} agora é administrador.`,
+      user: { _id: user._id, name: user.name, email: user.email, isAdmin: true }
+    });
+  } catch (error) {
+    console.error('❌ Erro ao promover usuário a Admin:', error);
+    return res.status(500).json({ success: false, message: 'Erro ao promover usuário a administrador.' });
+  }
+});
+
+/**
+ * @route    DELETE /api/admin/users/:id
+ * @desc     Exclui um usuário e seus dados diretamente vinculados.
+ *           A operação é administrativa e não permite autoexclusão nem a
+ *           remoção do último administrador do sistema.
+ */
+router.delete('/users/:id', protect, admin, async (req, res) => {
+  try {
+    const userId = String(req.params.id || '').trim();
+    if (!mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({ success: false, message: 'ID de usuário inválido.' });
+    }
+
+    if (String(req.user._id) === userId) {
+      return res.status(400).json({ success: false, message: 'Você não pode excluir o próprio usuário.' });
+    }
+
+    const user = await User.findById(userId).select('_id name email isAdmin').lean();
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Usuário não encontrado.' });
+    }
+
+    if (user.isAdmin) {
+      const adminCount = await User.countDocuments({ isAdmin: true });
+      if (adminCount <= 1) {
+        return res.status(400).json({ success: false, message: 'Não é possível excluir o último administrador.' });
+      }
+    }
+
+    // Limpeza das referências/documentos diretamente pertencentes ao usuário.
+    // Mantemos partidas, configurações e ligas; apenas removemos dados do participante.
+    await Promise.all([
+      BetReceipt.deleteMany({ user: userId }),
+      Bet.deleteMany({ user: userId }),
+      PointsHistory.deleteMany({ user: userId }),
+      NewsMessage.deleteMany({ user: userId }),
+      NewsMessage.updateMany({ 'reactions.users': userId }, { $pull: { 'reactions.$[].users': userId } }),
+      League.updateMany({ createdBy: userId }, { $set: { createdBy: null } })
+    ]);
+
+    await User.deleteOne({ _id: userId });
+
+    return res.json({
+      success: true,
+      message: `Usuário ${user.name || user.email} excluído com sucesso.`,
+      userId
+    });
+  } catch (error) {
+    console.error('❌ Erro ao excluir usuário:', error);
+    return res.status(500).json({ success: false, message: 'Erro ao excluir usuário.' });
   }
 });
 

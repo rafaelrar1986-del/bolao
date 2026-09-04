@@ -193,6 +193,30 @@ router.get('/whitelist', protect, async (req, res) => {
   }
 });
 
+// Remove um e-mail da whitelist.
+router.delete('/whitelist/:email', protect, async (req, res) => {
+  try {
+    if (!req.user.isAdmin) {
+      return res.status(403).json({ success: false, message: 'Acesso negado: apenas administradores.' });
+    }
+
+    const email = decodeURIComponent(String(req.params.email || '')).trim().toLowerCase();
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'E-mail é obrigatório.' });
+    }
+
+    const deleted = await AllowedEmail.findOneAndDelete({ email });
+    if (!deleted) {
+      return res.status(404).json({ success: false, message: 'E-mail não encontrado na whitelist.' });
+    }
+
+    return res.json({ success: true, message: `E-mail ${email} removido da whitelist.` });
+  } catch (error) {
+    console.error('❌ Erro ao remover e-mail da whitelist:', error);
+    return res.status(500).json({ success: false, message: 'Erro ao remover e-mail da whitelist.' });
+  }
+});
+
 // ======================
 // 👤 PERFIL /ME (CRUCIAL PARA O PAYWALL)
 // ======================
@@ -402,21 +426,6 @@ router.put('/me/avatar', protect, async (req, res) => {
       success: false,
       message: 'Erro ao atualizar foto de perfil'
     });
-  }
-});
-
-router.post('/make-admin', async (req, res) => {
-  try {
-    const { email } = req.body;
-    const user = await User.findOneAndUpdate(
-      { email: email.toLowerCase().trim() },
-      { $set: { isAdmin: true } },
-      { new: true }
-    );
-    if (!user) return res.status(404).json({ success: false, message: 'Não encontrado' });
-    res.json({ success: true, message: 'Admin atualizado!' });
-  } catch (error) {
-    res.status(500).json({ success: false });
   }
 });
 
