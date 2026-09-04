@@ -24,7 +24,45 @@ export const isBetEditingBeforeLockEnabled = (...args) => R.isBetEditingBeforeLo
 export const refreshSaveLocksUI = (...args) => R.refreshSaveLocksUI(...args);
 export const loadAdminUsers = (...args) => R.loadAdminUsers(...args);
 
+/**
+ * Re-enters the Admin panel using the league currently selected by the
+ * participant as its starting management context. If Admin was already
+ * initialized, reload the selected league so its data follows the new
+ * administrative context without re-binding event listeners.
+ */
+export async function enterAdminPanel() {
+  R.syncAdminLeagueWithSelectedLeague();
+
+  if (!R.AdminState.adminInitialized) {
+    initAdmin();
+    return;
+  }
+
+  const select = document.getElementById('admin-league-selector');
+  if (!select) return;
+
+  try {
+    await R.loadAdminLeagues({ selectCurrent: true });
+    const adminLeagueId = R.getAdminLeagueId();
+    if (!adminLeagueId) return;
+
+    if (String(select.value) !== String(adminLeagueId)) {
+      select.value = String(adminLeagueId);
+    }
+
+    if (typeof R.switchAdminLeague === 'function') {
+      await R.switchAdminLeague();
+    }
+  } catch (err) {
+    console.warn('Erro ao sincronizar liga ao entrar no Admin:', err);
+  }
+}
+
 export function initAdmin() {
+  if (R.AdminState.adminInitialized) return;
+  // The public league is the default administrative context on first entry.
+  R.syncAdminLeagueWithSelectedLeague();
+  R.AdminState.adminInitialized = true;
   console.log('✅ initAdmin executado');
   window.closeModal = closeModal;
   window.openModal = openModal;

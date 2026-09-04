@@ -125,15 +125,17 @@ try { const m = await import('./myBets1.js?v=1.13'); initMyBets = m.initMyBets; 
 let initAllBets = () => {};
 try { const m = await import('./allBets.js?v=1.13'); initAllBets = m.initAllBets; } catch(e) {}
 
-let initAdmin, loadGlobalSaveLocks, isSaveBetsBlocked, isRequireAllBetsEnabled;
+let initAdmin, enterAdminPanel, loadGlobalSaveLocks, isSaveBetsBlocked, isRequireAllBetsEnabled;
 try {
-  const m = await import('./admin.js?v=1.22');
+  const m = await import('./admin.js?v=1.23');
   initAdmin = m.initAdmin;
+  enterAdminPanel = m.enterAdminPanel;
   loadGlobalSaveLocks = m.loadGlobalSaveLocks;
   isSaveBetsBlocked = m.isSaveBetsBlocked;
   isRequireAllBetsEnabled = m.isRequireAllBetsEnabled;
 } catch(e) {
   initAdmin = () => {};
+  enterAdminPanel = async () => {};
   loadGlobalSaveLocks = async () => {};
   isSaveBetsBlocked = () => false;
   isRequireAllBetsEnabled = () => false;
@@ -511,6 +513,10 @@ async function navigateTo(tab) {
 
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
   showTab(tab);
+
+  if (tab === 'admin' && currentUser?.isAdmin) {
+    await enterAdminPanel();
+  }
 
   if (tab !== 'user-profile') {
     syncBottomNav(tab);
