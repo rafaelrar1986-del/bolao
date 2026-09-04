@@ -63,6 +63,13 @@ export async function showPaywall() {
   try {
     const res = await api.getSettings(leagueId);
     payment = res?.data?.payment || {};
+    // Liga gratuita nunca deve exibir Paywall.
+    if (payment.required === false) {
+      const existing = document.getElementById('paywall-wrapper');
+      if (existing) existing.remove();
+      document.body.style.overflow = '';
+      return;
+    }
   } catch (err) {
     console.warn('Não foi possível carregar o pagamento desta liga:', err);
   }

@@ -37,6 +37,7 @@ async function loadLeagueSettings() {
         ...(res.data.rankingRules || {})
       };
       R.CurrentSettings.payment = {
+        required: res.data.payment?.required !== false,
         pixKey: String(res.data.payment?.pixKey ?? res.data.pixKey ?? ''),
         pixQrCode: String(res.data.payment?.pixQrCode ?? res.data.pixQrCode ?? '')
       };

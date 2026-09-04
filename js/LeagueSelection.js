@@ -97,8 +97,11 @@ export async function showLeagueSelection() {
 }
 
 export function selectLeague(id, name) {
-  localStorage.setItem('selectedLeagueId', id);
-  localStorage.setItem('selectedLeagueName', name);
-  // Dispara evento para o app4.js capturar e chamar afterLogin()
-  window.dispatchEvent(new CustomEvent('league-selected', { detail: { id, name } }));
+  const leagueId = String(id ?? '').trim();
+  if (!leagueId) return;
+
+  // O app4 centraliza o registro do pedido quando a seleção é concluída.
+  localStorage.setItem('selectedLeagueId', leagueId);
+  localStorage.setItem('selectedLeagueName', name || '');
+  window.dispatchEvent(new CustomEvent('league-selected', { detail: { id: leagueId, name: name || '' } }));
 }

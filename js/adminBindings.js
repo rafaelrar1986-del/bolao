@@ -97,7 +97,7 @@ window.handleApproveUser = async (id, name) => {
         const res = await api.approvePayment(id, leagueId);
         if (res.success || res.message) {
             toast(`Acesso liberado para ${name} nesta liga!`, "success");
-            R.loadAdminUsers();
+            R.loadAdminUsers(true);
         }
     } catch (err) {
         toast(err.message || "Erro na aprovação", "error");
@@ -115,7 +115,7 @@ window.handleDisapproveUser = async (id, name) => {
         const res = await api.disapprovePayment(id, leagueId);
         if (res.success || res.message) {
             toast(`Pagamento de ${name} removido desta liga.`, "success");
-            R.loadAdminUsers();
+            R.loadAdminUsers(true);
         }
     } catch (err) {
         toast(err.message || "Erro ao desaprovar", "error");

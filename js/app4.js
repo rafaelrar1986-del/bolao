@@ -197,10 +197,12 @@ function verificarBloqueio(err) {
     if (err?.message) console.error("Erro de API:", err.message);
     return;
   }
-  const isPaid = window.currentUser?.isAdmin === true || window.currentUser?.currentLeaguePaid === true || (String(localStorage.getItem('selectedLeagueId') || '') === '1' && window.currentUser?.hasPaid === true);
   const isAdmin = window.currentUser?.isAdmin === true;
 
-  if (isAdmin || isPaid) {
+  // Um 402 vindo do backend é a autoridade sobre o acesso atual. Não usamos
+  // currentLeaguePaid em memória aqui, pois o Admin pode ter desaprovado o
+  // pagamento enquanto o usuário ainda estava com a sessão aberta.
+  if (isAdmin) {
     const paywall = document.getElementById('paywall-wrapper');
     if (paywall) paywall.remove();
     document.body.style.overflow = '';
@@ -366,10 +368,18 @@ async function showLeagueSelection() {
   }
 }
 
-function selectLeague(id, name) {
-  localStorage.setItem('selectedLeagueId', id);
-  localStorage.setItem('selectedLeagueName', name);
-  afterLogin();
+async function selectLeague(id, name) {
+  const leagueId = String(id ?? '').trim();
+  if (!leagueId) {
+    toast('Campeonato inválido.', 'error');
+    return;
+  }
+
+  // afterLogin centraliza o registro da solicitação, a leitura das regras e
+  // a verificação do acesso. Assim a seleção nunca dispara duas solicitações.
+  localStorage.setItem('selectedLeagueId', leagueId);
+  localStorage.setItem('selectedLeagueName', name || '');
+  await afterLogin();
 }
 
 /* =====================
@@ -386,7 +396,10 @@ window.refreshUserSession = async () => {
   if (me) {
     currentUser = me;
     window.currentUser = me;
-    const isPaid = me.isAdmin === true || me.currentLeaguePaid === true || (String(localStorage.getItem('selectedLeagueId') || '') === '1' && me.hasPaid === true);
+    const isPaid = me.isAdmin === true ||
+      me.currentLeaguePaid === true ||
+      me.currentLeaguePaymentRequired === false ||
+      (String(localStorage.getItem('selectedLeagueId') || '') === '1' && me.hasPaid === true);
     if (isPaid || me.isAdmin) {
       const paywall = document.getElementById('paywall-wrapper');
       if (paywall) paywall.remove();
@@ -622,8 +635,21 @@ async function afterLogin() {
     window.currentUser = freshUser;
   }
 
+  // Garante que uma entrada direta/recarregamento também registre o pedido
+  // da liga, sem duplicá-lo. O backend ignora o pedido para ligas gratuitas
+  // ou já pagas.
+  if (!currentUser?.isAdmin && leagueId && currentUser?.currentLeaguePaid !== true &&
+      currentUser?.currentLeaguePaymentRequired !== false) {
+    try {
+      await api.requestLeaguePayment(leagueId);
+    } catch (err) {
+      console.warn('Não foi possível registrar a solicitação da liga:', err);
+    }
+  }
+
   const isPaid = currentUser?.isAdmin === true ||
     currentUser?.currentLeaguePaid === true ||
+    currentUser?.currentLeaguePaymentRequired === false ||
     (String(leagueId) === '1' && currentUser?.hasPaid === true);
 
   const acceptedMap = JSON.parse(

@@ -82,6 +82,8 @@ export const api = {
   me: (leagueId) => request('GET', leagueId ? `/api/auth/me?leagueId=${encodeURIComponent(String(leagueId))}` : '/api/auth/me'),
   updateMyAvatar: (avatar) =>
     request('PUT', '/api/auth/me/avatar', { avatar }),
+  requestLeaguePayment: (leagueId) =>
+    request('POST', '/api/auth/league-payment-request', { leagueId }),
 
   // ================================================================
   // 🔐 WHITELIST

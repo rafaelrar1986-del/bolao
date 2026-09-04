@@ -239,6 +239,15 @@ async function openChampionshipRulesModal() {
               Configure o pagamento deste campeonato. O QR Code e a chave PIX são exclusivos desta liga.
             </small>
 
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:8px 0 12px;">
+              <input type="checkbox" id="cr-payment-required"
+                     ${R.CurrentSettings.payment?.required !== false ? 'checked' : ''}>
+              <span>Este campeonato exige pagamento</span>
+            </label>
+            <small style="display:block;color:#888;margin:-4px 0 10px;">
+              Desmarcado = campeonato gratuito. Nesse caso o usuário entra sem PIX e sem aprovação.
+            </small>
+
             <div class="form-group">
               <label>Chave PIX</label>
               <input type="text" id="cr-pixKey"
@@ -821,6 +830,7 @@ async function saveChampionshipRules(e) {
     rankingRules: {
       tieBreakers
     },
+    paymentRequired: document.getElementById('cr-payment-required')?.checked !== false,
     pixKey: String(document.getElementById('cr-pixKey')?.value || '').trim(),
     pixQrCode: R.paymentQrCode
   };
@@ -839,6 +849,7 @@ async function saveChampionshipRules(e) {
     R.CurrentSettings.prizeZone = payload.prizeZone;
     R.CurrentSettings.rankingRules = payload.rankingRules;
     R.CurrentSettings.payment = {
+      required: payload.paymentRequired !== false,
       pixKey: payload.pixKey,
       pixQrCode: payload.pixQrCode
     };

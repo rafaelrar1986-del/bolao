@@ -235,7 +235,9 @@ async function loadAdminUsers(forceReload = false) {
                     <span style="font-size:12px;color:#888;">${String(user.email || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>
                 </div>
                 <div>
-                    ${user.hasPaid
+                    ${user.paymentRequired === false
+                      ? `<span style="color:#61dafb;font-weight:bold;">🆓 GRATUITO</span>`
+                      : user.hasPaid
                       ? `<span style="color:#00ff00;font-weight:bold;">✅ PAGO</span>
                          <button class="btn btn-outline-danger btn-sm" onclick="handleDisapproveUser('${safeId}', '${safeName}')">Desaprovar PIX</button>`
                       : `<button class="btn btn-success btn-sm" onclick="handleApproveUser('${safeId}', '${safeName}')">Aprovar PIX</button>`
