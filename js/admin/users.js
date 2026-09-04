@@ -72,6 +72,51 @@ async function openWhitelistModal() {
   };
 }
 
+async function removeWhitelistEmail(email) {
+  const normalized = String(email || '').trim().toLowerCase();
+  if (!normalized) return;
+  if (!confirm(`Remover ${normalized} da whitelist?`)) return;
+  try {
+    const res = await api.removeWhitelist(normalized);
+    if (!res.success) throw new Error(res.message || 'Erro ao remover e-mail');
+    toast('E-mail removido da whitelist.', 'success');
+    await loadWhitelist();
+  } catch (err) {
+    toast(err.message || 'Erro ao remover e-mail da whitelist.', 'error');
+  }
+}
+
+async function makeUserAdmin(email, name) {
+  const normalized = String(email || '').trim().toLowerCase();
+  if (!normalized) return;
+  if (!confirm(`Promover ${name || normalized} a administrador?`)) return;
+  try {
+    const res = await api.makeAdmin(normalized);
+    if (!res.success) throw new Error(res.message || 'Erro ao promover usuário');
+    toast(`${name || normalized} agora é administrador.`, 'success');
+    await loadAdminUsers(true);
+  } catch (err) {
+    toast(err.message || 'Erro ao promover usuário.', 'error');
+  }
+}
+
+async function deleteAdminUser(userId, name) {
+  if (!userId) return;
+  if (!confirm(`⚠️ EXCLUIR PERMANENTEMENTE o usuário ${name || ''}?\n\nAs apostas, histórico de pontos, comprovantes e mensagens dele também serão removidos.`)) return;
+  try {
+    const res = await api.deleteAdminUser(userId);
+    if (!res.success) throw new Error(res.message || 'Erro ao excluir usuário');
+    toast(`Usuário ${name || ''} excluído.`, 'success');
+    await loadAdminUsers(true);
+  } catch (err) {
+    toast(err.message || 'Erro ao excluir usuário.', 'error');
+  }
+}
+
+window.removeWhitelistEmail = removeWhitelistEmail;
+window.makeUserAdmin = makeUserAdmin;
+window.deleteAdminUser = deleteAdminUser;
+
 async function loadWhitelist() {
   const container = document.getElementById('wl-list-container');
   try {
@@ -83,7 +128,10 @@ async function loadWhitelist() {
             <span style="font-weight:bold; color:#fff;">${item.label || 'Convidado'}</span>
             <span style="font-size:12px; color:#aaa;">${item.email}</span>
           </div>
-          <span style="font-size:10px; color:#666;">${new Date(item.createdAt).toLocaleDateString()}</span>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:10px; color:#666;">${new Date(item.createdAt).toLocaleDateString()}</span>
+            <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeWhitelistEmail('${String(item.email || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')">Remover</button>
+          </div>
         </div>
       `).join('');
     } else {
@@ -200,56 +248,162 @@ function openEmailModal() {
   };
 }
 
+let adminUsersActiveTab = 'users';
+
+function escapeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+}
+
+function escapeInline(value) {
+    return String(value ?? '')
+      .replace(/\\/g, '\\\\')
+      .replace(/'/g, "\\'")
+      .replace(/\r?\n/g, ' ');
+}
+
+function setAdminUsersTabUI(tab) {
+    ['users', 'payments', 'participants'].forEach(name => {
+        const btn = document.getElementById(`admin-tab-${name}`);
+        if (!btn) return;
+        btn.classList.toggle('admin-tab-active', name === tab);
+    });
+}
+
 async function loadAdminUsers(forceReload = false) {
     const section = document.getElementById('admin-users-section');
-    const container = document.getElementById('admin-users-list');
-    if (!container || !section) return;
-
+    if (!section) return;
     if (section.style.display === 'block' && !forceReload) {
         section.style.display = 'none';
-        return; 
+        return;
     }
-
     section.style.display = 'block';
-    container.innerHTML = '<p style="text-align:center; color:#888; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Carregando...</p>';
+    adminUsersActiveTab = 'users';
+    await loadAdminUsersTab('users');
+}
+
+async function loadAdminUsersTab(tab = adminUsersActiveTab) {
+    const section = document.getElementById('admin-users-section');
+    const container = document.getElementById('admin-users-list');
+    if (!section || !container) return;
+    adminUsersActiveTab = tab;
+    section.style.display = 'block';
+    setAdminUsersTabUI(tab);
+    container.innerHTML = '<p style="text-align:center;color:#888;padding:20px;"><i class="fas fa-spinner fa-spin"></i> Carregando...</p>';
 
     try {
         const leagueId = R.getAdminLeagueId();
-        const response = await api.get(`/api/admin/users?leagueId=${encodeURIComponent(leagueId)}`);
-        const users = response.users || [];
+        let users = [];
+        let response;
+        if (tab === 'users') {
+            response = await api.getAdminAllUsers();
+            users = response.users || [];
+        } else if (tab === 'participants') {
+            if (!leagueId) throw new Error('Selecione o campeonato que está sendo gerenciado.');
+            response = await api.getAdminParticipants(leagueId);
+            users = response.users || [];
+        } else {
+            if (!leagueId) throw new Error('Selecione o campeonato que está sendo gerenciado.');
+            response = await api.getAdminUsers(leagueId);
+            users = response.users || [];
+        }
 
-        if (!users || users.length === 0) {
-            container.innerHTML = '<p style="text-align:center; color:#888;">Nenhum usuário encontrado.</p>';
+        if (!users.length) {
+            const empty = tab === 'users'
+                ? 'Nenhum usuário cadastrado.'
+                : tab === 'participants'
+                    ? 'Nenhum participante nesta liga.'
+                    : 'Nenhum usuário com pedido ou pagamento nesta liga.';
+            container.innerHTML = `<p style="text-align:center;color:#888;padding:20px;">${empty}</p>`;
+            return;
+        }
+
+        if (tab === 'users') {
+            container.innerHTML = users.map(user => {
+                const id = escapeInline(user._id);
+                const name = escapeInline(user.name || 'Sem Nome');
+                const email = escapeInline(user.email || '');
+                return `<div class="user-row" style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#222;border-radius:8px;margin-bottom:8px;gap:10px;">
+                    <div style="display:flex;flex-direction:column;min-width:0;">
+                      <strong style="color:#fff;">${escapeHtml(user.name || 'Sem Nome')}</strong>
+                      <span style="font-size:12px;color:#888;word-break:break-all;">${escapeHtml(user.email || '')}</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+                      ${user.isAdmin
+                        ? '<span style="color:#ffd43b;font-weight:bold;">👑 ADMIN</span>'
+                        : `<button class="btn btn-outline-primary btn-sm" onclick="makeUserAdmin('${escapeInline(user.email)}','${name}')">👑 Tornar Admin</button>`}
+                      <button class="btn btn-outline-danger btn-sm" onclick="deleteAdminUser('${id}','${name}')">🗑️ Excluir</button>
+                    </div>
+                  </div>`;
+            }).join('');
+            return;
+        }
+
+        if (tab === 'participants') {
+            container.innerHTML = users.map(user => {
+                const id = escapeInline(user._id);
+                const name = escapeInline(user.name || 'Sem Nome');
+                return `<div class="user-row" style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#222;border-radius:8px;margin-bottom:8px;gap:10px;">
+                    <div style="display:flex;flex-direction:column;min-width:0;">
+                      <strong style="color:#fff;">${escapeHtml(user.name || 'Sem Nome')}</strong>
+                      <span style="font-size:12px;color:#888;word-break:break-all;">${escapeHtml(user.email || '')}</span>
+                      <span style="font-size:11px;color:#61dafb;">Liga ${escapeHtml(leagueId)}</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+                      ${user.paidForLeague ? '<span style="color:#00ff00;font-weight:bold;">✅ PAGO</span>' : '<span style="color:#ffcc00;font-weight:bold;">⚠️ SEM PAGAMENTO</span>'}
+                      <button class="btn btn-outline-danger btn-sm" onclick="removeUserFromAdminLeague('${id}','${name}')">Remover da Liga</button>
+                    </div>
+                  </div>`;
+            }).join('');
             return;
         }
 
         container.innerHTML = users.map(user => {
-            const safeId = String(user._id);
-            const safeName = String(user.name || 'Sem Nome')
-              .replace(/\\/g, '\\\\')
-              .replace(/'/g, "\\'");
-            return `
-            <div class="user-row" style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#222;border-radius:8px;margin-bottom:8px;border-left:4px solid ${user.hasPaid ? '#00ff00' : '#ffcc00'};">
-                <div style="display:flex;flex-direction:column;">
-                    <strong style="color:#fff;">${String(user.name || 'Sem Nome').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</strong>
-                    <span style="font-size:12px;color:#888;">${String(user.email || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>
+            const id = escapeInline(user._id);
+            const name = escapeInline(user.name || 'Sem Nome');
+            return `<div class="user-row" style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#222;border-radius:8px;margin-bottom:8px;border-left:4px solid ${user.hasPaid ? '#00ff00' : '#ffcc00'};gap:10px;">
+                <div style="display:flex;flex-direction:column;min-width:0;">
+                  <strong style="color:#fff;">${escapeHtml(user.name || 'Sem Nome')}</strong>
+                  <span style="font-size:12px;color:#888;word-break:break-all;">${escapeHtml(user.email || '')}</span>
                 </div>
-                <div>
-                    ${user.paymentRequired === false
-                      ? `<span style="color:#61dafb;font-weight:bold;">🆓 GRATUITO</span>`
-                      : user.hasPaid
-                      ? `<span style="color:#00ff00;font-weight:bold;">✅ PAGO</span>
-                         <button class="btn btn-outline-danger btn-sm" onclick="handleDisapproveUser('${safeId}', '${safeName}')">Desaprovar PIX</button>`
-                      : `<button class="btn btn-success btn-sm" onclick="handleApproveUser('${safeId}', '${safeName}')">Aprovar PIX</button>`
-                    }
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+                  ${user.paymentRequired === false
+                    ? '<span style="color:#61dafb;font-weight:bold;">🆓 GRATUITO</span>'
+                    : user.hasPaid
+                      ? `<span style="color:#00ff00;font-weight:bold;">✅ PAGO</span><button class="btn btn-outline-danger btn-sm" onclick="handleDisapproveUser('${id}','${name}')">Desaprovar PIX</button>`
+                      : `<span style="color:#ffcc00;font-weight:bold;">⏳ PENDENTE</span><button class="btn btn-success btn-sm" onclick="handleApproveUser('${id}','${name}')">Aprovar PIX</button>`}
                 </div>
-            </div>`;
+              </div>`;
         }).join('');
     } catch (err) {
-        console.error("Erro ao carregar usuários:", err);
-        toast("Erro ao carregar usuários", "error");
-        section.style.display = 'none';
+        console.error('Erro ao carregar painel de usuários:', err);
+        toast(err.message || 'Erro ao carregar usuários.', 'error');
+        container.innerHTML = `<p style="text-align:center;color:#ff6666;padding:20px;">${escapeHtml(err.message || 'Erro ao carregar usuários.')}</p>`;
     }
 }
 
-registerAdminFunctions({openSetPodiumModal: openSetPodiumModal, resetAllBets: resetAllBets, openWhitelistModal: openWhitelistModal, loadWhitelist: loadWhitelist, loadStatsLockStatus: loadStatsLockStatus, updateStatsBtnUI: updateStatsBtnUI, toggleStatsLock: toggleStatsLock, openEmailModal: openEmailModal, loadAdminUsers: loadAdminUsers});
+async function removeUserFromAdminLeague(userId, name) {
+    const leagueId = R.getAdminLeagueId();
+    if (!leagueId) {
+        toast('Selecione o campeonato que está sendo gerenciado.', 'warning');
+        return;
+    }
+    if (!confirm(`Remover ${name || 'este usuário'} da liga ${leagueId}?\n\nA conta e o histórico de apostas serão preservados, mas o acesso/pagamento desta liga será removido.`)) return;
+    try {
+        const res = await api.removeUserFromLeague(userId, leagueId);
+        if (!res.success) throw new Error(res.message || 'Erro ao remover usuário da liga.');
+        toast(`${name || 'Usuário'} removido da liga.`, 'success');
+        await loadAdminUsersTab('participants');
+    } catch (err) {
+        toast(err.message || 'Erro ao remover usuário da liga.', 'error');
+    }
+}
+
+window.loadAdminUsersTab = loadAdminUsersTab;
+window.removeUserFromAdminLeague = removeUserFromAdminLeague;
+
+registerAdminFunctions({openSetPodiumModal: openSetPodiumModal, resetAllBets: resetAllBets, openWhitelistModal: openWhitelistModal, loadWhitelist: loadWhitelist, removeWhitelistEmail: removeWhitelistEmail, makeUserAdmin: makeUserAdmin, deleteAdminUser: deleteAdminUser, loadStatsLockStatus: loadStatsLockStatus, updateStatsBtnUI: updateStatsBtnUI, toggleStatsLock: toggleStatsLock, openEmailModal: openEmailModal, loadAdminUsers: loadAdminUsers, loadAdminUsersTab: loadAdminUsersTab, removeUserFromAdminLeague: removeUserFromAdminLeague});
