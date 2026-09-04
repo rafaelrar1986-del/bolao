@@ -15,7 +15,7 @@ async function openSetPodiumModal() {
 }
 
 async function resetAllBets() {
-  const leagueId = localStorage.getItem('selectedLeagueId') || '1';
+  const leagueId = R.getAdminLeagueId();
   if (!confirm(`⚠️ APAGAR TODOS OS PALPITES DA LIGA ${leagueId}?`)) return;
 
   try {
@@ -97,7 +97,7 @@ async function loadWhitelist() {
 async function loadStatsLockStatus() {
   const btn = document.getElementById('btn-toggle-stats-lock');
   if (!btn) return;
-  const leagueId = localStorage.getItem('selectedLeagueId') || '1';
+  const leagueId = R.getAdminLeagueId();
   try {
     const res = await api.get(`/api/settings/global?leagueId=${leagueId}`);
     if (res && res.success) {
@@ -128,7 +128,7 @@ function updateStatsBtnUI(isLocked) {
 async function toggleStatsLock() {
   const btn = document.getElementById('btn-toggle-stats-lock');
   if (!btn) return;
-  const leagueId = localStorage.getItem('selectedLeagueId') || '1';
+  const leagueId = R.getAdminLeagueId();
   const isCurrentlyLocked = btn.style.backgroundColor === 'rgb(224, 49, 49)' || btn.style.backgroundColor === '#e03131';
   const newValue = !isCurrentlyLocked;
 

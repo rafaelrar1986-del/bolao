@@ -103,7 +103,7 @@ window.loadAdminUsers = R.loadAdminUsers;
 
 window.showMatchBetsModal = async function(matchId, matchName) {
     try {
-    const leagueId = localStorage.getItem('selectedLeagueId');
+    const leagueId = R.getAdminLeagueId();
     if (!leagueId) {
         console.error("League ID não encontrado no localStorage.");
         return;

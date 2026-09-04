@@ -688,7 +688,7 @@ async function openChampionshipRulesModal() {
 async function saveChampionshipRules(e) {
   e.preventDefault();
 
-  const leagueId = localStorage.getItem('selectedLeagueId') || '1';
+  const leagueId = R.getAdminLeagueId();
 
   const positions = Math.max(
     0,
@@ -936,7 +936,7 @@ async function openChampionshipResultsModal() {
 
 async function saveChampionshipResults(e) {
   e.preventDefault();
-  const leagueId = localStorage.getItem('selectedLeagueId') || '1';
+  const leagueId = R.getAdminLeagueId();
 
   const sr = R.CurrentSettings.scoringRules || { ...DEFAULT_SCORING };
   const results = {};

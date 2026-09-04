@@ -2,12 +2,14 @@
 import { R } from './admin/adminRuntime.js';
 import { openModal, closeModal } from './ui.js';
 import { renderPhaseControls } from './admin/adminPhaseVisibility.js';
+R.renderPhaseControls = renderPhaseControls;
 import './admin/settings.js';
 import './admin/championship.js';
 import './admin/locks.js';
 import './admin/matches.js';
 import './admin/users.js';
 import './admin/robot.js';
+import './admin/leagues.js';
 import './adminBindings.js';
 
 // Named exports preserved for app4.js and other consumers that historically imported
@@ -29,6 +31,9 @@ export function initAdmin() {
   window.openAddMatchModal = R.openAddMatchModal;
   window.openFinishMatchModal = R.openFinishMatchModal;
   window.openSetPodiumModal = R.openSetPodiumModal;
+  window.openCreateLeagueModal = R.openCreateLeagueModal;
+  window.switchAdminLeague = R.switchAdminLeague;
+  window.loadAdminLeagues = R.loadAdminLeagues;
 
   // 🆕 NOVOS HANDLERS GLOBAIS
   window.openScoringRulesModal = R.openScoringRulesModal;
@@ -53,6 +58,11 @@ export function initAdmin() {
   window.checkDataIntegrity = R.checkDataIntegrity;
   window.resetAllBets = R.resetAllBets;
   window.setPodium = R.setPodium;
+
+  const adminLeagueSelector = document.getElementById('admin-league-selector');
+  if (adminLeagueSelector) {
+    adminLeagueSelector.addEventListener('change', R.switchAdminLeague);
+  }
 
   const btnWhitelist = document.getElementById('btn-open-whitelist-modal');
   if (btnWhitelist) btnWhitelist.addEventListener('click', R.openWhitelistModal);
@@ -108,11 +118,16 @@ export function initAdmin() {
   }
   R.refreshTestModeUI();
 
-  renderPhaseControls();
-
-  // 🆕 Carrega configurações da liga antes de renderizar as partidas.
-  // Isso elimina a corrida entre regras do campeonato e a lista do Admin.
-  R.loadLeagueSettings()
-    .catch(err => console.warn('Erro ao carregar regras antes da lista de partidas:', err))
-    .finally(() => R.loadAdminMatches());
+  // Primeiro resolve o campeonato que o Admin está gerenciando.
+  // O estado público selectedLeagueId do participante permanece intocado.
+  R.loadAdminLeagues({ selectCurrent: true })
+    .catch(err => console.warn('Erro ao carregar campeonatos do Admin:', err))
+    .finally(() => {
+      R.loadLeagueSettings()
+        .catch(err => console.warn('Erro ao carregar regras antes da lista de partidas:', err))
+        .finally(() => {
+          R.loadAdminMatches();
+          renderPhaseControls();
+        });
+    });
 }

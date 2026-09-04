@@ -44,19 +44,26 @@ export async function showLeagueSelection() {
           : `https://sports.bzzoiro.com/img/league/${league.id}`;
 
       const timeDisplay = getTimeRemaining(league.nextMatchDate);
-      const isClosed = league.count === 0;
+      const hasNoMatches = Number(league.totalMatches || 0) === 0;
+      const isClosed = !hasNoMatches && league.count === 0;
 
-      const statusText = isClosed
-        ? `<span style="color: #ffc107; font-weight: bold;">Rodada Finalizada</span>`
-        : `${league.count} partidas disponiveis`;
+      const statusText = hasNoMatches
+        ? `<span style="color: #ffc107; font-weight: bold;">Nenhuma partida cadastrada</span>`
+        : isClosed
+          ? `<span style="color: #ffc107; font-weight: bold;">Rodada Finalizada</span>`
+          : `${league.count} partidas disponiveis`;
 
-      const nextMatchInfo = isClosed
-        ? 'Confira os resultados e o ranking!'
-        : (league.nextMatchTeams ? `Proximo: <strong>${league.nextMatchTeams}</strong>` : 'Rodada aberta');
+      const nextMatchInfo = hasNoMatches
+        ? 'Campeonato criado — aguardando partidas.'
+        : isClosed
+          ? 'Confira os resultados e o ranking!'
+          : (league.nextMatchTeams ? `Proximo: <strong>${league.nextMatchTeams}</strong>` : 'Rodada aberta');
 
-      const footerLabel = isClosed
-        ? `<i class="fas fa-trophy"></i> <span>Ranking Atualizado</span>`
-        : `<i class="fas fa-clock"></i> <span>Fecha em: <strong>${timeDisplay}</strong></span>`;
+      const footerLabel = hasNoMatches
+        ? `<i class="fas fa-plus-circle"></i> <span>Campeonato disponível</span>`
+        : isClosed
+          ? `<i class="fas fa-trophy"></i> <span>Ranking Atualizado</span>`
+          : `<i class="fas fa-clock"></i> <span>Fecha em: <strong>${timeDisplay}</strong></span>`;
 
       const card = document.createElement('div');
       card.className = 'league-card-modern';

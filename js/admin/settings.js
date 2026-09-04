@@ -7,7 +7,7 @@ import { R, registerAdminFunctions } from './adminRuntime.js';
 import { escapeHtml, knockoutDisplayLabel } from './adminUtils.js';
 
 async function loadLeagueSettings() {
-  const leagueId = localStorage.getItem('selectedLeagueId') || '1';
+  const leagueId = R.getAdminLeagueId();
   try {
     const res = await api.get(`/api/settings/global?leagueId=${leagueId}`);
     if (res?.success && res.data) {
@@ -133,7 +133,7 @@ async function openBetReceiptValidationModal() {
     button.disabled = true;
     result.innerHTML = '<div style="color:#aaa;"><i class="fas fa-spinner fa-spin"></i> Consultando...</div>';
     try {
-      const leagueId = localStorage.getItem('selectedLeagueId') || '1';
+      const leagueId = R.getAdminLeagueId();
       const data = await api.get(`/api/admin/bet-receipts/validate?leagueId=${encodeURIComponent(leagueId)}&protocol=${encodeURIComponent(protocol)}`);
       renderResult(data);
     } catch (err) {
@@ -212,7 +212,7 @@ async function saveBetLockMode() {
   }
 
   const leagueId =
-    localStorage.getItem('selectedLeagueId') || '1';
+    R.getAdminLeagueId();
 
   try {
     const res = await api.post('/api/settings/global', {
@@ -663,7 +663,7 @@ async function openScoringRulesModal() {
 
 async function saveScoringRules(e) {
   e.preventDefault();
-  const leagueId = localStorage.getItem('selectedLeagueId') || '1';
+  const leagueId = R.getAdminLeagueId();
   const builder = document.getElementById('match-rules-builder');
 
   const matchRules = [...builder.querySelectorAll('.scoring-builder-rule')].map(ruleEl => {

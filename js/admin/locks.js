@@ -8,7 +8,7 @@ import { escapeHtml, knockoutDisplayLabel } from './adminUtils.js';
 
 async function loadGlobalSaveLocks() {
   try {
-    const leagueId = localStorage.getItem('selectedLeagueId') || '1';
+    const leagueId = R.getAdminLeagueId();
     const res = await api.get(`/api/settings/global?leagueId=${leagueId}`);
     if (res && res.success && res.data) {
       R.GLOBAL_SAVE_LOCKS = { ...R.GLOBAL_SAVE_LOCKS, ...res.data };
@@ -20,7 +20,7 @@ async function loadGlobalSaveLocks() {
 }
 
 async function toggleLeagueTestMode() {
-  const leagueId = localStorage.getItem('selectedLeagueId') || '1';
+  const leagueId = R.getAdminLeagueId();
   const currentlyEnabled = R.GLOBAL_SAVE_LOCKS.testMode === true;
   const enabled = !currentlyEnabled;
 
@@ -111,7 +111,7 @@ function refreshTestModeUI() {
 
 async function updateGlobalSaveLocks(patch) {
   try {
-    const leagueId = localStorage.getItem('selectedLeagueId') || '1';
+    const leagueId = R.getAdminLeagueId();
     const dataToSend = { ...patch, leagueId };
     const res = await api.post('/api/settings/global', dataToSend);
     if (res && res.success && res.data) {

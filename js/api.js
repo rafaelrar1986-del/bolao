@@ -98,6 +98,8 @@ export const api = {
     request('PUT', `/api/admin/approve-user/${userId}`),
   getSecurityStats: () =>
     request('GET', '/api/admin/security-stats'),
+  getAdminLeagues: () => request('GET', '/api/admin/leagues'),
+  createAdminLeague: (payload) => request('POST', '/api/admin/leagues', payload),
 
   // ================================================================
   // 📧 ADMIN: EMAIL BROADCAST

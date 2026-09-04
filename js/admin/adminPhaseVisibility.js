@@ -5,6 +5,7 @@
 import { api } from '../api.js';
 import { toast } from '../ui.js';
 import { knockoutDisplayLabel } from './adminUtils.js';
+import { R } from './adminRuntime.js';
 
 /* ============================================================
    CONTROLE DE VISIBILIDADE POR FASE (ATUALIZADO PARA MULTI-LIGAS)
@@ -14,7 +15,7 @@ async function renderPhaseControls() {
     const container = document.getElementById('admin-phase-controls');
     if (!container) return;
 
-    const leagueId = localStorage.getItem('selectedLeagueId') || '1';
+    const leagueId = R.getAdminLeagueId();
 
     try {
         const res = await api.get(`/api/settings/global?leagueId=${leagueId}`);
@@ -286,7 +287,7 @@ async function renderPhaseControls() {
 
 async function togglePhaseVisibility(phaseId, isCurrentlyUnlocked) {
     try {
-        const leagueId = localStorage.getItem('selectedLeagueId') || '1';
+        const leagueId = R.getAdminLeagueId();
         const res = await api.get(`/api/settings/global?leagueId=${leagueId}`);
         let list = res.data.unlockedPhases || [];
 
@@ -311,7 +312,7 @@ async function togglePhaseVisibility(phaseId, isCurrentlyUnlocked) {
 
 async function setGroupBetAvailabilityMode(mode) {
     try {
-        const leagueId = localStorage.getItem('selectedLeagueId') || '1';
+        const leagueId = R.getAdminLeagueId();
         await api.post('/api/settings/global', {
             leagueId,
             groupBetAvailabilityMode: mode
@@ -331,7 +332,7 @@ async function setGroupBetAvailabilityMode(mode) {
 
 async function toggleGroupRound(round, isCurrentlyUnlocked) {
     try {
-        const leagueId = localStorage.getItem('selectedLeagueId') || '1';
+        const leagueId = R.getAdminLeagueId();
         const res = await api.get(`/api/settings/global?leagueId=${leagueId}`);
         let unlockedRounds = (res.data.unlockedGroupRounds || []).map(Number);
         let lockedRounds = (res.data.lockedGroupRounds || []).map(Number);
@@ -360,7 +361,7 @@ async function toggleGroupRound(round, isCurrentlyUnlocked) {
 
 async function setPointsRunBetAvailabilityMode(mode) {
     try {
-        const leagueId = localStorage.getItem('selectedLeagueId') || '1';
+        const leagueId = R.getAdminLeagueId();
         await api.post('/api/settings/global', {
             leagueId,
             pointsRunBetAvailabilityMode: mode
@@ -380,7 +381,7 @@ async function setPointsRunBetAvailabilityMode(mode) {
 
 async function togglePointsRunRound(round, isCurrentlyUnlocked) {
     try {
-        const leagueId = localStorage.getItem('selectedLeagueId') || '1';
+        const leagueId = R.getAdminLeagueId();
         const res = await api.get(`/api/settings/global?leagueId=${leagueId}`);
         let unlockedRounds = (res.data.unlockedPointsRunRounds || []).map(Number);
         let lockedRounds = (res.data.lockedPointsRunRounds || []).map(Number);
@@ -409,7 +410,7 @@ async function togglePointsRunRound(round, isCurrentlyUnlocked) {
 
 async function setKnockoutBetAvailabilityMode(mode) {
     try {
-        const leagueId = localStorage.getItem('selectedLeagueId') || '1';
+        const leagueId = R.getAdminLeagueId();
         await api.post('/api/settings/global', {
             leagueId,
             knockoutBetAvailabilityMode: mode
@@ -429,7 +430,7 @@ async function setKnockoutBetAvailabilityMode(mode) {
 
 async function toggleKnockoutRound(round, isCurrentlyUnlocked) {
     try {
-        const leagueId = localStorage.getItem('selectedLeagueId') || '1';
+        const leagueId = R.getAdminLeagueId();
         const res = await api.get(`/api/settings/global?leagueId=${leagueId}`);
         let unlocked = (res.data.unlockedKnockoutRounds || []).map(Number);
         let locked = (res.data.lockedKnockoutRounds || []).map(Number);

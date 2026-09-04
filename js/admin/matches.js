@@ -12,7 +12,7 @@ const $adminMatchesList = () => document.getElementById('admin-matches-list');
 
 async function loadAdminMatches() {
   try {
-    const leagueId = localStorage.getItem('selectedLeagueId') || '1';
+    const leagueId = R.getAdminLeagueId();
     const res = await api.get(`/api/matches/admin/all?leagueId=${leagueId}`);
     if (!res || !res.success) throw new Error(res?.message || 'Erro ao listar partidas');
     R.AdminState.matches = res.data || [];
@@ -165,7 +165,7 @@ function renderAdminMatches(matchesList) {
             const uniqueId = `lg-${lIdx}-gr-${gIdx}`;
             const allGroupSelected = groupMatches.length > 0 &&
               groupMatches.every(m => R.selectedAdminMatchIds.has(String(m.matchId)));
-            const lid = String(leagueMatches[0]?.leagueId || localStorage.getItem('selectedLeagueId') || '');
+            const lid = String(leagueMatches[0]?.leagueId || R.getAdminLeagueId() || '');
             const firstMatch = groupMatches[0] || {};
             const phase = String(firstMatch.phase || '').toLowerCase();
             const roundNumber = Number(firstMatch.roundNumber);
@@ -352,6 +352,15 @@ async function openAddMatchModal() {
     form.addEventListener('submit', R.handleAddMatch);
   }
   R.setupPhaseToggle();
+  const apiInput = document.getElementById('match-apiId');
+  const apiGroup = apiInput?.closest('.form-group');
+  const currentLeague = (R.AdminState.leagues || []).find(l => String(l.leagueId) === String(R.getAdminLeagueId()));
+  const isManual = currentLeague?.source === 'manual';
+  if (apiInput) apiInput.required = !isManual;
+  if (apiGroup) {
+    const label = apiGroup.querySelector('label');
+    if (label) label.textContent = isManual ? 'ID da API (opcional)' : 'ID da API (apiId)';
+  }
 }
 
 function setupPhaseToggle() {
@@ -386,7 +395,7 @@ function setupPhaseToggle() {
 
 async function loadOfficialPodiumIntoModal() {
   try {
-    const leagueId = localStorage.getItem('selectedLeagueId') || '1';
+    const leagueId = R.getAdminLeagueId();
     const res = await api.get(`/api/points/podium?leagueId=${leagueId}`);
     const size = R.getConfiguredPodiumSize();
     const fields = R.getPodiumFieldConfig().slice(0, size);
@@ -435,7 +444,7 @@ async function handleAddMatch(e) {
     group: groupVal,
     stadium: document.getElementById('match-stadium').value.trim(),
     phase: phaseVal,
-    leagueId: localStorage.getItem('selectedLeagueId') || '1',
+    leagueId: R.getAdminLeagueId(),
     leagueName: document.getElementById('match-league-name')?.value?.trim() || 'Liga Principal'
   };
 
@@ -659,7 +668,7 @@ async function handleEditMatch(e) {
   const currentMatch = R.AdminState.matches.find((m) => m.matchId === matchId);
   const leagueId =
     currentMatch?.leagueId ||
-    localStorage.getItem('selectedLeagueId') ||
+    R.getAdminLeagueId() ||
     '1';
 
   updates.leagueId = String(leagueId).trim();
@@ -682,7 +691,7 @@ async function adminUnfinishMatch(matchId) {
     const currentMatch = R.AdminState.matches.find((m) => m.matchId === Number(matchId));
     const leagueId =
         currentMatch?.leagueId ||
-        localStorage.getItem('selectedLeagueId') ||
+        R.getAdminLeagueId() ||
         '1';
 
     try {
@@ -709,7 +718,7 @@ async function adminDeleteMatchForce(matchId) {
     const currentMatch = R.AdminState.matches.find((m) => m.matchId === Number(matchId));
     const leagueId =
         currentMatch?.leagueId ||
-        localStorage.getItem('selectedLeagueId') ||
+        R.getAdminLeagueId() ||
         '1';
 
     try {
@@ -729,7 +738,7 @@ async function adminDeleteMatchForce(matchId) {
 }
 
 async function setPodium() {
-  const leagueId = localStorage.getItem('selectedLeagueId') || '1';
+  const leagueId = R.getAdminLeagueId();
   const size = R.getConfiguredPodiumSize();
   const fields = R.getPodiumFieldConfig().slice(0, size);
   const payload = { leagueId, first: null, second: null, third: null, fourth: null };
@@ -753,7 +762,7 @@ async function setPodium() {
 }
 
 async function resetOfficialPodium() {
-  const leagueId = localStorage.getItem('selectedLeagueId') || '1';
+  const leagueId = R.getAdminLeagueId();
   if (!confirm(`Zerar pódio oficial da liga ${leagueId}?`)) return;
 
   try {
@@ -771,7 +780,7 @@ async function resetOfficialPodium() {
 }
 
 async function recalculateAllPoints() {
-  const leagueId = localStorage.getItem('selectedLeagueId') || '1';
+  const leagueId = R.getAdminLeagueId();
   try {
     const res = await api.post('/api/points/recalculate-all', { leagueId });
     if (!res.success) throw new Error(res.message || 'Erro ao recalcular');
@@ -782,7 +791,7 @@ async function recalculateAllPoints() {
 }
 
 async function checkDataIntegrity() {
-  const leagueId = localStorage.getItem('selectedLeagueId') || '1';
+  const leagueId = R.getAdminLeagueId();
   try {
     const res = await api.get(`/api/points/integrity-check?leagueId=${leagueId}`);
     if (!res.success) throw new Error(res.message || 'Erro na verificação');

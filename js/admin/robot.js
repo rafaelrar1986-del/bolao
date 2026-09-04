@@ -13,7 +13,7 @@ async function openRobotSettings() {
         if (container) container.innerHTML = '<p class="text-center w-100"><i class="fas fa-spinner fa-spin"></i> Carregando ligas...</p>';
 
         const [resSettings, resLeagues] = await Promise.all([
-            api.get(`/api/settings/global?leagueId=${localStorage.getItem('selectedLeagueId') || '1'}`),
+            api.get(`/api/settings/global?leagueId=${R.getAdminLeagueId()}`),
             api.get('/api/admin/robot/available-leagues')
         ]);
 
@@ -73,7 +73,7 @@ async function saveRobotSettings() {
     const multiSelect = document.getElementById('input-api-leagues-multi');
     const leaguesArray = Array.from(multiSelect.selectedOptions).map(opt => parseInt(opt.value));
     const payload = {
-        leagueId: localStorage.getItem('selectedLeagueId') || '1',
+        leagueId: R.getAdminLeagueId(),
         cron_interval: Number(document.getElementById('input-cron-interval').value),
         api_season: Number(document.getElementById('input-api-season').value),
         api_leagues: leaguesArray
@@ -161,7 +161,7 @@ async function bulkSelectedMatches(action) {
     toast('Selecione pelo menos uma partida.', 'info');
     return;
   }
-  const leagueId = localStorage.getItem('selectedLeagueId') || '1';
+  const leagueId = R.getAdminLeagueId();
   const isReopen = action === 'reopen';
   if (!confirm(
     `⚠️ ${isReopen ? 'REABRIR' : 'EXCLUIR'} ${ids.length} partida(s)?\n\n` +
