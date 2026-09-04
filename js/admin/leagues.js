@@ -119,15 +119,15 @@ async function openCreateLeagueModal() {
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label for="create-league-start">Data de início <small>(opcional)</small></label>
+            <label for="create-league-start">Data de início <small>(preenchida pela API quando aplicável)</small></label>
             <input id="create-league-start" class="form-control" type="date">
           </div>
           <div class="form-group">
-            <label for="create-league-end">Data final <small>(opcional)</small></label>
+            <label for="create-league-end">Data final <small>(preenchida pela API quando aplicável)</small></label>
             <input id="create-league-end" class="form-control" type="date">
           </div>
         </div>
-        <small style="color:#999;">As datas são opcionais, tanto para campeonatos manuais quanto para campeonatos da API.</small>
+        <small style="color:#999;">Na API, as datas da temporada são preenchidas automaticamente e apenas exibidas. No manual, continuam opcionais e editáveis.</small>
         <button type="submit" class="btn btn-success" style="width:100%;"><i class="fas fa-plus"></i> Criar campeonato</button>
       </form>
     </div>`;
@@ -137,22 +137,47 @@ async function openCreateLeagueModal() {
   const name = modal.querySelector('#create-league-name');
   const select = modal.querySelector('#create-league-api-select');
 
+  const startInput = modal.querySelector('#create-league-start');
+  const endInput = modal.querySelector('#create-league-end');
+
+  const setApiDates = (league) => {
+    const season = league?.current_season || league?.currentSeason || null;
+    startInput.value = season?.start_date ? String(season.start_date).slice(0, 10) : '';
+    endInput.value = season?.end_date ? String(season.end_date).slice(0, 10) : '';
+  };
+
+  const updateDateMode = () => {
+    const isApi = checkbox.checked;
+    startInput.readOnly = isApi;
+    endInput.readOnly = isApi;
+    startInput.style.backgroundColor = isApi ? '#f3f3f3' : '';
+    endInput.style.backgroundColor = isApi ? '#f3f3f3' : '';
+  };
+
   const updateMode = async () => {
     if (!checkbox.checked) {
       name.style.display = '';
       name.value = '';
       select.style.display = 'none';
+      startInput.value = '';
+      endInput.value = '';
+      updateDateMode();
       return;
     }
     name.style.display = 'none';
     select.style.display = '';
     select.innerHTML = '<option value="">Carregando competições da API...</option>';
+    startInput.value = '';
+    endInput.value = '';
+    updateDateMode();
     try {
       const res = await api.getRobotAvailableLeagues();
       const leagues = Array.isArray(res?.results) ? res.results : (Array.isArray(res?.data) ? res.data : (Array.isArray(res?.leagues) ? res.leagues : []));
+      R.AdminState.availableApiLeagues = leagues;
       select.innerHTML = leagues.length
         ? '<option value="">Selecione...</option>' + leagues.map(l => `<option value="${Number(l.id)}">${escapeHtml(l.name)}</option>`).join('')
         : '<option value="">Nenhuma competição disponível</option>';
+      updateDateMode();
     } catch (err) {
       console.error('Erro ao carregar competições da API:', err);
       select.innerHTML = '<option value="">Erro ao carregar</option>';
@@ -163,7 +188,16 @@ async function openCreateLeagueModal() {
   checkbox.addEventListener('change', updateMode);
   select.addEventListener('change', () => {
     const opt = select.selectedOptions[0];
-    if (opt?.value) name.value = opt.textContent;
+    const selectedLeague = R.AdminState.availableApiLeagues?.find(l => String(l.id) === String(select.value));
+    if (opt?.value) {
+      name.value = opt.textContent;
+      setApiDates(selectedLeague);
+    } else {
+      name.value = '';
+      startInput.value = '';
+      endInput.value = '';
+    }
+    updateDateMode();
   });
   modal.querySelector('#create-league-form').addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -173,8 +207,8 @@ async function openCreateLeagueModal() {
       source: isApi ? 'api' : 'manual',
       name: isApi ? (selected?.textContent || '') : name.value.trim(),
       apiLeagueId: isApi ? Number(select.value) : null,
-      startDate: modal.querySelector('#create-league-start').value || null,
-      endDate: modal.querySelector('#create-league-end').value || null
+      startDate: startInput.value || null,
+      endDate: endInput.value || null
     };
     if (!payload.name || (isApi && (!payload.apiLeagueId || payload.apiLeagueId <= 0))) {
       toast(isApi ? 'Selecione um campeonato da API.' : 'Informe o nome do campeonato.', 'error');
