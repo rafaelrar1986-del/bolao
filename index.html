@@ -624,21 +624,22 @@
         <span class="admin-dashboard-kicker">ADMINISTRAÇÃO</span>
         <h2><i class="fas fa-shield-alt"></i> Painel do torneio</h2>
       </div>
-      <div class="admin-league-manager">
-        <label for="admin-league-selector">CAMPEONATO EM GERENCIAMENTO</label>
-        <div class="admin-league-manager-row">
-          <select id="admin-league-selector" aria-label="Campeonato em gerenciamento">
-            <option value="">Carregando...</option>
-          </select>
-          <button type="button" class="admin-league-create-btn" onclick="window.openCreateLeagueModal()" title="Criar campeonato">
-            <i class="fas fa-plus"></i><span>Novo</span>
-          </button>
-        </div>
-      </div>
       <button type="button" class="admin-dashboard-refresh" onclick="window.loadAdminMatches()" title="Atualizar">
         <i class="fas fa-sync-alt"></i>
       </button>
     </div>
+
+    <section class="admin-league-manager" aria-label="Seleção do campeonato em gerenciamento">
+      <label for="admin-league-selector">CAMPEONATO EM GERENCIAMENTO</label>
+      <div class="admin-league-manager-row">
+        <select id="admin-league-selector" aria-label="Campeonato em gerenciamento">
+          <option value="">Carregando...</option>
+        </select>
+        <button type="button" class="admin-league-create-btn" onclick="window.openCreateLeagueModal()" title="Criar novo campeonato">
+          <i class="fas fa-plus"></i><span>Novo campeonato</span>
+        </button>
+      </div>
+    </section>
 
     <div class="admin-quick-section">
       <div class="admin-section-heading">ATÉALHOS RÁPIDOS</div>
