@@ -96,6 +96,9 @@ router.post('/leagues', protect, admin, async (req, res) => {
     if (endDate && Number.isNaN(endDate.getTime())) {
       return res.status(400).json({ success: false, message: 'Data final inválida.' });
     }
+    if (source === 'api' && (!startDate || !endDate)) {
+      return res.status(400).json({ success: false, message: 'A competição da API precisa fornecer as datas da temporada atual.' });
+    }
     if (startDate && endDate && startDate > endDate) {
       return res.status(400).json({ success: false, message: 'A data de início não pode ser posterior à data final.' });
     }

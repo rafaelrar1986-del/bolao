@@ -5,6 +5,7 @@ const { getEffectiveKnockoutFormat, getEffectiveKnockoutLegCount, buildKnockoutT
 const { materializeKnockoutConfrontation } = require('../services/knockoutConfrontationService');
 const { API_KNOCKOUT_ROUND_MAP } = require('../utils/knockoutStageNames');
 const { getMatchTimestamp } = require('../utils/matchDateTime');
+const { isAvailableLeagueSeason } = require('../utils/leagueSeason');
 
 /**
  * Mapeia os status da API para os Enums do seu MatchSchema
@@ -45,16 +46,28 @@ exports.getAvailableLeagues = async (req, res) => {
             headers: { 'Authorization': `Token ${API_KEY}` }
         });
 
-        const leagues = (response.data?.results || []).map(league => {
-            return {
-                ...league,
-                name: league.name || league.league?.name || `Liga Comercial ${league.id}`
-            };
-        });
+        // A API pode marcar uma competição como "is_active" mesmo quando a
+        // temporada atual já terminou. Para o cadastro de novos campeonatos,
+        // usamos a temporada retornada pela própria API e descartamos somente
+        // competições sem temporada válida ou cuja data final já passou.
+        const leagues = (response.data?.results || [])
+            .filter(league => isAvailableLeagueSeason(league))
+            .map(league => {
+                const season = league.current_season;
+                return {
+                    ...league,
+                    name: league.name || league.league?.name || `Liga Comercial ${league.id}`,
+                    current_season: {
+                        ...season,
+                        start_date: season.start_date || null,
+                        end_date: season.end_date || null
+                    }
+                };
+            });
 
         res.json({
             success: true,
-            results: leagues 
+            results: leagues
         });
 
     } catch (error) {
@@ -408,3 +421,4 @@ exports.fetchAndSyncMatches = async (req, res) => {
         });
     }
 };
+
