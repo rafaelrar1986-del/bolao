@@ -352,7 +352,7 @@ router.delete('/users/:id/league/:leagueId', protect, admin, async (req, res) =>
       });
     }
 
-    const user = await User.findById(req.params.id).select('_id name email leagues paidLeagues leaguePaymentRequests');
+    const user = await User.findById(req.params.id).select('_id name email isAdmin hasPaid leagues paidLeagues leaguePaymentRequests');
     if (!user) {
       return res.status(404).json({ success: false, message: 'Usuário não encontrado.' });
     }
@@ -369,6 +369,11 @@ router.delete('/users/:id/league/:leagueId', protect, admin, async (req, res) =>
       .map(String).filter(id => id !== leagueId);
     user.leaguePaymentRequests = (Array.isArray(user.leaguePaymentRequests) ? user.leaguePaymentRequests : [])
       .map(String).filter(id => id !== leagueId);
+
+    // Compatibilidade com o legado: hasPaid representa apenas a Liga 1.
+    // Ao remover da Liga 1, o marcador também precisa ser revogado para que
+    // isUserPaidForLeague() não mantenha acesso residual.
+    if (leagueId === '1') user.hasPaid = false;
     await user.save();
 
     // Limpeza por liga: não toca em apostas/histórico do mesmo usuário em outras ligas.
@@ -516,6 +521,9 @@ router.put('/approve-user/:id', protect, admin, async (req, res) => {
     const leagues = Array.isArray(user.leagues) ? user.leagues.map(String) : [];
     if (!leagues.includes(leagueId)) leagues.push(leagueId);
     user.leagues = leagues;
+
+    // Mantém o marcador legado sincronizado somente para a Liga 1.
+    if (leagueId === '1') user.hasPaid = true;
     await user.save();
 
     res.json({
@@ -564,6 +572,9 @@ router.put('/disapprove-user/:id', protect, admin, async (req, res) => {
       : [])
       .map(String)
       .filter(id => id !== leagueId);
+
+    // O campo legado hasPaid autoriza somente a Liga 1.
+    if (leagueId === '1') user.hasPaid = false;
 
     await user.save();
 
