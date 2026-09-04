@@ -37,8 +37,8 @@ async function loadLeagueSettings() {
         ...(res.data.rankingRules || {})
       };
       R.CurrentSettings.payment = {
-        pixKey: String(res.data.pixKey || ''),
-        pixQrCode: String(res.data.pixQrCode || '')
+        pixKey: String(res.data.payment?.pixKey ?? res.data.pixKey ?? ''),
+        pixQrCode: String(res.data.payment?.pixQrCode ?? res.data.pixQrCode ?? '')
       };
       R.CurrentSettings.betLockMode =
         res.data.betLockMode || R.CurrentSettings.betLockMode;

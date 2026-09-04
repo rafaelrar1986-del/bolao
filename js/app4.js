@@ -197,7 +197,7 @@ function verificarBloqueio(err) {
     if (err?.message) console.error("Erro de API:", err.message);
     return;
   }
-  const isPaid = window.currentUser?.hasPaid === true || window.currentUser?.hasPaid === 1;
+  const isPaid = window.currentUser?.isAdmin === true || window.currentUser?.currentLeaguePaid === true || (String(localStorage.getItem('selectedLeagueId') || '') === '1' && window.currentUser?.hasPaid === true);
   const isAdmin = window.currentUser?.isAdmin === true;
 
   if (isAdmin || isPaid) {
@@ -232,9 +232,11 @@ function getTimeRemaining(dateString) {
    REGULAMENTO MODAL
 ===================== */
 async function initRegulamentoModal() {
-  if (document.getElementById('modal-regulamento')) return;
+  const old = document.getElementById('modal-regulamento');
+  if (old) old.remove();
 
-  const leagueId = localStorage.getItem('selectedLeagueId');
+  const leagueId = localStorage.getItem('selectedLeagueId') || '';
+  const leagueName = localStorage.getItem('selectedLeagueName') || 'este campeonato';
 
   let rulesData = {};
   try {
@@ -252,10 +254,12 @@ async function initRegulamentoModal() {
     <div id="modal-regulamento" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.9);z-index:999999;align-items:center;justify-content:center;padding:20px;">
       <div style="background:#fff;padding:30px;max-width:600px;width:100%;border-radius:12px;color:#333;text-align:left;max-height:85vh;overflow-y:auto;">
         <h2 style="text-align:center;margin-top:0;">REGULAMENTO OFICIAL</h2>
+        <div style="text-align:center;font-size:13px;color:#777;margin-bottom:14px;">
+          ${String(leagueName).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+        </div>
 
         <div style="font-size:14px;line-height:1.6;margin:20px 0;">
           ${view.html}
-
           <p><strong>PRAZOS:</strong> as apostas devem ser realizadas antes do bloqueio definido para cada partida/fase. Aposta não realizada = 0 pontos.</p>
         </div>
 
@@ -269,7 +273,11 @@ async function initRegulamentoModal() {
   document.body.insertAdjacentHTML('beforeend', modalHTML);
 
   document.getElementById('btn-concordo').onclick = () => {
-    localStorage.setItem('regulamento_aceito', 'true');
+    const accepted = JSON.parse(
+      localStorage.getItem('regulamento_aceito_por_liga') || '{}'
+    );
+    accepted[String(leagueId)] = true;
+    localStorage.setItem('regulamento_aceito_por_liga', JSON.stringify(accepted));
     document.getElementById('modal-regulamento').style.display = 'none';
     afterLogin();
   };
@@ -374,11 +382,11 @@ function applyTokenFromStorage() {
 }
 
 window.refreshUserSession = async () => {
-  const me = await fetchMe();
+  const me = await fetchMe(localStorage.getItem('selectedLeagueId') || '');
   if (me) {
     currentUser = me;
     window.currentUser = me;
-    const isPaid = me.hasPaid === true || me.hasPaid === 1;
+    const isPaid = me.isAdmin === true || me.currentLeaguePaid === true || (String(localStorage.getItem('selectedLeagueId') || '') === '1' && me.hasPaid === true);
     if (isPaid || me.isAdmin) {
       const paywall = document.getElementById('paywall-wrapper');
       if (paywall) paywall.remove();
@@ -392,9 +400,9 @@ window.refreshUserSession = async () => {
   return null;
 };
 
-async function fetchMe() {
+async function fetchMe(leagueId = '') {
   try {
-    const res = await api.get('/api/auth/me');
+    const res = await api.me(leagueId || undefined);
     if (res?.success && res.user) {
       currentUser = res.user;
       window.currentUser = res.user;
@@ -600,12 +608,36 @@ function wireAuthForms() {
 }
 
 async function afterLogin() {
-  const isPaid = currentUser?.hasPaid === true || currentUser?.hasPaid === 1;
-  const hasSubmitted = window.STATE?.hasSubmitted === true;
-  const jaAceitou = localStorage.getItem('regulamento_aceito') === 'true';
+  const leagueId = localStorage.getItem('selectedLeagueId') || '';
 
-  if (!jaAceitou && !isPaid && !hasSubmitted) {
-    initRegulamentoModal();
+  if (!leagueId) {
+    await showLeagueSelection();
+    return;
+  }
+
+  // Recarrega o usuário para obter o status de pagamento DA LIGA selecionada.
+  const freshUser = await fetchMe(leagueId);
+  if (freshUser) {
+    currentUser = freshUser;
+    window.currentUser = freshUser;
+  }
+
+  const isPaid = currentUser?.isAdmin === true ||
+    currentUser?.currentLeaguePaid === true ||
+    (String(leagueId) === '1' && currentUser?.hasPaid === true);
+
+  const acceptedMap = JSON.parse(
+    localStorage.getItem('regulamento_aceito_por_liga') || '{}'
+  );
+  const legacyAccepted =
+    String(leagueId) === '1' &&
+    localStorage.getItem('regulamento_aceito') === 'true';
+  const jaAceitou = acceptedMap[String(leagueId)] === true || legacyAccepted;
+
+  // Cada campeonato tem seu próprio aceite. O usuário deve ler as regras
+  // específicas antes de entrar na área daquele campeonato.
+  if (!jaAceitou && !currentUser?.isAdmin) {
+    await initRegulamentoModal();
     const modal = document.getElementById('modal-regulamento');
     if (modal) modal.style.display = 'flex';
     return;
@@ -674,6 +706,7 @@ function performLogout() {
   localStorage.removeItem('selectedLeagueId');
   localStorage.removeItem('selectedLeagueName');
   localStorage.removeItem('regulamento_aceito');
+  localStorage.removeItem('regulamento_aceito_por_liga');
   setToken(null);
   currentUser = null;
   window.currentUser = null;

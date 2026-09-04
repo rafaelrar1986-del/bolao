@@ -91,6 +91,12 @@ async function switchAdminLeague() {
   try { await R.loadStatsLockStatus(); } catch (_) {}
   try { await R.loadAdminMatches(); } catch (_) {}
   try { await R.renderPhaseControls(); } catch (_) {}
+  try {
+    const usersSection = document.getElementById('admin-users-section');
+    if (usersSection?.style.display === 'block' && typeof window.loadAdminUsers === 'function') {
+      await window.loadAdminUsers(true);
+    }
+  } catch (_) {}
   window.dispatchEvent(new CustomEvent('admin-league-changed', { detail: { id: select.value, name: option?.textContent || '' } }));
 }
 

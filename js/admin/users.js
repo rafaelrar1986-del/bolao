@@ -200,12 +200,12 @@ function openEmailModal() {
   };
 }
 
-async function loadAdminUsers() {
+async function loadAdminUsers(forceReload = false) {
     const section = document.getElementById('admin-users-section');
     const container = document.getElementById('admin-users-list');
     if (!container || !section) return;
 
-    if (section.style.display === 'block') {
+    if (section.style.display === 'block' && !forceReload) {
         section.style.display = 'none';
         return; 
     }
@@ -214,7 +214,8 @@ async function loadAdminUsers() {
     container.innerHTML = '<p style="text-align:center; color:#888; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Carregando...</p>';
 
     try {
-        const response = await api.get('/api/admin/users');
+        const leagueId = R.getAdminLeagueId();
+        const response = await api.get(`/api/admin/users?leagueId=${encodeURIComponent(leagueId)}`);
         const users = response.users || [];
 
         if (!users || users.length === 0) {
@@ -222,20 +223,26 @@ async function loadAdminUsers() {
             return;
         }
 
-        container.innerHTML = users.map(user => `
-            <div class="user-row" style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #222; border-radius: 8px; margin-bottom: 8px; border-left: 4px solid ${user.hasPaid ? '#00ff00' : '#ffcc00'};">
-                <div style="display: flex; flex-direction: column;">
-                    <strong style="color: #fff;">${user.name || 'Sem Nome'}</strong>
-                    <span style="font-size: 12px; color: #888;">${user.email}</span>
+        container.innerHTML = users.map(user => {
+            const safeId = String(user._id);
+            const safeName = String(user.name || 'Sem Nome')
+              .replace(/\\/g, '\\\\')
+              .replace(/'/g, "\\'");
+            return `
+            <div class="user-row" style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#222;border-radius:8px;margin-bottom:8px;border-left:4px solid ${user.hasPaid ? '#00ff00' : '#ffcc00'};">
+                <div style="display:flex;flex-direction:column;">
+                    <strong style="color:#fff;">${String(user.name || 'Sem Nome').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</strong>
+                    <span style="font-size:12px;color:#888;">${String(user.email || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>
                 </div>
                 <div>
-                    ${user.hasPaid 
-                        ? '<span style="color: #00ff00; font-weight: bold;">✅ PAGO</span>' 
-                        : `<button class="btn btn-success btn-sm" onclick="handleApproveUser('${user._id}', '${user.name}')">Aprovar PIX</button>`
+                    ${user.hasPaid
+                      ? `<span style="color:#00ff00;font-weight:bold;">✅ PAGO</span>
+                         <button class="btn btn-outline-danger btn-sm" onclick="handleDisapproveUser('${safeId}', '${safeName}')">Desaprovar PIX</button>`
+                      : `<button class="btn btn-success btn-sm" onclick="handleApproveUser('${safeId}', '${safeName}')">Aprovar PIX</button>`
                     }
                 </div>
-            </div>
-        `).join('');
+            </div>`;
+        }).join('');
     } catch (err) {
         console.error("Erro ao carregar usuários:", err);
         toast("Erro ao carregar usuários", "error");

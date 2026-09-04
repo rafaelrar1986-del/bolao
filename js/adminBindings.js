@@ -87,15 +87,38 @@ window.loadMatchDetailsAdmin = function loadMatchDetailsAdmin() {
 };
 
 window.handleApproveUser = async (id, name) => {
-    if (!confirm(`Confirmar pagamento de ${name}?`)) return;
+    const leagueId = R.getAdminLeagueId();
+    if (!leagueId) {
+      toast('Selecione o campeonato que está sendo gerenciado.', 'warning');
+      return;
+    }
+    if (!confirm(`Confirmar pagamento de ${name} nesta liga?`)) return;
     try {
-        const res = await api.put(`/api/admin/approve-user/${id}`);
+        const res = await api.approvePayment(id, leagueId);
         if (res.success || res.message) {
-            toast(`Acesso liberado para ${name}!`, "success");
+            toast(`Acesso liberado para ${name} nesta liga!`, "success");
             R.loadAdminUsers();
         }
     } catch (err) {
         toast(err.message || "Erro na aprovação", "error");
+    }
+};
+
+window.handleDisapproveUser = async (id, name) => {
+    const leagueId = R.getAdminLeagueId();
+    if (!leagueId) {
+      toast('Selecione o campeonato que está sendo gerenciado.', 'warning');
+      return;
+    }
+    if (!confirm(`Desaprovar o pagamento de ${name} nesta liga?`)) return;
+    try {
+        const res = await api.disapprovePayment(id, leagueId);
+        if (res.success || res.message) {
+            toast(`Pagamento de ${name} removido desta liga.`, "success");
+            R.loadAdminUsers();
+        }
+    } catch (err) {
+        toast(err.message || "Erro ao desaprovar", "error");
     }
 };
 

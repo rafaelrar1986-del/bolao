@@ -51,6 +51,7 @@ export function logout() {
   localStorage.removeItem('selectedLeagueId');
   localStorage.removeItem('selectedLeagueName');
   localStorage.removeItem('regulamento_aceito');
+  localStorage.removeItem('regulamento_aceito_por_liga');
   window.location.reload();
 }
 
