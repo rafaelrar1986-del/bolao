@@ -12,7 +12,7 @@ exports.getActiveLeagues = async (req, res) => {
     try {
         const [registered, existing] = await Promise.all([
             League.find({ status: { $ne: 'archived' } })
-                .select('leagueId name status')
+                .select('leagueId name status source apiLeagueId apiLeagueName')
                 .sort({ name: 1 })
                 .lean(),
             Match.aggregate([
@@ -43,7 +43,9 @@ exports.getActiveLeagues = async (req, res) => {
             leagues.push({
                 id,
                 name: league.name || fallback?.name || `Liga ${id}`,
-                count: fallback?.count || 0
+                count: fallback?.count || 0,
+                apiLeagueId: Number.isFinite(Number(league.apiLeagueId)) ? Number(league.apiLeagueId) : null,
+                apiLeagueName: league.apiLeagueName || ''
             });
             seen.add(id);
         }
@@ -56,7 +58,9 @@ exports.getActiveLeagues = async (req, res) => {
             leagues.push({
                 id,
                 name: item.leagueName || `Liga ${id}`,
-                count: Number(item.totalMatches || 0)
+                count: Number(item.totalMatches || 0),
+                apiLeagueId: Number.isFinite(Number(item._id)) ? Number(item._id) : null,
+                apiLeagueName: item.leagueName || ''
             });
         }
 

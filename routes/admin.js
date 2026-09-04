@@ -112,12 +112,36 @@ router.post('/leagues', protect, admin, async (req, res) => {
       existingMatch = await Match.findOne({ leagueId }).select('_id leagueName').lean();
     }
 
-    if (existing || existingMatch) {
+    if (existing) {
       return res.status(409).json({
         success: false,
         message: `Já existe um campeonato com o leagueId ${leagueId}.`,
         leagueId
       });
+    }
+
+    // Se a competição já possui partidas legadas em Match, adotamos esse
+    // leagueId no cadastro League em vez de bloquear a criação. Assim o novo
+    // gerenciamento passa a reconhecer formalmente a liga sem migrar partidas.
+    if (source === 'api' && existingMatch) {
+      const legacyName = existingMatch.leagueName || name;
+      const league = await League.create({
+        leagueId,
+        name: name || legacyName,
+        source,
+        apiLeagueId,
+        apiLeagueName: name || legacyName,
+        startDate,
+        endDate,
+        status: 'active',
+        createdBy: req.user?._id || null
+      });
+      await Settings.findByIdAndUpdate(
+        leagueId,
+        { $setOnInsert: { leagueId, status: 'open' } },
+        { upsert: true, new: true }
+      );
+      return res.status(201).json({ success: true, data: league, adoptedLegacyMatches: true });
     }
 
     const league = await League.create({
