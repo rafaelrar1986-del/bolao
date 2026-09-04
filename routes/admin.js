@@ -191,6 +191,106 @@ router.get('/robot/available-leagues', protect, admin, robotController.getAvaila
 router.post('/robot/sync', protect, admin, robotController.fetchAndSyncMatches);
 
 /**
+ * @route    GET /api/admin/users/all
+ * @desc     Lista todos os usuários para gerenciamento global.
+ *           Esta rota NÃO é vinculada ao leagueId.
+ */
+router.get('/users/all', protect, admin, async (req, res) => {
+  try {
+    const users = await User.find(
+      {},
+      'name email isAdmin hasPaid paidLeagues leaguePaymentRequests leagues createdAt'
+    ).sort({ createdAt: -1 }).lean();
+
+    return res.json({
+      success: true,
+      users: users.map(user => ({
+        ...user,
+        paidLeagues: Array.isArray(user.paidLeagues) ? user.paidLeagues : [],
+        leaguePaymentRequests: Array.isArray(user.leaguePaymentRequests) ? user.leaguePaymentRequests : [],
+        leagues: Array.isArray(user.leagues) ? user.leagues : []
+      }))
+    });
+  } catch (error) {
+    console.error('❌ Erro ao buscar todos os usuários:', error);
+    return res.status(500).json({ success: false, message: 'Erro ao carregar usuários.' });
+  }
+});
+
+/**
+ * @route    GET /api/admin/participants?leagueId=...
+ * @desc     Lista somente participantes da liga selecionada.
+ */
+router.get('/participants', protect, admin, async (req, res) => {
+  try {
+    const leagueId = req.query?.leagueId != null ? String(req.query.leagueId).trim() : '';
+    if (!leagueId) {
+      return res.status(400).json({ success: false, message: 'leagueId é obrigatório.' });
+    }
+
+    const leagueExists = await League.exists({ leagueId });
+    if (!leagueExists && leagueId !== '1') {
+      return res.status(404).json({ success: false, message: 'Liga não encontrada.' });
+    }
+
+    const users = await User.find(
+      { leagues: leagueId },
+      'name email isAdmin paidLeagues leagues createdAt'
+    ).sort({ name: 1 }).lean();
+
+    return res.json({
+      success: true,
+      leagueId,
+      users: users.map(user => ({
+        ...user,
+        paidForLeague: Array.isArray(user.paidLeagues) && user.paidLeagues.map(String).includes(leagueId)
+      }))
+    });
+  } catch (error) {
+    console.error('❌ Erro ao buscar participantes:', error);
+    return res.status(500).json({ success: false, message: 'Erro ao carregar participantes.' });
+  }
+});
+
+/**
+ * @route    DELETE /api/admin/leagues/:leagueId/users/:userId
+ * @desc     Remove somente a participação do usuário na liga.
+ *           Não exclui a conta nem as apostas/histórico.
+ */
+router.delete('/leagues/:leagueId/users/:userId', protect, admin, async (req, res) => {
+  try {
+    const leagueId = String(req.params.leagueId || '').trim();
+    const userId = String(req.params.userId || '').trim();
+    if (!leagueId) return res.status(400).json({ success: false, message: 'leagueId é obrigatório.' });
+    if (!mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({ success: false, message: 'ID de usuário inválido.' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ success: false, message: 'Usuário não encontrado.' });
+
+    user.leagues = (Array.isArray(user.leagues) ? user.leagues : [])
+      .map(String).filter(id => id !== leagueId);
+    user.paidLeagues = (Array.isArray(user.paidLeagues) ? user.paidLeagues : [])
+      .map(String).filter(id => id !== leagueId);
+    user.leaguePaymentRequests = (Array.isArray(user.leaguePaymentRequests) ? user.leaguePaymentRequests : [])
+      .map(String).filter(id => id !== leagueId);
+
+    await user.save();
+
+    return res.json({
+      success: true,
+      leagueId,
+      userId,
+      message: `Usuário ${user.name || user.email} removido da liga ${leagueId}.`
+    });
+  } catch (error) {
+    console.error('❌ Erro ao remover usuário da liga:', error);
+    return res.status(500).json({ success: false, message: 'Erro ao remover usuário da liga.' });
+  }
+});
+
+/**
  * @route    GET /api/admin/users
  * @desc     Lista todos os usuários (CORRIGIDO PARA O FRONTEND)
  */
