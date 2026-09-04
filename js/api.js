@@ -90,21 +90,24 @@ export const api = {
   // ================================================================
   getWhitelist: () => request('GET', '/api/auth/whitelist'),
   addWhitelist: (email) => request('POST', '/api/auth/whitelist', { email }),
-  removeWhitelist: (email) => request('DELETE', `/api/auth/whitelist/${encodeURIComponent(email)}`),
+  removeWhitelist: (email) => request('DELETE', `/api/auth/whitelist/${email}`),
 
   // ================================================================
   // 💰 ADMIN: USUÁRIOS & PAGAMENTOS
   // ================================================================
-  getAdminUsers: (leagueId) => request('GET', `/api/admin/users?leagueId=${encodeURIComponent(String(leagueId || ''))}`),
-  getAdminAllUsers: () => request('GET', '/api/admin/users/all'),
-  getAdminParticipants: (leagueId) => request('GET', `/api/admin/participants?leagueId=${encodeURIComponent(String(leagueId || ''))}`),
-  removeUserFromLeague: (userId, leagueId) => request('DELETE', `/api/admin/leagues/${encodeURIComponent(String(leagueId || ''))}/users/${encodeURIComponent(String(userId || ''))}`),
+  getAdminUsers: (leagueId) => request('GET', leagueId ? `/api/admin/users?leagueId=${encodeURIComponent(String(leagueId))}` : '/api/admin/users'),
   approvePayment: (userId, leagueId) =>
     request('PUT', `/api/admin/approve-user/${userId}`, { leagueId }),
   disapprovePayment: (userId, leagueId) =>
     request('PUT', `/api/admin/disapprove-user/${userId}`, { leagueId }),
-  makeAdmin: (email) => request('POST', '/api/admin/make-admin', { email }),
-  deleteAdminUser: (userId) => request('DELETE', `/api/admin/users/${encodeURIComponent(userId)}`),
+  promoteAdminUser: (userId) =>
+    request('PUT', `/api/admin/users/${userId}/promote`),
+  demoteAdminUser: (userId) =>
+    request('PUT', `/api/admin/users/${userId}/demote`),
+  removeUserFromLeague: (userId, leagueId) =>
+    request('DELETE', `/api/admin/users/${userId}/league/${encodeURIComponent(String(leagueId))}`),
+  deleteAdminUser: (userId) =>
+    request('DELETE', `/api/admin/users/${userId}`),
   getSecurityStats: () =>
     request('GET', '/api/admin/security-stats'),
   getAdminLeagues: () => request('GET', '/api/admin/leagues'),

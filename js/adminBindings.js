@@ -122,6 +122,76 @@ window.handleDisapproveUser = async (id, name) => {
     }
 };
 
+window.handlePromoteUser = async (id, name) => {
+  if (!confirm(`Tornar ${name} administrador do sistema?`)) return;
+  try {
+    const res = await api.promoteAdminUser(id);
+    if (!res.success) throw new Error(res.message || 'Erro ao promover usuário.');
+    toast(`${name} agora é administrador.`, 'success');
+    await R.loadAdminUsers(true);
+  } catch (err) {
+    toast(err.message || 'Erro ao promover usuário.', 'error');
+  }
+};
+
+window.handleDemoteUser = async (id, name) => {
+  if (!confirm(`Remover o privilégio de administrador de ${name}?`)) return;
+  try {
+    const res = await api.demoteAdminUser(id);
+    if (!res.success) throw new Error(res.message || 'Erro ao remover administrador.');
+    toast(`${name} não é mais administrador.`, 'success');
+    await R.loadAdminUsers(true);
+  } catch (err) {
+    toast(err.message || 'Erro ao remover administrador.', 'error');
+  }
+};
+
+window.handleRemoveUserFromLeague = async (id, name) => {
+  const leagueId = R.getAdminLeagueId();
+  if (!leagueId) {
+    toast('Selecione o campeonato que está sendo gerenciado.', 'warning');
+    return;
+  }
+
+  const confirmed = confirm(
+    `⚠️ Remover ${name} da liga ${leagueId}?\n\n` +
+    'A conta continuará existindo, mas as apostas, comprovantes e histórico de pontos desta liga serão excluídos.\n' +
+    'Os dados do usuário em outras ligas serão preservados.'
+  );
+  if (!confirmed) return;
+
+  try {
+    const res = await api.removeUserFromLeague(id, leagueId);
+    if (!res.success) throw new Error(res.message || 'Erro ao remover usuário da liga.');
+    toast(`${name} foi removido da liga ${leagueId}.`, 'success');
+    await R.loadAdminUsers(true);
+  } catch (err) {
+    toast(err.message || 'Erro ao remover usuário da liga.', 'error');
+  }
+};
+
+window.handleDeleteUser = async (id, name) => {
+  const first = confirm(
+    `🚨 EXCLUSÃO DEFINITIVA\n\n` +
+    `Excluir ${name} do sistema?\n\n` +
+    'Isso apagará a conta, apostas, comprovantes, histórico de pontos e mensagens relacionadas.\n' +
+    'Esta operação não pode ser desfeita.'
+  );
+  if (!first) return;
+
+  const second = confirm(`Confirma DEFINITIVAMENTE a exclusão de ${name}?`);
+  if (!second) return;
+
+  try {
+    const res = await api.deleteAdminUser(id);
+    if (!res.success) throw new Error(res.message || 'Erro ao excluir usuário.');
+    toast(`${name} foi excluído do sistema.`, 'success');
+    await R.loadAdminUsers(true);
+  } catch (err) {
+    toast(err.message || 'Erro ao excluir usuário.', 'error');
+  }
+};
+
 window.loadAdminUsers = R.loadAdminUsers;
 
 window.showMatchBetsModal = async function(matchId, matchName) {
