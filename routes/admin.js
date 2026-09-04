@@ -191,106 +191,6 @@ router.get('/robot/available-leagues', protect, admin, robotController.getAvaila
 router.post('/robot/sync', protect, admin, robotController.fetchAndSyncMatches);
 
 /**
- * @route    GET /api/admin/users/all
- * @desc     Lista todos os usuários para gerenciamento global.
- *           Esta rota NÃO é vinculada ao leagueId.
- */
-router.get('/users/all', protect, admin, async (req, res) => {
-  try {
-    const users = await User.find(
-      {},
-      'name email isAdmin hasPaid paidLeagues leaguePaymentRequests leagues createdAt'
-    ).sort({ createdAt: -1 }).lean();
-
-    return res.json({
-      success: true,
-      users: users.map(user => ({
-        ...user,
-        paidLeagues: Array.isArray(user.paidLeagues) ? user.paidLeagues : [],
-        leaguePaymentRequests: Array.isArray(user.leaguePaymentRequests) ? user.leaguePaymentRequests : [],
-        leagues: Array.isArray(user.leagues) ? user.leagues : []
-      }))
-    });
-  } catch (error) {
-    console.error('❌ Erro ao buscar todos os usuários:', error);
-    return res.status(500).json({ success: false, message: 'Erro ao carregar usuários.' });
-  }
-});
-
-/**
- * @route    GET /api/admin/participants?leagueId=...
- * @desc     Lista somente participantes da liga selecionada.
- */
-router.get('/participants', protect, admin, async (req, res) => {
-  try {
-    const leagueId = req.query?.leagueId != null ? String(req.query.leagueId).trim() : '';
-    if (!leagueId) {
-      return res.status(400).json({ success: false, message: 'leagueId é obrigatório.' });
-    }
-
-    const leagueExists = await League.exists({ leagueId });
-    if (!leagueExists && leagueId !== '1') {
-      return res.status(404).json({ success: false, message: 'Liga não encontrada.' });
-    }
-
-    const users = await User.find(
-      { leagues: leagueId },
-      'name email isAdmin paidLeagues leagues createdAt'
-    ).sort({ name: 1 }).lean();
-
-    return res.json({
-      success: true,
-      leagueId,
-      users: users.map(user => ({
-        ...user,
-        paidForLeague: Array.isArray(user.paidLeagues) && user.paidLeagues.map(String).includes(leagueId)
-      }))
-    });
-  } catch (error) {
-    console.error('❌ Erro ao buscar participantes:', error);
-    return res.status(500).json({ success: false, message: 'Erro ao carregar participantes.' });
-  }
-});
-
-/**
- * @route    DELETE /api/admin/leagues/:leagueId/users/:userId
- * @desc     Remove somente a participação do usuário na liga.
- *           Não exclui a conta nem as apostas/histórico.
- */
-router.delete('/leagues/:leagueId/users/:userId', protect, admin, async (req, res) => {
-  try {
-    const leagueId = String(req.params.leagueId || '').trim();
-    const userId = String(req.params.userId || '').trim();
-    if (!leagueId) return res.status(400).json({ success: false, message: 'leagueId é obrigatório.' });
-    if (!mongoose.isValidObjectId(userId)) {
-      return res.status(400).json({ success: false, message: 'ID de usuário inválido.' });
-    }
-
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ success: false, message: 'Usuário não encontrado.' });
-
-    user.leagues = (Array.isArray(user.leagues) ? user.leagues : [])
-      .map(String).filter(id => id !== leagueId);
-    user.paidLeagues = (Array.isArray(user.paidLeagues) ? user.paidLeagues : [])
-      .map(String).filter(id => id !== leagueId);
-    user.leaguePaymentRequests = (Array.isArray(user.leaguePaymentRequests) ? user.leaguePaymentRequests : [])
-      .map(String).filter(id => id !== leagueId);
-
-    await user.save();
-
-    return res.json({
-      success: true,
-      leagueId,
-      userId,
-      message: `Usuário ${user.name || user.email} removido da liga ${leagueId}.`
-    });
-  } catch (error) {
-    console.error('❌ Erro ao remover usuário da liga:', error);
-    return res.status(500).json({ success: false, message: 'Erro ao remover usuário da liga.' });
-  }
-});
-
-/**
  * @route    GET /api/admin/users
  * @desc     Lista todos os usuários (CORRIGIDO PARA O FRONTEND)
  */
@@ -345,6 +245,237 @@ router.get('/users', protect, admin, async (req, res) => {
   } catch (error) {
     console.error('❌ Erro ao buscar usuários:', error);
     res.status(500).json({ success: false, message: 'Erro ao buscar usuários.' });
+  }
+});
+
+/**
+ * @route    PUT /api/admin/users/:id/promote
+ * @desc     Promove um usuário existente a administrador.
+ *           A operação é protegida por protect + admin e nunca depende do e-mail.
+ */
+router.put('/users/:id/promote', protect, admin, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'ID de usuário inválido.' });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { $set: { isAdmin: true } },
+      { new: true }
+    ).select('_id name email isAdmin');
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Usuário não encontrado.' });
+    }
+
+    return res.json({
+      success: true,
+      message: `${user.name} agora é administrador.`,
+      user
+    });
+  } catch (error) {
+    console.error('❌ Erro ao promover usuário:', error);
+    return res.status(500).json({ success: false, message: 'Erro ao promover usuário a administrador.' });
+  }
+});
+
+/**
+ * @route    PUT /api/admin/users/:id/demote
+ * @desc     Remove o privilégio de administrador sem permitir que o sistema
+ *           fique sem nenhum administrador.
+ */
+router.put('/users/:id/demote', protect, admin, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'ID de usuário inválido.' });
+    }
+
+    if (String(req.user._id) === String(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Você não pode remover o próprio privilégio de administrador.'
+      });
+    }
+
+    const target = await User.findById(req.params.id).select('_id name email isAdmin');
+    if (!target) {
+      return res.status(404).json({ success: false, message: 'Usuário não encontrado.' });
+    }
+    if (!target.isAdmin) {
+      return res.status(400).json({ success: false, message: 'O usuário já não é administrador.' });
+    }
+
+    const adminCount = await User.countDocuments({ isAdmin: true });
+    if (adminCount <= 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Não é possível remover o último administrador do sistema.'
+      });
+    }
+
+    target.isAdmin = false;
+    await target.save();
+
+    return res.json({
+      success: true,
+      message: `${target.name} deixou de ser administrador.`,
+      user: { _id: target._id, name: target.name, email: target.email, isAdmin: false }
+    });
+  } catch (error) {
+    console.error('❌ Erro ao remover privilégio de administrador:', error);
+    return res.status(500).json({ success: false, message: 'Erro ao remover privilégio de administrador.' });
+  }
+});
+
+/**
+ * @route    DELETE /api/admin/users/:id/league/:leagueId
+ * @desc     Remove um usuário somente da liga selecionada. A conta permanece
+ *           ativa nas demais ligas. Também remove dados específicos da liga
+ *           para evitar apostas, recibos e histórico órfãos.
+ */
+router.delete('/users/:id/league/:leagueId', protect, admin, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'ID de usuário inválido.' });
+    }
+
+    const leagueId = String(req.params.leagueId || '').trim();
+    if (!leagueId) {
+      return res.status(400).json({ success: false, message: 'leagueId é obrigatório.' });
+    }
+
+    if (String(req.user._id) === String(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Você não pode remover a própria conta da liga pelo painel administrativo.'
+      });
+    }
+
+    const user = await User.findById(req.params.id).select('_id name email leagues paidLeagues leaguePaymentRequests');
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Usuário não encontrado.' });
+    }
+
+    const hadLeagueRelation = [
+      ...(Array.isArray(user.leagues) ? user.leagues : []),
+      ...(Array.isArray(user.paidLeagues) ? user.paidLeagues : []),
+      ...(Array.isArray(user.leaguePaymentRequests) ? user.leaguePaymentRequests : [])
+    ].some(id => String(id) === leagueId);
+
+    user.leagues = (Array.isArray(user.leagues) ? user.leagues : [])
+      .map(String).filter(id => id !== leagueId);
+    user.paidLeagues = (Array.isArray(user.paidLeagues) ? user.paidLeagues : [])
+      .map(String).filter(id => id !== leagueId);
+    user.leaguePaymentRequests = (Array.isArray(user.leaguePaymentRequests) ? user.leaguePaymentRequests : [])
+      .map(String).filter(id => id !== leagueId);
+    await user.save();
+
+    // Limpeza por liga: não toca em apostas/histórico do mesmo usuário em outras ligas.
+    const [betsResult, receiptsResult, historyResult, newsResult] = await Promise.all([
+      Bet.deleteMany({ user: user._id, leagueId }),
+      BetReceipt.deleteMany({ user: user._id, leagueId }),
+      PointsHistory.deleteMany({ user: user._id, leagueId }),
+      NewsMessage.deleteMany({ user: user._id, leagueId })
+    ]);
+
+    // Retira o usuário das reações de outros participantes da mesma liga.
+    await NewsMessage.updateMany(
+      { leagueId, 'reactions.users': user._id },
+      { $pull: { 'reactions.$[].users': user._id } }
+    );
+
+    return res.json({
+      success: true,
+      message: hadLeagueRelation
+        ? `${user.name} foi removido da liga ${leagueId}.`
+        : `${user.name} não participava mais da liga ${leagueId}; os dados residuais da liga foram limpos.`,
+      leagueId,
+      user: { _id: user._id, name: user.name, email: user.email },
+      cleanup: {
+        bets: betsResult.deletedCount || 0,
+        receipts: receiptsResult.deletedCount || 0,
+        pointsHistory: historyResult.deletedCount || 0,
+        news: newsResult.deletedCount || 0
+      }
+    });
+  } catch (error) {
+    console.error('❌ Erro ao remover usuário da liga:', error);
+    return res.status(500).json({ success: false, message: 'Erro ao remover usuário da liga.' });
+  }
+});
+
+/**
+ * @route    DELETE /api/admin/users/:id
+ * @desc     Exclui definitivamente a conta e todos os dados pertencentes ao usuário.
+ *           O último administrador e a própria conta do administrador nunca podem
+ *           ser removidos por esta rota.
+ */
+router.delete('/users/:id', protect, admin, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'ID de usuário inválido.' });
+    }
+
+    const userId = req.params.id;
+    if (String(req.user._id) === String(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Você não pode excluir a própria conta pelo painel administrativo.'
+      });
+    }
+
+    const user = await User.findById(userId).select('_id name email isAdmin');
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Usuário não encontrado.' });
+    }
+
+    if (user.isAdmin) {
+      const adminCount = await User.countDocuments({ isAdmin: true });
+      if (adminCount <= 1) {
+        return res.status(400).json({
+          success: false,
+          message: 'Não é possível excluir o último administrador do sistema.'
+        });
+      }
+    }
+
+    // Primeiro remove os dados dependentes; só depois exclui o documento User.
+    const [betsResult, receiptsResult, historyResult, newsResult] = await Promise.all([
+      Bet.deleteMany({ user: user._id }),
+      BetReceipt.deleteMany({ user: user._id }),
+      PointsHistory.deleteMany({ user: user._id }),
+      NewsMessage.deleteMany({ user: user._id })
+    ]);
+
+    await NewsMessage.updateMany(
+      { 'reactions.users': user._id },
+      { $pull: { 'reactions.$[].users': user._id } }
+    );
+
+    // Não apagamos a liga criada pelo usuário. Apenas removemos a referência
+    // para evitar createdBy apontando para um documento inexistente.
+    await League.updateMany(
+      { createdBy: user._id },
+      { $set: { createdBy: null } }
+    );
+
+    await User.deleteOne({ _id: user._id });
+
+    return res.json({
+      success: true,
+      message: `A conta de ${user.name} foi excluída definitivamente.`,
+      deletedUser: { _id: user._id, name: user.name, email: user.email },
+      cleanup: {
+        bets: betsResult.deletedCount || 0,
+        receipts: receiptsResult.deletedCount || 0,
+        pointsHistory: historyResult.deletedCount || 0,
+        news: newsResult.deletedCount || 0
+      }
+    });
+  } catch (error) {
+    console.error('❌ Erro ao excluir usuário:', error);
+    return res.status(500).json({ success: false, message: 'Erro ao excluir usuário do sistema.' });
   }
 });
 
@@ -445,94 +576,6 @@ router.put('/disapprove-user/:id', protect, admin, async (req, res) => {
   } catch (error) {
     console.error('❌ Erro ao desaprovar pagamento:', error);
     res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-/**
- * @route    POST /api/admin/make-admin
- * @desc     Promove um usuário existente a administrador.
- *           A operação é protegida por autenticação + privilégio de Admin.
- */
-router.post('/make-admin', protect, admin, async (req, res) => {
-  try {
-    const email = String(req.body?.email || '').trim().toLowerCase();
-    if (!email) {
-      return res.status(400).json({ success: false, message: 'E-mail é obrigatório.' });
-    }
-
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'Usuário não encontrado.' });
-    }
-
-    if (user.isAdmin) {
-      return res.json({ success: true, message: 'Usuário já é administrador.', user: { _id: user._id, name: user.name, email: user.email, isAdmin: true } });
-    }
-
-    user.isAdmin = true;
-    await user.save();
-
-    return res.json({
-      success: true,
-      message: `${user.name || user.email} agora é administrador.`,
-      user: { _id: user._id, name: user.name, email: user.email, isAdmin: true }
-    });
-  } catch (error) {
-    console.error('❌ Erro ao promover usuário a Admin:', error);
-    return res.status(500).json({ success: false, message: 'Erro ao promover usuário a administrador.' });
-  }
-});
-
-/**
- * @route    DELETE /api/admin/users/:id
- * @desc     Exclui um usuário e seus dados diretamente vinculados.
- *           A operação é administrativa e não permite autoexclusão nem a
- *           remoção do último administrador do sistema.
- */
-router.delete('/users/:id', protect, admin, async (req, res) => {
-  try {
-    const userId = String(req.params.id || '').trim();
-    if (!mongoose.isValidObjectId(userId)) {
-      return res.status(400).json({ success: false, message: 'ID de usuário inválido.' });
-    }
-
-    if (String(req.user._id) === userId) {
-      return res.status(400).json({ success: false, message: 'Você não pode excluir o próprio usuário.' });
-    }
-
-    const user = await User.findById(userId).select('_id name email isAdmin').lean();
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'Usuário não encontrado.' });
-    }
-
-    if (user.isAdmin) {
-      const adminCount = await User.countDocuments({ isAdmin: true });
-      if (adminCount <= 1) {
-        return res.status(400).json({ success: false, message: 'Não é possível excluir o último administrador.' });
-      }
-    }
-
-    // Limpeza das referências/documentos diretamente pertencentes ao usuário.
-    // Mantemos partidas, configurações e ligas; apenas removemos dados do participante.
-    await Promise.all([
-      BetReceipt.deleteMany({ user: userId }),
-      Bet.deleteMany({ user: userId }),
-      PointsHistory.deleteMany({ user: userId }),
-      NewsMessage.deleteMany({ user: userId }),
-      NewsMessage.updateMany({ 'reactions.users': userId }, { $pull: { 'reactions.$[].users': userId } }),
-      League.updateMany({ createdBy: userId }, { $set: { createdBy: null } })
-    ]);
-
-    await User.deleteOne({ _id: userId });
-
-    return res.json({
-      success: true,
-      message: `Usuário ${user.name || user.email} excluído com sucesso.`,
-      userId
-    });
-  } catch (error) {
-    console.error('❌ Erro ao excluir usuário:', error);
-    return res.status(500).json({ success: false, message: 'Erro ao excluir usuário.' });
   }
 });
 
