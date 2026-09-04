@@ -44,6 +44,7 @@ function setAdminLeague(id, name = '') {
 async function loadAdminLeagues({ selectCurrent = true } = {}) {
   const select = document.getElementById('admin-league-selector');
   if (!select) return [];
+  initAdminLeagueDropdown();
   try {
     const res = await api.getAdminLeagues();
     const leagues = Array.isArray(res?.data) ? res.data : [];
@@ -65,6 +66,7 @@ async function loadAdminLeagues({ selectCurrent = true } = {}) {
     } else {
       updateAdminLeagueLogo('', '');
     }
+    syncAdminLeagueDropdown(leagues);
     return leagues;
   } catch (err) {
     console.error('Erro ao carregar campeonatos do Admin:', err);
@@ -80,6 +82,7 @@ async function switchAdminLeague() {
   R.setAdminLeagueId(select.value, option?.textContent || '');
   const currentLeague = R.AdminState.leagues.find(l => String(l.leagueId) === String(select.value));
   updateAdminLeagueLogo(currentLeague || { leagueId: select.value, id: select.value, name: option?.textContent || '' });
+  syncAdminLeagueDropdown(R.AdminState.leagues || []);
   R.activeAdminTab = 'group';
   R.selectedAdminMatchIds.clear();
   R.CurrentSettings = { ...R.CurrentSettings };
@@ -93,6 +96,69 @@ async function switchAdminLeague() {
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+}
+
+function syncAdminLeagueDropdown(leagues = R.AdminState.leagues || []) {
+  const dropdown = document.getElementById('admin-league-dropdown');
+  const select = document.getElementById('admin-league-selector');
+  const trigger = document.getElementById('admin-league-dropdown-trigger');
+  const label = document.getElementById('admin-league-dropdown-label');
+  const menu = document.getElementById('admin-league-dropdown-menu');
+  if (!dropdown || !select || !trigger || !label || !menu) return;
+
+  const currentId = String(select.value || '');
+  const current = leagues.find(l => String(l.leagueId) === currentId);
+  label.textContent = current?.name || (currentId ? `Liga ${currentId}` : 'Nenhum campeonato cadastrado');
+  menu.innerHTML = leagues.length
+    ? leagues.map((league, index) => {
+        const id = String(league.leagueId);
+        const selected = id === currentId;
+        return `<button type="button" class="admin-league-dropdown-option${selected ? ' is-selected' : ''}" role="option" aria-selected="${selected}" data-league-id="${escapeHtml(id)}" data-index="${index}">${escapeHtml(league.name || `Liga ${id}`)}${selected ? '<i class="fas fa-check" aria-hidden="true"></i>' : ''}</button>`;
+      }).join('')
+    : '<div class="admin-league-dropdown-empty">Nenhum campeonato cadastrado</div>';
+
+  menu.querySelectorAll('.admin-league-dropdown-option').forEach(option => {
+    option.addEventListener('click', async () => {
+      const id = option.dataset.leagueId;
+      if (!id) return;
+      select.value = id;
+      closeAdminLeagueDropdown();
+      await switchAdminLeague();
+      syncAdminLeagueDropdown(leagues);
+    });
+  });
+}
+
+function closeAdminLeagueDropdown() {
+  const trigger = document.getElementById('admin-league-dropdown-trigger');
+  const menu = document.getElementById('admin-league-dropdown-menu');
+  if (!trigger || !menu) return;
+  menu.hidden = true;
+  trigger.setAttribute('aria-expanded', 'false');
+}
+
+function toggleAdminLeagueDropdown() {
+  const trigger = document.getElementById('admin-league-dropdown-trigger');
+  const menu = document.getElementById('admin-league-dropdown-menu');
+  if (!trigger || !menu) return;
+  const opening = menu.hidden;
+  menu.hidden = !opening;
+  trigger.setAttribute('aria-expanded', String(opening));
+}
+
+function initAdminLeagueDropdown() {
+  const trigger = document.getElementById('admin-league-dropdown-trigger');
+  const menu = document.getElementById('admin-league-dropdown-menu');
+  if (!trigger || !menu || trigger.dataset.bound === '1') return;
+  trigger.dataset.bound = '1';
+  trigger.addEventListener('click', toggleAdminLeagueDropdown);
+  document.addEventListener('click', event => {
+    const dropdown = document.getElementById('admin-league-dropdown');
+    if (dropdown && !dropdown.contains(event.target)) closeAdminLeagueDropdown();
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') closeAdminLeagueDropdown();
+  });
 }
 
 async function openCreateLeagueModal() {
@@ -119,11 +185,11 @@ async function openCreateLeagueModal() {
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label for="create-league-start">Data de início <small>(preenchida pela API quando aplicável)</small></label>
+            <label for="create-league-start">Data de início <small>(API quando aplicável)</small></label>
             <input id="create-league-start" class="form-control" type="date">
           </div>
           <div class="form-group">
-            <label for="create-league-end">Data final <small>(preenchida pela API quando aplicável)</small></label>
+            <label for="create-league-end">Data final <small>(API quando aplicável)</small></label>
             <input id="create-league-end" class="form-control" type="date">
           </div>
         </div>
@@ -150,8 +216,8 @@ async function openCreateLeagueModal() {
     const isApi = checkbox.checked;
     startInput.readOnly = isApi;
     endInput.readOnly = isApi;
-    startInput.style.backgroundColor = isApi ? '#f3f3f3' : '';
-    endInput.style.backgroundColor = isApi ? '#f3f3f3' : '';
+    startInput.classList.toggle('api-readonly-date', isApi);
+    endInput.classList.toggle('api-readonly-date', isApi);
   };
 
   const updateMode = async () => {

@@ -633,9 +633,16 @@
     <section class="admin-league-manager" aria-label="Seleção do campeonato em gerenciamento">
       <label for="admin-league-selector">Gerenciando</label>
       <div class="admin-league-manager-row">
-        <select id="admin-league-selector" aria-label="Liga em gerenciamento">
-          <option value="">Carregando...</option>
-        </select>
+        <div class="admin-league-dropdown" id="admin-league-dropdown">
+          <select id="admin-league-selector" aria-hidden="true" tabindex="-1">
+            <option value="">Carregando...</option>
+          </select>
+          <button type="button" class="admin-league-dropdown-trigger" id="admin-league-dropdown-trigger" aria-haspopup="listbox" aria-expanded="false">
+            <span id="admin-league-dropdown-label">Carregando...</span>
+            <i class="fas fa-chevron-down" aria-hidden="true"></i>
+          </button>
+          <div class="admin-league-dropdown-menu" id="admin-league-dropdown-menu" role="listbox" hidden></div>
+        </div>
         <button type="button" class="admin-league-create-btn" onclick="window.openCreateLeagueModal()" title="Criar nova liga">
           <i class="fas fa-plus"></i><span>Liga</span>
         </button>
