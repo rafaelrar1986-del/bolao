@@ -1,6 +1,7 @@
 'use strict';
 
 const Match = require('../models/Match');
+const League = require('../models/League');
 const Bet = require('../models/Bet');
 const Settings = require('../models/Settings');
 const User = require('../models/User');
@@ -67,9 +68,10 @@ async function addMatch(ctx) {
     // Uma partida nova nunca pode nascer com dados de resultado incompatíveis
     // com a fase. O add atualmente não recebe placar/classificado, então basta
     // validar a própria fase aqui.
-    // 🆕 CORREÇÃO: Validação numérica rigorosa para matchId e apiId
+    // matchId continua obrigatório. apiId é obrigatório somente para ligas API;
+    // em campeonatos manuais ele pode ser nulo.
     const idNum = parsePositiveInteger(matchId);
-    const apiNum = parsePositiveInteger(apiId);
+    const apiNum = apiId == null || apiId === '' ? null : parsePositiveInteger(apiId);
 
     if (idNum === null) {
       return ctx.res.status(400).json({
@@ -78,10 +80,20 @@ async function addMatch(ctx) {
       });
     }
 
-    if (apiNum === null) {
+    const leagueRecord = await League.findOne({ leagueId: normalizedLeagueId }).select('source name').lean();
+    const isManualLeague = leagueRecord?.source === 'manual';
+
+    if (isManualLeague && apiId != null && apiId !== '' && apiNum === null) {
       return ctx.res.status(400).json({
         success: false,
-        message: 'apiId é obrigatório e deve ser um número inteiro positivo'
+        message: 'apiId deve ser um número inteiro positivo quando informado'
+      });
+    }
+
+    if (!isManualLeague && apiNum === null) {
+      return ctx.res.status(400).json({
+        success: false,
+        message: 'apiId é obrigatório e deve ser um número inteiro positivo para esta liga'
       });
     }
 
@@ -98,7 +110,7 @@ async function addMatch(ctx) {
       });
     }
 
-    const apiExists = await Match.findOne({ apiId: apiNum })
+    const apiExists = apiNum == null ? null : await Match.findOne({ apiId: apiNum })
       .select('_id leagueId')
       .lean();
 

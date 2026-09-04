@@ -81,7 +81,7 @@ const getGroupStandings = async (req, res) => {
         // Pontos corridos sempre têm uma única classificação lógica.
         group:
           requestedPhase === 'pontos_corridos'
-            ? (m.group || m.leagueName || 'Classificação Geral')
+            ? 'Classificação Geral'
             : m.group
       }));
 
@@ -96,7 +96,7 @@ const getGroupStandings = async (req, res) => {
       ...m,
       group:
         requestedPhase === 'pontos_corridos'
-          ? (m.group || m.leagueName || 'Classificação Geral')
+          ? 'Classificação Geral'
           : m.group
     }));
 

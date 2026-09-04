@@ -68,7 +68,7 @@ function calculateGroupStandings(matches = [], teamSourceMatches = matches) {
       if (team && !standings[team]) {
         standings[team] = {
           name: team,
-          group: m.group,
+          group: (m.phase === 'pontos_corridos' || m.phase === 'points_run') ? 'Classificação Geral' : m.group,
           pj: 0,
           v: 0,
           e: 0,
@@ -88,7 +88,7 @@ function calculateGroupStandings(matches = [], teamSourceMatches = matches) {
       if (team && !standings[team]) {
         standings[team] = {
           name: team,
-          group: m.group,
+          group: (m.phase === 'pontos_corridos' || m.phase === 'points_run') ? 'Classificação Geral' : m.group,
           pj: 0,
           v: 0,
           e: 0,

@@ -6,7 +6,10 @@ const path = require('path');
 
 // Importações de Modelos e Serviços
 const AllowedEmail = require('../models/AllowedEmail'); 
-const User = require('../models/User'); 
+const User = require('../models/User');
+const Match = require('../models/Match');
+const Settings = require('../models/Settings');
+const League = require('../models/League');
 const BetReceipt = require('../models/BetReceipt');
 const { sendBroadcastEmail } = require('../services/emailService');
 const { protect, admin } = require('../middleware/auth');
@@ -18,6 +21,130 @@ const robotController = require('../controllers/robotController');
 const upload = multer({ 
   dest: 'uploads/',
   limits: { fileSize: 10 * 1024 * 1024 } 
+});
+
+/**
+ * @route    GET /api/admin/leagues
+ * @desc     Lista campeonatos/ligações disponíveis para o painel Admin.
+ *           O cadastro em League permite que uma liga exista mesmo sem partidas.
+ */
+router.get('/leagues', protect, admin, async (req, res) => {
+  try {
+    const [registered, existing] = await Promise.all([
+      League.find({}).sort({ name: 1 }).lean(),
+      Match.aggregate([
+        { $match: { leagueId: { $ne: null } } },
+        { $group: {
+          _id: '$leagueId',
+          name: { $first: '$leagueName' },
+          count: { $sum: 1 }
+        } }
+      ])
+    ]);
+
+    const byId = new Map(registered.map(l => [String(l.leagueId), l]));
+    // Compatibilidade: ligas antigas continuam aparecendo sem exigir migração.
+    for (const item of existing) {
+      const id = String(item._id);
+      if (!byId.has(id)) {
+        byId.set(id, {
+          leagueId: id,
+          name: item.name || `Liga ${id}`,
+          source: 'api',
+          apiLeagueId: Number.isFinite(Number(id)) ? Number(id) : null,
+          apiLeagueName: item.name || '',
+          startDate: null,
+          endDate: null,
+          status: 'active',
+          legacy: true
+        });
+      }
+    }
+
+    const data = [...byId.values()]
+      .filter(l => l.status !== 'archived')
+      .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR'));
+
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error('❌ Erro ao listar campeonatos do Admin:', error);
+    return res.status(500).json({ success: false, message: 'Erro ao carregar campeonatos.' });
+  }
+});
+
+/**
+ * @route    POST /api/admin/leagues
+ * @desc     Cria um campeonato manual ou vinculado a uma competição da API.
+ *           leagueId continua sendo a identidade usada pelo restante do sistema.
+ */
+router.post('/leagues', protect, admin, async (req, res) => {
+  try {
+    const name = String(req.body?.name || '').trim();
+    const source = req.body?.source === 'api' ? 'api' : 'manual';
+    const apiLeagueId = req.body?.apiLeagueId == null || req.body?.apiLeagueId === ''
+      ? null : Number(req.body.apiLeagueId);
+    const startDate = req.body?.startDate ? new Date(req.body.startDate) : null;
+    const endDate = req.body?.endDate ? new Date(req.body.endDate) : null;
+
+    if (!name) return res.status(400).json({ success: false, message: 'Nome do campeonato é obrigatório.' });
+    if (source === 'api' && (!Number.isInteger(apiLeagueId) || apiLeagueId <= 0)) {
+      return res.status(400).json({ success: false, message: 'Selecione um campeonato válido da API.' });
+    }
+    if (startDate && Number.isNaN(startDate.getTime())) {
+      return res.status(400).json({ success: false, message: 'Data de início inválida.' });
+    }
+    if (endDate && Number.isNaN(endDate.getTime())) {
+      return res.status(400).json({ success: false, message: 'Data final inválida.' });
+    }
+    if (startDate && endDate && startDate > endDate) {
+      return res.status(400).json({ success: false, message: 'A data de início não pode ser posterior à data final.' });
+    }
+
+    // Mantemos leagueId como identidade única em todo o sistema. Para ligas
+    // manuais usamos um ID numérico interno (em string), pois módulos legados
+    // ainda convertem leagueId para número em alguns pontos do sistema.
+    let leagueId = source === 'api' ? String(apiLeagueId) : String(Date.now());
+    let existing = await League.findOne({ leagueId }).lean();
+    let existingMatch = await Match.findOne({ leagueId }).select('_id leagueName').lean();
+    while (source === 'manual' && (existing || existingMatch)) {
+      leagueId = String(Number(leagueId) + 1);
+      existing = await League.findOne({ leagueId }).lean();
+      existingMatch = await Match.findOne({ leagueId }).select('_id leagueName').lean();
+    }
+
+    if (existing || existingMatch) {
+      return res.status(409).json({
+        success: false,
+        message: `Já existe um campeonato com o leagueId ${leagueId}.`,
+        leagueId
+      });
+    }
+
+    const league = await League.create({
+      leagueId,
+      name,
+      source,
+      apiLeagueId: source === 'api' ? apiLeagueId : null,
+      apiLeagueName: source === 'api' ? name : '',
+      startDate,
+      endDate,
+      status: 'active',
+      createdBy: req.user?._id || null
+    });
+
+    // Cria as configurações mínimas imediatamente, permitindo administrar a liga
+    // antes da primeira partida.
+    await Settings.findByIdAndUpdate(
+      leagueId,
+      { $setOnInsert: { leagueId, status: 'open' } },
+      { upsert: true, new: true }
+    );
+
+    return res.status(201).json({ success: true, data: league });
+  } catch (error) {
+    console.error('❌ Erro ao criar campeonato:', error);
+    return res.status(500).json({ success: false, message: 'Erro ao criar campeonato.' });
+  }
 });
 
 /**

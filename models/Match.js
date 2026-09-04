@@ -135,10 +135,12 @@ const MatchSchema = new Schema(
     processed: { type: Boolean, default: false },
 
     betsCount: { type: Number, default: 0 },
+    // Partidas manuais não possuem ID externo. Quando informado, o apiId
+    // continua globalmente único; o índice esparso evita conflito entre vários null.
     apiId: {
       type: Number,
-      required: true,
-      unique: true,
+      required: false,
+      default: null,
       index: true
     },
 
@@ -155,6 +157,8 @@ const MatchSchema = new Schema(
 
 // Registra de forma permanente que a primeira partida da liga já iniciou.
 // É idempotente e usa upsert para funcionar mesmo se Settings ainda não existir.
+MatchSchema.index({ apiId: 1 }, { unique: true, sparse: true });
+
 MatchSchema.statics.markLeagueStarted = async function (leagueId, startedAt = new Date()) {
   const normalizedLeagueId =
     leagueId === undefined || leagueId === null

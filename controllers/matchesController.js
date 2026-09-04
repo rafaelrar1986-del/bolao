@@ -7,6 +7,7 @@ const matchStatsService = require('../services/matchStatsService');
 const Settings = require('../models/Settings');
 const championshipRulesService = require('../services/championshipRulesService');
 const Match = require('../models/Match');
+const League = require('../models/League');
 const {
   getMatchTimestamp,
   compareMatchesChronologically,
@@ -17,59 +18,78 @@ const { requireLeagueId } = require('../utils/leagueId');
 
 async function getLeagues(req, res) {
   try {
-    const leagues = await Match.aggregate([
-      { $match: { leagueId: { $ne: null } } },
-      {
-        $group: {
-          _id: "$leagueId",
-          name: { $first: "$leagueName" },
-          scheduledCount: {
-            $sum: { $cond: [{ $eq: ["$status", "scheduled"] }, 1, 0] }
-          },
-          allMatches: {
-            $push: {
-              date: "$date",
-              time: "$time",
-              teamA: "$teamA",
-              teamB: "$teamB",
-              status: "$status"
+    // O cadastro de League permite que campeonatos sem partidas ainda sejam
+    // selecionáveis. Mantemos os dados antigos de Match como fallback para
+    // não exigir migração dos campeonatos já existentes.
+    const [registered, groupedMatches] = await Promise.all([
+      League.find({ status: { $ne: 'archived' } }).sort({ name: 1 }).lean(),
+      Match.aggregate([
+        { $match: { leagueId: { $ne: null } } },
+        {
+          $group: {
+            _id: '$leagueId',
+            name: { $first: '$leagueName' },
+            totalMatches: { $sum: 1 },
+            scheduledCount: { $sum: { $cond: [{ $eq: ['$status', 'scheduled'] }, 1, 0] } },
+            allMatches: {
+              $push: {
+                date: '$date', time: '$time', teamA: '$teamA', teamB: '$teamB', status: '$status'
+              }
             }
           }
         }
-      },
-      { $sort: { name: 1 } }
+      ])
     ]);
 
-    const data = leagues.map(l => {
-      const scheduledMatches = l.allMatches.filter(m => m.status === 'scheduled');
+    const byId = new Map();
+    registered.forEach(l => byId.set(String(l.leagueId), {
+      id: String(l.leagueId),
+      name: l.name || `Liga ${l.leagueId}`,
+      source: l.source || 'manual',
+      count: 0,
+      totalMatches: 0,
+      nextMatchDate: null,
+      nextMatchTeams: null
+    }));
 
-      // 🆕 CORREÇÃO: Ordenação consistente usando UTC (mesma base de parseMatchDate)
-      const sortedMatches = scheduledMatches.sort((a, b) => {
-        const tsA = getMatchTimestamp(a.date, a.time);
-        const tsB = getMatchTimestamp(b.date, b.time);
-        if (!tsA || !tsB) return 0;
-        return tsA - tsB;
-      });
-
-      const next = sortedMatches[0];
-      let isoDate = null;
-      if (next) {
-        const [day, month, year] = next.date.split('/');
-        const [h, min] = next.time.split(':');
-        if (day && month && year && h != null && min != null) {
-          // 🆕 CORREÇÃO: Retorna ISO local sem 'Z' para evitar shift de timezone no front
-          isoDate = `${year.padStart(4, '0')}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${h.padStart(2, '0')}:${min.padStart(2, '0')}:00`;
-        }
-      }
-
-      return {
-        id: l._id,
-        name: l.name || `Liga ${l._id}`,
-        count: l.scheduledCount,
-        nextMatchDate: isoDate,
-        nextMatchTeams: next ? `${next.teamA} x ${next.teamB}` : "Rodada encerrada"
+    groupedMatches.forEach(l => {
+      const id = String(l._id);
+      const item = byId.get(id) || {
+        id,
+        name: l.name || `Liga ${id}`,
+        source: 'api',
+        count: 0,
+        totalMatches: 0,
+        nextMatchDate: null,
+        nextMatchTeams: null,
+        legacy: true
       };
-    }).filter(l => l.id !== null);
+      item.name = item.name || l.name || `Liga ${id}`;
+      item.count = Number(l.scheduledCount || 0);
+      item.totalMatches = Number(l.totalMatches || 0);
+
+      const scheduled = (l.allMatches || [])
+        .filter(m => m.status === 'scheduled')
+        .sort((a, b) => {
+          const ta = getMatchTimestamp(a.date, a.time);
+          const tb = getMatchTimestamp(b.date, b.time);
+          if (!ta || !tb) return 0;
+          return ta - tb;
+        });
+      const next = scheduled[0];
+      if (next) {
+        const [day, month, year] = String(next.date || '').split('/');
+        const [hour, minute] = String(next.time || '').split(':');
+        if (day && month && year && hour != null && minute != null) {
+          item.nextMatchDate = `${year.padStart(4, '0')}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${hour.padStart(2, '0')}:${minute.padStart(2, '0')}:00`;
+        }
+        item.nextMatchTeams = `${next.teamA} x ${next.teamB}`;
+      }
+      byId.set(id, item);
+    });
+
+    const data = [...byId.values()]
+      .sort((a, b) => String(a.name).localeCompare(String(b.name), 'pt-BR'));
 
     res.json({ success: true, data });
   } catch (err) {
@@ -77,7 +97,6 @@ async function getLeagues(req, res) {
     res.status(500).json({ success: false, message: 'Erro ao buscar ligas' });
   }
 }
-
 async function getMatches(req, res) {
   try {
     const { leagueId } = req.query;
