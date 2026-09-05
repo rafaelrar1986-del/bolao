@@ -252,10 +252,10 @@ async function loadAdminUsers(forceReload = false) {
                 paymentAction = '<span class="admin-user-menu-note">Pagamento não é exigido nesta liga.</span>';
             } else if (hasPaid) {
                 paymentStatus = '<span class="admin-user-status admin-user-status-paid">🟢 PAGO</span>';
-                paymentAction = `<button type="button" class="admin-user-menu-btn" onclick="handleDisapproveUser('${safeId}', ${safeName})">✕ Desaprovar PIX</button>`;
+                paymentAction = `<button type="button" class="admin-user-menu-btn" onclick="handleDisapproveUser('${safeId}', ${JSON.stringify(user.name).replace(/"/g, '&quot;')})">✕ Desaprovar PIX</button>`;
             } else {
                 paymentStatus = '<span class="admin-user-status admin-user-status-pending">🟡 PENDENTE</span>';
-                paymentAction = `<button type="button" class="admin-user-menu-btn admin-user-menu-btn-success" onclick="handleApproveUser('${safeId}', ${safeName})">✓ Aprovar PIX</button>`;
+                paymentAction = `<button type="button" class="admin-user-menu-btn admin-user-menu-btn-success" onclick="handleApproveUser('${safeId}', ${JSON.stringify(user.name).replace(/"/g, '&quot;')})">✓ Aprovar PIX</button>`;
             }
 
             const adminAction = isAdmin
