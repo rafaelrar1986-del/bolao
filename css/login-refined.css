@@ -189,3 +189,64 @@ header {
     padding-top: 14px !important;
   }
 }
+/* Login Google compacto: somente o ícone G, sem o divisor "OU". */
+#login-section .google-login-button,
+#login-section .google-login-container {
+  width: 42px !important;
+  min-width: 42px !important;
+  max-width: 42px !important;
+  height: 42px !important;
+  min-height: 42px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+#login-section .google-login-button {
+  display: inline-grid !important;
+  place-items: center !important;
+  padding: 0 !important;
+  gap: 0 !important;
+  border-radius: 10px !important;
+  background: #fff !important;
+  border: 1px solid rgba(216, 235, 220, 0.35) !important;
+  color: #4285f4 !important;
+}
+
+#login-section .google-login-button:hover,
+#login-section .google-login-button:focus-visible {
+  background: #fff !important;
+  border-color: rgba(216, 235, 220, 0.7) !important;
+}
+
+#login-section .google-mark {
+  width: auto !important;
+  height: auto !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #4285f4 !important;
+  font-size: 23px !important;
+  line-height: 1 !important;
+}
+
+/* O Google Identity Services continua funcional, mas somente seu ícone fica visível. */
+#login-section .google-login-container {
+  position: relative !important;
+  overflow: hidden !important;
+  border-radius: 10px !important;
+}
+
+#login-section .google-login-container > div,
+#login-section .google-login-container iframe {
+  max-width: none !important;
+}
+
+/* Login: o estádio permanece visível e com iluminação uniforme ao redor do card. */
+body:has(#login-section:not([hidden])) {
+  background:
+    url("../img/Stadium.jpg") center / cover no-repeat fixed !important;
+}
+
+body:has(#login-section:not([hidden]))::before {
+  display: none !important;
+  content: none !important;
+}
