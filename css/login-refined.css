@@ -228,18 +228,6 @@ header {
   line-height: 1 !important;
 }
 
-/* O Google Identity Services continua funcional, mas somente seu ícone fica visível. */
-#login-section .google-login-container {
-  position: relative !important;
-  overflow: hidden !important;
-  border-radius: 10px !important;
-}
-
-#login-section .google-login-container > div,
-#login-section .google-login-container iframe {
-  max-width: none !important;
-}
-
 /* Login: o estádio permanece visível e com iluminação uniforme ao redor do card. */
 body:has(#login-section:not([hidden])) {
   background:
@@ -251,38 +239,25 @@ body:has(#login-section:not([hidden]))::before {
   content: none !important;
 }
 
-/* Google Identity Services: manter somente o botão oficial em modo ícone. */
+/* Google Identity Services: botão oficial em modo ícone, sem cortar o iframe. */
 #login-section .google-login-container {
-  display: inline-flex !important;
+  width: 48px !important;
+  min-width: 48px !important;
+  max-width: 48px !important;
+  height: 48px !important;
+  min-height: 48px !important;
+  max-height: 48px !important;
+  margin: 12px auto 0 !important;
+  padding: 0 !important;
+  display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  width: 42px !important;
-  min-width: 42px !important;
-  max-width: 42px !important;
-  height: 42px !important;
-  min-height: 42px !important;
-  max-height: 42px !important;
-  padding: 0 !important;
-  margin: 14px auto 0 !important;
-  overflow: hidden !important;
+  overflow: visible !important;
   border: 0 !important;
   background: transparent !important;
 }
 
-#login-section .google-login-container > div {
-  width: 40px !important;
-  min-width: 40px !important;
-  max-width: 40px !important;
-  height: 40px !important;
-  min-height: 40px !important;
-  max-height: 40px !important;
-}
-
-#login-section .google-login-container iframe {
-  width: 40px !important;
-  min-width: 40px !important;
-  max-width: 40px !important;
-  height: 40px !important;
-  min-height: 40px !important;
-  max-height: 40px !important;
+#login-section .google-login-container[hidden],
+#login-section .google-login-button[hidden] {
+  display: none !important;
 }
