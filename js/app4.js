@@ -1,5 +1,5 @@
 import { getLeagueLogoUrl } from './leagueLogo.js';
-const API_BASE_URL = window.CONFIG?.API_BASE_URL || "";
+import { API_BASE_URL } from './config.js';
 
 /* =====================
    Forgot password API
