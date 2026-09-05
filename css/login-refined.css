@@ -239,15 +239,16 @@ body:has(#login-section:not([hidden]))::before {
   content: none !important;
 }
 
-/* Google Identity Services: botão oficial em modo ícone, sem cortar o iframe. */
+
+/* Google Login — ícone oficial maior e proporcional ao card. */
 #login-section .google-login-container {
-  width: 48px !important;
-  min-width: 48px !important;
-  max-width: 48px !important;
-  height: 48px !important;
-  min-height: 48px !important;
-  max-height: 48px !important;
-  margin: 12px auto 0 !important;
+  width: 58px !important;
+  min-width: 58px !important;
+  max-width: 58px !important;
+  height: 58px !important;
+  min-height: 58px !important;
+  max-height: 58px !important;
+  margin: 14px auto 0 !important;
   padding: 0 !important;
   display: flex !important;
   align-items: center !important;
@@ -257,7 +258,43 @@ body:has(#login-section:not([hidden]))::before {
   background: transparent !important;
 }
 
-#login-section .google-login-container[hidden],
-#login-section .google-login-button[hidden] {
+/* O botão oficial do Google fica dentro de um iframe.
+   A escala aumenta o botão inteiro sem deformar o G. */
+#login-section .google-login-container iframe {
+  transform: scale(1.4) !important;
+  transform-origin: center center !important;
+}
+
+/* Fallback, usado apenas quando o Google oficial não estiver disponível. */
+#login-section .google-login-button {
+  width: 56px !important;
+  min-width: 56px !important;
+  max-width: 56px !important;
+  height: 56px !important;
+  min-height: 56px !important;
+  max-height: 56px !important;
+  margin: 14px auto 0 !important;
+  padding: 0 !important;
+  display: inline-grid !important;
+  place-items: center !important;
+  gap: 0 !important;
+  border-radius: 12px !important;
+  background: #fff !important;
+  border: 1px solid rgba(216, 235, 220, 0.35) !important;
+  color: #4285f4 !important;
+}
+
+#login-section .google-mark {
+  width: auto !important;
+  height: auto !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #4285f4 !important;
+  font-size: 34px !important;
+  line-height: 1 !important;
+}
+
+#login-section .google-login-button[hidden],
+#login-section .google-login-container[hidden] {
   display: none !important;
 }
