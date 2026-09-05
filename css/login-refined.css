@@ -240,14 +240,14 @@ body:has(#login-section:not([hidden]))::before {
 }
 
 
-/* Google Login — ícone oficial maior e proporcional ao card. */
+/* Google Login — tamanho estável antes e depois do carregamento. */
 #login-section .google-login-container {
-  width: 58px !important;
-  min-width: 58px !important;
-  max-width: 58px !important;
-  height: 58px !important;
-  min-height: 58px !important;
-  max-height: 58px !important;
+  width: 64px !important;
+  min-width: 64px !important;
+  max-width: 64px !important;
+  height: 64px !important;
+  min-height: 64px !important;
+  max-height: 64px !important;
   margin: 14px auto 0 !important;
   padding: 0 !important;
   display: flex !important;
@@ -258,14 +258,35 @@ body:has(#login-section:not([hidden]))::before {
   background: transparent !important;
 }
 
-/* O botão oficial do Google fica dentro de um iframe.
-   A escala aumenta o botão inteiro sem deformar o G. */
+/*
+ * O GIS retorna um iframe menor que o nosso fallback. Aumentamos somente
+ * o iframe inteiro, preservando a proporção do botão e do G.
+ */
 #login-section .google-login-container iframe {
-  transform: scale(1.4) !important;
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+  height: 40px !important;
+  min-height: 40px !important;
+  max-height: 40px !important;
+  transform: scale(1.40) !important;
   transform-origin: center center !important;
 }
 
-/* Fallback, usado apenas quando o Google oficial não estiver disponível. */
+/* O elemento interno criado pelo GIS acompanha o tamanho do iframe. */
+#login-section .google-login-container > div {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+  height: 40px !important;
+  min-height: 40px !important;
+  max-height: 40px !important;
+}
+
+/* Fallback: mesmo tamanho visual do botão oficial ampliado. */
 #login-section .google-login-button {
   width: 56px !important;
   min-width: 56px !important;
@@ -277,19 +298,12 @@ body:has(#login-section:not([hidden]))::before {
   padding: 0 !important;
   display: inline-grid !important;
   place-items: center !important;
-  gap: 0 !important;
   border-radius: 12px !important;
   background: #fff !important;
   border: 1px solid rgba(216, 235, 220, 0.35) !important;
-  color: #4285f4 !important;
 }
 
 #login-section .google-mark {
-  width: auto !important;
-  height: auto !important;
-  border-radius: 0 !important;
-  background: transparent !important;
-  color: #4285f4 !important;
   font-size: 34px !important;
   line-height: 1 !important;
 }
