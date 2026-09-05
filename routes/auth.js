@@ -3,6 +3,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs'); 
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto'); 
+const axios = require('axios');
 const User = require('../models/User');
 const Settings = require('../models/Settings');
 const AllowedEmail = require('../models/AllowedEmail');
@@ -49,6 +50,112 @@ const authenticateUser = async (email, password) => {
     return { success: false, error: 'AUTH_ERROR' };
   }
 };
+
+const normalizeGoogleEmail = (email) => String(email || '').toLowerCase().trim();
+
+const verifyGoogleCredential = async (credential) => {
+  if (!process.env.GOOGLE_CLIENT_ID) {
+    const error = new Error('Login Google não configurado no servidor');
+    error.statusCode = 503;
+    throw error;
+  }
+
+  const response = await axios.get('https://oauth2.googleapis.com/tokeninfo', {
+    params: { id_token: credential },
+    timeout: 8000
+  });
+  const profile = response.data || {};
+  const issuer = String(profile.iss || '');
+  const emailVerified = profile.email_verified === true || profile.email_verified === 'true';
+
+  if (
+    !profile.sub ||
+    profile.aud !== process.env.GOOGLE_CLIENT_ID ||
+    !['accounts.google.com', 'https://accounts.google.com'].includes(issuer) ||
+    !emailVerified ||
+    !isValidEmail(profile.email)
+  ) {
+    const error = new Error('Credencial Google inválida');
+    error.statusCode = 401;
+    throw error;
+  }
+
+  return profile;
+};
+
+router.get('/google-config', (req, res) => {
+  res.json({
+    success: true,
+    enabled: Boolean(process.env.GOOGLE_CLIENT_ID),
+    clientId: process.env.GOOGLE_CLIENT_ID || null
+  });
+});
+
+router.post('/google', async (req, res) => {
+  try {
+    const credential = String(req.body?.credential || '').trim();
+    if (!credential) {
+      return res.status(400).json({ success: false, message: 'Credencial Google não informada' });
+    }
+
+    const profile = await verifyGoogleCredential(credential);
+    const email = normalizeGoogleEmail(profile.email);
+    let user = await User.findOne({
+      $or: [{ googleId: profile.sub }, { email }]
+    });
+
+    if (!user) {
+      const isAllowed = await AllowedEmail.findOne({ email });
+      if (!isAllowed) {
+        return res.status(403).json({
+          success: false,
+          message: 'Acesso restrito: este e-mail não foi convidado para o bolão.'
+        });
+      }
+
+      user = await User.create({
+        name: String(profile.name || email.split('@')[0]).trim().slice(0, 50),
+        email,
+        googleId: profile.sub,
+        // A senha aleatória preserva o schema e mantém o login Google separado
+        // do login por email/senha já existente.
+        password: crypto.randomBytes(32).toString('hex'),
+        avatar: profile.picture || null
+      });
+    } else {
+      if (!user.googleId) user.googleId = profile.sub;
+      if (!user.avatar && profile.picture) user.avatar = profile.picture;
+      user.lastLogin = new Date();
+      await user.save();
+    }
+
+    const token = generateToken(user._id);
+    return res.json({
+      success: true,
+      message: 'Login Google realizado com sucesso!',
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        isAdmin: user.isAdmin,
+        hasPaid: user.hasPaid,
+        paidLeagues: Array.isArray(user.paidLeagues) ? user.paidLeagues : [],
+        createdAt: user.createdAt,
+        avatar: user.avatar || null
+      },
+      token
+    });
+  } catch (error) {
+    console.error('❌ ERRO NO LOGIN GOOGLE:', error);
+    const statusCode = Number(error?.statusCode) || 401;
+    return res.status(statusCode).json({
+      success: false,
+      message: statusCode === 503
+        ? 'Login Google ainda não foi configurado no servidor'
+        : 'Não foi possível validar a conta Google'
+    });
+  }
+});
 
 // ======================
 // 📝 REGISTRO COM WHITELIST (CORRIGIDO)
