@@ -678,13 +678,14 @@ async function wireGoogleLogin() {
         if (credential) void completeGoogleLogin(credential);
       }
     });
+    // Renderiza o botão oficial do Google no modo ÍCONE.
+    // O modo 'standard' força o texto "Continuar com Google" e,
+    // ao ser limitado a 42px por CSS, acaba aparecendo cortado.
     google.accounts.id.renderButton(googleContainer, {
-      type: 'standard',
+      type: 'icon',
       theme: 'outline',
       size: 'large',
-      text: 'continue_with',
-      shape: 'rectangular',
-      width: 300
+      shape: 'square'
     });
     fallbackButton.hidden = true;
     googleContainer.hidden = false;
