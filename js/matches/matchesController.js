@@ -131,10 +131,16 @@ export function createMatchesController(ctx = {}) {
         matchCard.setAttribute('data-status', newStatus);
 
         const openedGroups = Array.from(document.querySelectorAll('.accordion-item.active'))
-          .map(item => item.querySelector('.accordion-title')?.textContent.trim())
+          .map(item =>
+            item.getAttribute('data-group') ||
+            item.querySelector('.accordion-title')?.textContent.trim()
+          )
           .filter(Boolean);
 
-        const currentGroupTitle = matchCard.closest('.accordion-item')?.querySelector('.accordion-title')?.textContent.trim();
+        const currentGroup = matchCard.closest('.accordion-item');
+        const currentGroupTitle =
+          currentGroup?.getAttribute('data-group') ||
+          currentGroup?.querySelector('.accordion-title')?.textContent.trim();
         if (startedNow && currentGroupTitle && !openedGroups.includes(currentGroupTitle)) {
           openedGroups.push(currentGroupTitle);
         }

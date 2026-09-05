@@ -14,11 +14,11 @@ import { createMatchesProgress } from './matches/matchesProgress.js';
 import { createMatchesDraft } from './matches/matchesDraft.js';
 import { createMatchesSettings } from './matches/matchesSettings.js';
 import { createMatchesGroupPrediction } from './matches/matchesGroupPrediction.js';
-import { createMatchesGroupsRenderer } from './matches/matchesGroupsRenderer.js';
-import { createMatchesKnockoutRenderer } from './matches/matchesKnockoutRenderer.js';
+import { createMatchesGroupsRenderer } from './matches/matchesGroupsRenderer.js?v=1.16-accordion-preserve-all';
+import { createMatchesKnockoutRenderer } from './matches/matchesKnockoutRenderer.js?v=1.16-accordion-preserve-all';
 import { createMatchesPodiumExtras } from './matches/matchesPodiumExtras.js';
 import { createMatchesModal } from './matches/matchesModal.js';
-import { createMatchesController } from './matches/matchesController.js';
+import { createMatchesController } from './matches/matchesController.js?v=1.16-accordion-preserve-all';
 
 const STATE = {
   matches: [],

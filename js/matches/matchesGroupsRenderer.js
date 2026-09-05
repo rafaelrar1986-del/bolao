@@ -39,6 +39,15 @@ export function createMatchesGroupsRenderer(ctx = {}) {
     const wrap = $('#matches-container');
     if (!wrap) return;
 
+    if (!openedGroups || openedGroups.length === 0) {
+      openedGroups = Array.from(wrap.querySelectorAll('.accordion-item.active'))
+        .map(item =>
+          item.getAttribute('data-group') ||
+          item.querySelector('.accordion-title')?.textContent.trim()
+        )
+        .filter(Boolean);
+    }
+
     wrap.innerHTML = '';
 
     let list = (STATE.matches || []).filter(m => !isKnockoutMatch(m));
@@ -174,7 +183,10 @@ export function createMatchesGroupsRenderer(ctx = {}) {
           return sum;
         }, 0);
 
-        const wasOpen = openedGroups.includes(groupName);
+        const openedGroupKeys = new Set(
+          (openedGroups || []).map(group => String(group).trim().toLocaleLowerCase())
+        );
+        const wasOpen = openedGroupKeys.has(String(groupName).trim().toLocaleLowerCase());
         const isLiveMode = STATE.groupFilter === 'live';
         const isInitialAutoOpen = openedGroups.length === 0 && index === 0;
         const isActive = (wasOpen || isInitialAutoOpen || isLiveMode) ? 'active' : '';

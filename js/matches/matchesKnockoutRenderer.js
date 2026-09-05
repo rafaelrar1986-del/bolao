@@ -8,6 +8,15 @@ export function createMatchesKnockoutRenderer(ctx = {}) {
     const wrap = document.getElementById('knockout-container');
     if (!wrap) return;
 
+    if (!openedGroups || openedGroups.length === 0) {
+      openedGroups = Array.from(wrap.querySelectorAll('.accordion-item.active'))
+        .map(item =>
+          item.getAttribute('data-group') ||
+          item.querySelector('.accordion-title')?.textContent.trim()
+        )
+        .filter(Boolean);
+    }
+
     let list = STATE.matches.filter(isKnockoutMatch);
     if (STATE.knockoutBetAvailabilityMode === 'round') {
       list = list.filter(m => {
@@ -104,7 +113,10 @@ export function createMatchesKnockoutRenderer(ctx = {}) {
           return sum + p;
         }, 0);
 
-        const wasOpen = openedGroups.includes(groupName);
+        const openedGroupKeys = new Set(
+          (openedGroups || []).map(group => String(group).trim().toLocaleLowerCase())
+        );
+        const wasOpen = openedGroupKeys.has(String(groupName).trim().toLocaleLowerCase());
         const isLiveMode = STATE.knockoutFilter === 'live';
         const isInitialAutoOpen = openedGroups.length === 0 && index === 0;
         const isActive = (wasOpen || isInitialAutoOpen || isLiveMode) ? 'active' : '';
