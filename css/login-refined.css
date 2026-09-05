@@ -1,0 +1,191 @@
+/* Refinamento da entrada: mais foco no formulário e melhor leitura em mobile. */
+body:has(#login-section:not([hidden])) {
+  background:
+    linear-gradient(180deg, rgba(3, 9, 13, 0.35) 0%, rgba(3, 8, 12, 0.82) 55%, rgba(3, 8, 12, 0.94) 100%),
+    url("../img/Stadium.jpg") center / cover no-repeat fixed !important;
+}
+
+header {
+  background: rgba(21, 12, 8, 0.84) !important;
+  border-bottom: 1px solid rgba(224, 190, 151, 0.28) !important;
+}
+
+#login-section {
+  width: min(100% - 32px, 344px) !important;
+  max-width: 344px !important;
+  margin-top: 34px !important;
+  padding: 18px 16px 16px !important;
+  border: 1px solid rgba(215, 238, 199, 0.2) !important;
+  border-radius: 22px !important;
+  background: linear-gradient(180deg, rgba(6, 23, 31, 0.78), rgba(3, 12, 19, 0.9)) !important;
+  box-shadow:
+    0 18px 55px rgba(0, 0, 0, 0.66),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+#login-section .auth-tabs {
+  margin-bottom: 16px !important;
+  border-color: rgba(215, 238, 199, 0.16) !important;
+  background: rgba(0, 5, 9, 0.52) !important;
+}
+
+#login-section .auth-tab {
+  height: 40px !important;
+  font-size: 12px !important;
+}
+
+#login-section .auth-tab.active {
+  background: linear-gradient(180deg, rgba(126, 179, 99, 0.23), rgba(126, 179, 99, 0.08)) !important;
+  box-shadow: inset 0 -2px 0 rgba(151, 211, 116, 0.92) !important;
+}
+
+#login-section .form-group {
+  margin-bottom: 10px !important;
+}
+
+#login-section .form-group label {
+  color: rgba(241, 248, 235, 0.92) !important;
+  font-size: 11px !important;
+}
+
+#login-section .password-input-wrap {
+  position: relative !important;
+}
+
+#login-section .password-input-wrap input {
+  padding-right: 48px !important;
+}
+
+#login-section .form-group input {
+  height: 44px !important;
+  border-color: rgba(216, 235, 220, 0.22) !important;
+  background: rgba(0, 5, 9, 0.62) !important;
+}
+
+#login-section .form-group input:focus {
+  border-color: rgba(148, 215, 111, 0.92) !important;
+  box-shadow:
+    0 0 0 3px rgba(116, 186, 83, 0.16),
+    inset 0 1px 2px rgba(0, 0, 0, 0.3) !important;
+}
+
+#login-section .password-toggle {
+  position: absolute !important;
+  top: 50% !important;
+  right: 10px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 30px !important;
+  height: 30px !important;
+  padding: 0 !important;
+  transform: translateY(-50%) !important;
+  border: 0 !important;
+  border-radius: 8px !important;
+  color: rgba(221, 239, 220, 0.72) !important;
+  background: transparent !important;
+  cursor: pointer !important;
+  transition: color 0.2s ease, background 0.2s ease !important;
+}
+
+#login-section .password-toggle:hover,
+#login-section .password-toggle:focus-visible {
+  color: #c5edaa !important;
+  background: rgba(126, 179, 99, 0.16) !important;
+  outline: none !important;
+}
+
+#login-section .password-toggle-icon {
+  width: 17px !important;
+  height: 17px !important;
+  fill: none !important;
+  stroke: currentColor !important;
+  stroke-linecap: round !important;
+  stroke-linejoin: round !important;
+  stroke-width: 1.7 !important;
+}
+
+#login-section .forgot-inline {
+  color: #b9d8ff !important;
+  font-size: 10px !important;
+}
+
+#login-section .btn-primary {
+  height: 44px !important;
+  margin-top: 12px !important;
+  border-radius: 14px !important;
+  font-size: 16px !important;
+  background-image: linear-gradient(180deg, #6eaf4e 0%, #356c21 100%) !important;
+}
+
+#login-section .auth-divider {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  margin: 14px 0 10px !important;
+  color: rgba(221, 231, 225, 0.48) !important;
+  font-size: 10px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.12em !important;
+}
+
+#login-section .auth-divider::before,
+#login-section .auth-divider::after {
+  content: "" !important;
+  height: 1px !important;
+  flex: 1 !important;
+  background: rgba(216, 235, 220, 0.16) !important;
+}
+
+#login-section .google-login-button,
+#login-section .google-login-container {
+  width: 100% !important;
+  min-height: 42px !important;
+}
+
+#login-section .google-login-button[hidden],
+#login-section .google-login-container[hidden] {
+  display: none !important;
+}
+
+#login-section .google-login-button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 10px !important;
+  border: 1px solid rgba(216, 235, 220, 0.24) !important;
+  border-radius: 12px !important;
+  color: #f6f9f4 !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  cursor: pointer !important;
+  transition: background 0.2s ease, border-color 0.2s ease !important;
+}
+
+#login-section .google-login-button:hover,
+#login-section .google-login-button:focus-visible {
+  border-color: rgba(216, 235, 220, 0.52) !important;
+  background: rgba(255, 255, 255, 0.12) !important;
+  outline: none !important;
+}
+
+#login-section .google-mark {
+  display: inline-grid !important;
+  place-items: center !important;
+  width: 20px !important;
+  height: 20px !important;
+  border-radius: 50% !important;
+  color: #4285f4 !important;
+  background: #fff !important;
+  font-family: Arial, sans-serif !important;
+  font-size: 14px !important;
+  font-weight: 800 !important;
+}
+
+@media (max-height: 760px) {
+  #login-section {
+    margin-top: 22px !important;
+    padding-top: 14px !important;
+  }
+}

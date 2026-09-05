@@ -1,5 +1,5 @@
 import { getLeagueLogoUrl } from './leagueLogo.js';
-const API_BASE_URL = window.CONFIG?.API_BASE_URL || "https://bolao-62rz.onrender.com";
+const API_BASE_URL = window.CONFIG?.API_BASE_URL || "";
 
 /* =====================
    Forgot password API
@@ -626,6 +626,94 @@ function wireAuthForms() {
   });
 }
 
+function waitForGoogleIdentity() {
+  if (window.google?.accounts?.id) return Promise.resolve(window.google);
+
+  return new Promise((resolve) => {
+    const startedAt = Date.now();
+    const timer = setInterval(() => {
+      if (window.google?.accounts?.id || Date.now() - startedAt > 8000) {
+        clearInterval(timer);
+        resolve(window.google || null);
+      }
+    }, 100);
+  });
+}
+
+async function completeGoogleLogin(credential) {
+  try {
+    const res = await api.post('/api/auth/google', { credential });
+    if (!res?.success || !res.token) throw new Error(res?.message || 'Não foi possível entrar com Google');
+
+    localStorage.setItem('token', res.token);
+    setToken(res.token);
+    currentUser = res.user;
+    window.currentUser = res.user;
+    isInitialLoading = false;
+
+    await showLeagueSelection();
+    document.body.classList.remove('pre-auth');
+  } catch (err) {
+    showInlineError('login-email', err.message || 'Não foi possível entrar com Google');
+  }
+}
+
+async function wireGoogleLogin() {
+  const fallbackButton = document.getElementById('google-login-button');
+  const googleContainer = document.getElementById('google-login-container');
+  if (!fallbackButton || !googleContainer) return;
+
+  let config = null;
+  try {
+    config = await api.get('/api/auth/google-config');
+  } catch (_) {
+    config = null;
+  }
+
+  const google = await waitForGoogleIdentity();
+  if (config?.enabled && config.clientId && google?.accounts?.id) {
+    google.accounts.id.initialize({
+      client_id: config.clientId,
+      callback: ({ credential }) => {
+        if (credential) void completeGoogleLogin(credential);
+      }
+    });
+    google.accounts.id.renderButton(googleContainer, {
+      type: 'standard',
+      theme: 'outline',
+      size: 'large',
+      text: 'continue_with',
+      shape: 'rectangular',
+      width: 300
+    });
+    fallbackButton.hidden = true;
+    googleContainer.hidden = false;
+    return;
+  }
+
+  fallbackButton.addEventListener('click', () => {
+    toast('Login Google ainda não foi configurado no servidor.', 'warning');
+  });
+}
+
+function wirePasswordToggles() {
+  document.querySelectorAll('[data-password-toggle]').forEach((toggle) => {
+    toggle.addEventListener('click', () => {
+      const inputId = toggle.getAttribute('data-password-toggle');
+      const input = inputId ? document.getElementById(inputId) : null;
+      if (!input) return;
+
+      const shouldShow = input.type === 'password';
+      input.type = shouldShow ? 'text' : 'password';
+      toggle.setAttribute('aria-pressed', String(shouldShow));
+      toggle.setAttribute('aria-label', shouldShow ? 'Ocultar senha' : 'Mostrar senha');
+      toggle.setAttribute('title', shouldShow ? 'Ocultar senha' : 'Mostrar senha');
+      toggle.querySelector('.eye-open')?.toggleAttribute('hidden', shouldShow);
+      toggle.querySelector('.eye-closed')?.toggleAttribute('hidden', !shouldShow);
+    });
+  });
+}
+
 async function afterLogin() {
   const leagueId = localStorage.getItem('selectedLeagueId') || '';
 
@@ -982,6 +1070,8 @@ async function initApp() {
   document.body.classList.remove('has-app-nav');
 
   wireAuthForms();
+  void wireGoogleLogin();
+  wirePasswordToggles();
   wireTabs();
   wireBottomNav();
   initMoreMenu();
