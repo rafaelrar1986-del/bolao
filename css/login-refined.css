@@ -240,7 +240,7 @@ body:has(#login-section:not([hidden]))::before {
 }
 
 
-/* Google Login — tamanho estável antes e depois do carregamento. */
+/* Google Login — tamanho visual final igual ao fallback. */
 #login-section .google-login-container {
   width: 64px !important;
   min-width: 64px !important;
@@ -258,35 +258,33 @@ body:has(#login-section:not([hidden]))::before {
   background: transparent !important;
 }
 
-/*
- * O GIS retorna um iframe menor que o nosso fallback. Aumentamos somente
- * o iframe inteiro, preservando a proporção do botão e do G.
- */
-#login-section .google-login-container iframe {
-  width: 40px !important;
-  min-width: 40px !important;
-  max-width: 40px !important;
-  height: 40px !important;
-  min-height: 40px !important;
-  max-height: 40px !important;
-  transform: scale(1.40) !important;
-  transform-origin: center center !important;
-}
-
-/* O elemento interno criado pelo GIS acompanha o tamanho do iframe. */
 #login-section .google-login-container > div {
+  width: 28px !important;
+  min-width: 28px !important;
+  max-width: 28px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  max-height: 28px !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  width: 40px !important;
-  min-width: 40px !important;
-  max-width: 40px !important;
-  height: 40px !important;
-  min-height: 40px !important;
-  max-height: 40px !important;
+  transform: scale(2) !important;
+  transform-origin: center center !important;
+  overflow: visible !important;
 }
 
-/* Fallback: mesmo tamanho visual do botão oficial ampliado. */
+#login-section .google-login-container iframe {
+  width: 28px !important;
+  min-width: 28px !important;
+  max-width: 28px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  max-height: 28px !important;
+  transform: none !important;
+  transform-origin: center center !important;
+}
+
+/* Fallback mantém exatamente a mesma área visual. */
 #login-section .google-login-button {
   width: 56px !important;
   min-width: 56px !important;
