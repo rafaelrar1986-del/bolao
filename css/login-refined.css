@@ -492,3 +492,18 @@ body:has(#login-section:not([hidden])) {
     font-size: 13px;
   }
 }
+
+/* Ícone oficial multicolorido do Google — substitui o G azul criado por CSS. */
+#login-section .login-actions-row .google-login-official-icon {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  display: inline-block;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath fill='%23EA4335' d='M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.61 0 6.54 5.38 2.56 13.22l7.98 6.19C12.44 13.17 17.74 9.5 24 9.5z'/%3E%3Cpath fill='%234285F4' d='M46.5 24.5c0-1.62-.15-3.18-.44-4.68H24v9.03h12.66c-.55 2.98-2.24 5.5-4.77 7.18l7.72 6c4.51-4.16 6.89-10.29 6.89-17.53z'/%3E%3Cpath fill='%2334A853' d='M10.54 28.59A14.5 14.5 0 0 1 9.5 24c0-1.59.27-3.13.75-4.59l-7.98-6.19A23.98 23.98 0 0 0 0 24c0 3.87.93 7.53 2.56 10.78l7.98-6.19z'/%3E%3Cpath fill='%23FBBC05' d='M24 48c6.48 0 11.92-2.14 15.89-5.97l-7.72-6C30.02 37.14 27.24 38.5 24 38.5c-6.26 0-11.56-3.67-13.46-8.91l-7.98 6.19C6.54 43.62 14.61 48 24 48z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 24px 24px;
+  pointer-events: none;
+}
