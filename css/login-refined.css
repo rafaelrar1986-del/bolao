@@ -419,36 +419,61 @@ body:has(#login-section:not([hidden])) {
   cursor: pointer;
 }
 
+#login-section .login-actions-row .google-login-action {
+  position: relative;
+}
+
 #login-section .login-actions-row .google-login-action .google-login-container {
-  width: 32px !important;
-  min-width: 32px !important;
-  max-width: 32px !important;
-  height: 32px !important;
-  min-height: 32px !important;
-  max-height: 32px !important;
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
   margin: 0 !important;
   padding: 0 !important;
-  display: flex !important;
-  align-items: center;
-  justify-content: center;
-  border: 0 !important;
+  z-index: 3 !important;
+  opacity: 0 !important;
+  overflow: hidden !important;
   background: transparent !important;
-  overflow: visible !important;
-  transform: none !important;
 }
 
 #login-section .login-actions-row .google-login-action .google-login-container > div,
 #login-section .login-actions-row .google-login-action .google-login-container iframe {
-  width: 32px !important;
-  min-width: 32px !important;
-  max-width: 32px !important;
-  height: 32px !important;
-  min-height: 32px !important;
-  max-height: 32px !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 100% !important;
+  min-height: 100% !important;
+  max-height: 100% !important;
+  opacity: 0 !important;
   transform: none !important;
 }
 
+#login-section .login-actions-row .google-login-action .google-login-mark {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  background: #fff;
+  border-radius: 4px;
+  font-family: Arial, sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  color: #4285f4;
+  text-shadow:
+    1px 0 0 #34a853,
+    -1px 0 0 #ea4335,
+    0 1px 0 #fbbc05;
+  pointer-events: none;
+}
+
 #login-section .google-login-label {
+  position: relative;
+  z-index: 1;
   color: #3c4043;
   font-size: 14px;
   font-weight: 500;
