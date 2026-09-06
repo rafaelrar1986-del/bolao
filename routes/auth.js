@@ -5,7 +5,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto'); 
 const axios = require('axios');
 const User = require('../models/User');
-const Settings = require('../models/Settings');
+const AccessControlSettings = require('../models/AccessControlSettings');
 const AllowedEmail = require('../models/AllowedEmail');
 const { protect, isUserPaidForLeague } = require('../middleware/auth');
 
@@ -52,6 +52,33 @@ const authenticateUser = async (email, password) => {
 };
 
 const normalizeGoogleEmail = (email) => String(email || '').toLowerCase().trim();
+
+const getWhitelistAccessRequired = async () => {
+  const settings = await AccessControlSettings.findById('global')
+    .select('requireWhitelist')
+    .lean();
+
+  // Default TRUE preserves the current behavior after deployment.
+  return settings?.requireWhitelist !== false;
+};
+
+const isEmailWhitelisted = async (email) => {
+  const normalizedEmail = normalizeGoogleEmail(email);
+  return Boolean(await AllowedEmail.exists({ email: normalizedEmail }));
+};
+
+const denyIfWhitelistRequired = async (email) => {
+  const required = await getWhitelistAccessRequired();
+  if (!required) return null;
+
+  const allowed = await isEmailWhitelisted(email);
+  if (allowed) return null;
+
+  return {
+    success: false,
+    message: 'Acesso restrito: este e-mail não está autorizado na whitelist.'
+  };
+};
 
 const verifyGoogleCredential = async (credential) => {
   if (!process.env.GOOGLE_CLIENT_ID) {
@@ -105,12 +132,9 @@ router.post('/google', async (req, res) => {
     });
 
     if (!user) {
-      const isAllowed = await AllowedEmail.findOne({ email });
-      if (!isAllowed) {
-        return res.status(403).json({
-          success: false,
-          message: 'Acesso restrito: este e-mail não foi convidado para o bolão.'
-        });
+      const accessDenied = await denyIfWhitelistRequired(email);
+      if (accessDenied) {
+        return res.status(403).json(accessDenied);
       }
 
       user = await User.create({
@@ -123,6 +147,13 @@ router.post('/google', async (req, res) => {
         avatar: profile.picture || null
       });
     } else {
+      if (!user.isAdmin) {
+        const accessDenied = await denyIfWhitelistRequired(email);
+        if (accessDenied) {
+          return res.status(403).json(accessDenied);
+        }
+      }
+
       if (!user.googleId) user.googleId = profile.sub;
       if (!user.avatar && profile.picture) user.avatar = profile.picture;
       user.lastLogin = new Date();
@@ -174,13 +205,10 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Formato de email inválido' });
     }
 
-    const isAllowed = await AllowedEmail.findOne({ email: normalizedEmail });
-    if (!isAllowed) {
+    const accessDenied = await denyIfWhitelistRequired(normalizedEmail);
+    if (accessDenied) {
       console.warn(`🛑 Tentativa de registro negada (fora da lista): ${normalizedEmail}`);
-      return res.status(403).json({
-        success: false,
-        message: 'Acesso restrito: este e-mail não foi convidado para o bolão.'
-      });
+      return res.status(403).json(accessDenied);
     }
 
     if (password.length < 6) {
@@ -239,6 +267,14 @@ router.post('/login', async (req, res) => {
     }
 
     const user = authResult.user;
+
+    if (!user.isAdmin) {
+      const accessDenied = await denyIfWhitelistRequired(user.email);
+      if (accessDenied) {
+        return res.status(403).json(accessDenied);
+      }
+    }
+
     const token = generateToken(user._id);
 
     res.json({

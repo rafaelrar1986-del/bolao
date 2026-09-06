@@ -4,6 +4,7 @@ const express = require('express');
 const router = express.Router();
 
 const Settings = require('../models/Settings');
+const AccessControlSettings = require('../models/AccessControlSettings');
 const Match = require('../models/Match');
 const { materializeKnockoutConfrontation } = require('../services/knockoutConfrontationService');
 const { buildKnockoutTieKey } = require('../utils/knockoutFormat');
@@ -43,6 +44,79 @@ const {
   isChangingChampionshipRules
 } = require('../services/championshipRulesService');
 
+
+
+/**
+ * ================================================================
+ * 🌐 CONTROLE GLOBAL DE ACESSO / WHITELIST
+ * ================================================================
+ *
+ * O controle fica em coleção própria para não misturar configuração
+ * global com Settings das ligas.
+ *
+ * GET é público para a tela de login saber a regra atual.
+ * POST exige administrador.
+ */
+router.get('/access-control', async (req, res) => {
+  try {
+    let settings = await AccessControlSettings.findById('global');
+
+    if (!settings) {
+      // Migração segura da configuração criada pela versão anterior.
+      // Se ela existir em Settings, preservamos seu valor.
+      const legacy = await Settings.findById('access-control')
+        .select('accessControl')
+        .lean();
+
+      settings = await AccessControlSettings.create({
+        _id: 'global',
+        requireWhitelist: legacy?.accessControl?.requireWhitelist !== false
+      });
+    }
+
+    return res.json({
+      success: true,
+      requireWhitelist: settings.requireWhitelist !== false
+    });
+  } catch (err) {
+    console.error('Erro ao carregar controle de acesso:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro ao carregar configuração de acesso.'
+    });
+  }
+});
+
+router.post('/access-control', protect, admin, async (req, res) => {
+  try {
+    const requireWhitelist = req.body?.requireWhitelist !== false;
+
+    const settings = await AccessControlSettings.findOneAndUpdate(
+      { _id: 'global' },
+      { $set: { requireWhitelist } },
+      {
+        new: true,
+        upsert: true,
+        setDefaultsOnInsert: true,
+        runValidators: true
+      }
+    );
+
+    return res.json({
+      success: true,
+      message: requireWhitelist
+        ? 'Whitelist obrigatória para acessar o site.'
+        : 'Whitelist desativada. Qualquer e-mail poderá acessar o site.',
+      requireWhitelist: settings.requireWhitelist !== false
+    });
+  } catch (err) {
+    console.error('Erro ao salvar controle de acesso:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro ao salvar configuração de acesso.'
+    });
+  }
+});
 
 /**
  * ================================================================
