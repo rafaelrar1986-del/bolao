@@ -678,14 +678,15 @@ async function wireGoogleLogin() {
         if (credential) void completeGoogleLogin(credential);
       }
     });
-    // Renderiza o botão oficial do Google no modo ÍCONE.
-    // O modo 'standard' força o texto "Continuar com Google" e,
-    // ao ser limitado a 42px por CSS, acaba aparecendo cortado.
+    // Botão oficial do Google lado a lado com o login tradicional.
+    // O container responsivo define a largura disponível em cada tela.
     google.accounts.id.renderButton(googleContainer, {
-      type: 'icon',
+      type: 'standard',
       theme: 'outline',
       size: 'large',
-      shape: 'square'
+      shape: 'rectangular',
+      text: 'signin_with',
+      width: 190
     });
     fallbackButton.hidden = true;
     googleContainer.hidden = false;

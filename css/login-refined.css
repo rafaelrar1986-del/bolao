@@ -323,3 +323,76 @@ body:has(#login-section:not([hidden])) > header h1 {
 body:has(#login-section:not([hidden])) {
   background-position: center top !important;
 }
+
+
+/* Login — ações principais lado a lado */
+#login-section .login-actions-row {
+  width: 100%;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  margin-top: 0;
+}
+
+#login-section .login-actions-row > .btn-primary {
+  width: 100% !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+}
+
+#login-section .login-actions-row .google-login-container {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  height: 44px !important;
+  min-height: 44px !important;
+  max-height: 44px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden !important;
+  transform: none !important;
+}
+
+#login-section .login-actions-row .google-login-container > div {
+  width: 100% !important;
+  max-width: 100% !important;
+  display: flex !important;
+  justify-content: center !important;
+}
+
+#login-section .login-actions-row .google-login-container iframe {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 44px !important;
+  min-height: 44px !important;
+  border-radius: 7px !important;
+  transform: none !important;
+}
+
+#login-section .login-actions-row .google-login-button {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  height: 44px !important;
+  min-height: 44px !important;
+  max-height: 44px !important;
+  margin: 0 !important;
+}
+
+@media (max-width: 480px) {
+  #login-section .login-actions-row {
+    gap: 10px;
+  }
+
+  #login-section .login-actions-row .google-login-container,
+  #login-section .login-actions-row .google-login-container iframe,
+  #login-section .login-actions-row .google-login-button {
+    height: 42px !important;
+    min-height: 42px !important;
+    max-height: 42px !important;
+  }
+}
