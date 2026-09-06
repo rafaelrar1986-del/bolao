@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto'); 
 const axios = require('axios');
 const User = require('../models/User');
+const Settings = require('../models/Settings');
 const AccessControlSettings = require('../models/AccessControlSettings');
 const AllowedEmail = require('../models/AllowedEmail');
 const { protect, isUserPaidForLeague } = require('../middleware/auth');
