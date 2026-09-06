@@ -15,20 +15,8 @@
   <title>Bolão K Bwalya</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <!-- Shared foundation first; tab styles stay isolated so each area can evolve independently. -->
-  <link rel="stylesheet" href="./css/main.css?v=2.0" />
-  <link rel="stylesheet" href="./css/navigation.css?v=2.0" />
-  <link rel="stylesheet" href="./css/login.css?v=2.0" />
-  <link rel="stylesheet" href="./css/league-selection.css?v=2.0" />
-  <link rel="stylesheet" href="./css/matches.css?v=2.0" />
-  <link rel="stylesheet" href="./css/my-bets.css?v=2.0" />
-  <link rel="stylesheet" href="./css/all-bets.css?v=2.0" />
-  <link rel="stylesheet" href="./css/stats.css?v=2.0" />
-  <link rel="stylesheet" href="./css/profile.css?v=2.0" />
-  <link rel="stylesheet" href="./css/classificacao.css?v=2.0" />
-  <link rel="stylesheet" href="./css/admin.css?v=2.0" />
-  <link rel="stylesheet" href="./css/modals.css?v=2.0" />
-  <link rel="stylesheet" href="./css/ranking.css?v=2.0" />
+  <link rel="stylesheet" href="./css/styles4.css?v=1.44" />
+  <link rel="stylesheet" href="./css/login-refined.css?v=1.2" />
 </head>
 
 <body>
@@ -478,6 +466,96 @@
   </table>
 </div>
 
+<style>
+  /* Custom Segmented Control (Estilo Glassmorphism Premium) */
+  .segmented-control {
+    display: flex;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 3px;
+    gap: 4px;
+    width: 100%;
+  }
+
+  .segment-btn {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.6);
+    padding: 8px 12px;
+    font-size: 0.7rem;
+    font-weight: 800;
+    border-radius: 9px;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .segment-btn:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .segment-btn.active {
+    background: #1a2a6c;
+    color: #ffffff;
+    box-shadow: 0 4px 12px rgba(26, 42, 108, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  /* Mudança de cor dinâmica para o modo Simulação ativo */
+  .segment-btn.active[data-mode="simulacao"] {
+    background: #ff9800;
+    box-shadow: 0 4px 12px rgba(255, 152, 0, 0.4);
+  }
+  
+  .segment-btn.active[data-mode="live"] {
+    background: #28a745;
+    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.4);
+  }
+
+  /* Estilos para os Botões Interativos de Simulação nos Cards */
+  .sim-btn-group {
+    display: flex;
+    gap: 6px;
+    margin-top: 5px;
+  }
+
+  .sim-choice-btn {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #fff;
+    padding: 6px 10px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .sim-choice-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .sim-choice-btn.selected {
+    background: #00ffff;
+    color: #000;
+    font-weight: 800;
+    border-color: #00ffff;
+    box-shadow: 0 0 10px rgba(0, 255, 255, 0.4);
+  }
+  
+  .sim-choice-btn.selected-qualifier {
+    background: #ffda44;
+    color: #000;
+    font-weight: 800;
+    border-color: #ffda44;
+    box-shadow: 0 0 10px rgba(255, 218, 68, 0.4);
+  }
+</style>
 
      <!-- 🔥 MATA-MATA -->
 <div id="knockout" class="tab-content">
