@@ -561,6 +561,26 @@
     border-color: #ffda44;
     box-shadow: 0 0 10px rgba(255, 218, 68, 0.4);
   }
+
+/* Organização administrativa por categorias — preserva IDs e handlers existentes */
+.admin-category-drawer { margin-top: 12px; }
+.admin-category-drawer > summary { font-weight: 700; }
+.admin-subsection-label {
+  font-size: .78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  opacity: .78;
+  margin: 10px 0 7px;
+}
+.admin-subsection-note {
+  font-size: .78rem;
+  line-height: 1.35;
+  opacity: .7;
+  margin-top: 8px;
+}
+.admin-danger-note { opacity: .85; }
+
 </style>
 
      <!-- 🔥 MATA-MATA -->
@@ -708,38 +728,79 @@
       </div>
     </section>
 
-    <div class="admin-quick-section">
-      <div class="admin-section-heading">ATÉALHOS RÁPIDOS</div>
+    <!-- =========================================================
+         ADMIN — OPERAÇÃO
+         ========================================================= -->
+    <div class="admin-admin-section admin-operation-section">
+      <div class="admin-section-heading">⚽ OPERAÇÃO</div>
       <div class="admin-quick-grid">
         <button class="admin-quick-btn admin-quick-primary" id="btn-open-add-modal" data-tooltip="Adicionar partida">
-          <i class="fas fa-plus"></i><span>Adicionar</span>
+          <i class="fas fa-plus"></i><span>Adicionar partida</span>
         </button>
-        <button class="admin-quick-btn admin-quick-primary" id="btn-open-finish-modal" data-tooltip="Finalizar partida">
-          <i class="fas fa-flag-checkered"></i><span>Resultado</span>
+        <button class="admin-quick-btn admin-quick-primary" id="btn-open-finish-modal" data-tooltip="Finalizar partida / lançar resultado">
+          <i class="fas fa-flag-checkered"></i><span>Lançar resultado</span>
         </button>
-        <button class="admin-quick-btn admin-quick-primary" id="btn-open-podium-modal" data-tooltip="Definir pódio oficial">
-          <i class="fas fa-trophy"></i><span>Pódio</span>
-        </button>
-        <button class="admin-quick-btn admin-quick-match" type="button" onclick="window.openAdminMatchesPanel()" data-tooltip="Abrir lista de partidas">
-          <i class="fas fa-list"></i><span>Partidas</span>
-        </button>
-        <button class="admin-quick-btn" type="button" onclick="openRobotSettings()" data-tooltip="Configurações do Robô API">
-          <i class="fas fa-robot"></i><span>API</span>
-        </button>
-        <button class="admin-quick-btn" id="btn-toggle-test-mode" data-admin-only="true" data-tooltip="Modo de teste temporário">
-          <i class="fas fa-flask"></i><span>Teste</span>
-        </button>
-        <button class="admin-quick-btn" id="btn-recalc" onclick="recalculateAllPoints()" data-tooltip="Recalcular todos os pontos">
-          <i class="fas fa-sync-alt"></i><span>Recalcular</span>
-        </button>
-        <button class="admin-quick-btn" id="btn-load-users" onclick="loadAdminUsers()" data-tooltip="Gerenciar pagamentos e usuários">
-          <i class="fas fa-dollar-sign"></i><span>Usuários</span>
+        <button class="admin-quick-btn admin-quick-match" type="button" onclick="window.openAdminMatchesPanel()" data-tooltip="Gerenciar partidas">
+          <i class="fas fa-list"></i><span>Gerenciar partidas</span>
         </button>
       </div>
     </div>
 
-    <div class="admin-control-section">
-      <div class="admin-section-heading">APOSTAS</div>
+    <!-- =========================================================
+         ADMIN — PARTICIPANTES
+         ========================================================= -->
+    <details class="admin-tools-drawer admin-category-drawer">
+      <summary><i class="fas fa-users"></i><span>👥 PARTICIPANTES</span><i class="fas fa-chevron-down"></i></summary>
+      <div class="admin-tools-grid">
+        <button class="admin-tool-btn" id="btn-load-users" onclick="loadAdminUsers()" data-tooltip="Gerenciar usuários e pagamentos">
+          <i class="fas fa-users"></i><span>Usuários e pagamentos</span>
+        </button>
+        <button class="admin-tool-btn" id="btn-open-whitelist-modal" data-tooltip="Gerenciar whitelist e controle de acesso">
+          <i class="fas fa-user-check"></i><span>Autorizações</span>
+        </button>
+      </div>
+    </details>
+    <!-- =========================================================
+         ADMIN — PAGAMENTOS
+         ========================================================= -->
+    <details class="admin-tools-drawer admin-category-drawer">
+      <summary><i class="fas fa-receipt"></i><span>💳 PAGAMENTOS</span><i class="fas fa-chevron-down"></i></summary>
+      <div class="admin-tools-grid">
+
+        <button class="admin-tool-btn" id="btn-open-receipt-validation" data-tooltip="Validar protocolo de comprovante">
+          <i class="fas fa-search"></i><span>Validar protocolo</span>
+        </button>
+      </div>
+    </details>
+
+
+    <!-- =========================================================
+         ADMIN — REGRAS DA COMPETIÇÃO
+         ========================================================= -->
+    <details class="admin-tools-drawer admin-category-drawer">
+      <summary><i class="fas fa-trophy"></i><span>🎯 REGRAS DA COMPETIÇÃO</span><i class="fas fa-chevron-down"></i></summary>
+      <div class="admin-tools-grid">
+        <button class="admin-tool-btn" id="btn-open-championship-rules-modal" data-tooltip="Formato e regras do campeonato">
+          <i class="fas fa-cog"></i><span>Formato do campeonato</span>
+        </button>
+        <button class="admin-tool-btn" id="btn-open-scoring-modal" data-tooltip="Configurar regras de pontuação">
+          <i class="fas fa-sliders-h"></i><span>Pontuação</span>
+        </button>
+        <button class="admin-tool-btn" id="btn-open-podium-modal" data-tooltip="Definir pódio oficial">
+          <i class="fas fa-medal"></i><span>Pódio oficial</span>
+        </button>
+        <button class="admin-tool-btn" id="btn-open-championship-results-modal" data-tooltip="Configurar resultados extras">
+          <i class="fas fa-award"></i><span>Resultados extras</span>
+        </button>
+      </div>
+    </details>
+
+    <!-- =========================================================
+         ADMIN — CONTROLE DO BOLÃO
+         ========================================================= -->
+    <details class="admin-tools-drawer admin-category-drawer">
+      <summary><i class="fas fa-lock"></i><span>🔒 CONTROLE DO BOLÃO</span><i class="fas fa-chevron-down"></i></summary>
+      <div class="admin-subsection-label">Bloqueio das apostas</div>
       <div class="admin-control-grid admin-control-grid-single">
         <button class="admin-control-btn admin-bet-lock-visual" id="btn-toggle-save-bets"
           title="Bloquear/liberar salvar palpites" aria-label="Bloquear ou liberar salvar palpites">
@@ -754,33 +815,80 @@
           <i class="fas fa-pencil-alt"></i>
         </button>
       </div>
-    </div>
-
-    <details class="admin-tools-drawer">
-      <summary><i class="fas fa-sliders-h"></i><span>Configurações e ferramentas</span><i class="fas fa-chevron-down"></i></summary>
-      <div class="admin-tools-grid">
-        <button class="admin-tool-btn" id="btn-open-championship-rules-modal"><i class="fas fa-cog"></i><span>Campeonato</span></button>
-        <button class="admin-tool-btn" id="btn-open-scoring-modal"><i class="fas fa-sliders-h"></i><span>Pontos</span></button>
-        <button class="admin-tool-btn" id="btn-open-championship-results-modal"><i class="fas fa-award"></i><span>Extras</span></button>
-        <button class="admin-tool-btn" id="btn-open-bet-lock-mode-modal"><i class="fas fa-lock"></i><span>Bloqueio</span></button>
-        <button class="admin-tool-btn" id="btn-open-whitelist-modal"><i class="fas fa-user-check"></i><span>Autorizar</span></button>
-        <button class="admin-tool-btn" id="btn-open-email-modal"><i class="fas fa-envelope"></i><span>Email</span></button>
-        <button class="admin-tool-btn" id="btn-open-receipt-validation"><i class="fas fa-search"></i><span>Protocolo</span></button>
-        <button class="admin-tool-btn admin-tool-danger" onclick="resetAllBets()"><i class="fas fa-trash-alt"></i><span>Reset apostas</span></button>
+      <div class="admin-tools-grid" style="margin-top:10px;">
+        <button class="admin-tool-btn" id="btn-open-bet-lock-mode-modal" data-tooltip="Escolher modo de bloqueio: por grade ou por partida">
+          <i class="fas fa-lock"></i><span>Modo de bloqueio</span>
+        </button>
       </div>
+      <div class="admin-subsection-label" style="margin-top:14px;">Visibilidade e estatísticas</div>
+      <div class="admin-tools-grid" style="margin-top:10px;">
+        <button class="admin-tool-btn" id="btn-toggle-stats-lock" type="button"
+          title="Liberar ou bloquear as estatísticas da liga" aria-label="Liberar ou bloquear as estatísticas">
+          <i class="fas fa-chart-bar"></i><span>Estatísticas</span>
+        </button>
+      </div>
+      <div class="admin-subsection-label" style="margin-top:14px;">Visibilidade das fases</div>
+      <div class="admin-subsection-note">A liberação das fases controla quando os palpites ficam visíveis; não substitui o bloqueio de apostas.</div>
+    </details>
+
+    <!-- =========================================================
+         ADMIN — COMUNICAÇÃO
+         ========================================================= -->
+    <details class="admin-tools-drawer admin-category-drawer">
+      <summary><i class="fas fa-envelope"></i><span>📧 COMUNICAÇÃO</span><i class="fas fa-chevron-down"></i></summary>
+      <div class="admin-tools-grid">
+        <button class="admin-tool-btn" id="btn-open-email-modal" data-tooltip="Enviar e-mail aos participantes">
+          <i class="fas fa-envelope"></i><span>Enviar e-mail</span>
+        </button>
+      </div>
+    </details>
+
+    <!-- =========================================================
+         ADMIN — SISTEMA
+         ========================================================= -->
+    <details class="admin-tools-drawer admin-category-drawer">
+      <summary><i class="fas fa-cogs"></i><span>⚙️ SISTEMA</span><i class="fas fa-chevron-down"></i></summary>
+      <div class="admin-tools-grid">
+        <button class="admin-tool-btn" type="button" onclick="openRobotSettings()" data-tooltip="Configurações do Robô API">
+          <i class="fas fa-robot"></i><span>Robô API</span>
+        </button>
+        <button class="admin-tool-btn" id="btn-toggle-test-mode" data-admin-only="true" data-tooltip="Ativar ou desativar modo de teste">
+          <i class="fas fa-flask"></i><span>Modo de teste</span>
+        </button>
+      </div>
+    </details>
+
+    <!-- =========================================================
+         ADMIN — FERRAMENTAS AVANÇADAS
+         ========================================================= -->
+    <details class="admin-tools-drawer admin-category-drawer admin-advanced-drawer">
+      <summary><i class="fas fa-tools"></i><span>🛠️ FERRAMENTAS AVANÇADAS</span><i class="fas fa-chevron-down"></i></summary>
+      <div class="admin-tools-grid">
+        <button class="admin-tool-btn" id="btn-recalc" onclick="recalculateAllPoints()" data-tooltip="Recalcular todos os pontos">
+          <i class="fas fa-sync-alt"></i><span>Recalcular pontos</span>
+        </button>
+        <button class="admin-tool-btn" type="button" onclick="checkDataIntegrity()" data-tooltip="Verificar integridade dos dados">
+          <i class="fas fa-search-plus"></i><span>Verificar integridade</span>
+        </button>
+        <button class="admin-tool-btn admin-tool-danger" type="button" onclick="resetAllBets()" data-tooltip="Apagar/resetar apostas da liga">
+          <i class="fas fa-trash-alt"></i><span>Reset completo da liga</span>
+        </button>
+      </div>
+      <div class="admin-subsection-label" style="margin-top:14px;">Manutenção</div>
+      <div class="admin-subsection-note admin-danger-note">Operações nesta área podem alterar ou apagar dados. Confirme cuidadosamente antes de executar.</div>
+    </details>
+
+    <!-- Painel dinâmico de visibilidade das fases -->
+    <details class="admin-fases-drawer" style="margin-top: 14px;">
+      <summary><i class="fas fa-eye"></i><span>Visibilidade das fases</span><i class="fas fa-chevron-down"></i></summary>
+      <div id="admin-phase-controls" style="padding: 10px 0;"></div>
     </details>
 
     <div id="admin-users-section" class="admin-card" style="margin-top: 14px; display:none;">
       <h3><i class="fas fa-users"></i> Usuários e Pagamentos</h3>
       <div id="admin-users-list" class="admin-users-grid"></div>
     </div>
-
-    <details class="admin-fases-drawer" style="margin-top: 14px;">
-      <summary><i class="fas fa-eye"></i><span>Visibilidade das fases</span><i class="fas fa-chevron-down"></i></summary>
-      <div id="admin-phase-controls" style="padding: 10px 0;"></div>
-    </details>
-
-    <section id="admin-matches-panel" class="admin-matches-panel" hidden>
+<section id="admin-matches-panel" class="admin-matches-panel" hidden>
       <div id="admin-matches-list">
         <div class="loading"><i class="fas fa-spinner fa-spin"></i> Carregando partidas...</div>
       </div>
