@@ -293,3 +293,33 @@ body:has(#login-section:not([hidden]))::before {
 #login-section .google-login-container[hidden] {
   display: none !important;
 }
+
+
+/* Login: revelar integralmente o banner/logo que já está no loginbg.webp. */
+body:has(#login-section:not([hidden])) > header {
+  height: 74px !important;
+  min-height: 74px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  background: transparent !important;
+  border-bottom: 0 !important;
+  box-shadow: none !important;
+}
+
+body:has(#login-section:not([hidden])) > header .container {
+  height: 74px !important;
+  padding: 0 !important;
+}
+
+body:has(#login-section:not([hidden])) > header h1 {
+  display: block !important;
+  height: 74px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  font-size: 0 !important;
+}
+
+/* O banner do login começa no topo da imagem; não deixe o header pintar por cima. */
+body:has(#login-section:not([hidden])) {
+  background-position: center top !important;
+}
