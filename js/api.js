@@ -91,6 +91,9 @@ export const api = {
   getWhitelist: () => request('GET', '/api/auth/whitelist'),
   addWhitelist: (email) => request('POST', '/api/auth/whitelist', { email }),
   removeWhitelist: (email) => request('DELETE', `/api/auth/whitelist/${email}`),
+  getAccessControl: () => request('GET', '/api/settings/access-control'),
+  updateAccessControl: (requireWhitelist) =>
+    request('POST', '/api/settings/access-control', { requireWhitelist: !!requireWhitelist }),
 
   // ================================================================
   // 💰 ADMIN: USUÁRIOS & PAGAMENTOS

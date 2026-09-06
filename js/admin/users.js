@@ -36,6 +36,14 @@ async function openWhitelistModal() {
           <h3>👤 Gerenciar Convidados</h3>
           <button class="close-modal" onclick="document.getElementById('modal-whitelist').remove()">&times;</button>
         </div>
+        <div id="wl-access-control" style="margin: 14px 0 18px; padding: 12px; border: 1px solid #333; border-radius: 8px; background:#181818;">
+          <label style="display:flex; align-items:center; gap:10px; cursor:pointer; color:#fff;">
+            <input type="checkbox" id="wl-require-access" style="width:18px; height:18px;">
+            <span><strong>Exigir whitelist para acessar o site</strong><br>
+              <small id="wl-access-status" style="color:#999;">Carregando configuração...</small>
+            </span>
+          </label>
+        </div>
         <div class="admin-form-group" style="margin: 20px 0; display: flex; gap: 8px; flex-wrap: wrap;">
           <input type="email" id="wl-email" placeholder="E-mail do amigo" class="admin-input" style="flex:1; padding:10px; border-radius:8px; border:1px solid #444; background:#222; color:#fff;">
           <input type="text" id="wl-label" placeholder="Nome (opcional)" class="admin-input" style="flex:1; padding:10px; border-radius:8px; border:1px solid #444; background:#222; color:#fff;">
@@ -50,6 +58,27 @@ async function openWhitelistModal() {
   `;
   document.body.insertAdjacentHTML('beforeend', modalHtml);
   R.loadWhitelist();
+  loadWhitelistAccessControl();
+
+  const accessToggle = document.getElementById('wl-require-access');
+  if (accessToggle) {
+    accessToggle.addEventListener('change', async () => {
+      const previous = !accessToggle.checked;
+      accessToggle.disabled = true;
+      try {
+        const res = await api.updateAccessControl(accessToggle.checked);
+        if (!res.success) throw new Error(res.message || 'Erro ao salvar');
+        updateWhitelistAccessUI(res.requireWhitelist === true);
+        toast(res.message || 'Configuração salva!', 'success');
+      } catch (err) {
+        accessToggle.checked = previous;
+        updateWhitelistAccessUI(previous);
+        toast(err.message || 'Erro ao salvar configuração de acesso', 'error');
+      } finally {
+        accessToggle.disabled = false;
+      }
+    });
+  }
 
   document.getElementById('btn-save-wl').onclick = async () => {
     const email = document.getElementById('wl-email').value.trim().toLowerCase();
@@ -70,6 +99,37 @@ async function openWhitelistModal() {
       toast('Falha na comunicação com o servidor', 'error');
     }
   };
+}
+
+function updateWhitelistAccessUI(requireWhitelist) {
+  const toggle = document.getElementById('wl-require-access');
+  const status = document.getElementById('wl-access-status');
+  if (!toggle) return;
+
+  toggle.checked = requireWhitelist === true;
+  if (status) {
+    status.textContent = requireWhitelist
+      ? 'Somente e-mails autorizados poderão criar conta e entrar.'
+      : 'Qualquer e-mail poderá criar conta e entrar.';
+    status.style.color = requireWhitelist ? '#6ee7b7' : '#ffd34d';
+  }
+}
+
+async function loadWhitelistAccessControl() {
+  const toggle = document.getElementById('wl-require-access');
+  const status = document.getElementById('wl-access-status');
+  if (!toggle) return;
+
+  try {
+    const res = await api.getAccessControl();
+    if (!res?.success) throw new Error(res?.message || 'Erro ao carregar');
+    updateWhitelistAccessUI(res.requireWhitelist === true);
+  } catch (err) {
+    if (status) {
+      status.textContent = 'Não foi possível carregar a configuração.';
+      status.style.color = '#ff6b6b';
+    }
+  }
 }
 
 async function loadWhitelist() {
