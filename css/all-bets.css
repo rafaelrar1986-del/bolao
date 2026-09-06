@@ -1,0 +1,1076 @@
+/* Bolão K Bwalya — all bets tab. */
+
+
+
+/* all bets */
+.filters .filters-actions{display:flex;gap:8px;margin-top:8px}
+
+
+
+
+
+/* --- Responsive fixes for "Todas as Apostas" filters (mobile) --- */
+/* Ensure filter form fields don't overflow and stack nicely on small screens */
+.filters .form-row .form-group { min-width: 0; }
+
+ /* allow flex items to shrink safely */
+.filters .filters-actions { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+
+
+
+/* On narrow viewports, stack the filter inputs vertically and make action buttons more usable */
+@media (max-width: 600px) {
+  .filters .form-row { flex-direction: column; gap: 10px; }
+  .filters .form-row .form-group { width: 100%; }
+  .filters .filters-actions { justify-content: flex-start; gap:8px; }
+  .filters .filters-actions .btn { width: 100%; display:block; }
+  /* give some breathing room to the search input specifically */
+  #filter-search { padding: 10px; font-size: 15px; }
+}
+
+
+/* =========================
+   FILTROS — ALL BETS (FINAL)
+========================= */
+
+/* Card de filtros */
+#all-bets .filters.card {
+  overflow: hidden;
+}
+
+
+
+/* Header clicável */
+#all-bets .filters-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+
+
+/* Ícone da seta */
+#all-bets .filters-header .toggle-icon {
+  transition: transform 0.3s ease;
+}
+
+
+
+/* Seta girada quando ativo */
+#all-bets .filters-header.active .toggle-icon {
+  transform: rotate(180deg);
+}
+
+
+
+/* Corpo do filtro */
+#all-bets .filters-body {
+  display: none;
+  padding: 16px;
+  border-top: 1px solid #eee;
+}
+
+
+
+/* Quando aberto */
+#all-bets .filters-body.show {
+  display: block;
+}
+
+
+
+/* Desktop: filtros sempre visíveis */
+@media (min-width: 768px) {
+  #all-bets .filters-body {
+    display: block !important;
+  }
+}
+
+
+
+/* =========================
+   LAYOUT DOS CAMPOS (2 COLUNAS SEMPRE)
+========================= */
+
+#all-bets .filters-grid {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+
+
+/* Campos que ocupam a linha inteira */
+#all-bets .filters-grid .full {
+  grid-column: 1 / -1;
+}
+
+
+
+/* Garante que CSS antigo não quebre o grid */
+#all-bets .filters-grid .form-group {
+  width: auto !important;
+  display: block;
+}
+
+
+
+/* =========================
+   BOTÕES
+========================= */
+
+#all-bets .filters-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+
+
+#all-bets .filters-actions .btn {
+  flex: 1;
+}
+
+
+
+#all-bets .btn-export {
+  width: 100%;
+  margin-top: 12px;
+}
+
+
+
+/* =====================================================
+   ESTILOS EXCLUSIVOS DO CONTAINER #all-bets-container
+   ===================================================== */
+
+/* Container de chips dentro do AllBets */
+#all-bets-container .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 10px;
+}
+
+
+/* ==============================================
+   ALL BETS — UI PREMIUM DARK
+   ============================================== */
+
+/* =====================================================
+   CONTAINER
+===================================================== */
+
+#all-bets .results-grid-container{
+    display:flex;
+    flex-direction:column;
+    gap:14px;
+    margin-top:14px;
+}
+
+
+
+/* =====================================================
+   GLASS CARD BASE
+===================================================== */
+
+#all-bets .glass-card{
+    background:
+        linear-gradient(
+            145deg,
+            rgba(14,14,18,.96),
+            rgba(8,8,12,.98)
+        );
+
+    backdrop-filter:blur(14px);
+    -webkit-backdrop-filter:blur(14px);
+
+    border:
+        1px solid rgba(255,255,255,.05);
+
+    border-radius:24px;
+
+    box-shadow:
+        0 10px 35px rgba(0,0,0,.35);
+
+    overflow:hidden;
+}
+
+
+
+/* =====================================================
+   SISTEMA DE BUSCA
+===================================================== */
+
+#all-bets .filters.card{
+    padding:14px;
+}
+
+
+
+/* header */
+
+#all-bets .filters-header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+
+    padding:2px 2px 12px;
+
+    border-bottom:
+        1px solid rgba(255,255,255,.06);
+
+    margin-bottom:14px;
+
+    cursor:pointer;
+}
+
+
+
+#all-bets .filters-header span{
+    display:flex;
+    align-items:center;
+    gap:10px;
+
+    color:#fff;
+
+    font-size:15px;
+    font-weight:700;
+}
+
+
+
+#all-bets .filters-header span i{
+    color:#67ffb8;
+    font-size:14px;
+}
+
+
+
+#all-bets .toggle-icon{
+    color:rgba(255,255,255,.45);
+
+    font-size:14px;
+
+    transition:.25s ease;
+}
+
+
+
+#all-bets .filters-header.active .toggle-icon{
+    transform:rotate(180deg);
+}
+
+
+
+/* grid */
+
+#all-bets .filters-grid{
+    display:grid;
+
+    grid-template-columns:
+        1fr 1fr;
+
+    gap:12px;
+}
+
+
+
+#all-bets .form-group.full{
+    grid-column:1 / -1;
+}
+
+
+
+/* labels */
+
+#all-bets .form-group label{
+    display:block;
+
+    margin-bottom:6px;
+
+    color:rgba(255,255,255,.48);
+
+    font-size:11px;
+    font-weight:700;
+
+    letter-spacing:.6px;
+
+    text-transform:uppercase;
+}
+
+
+
+/* inputs */
+
+#all-bets .form-group input,
+#all-bets .form-group select{
+
+    width:100%;
+    height:46px;
+
+    border:none;
+    outline:none;
+
+    border-radius:16px;
+
+    padding:0 14px;
+
+    background:
+        linear-gradient(
+            145deg,
+            rgba(255,255,255,.06),
+            rgba(255,255,255,.03)
+        );
+
+    border:
+        1px solid rgba(255,255,255,.05);
+
+    color:#fff;
+
+    font-size:14px;
+    font-weight:600;
+
+    transition:.22s ease;
+
+    box-shadow:none;
+}
+
+
+
+/* placeholder */
+
+#all-bets .form-group input::placeholder{
+    color:rgba(255,255,255,.30);
+}
+
+
+
+/* focus */
+
+#all-bets .form-group input:focus,
+#all-bets .form-group select:focus{
+
+    border-color:
+        rgba(0,214,143,.35);
+
+    box-shadow:
+        0 0 0 3px rgba(0,214,143,.10);
+
+    transform:
+        translateY(-1px);
+}
+
+
+
+/* =====================================================
+   ACTIONS
+===================================================== */
+
+#all-bets .filters-actions{
+    display:flex;
+    gap:10px;
+
+    margin-top:14px;
+}
+
+
+
+/* buttons */
+
+#all-bets .filters-actions .btn,
+#all-bets .btn-export{
+
+    border:none;
+
+    height:44px;
+
+    border-radius:16px;
+
+    font-size:13px;
+    font-weight:800;
+
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+
+    transition:.22s ease;
+}
+
+
+
+/* aplicar */
+
+#all-bets #btn-search{
+
+    flex:1;
+
+    background:
+        linear-gradient(
+            135deg,
+            #00d68f,
+            #00b574
+        );
+
+    color:#07110c;
+
+    box-shadow:
+        0 8px 20px rgba(0,214,143,.18);
+}
+
+
+
+/* limpar */
+
+#all-bets #btn-clear{
+
+    flex:1;
+
+    background:
+        rgba(255,255,255,.06);
+
+    border:
+        1px solid rgba(255,255,255,.06);
+
+    color:#fff;
+}
+
+
+
+/* export */
+
+#all-bets .btn-export{
+
+    width:100%;
+
+    margin-top:10px;
+
+    background:
+        linear-gradient(
+            135deg,
+            #3478ff,
+            #245fff
+        );
+
+    color:#fff;
+
+    box-shadow:
+        0 8px 20px rgba(52,120,255,.18);
+}
+
+
+
+/* hover */
+
+#all-bets .filters-actions .btn:hover,
+#all-bets .btn-export:hover{
+
+    transform:
+        translateY(-2px);
+}
+
+
+
+/* =====================================================
+   CARD USUÁRIO
+===================================================== */
+
+#all-bets .user-bets-compact{
+    padding:10px;
+}
+
+
+
+/* header */
+
+#all-bets .user-bets-header{
+
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+
+    margin-bottom:8px;
+}
+
+
+
+/* info user */
+
+#all-bets .user-main-info{
+
+    display:flex;
+    align-items:center;
+    gap:8px;
+
+    font-size:14px;
+    font-weight:700;
+
+    color:#fff;
+}
+
+
+
+#all-bets .user-main-info i{
+
+    font-size:18px;
+
+    color:#67ffb8;
+}
+
+
+
+/* badge total */
+
+#all-bets .user-points-badge{
+
+    height:30px;
+
+    padding:0 12px;
+
+    border-radius:999px;
+
+    display:flex;
+    align-items:center;
+    justify-content:center;
+
+    background:
+        rgba(0,214,143,.12);
+
+    border:
+        1px solid rgba(0,214,143,.18);
+
+    color:#8fffd1;
+
+    font-size:12px;
+    font-weight:700;
+}
+
+
+
+/* =====================================================
+   LISTA
+===================================================== */
+
+#all-bets .user-bets-list{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+}
+
+
+
+/* =====================================================
+   CARD BET
+===================================================== */
+
+#all-bets .bet-item-row{
+
+    position:relative;
+
+    display:flex;
+    flex-direction:column;
+
+    gap:10px;
+
+    padding:12px;
+
+    padding-bottom:18px;
+
+    border-radius:22px;
+
+    background:
+        linear-gradient(
+            145deg,
+            rgba(255,255,255,.035),
+            rgba(255,255,255,.015)
+        );
+
+    border:
+        1px solid rgba(255,255,255,.05);
+
+    transition:
+        border-color .25s ease,
+        box-shadow .25s ease,
+        transform .2s ease;
+}
+
+
+
+/* hover */
+
+#all-bets .bet-item-row:hover{
+    transform:translateY(-2px);
+}
+
+
+
+/* =====================================================
+   BORDA POR STATUS
+===================================================== */
+
+/* WIN */
+
+#all-bets .bet-item-row:has(.status-badge.win){
+
+    border-color:
+        rgba(0,214,143,.35);
+
+    box-shadow:
+        0 0 0 1px rgba(0,214,143,.08),
+        0 8px 28px rgba(0,214,143,.08);
+}
+
+
+
+/* PARTIAL */
+
+#all-bets .bet-item-row:has(.status-badge.partial){
+
+    border-color:
+        rgba(255,193,7,.30);
+
+    box-shadow:
+        0 0 0 1px rgba(255,193,7,.05),
+        0 8px 24px rgba(255,193,7,.05);
+}
+
+
+
+/* LOSE */
+
+#all-bets .bet-item-row:has(.status-badge.lose){
+
+    border-color:
+        rgba(255,70,70,.30);
+
+    box-shadow:
+        0 0 0 1px rgba(255,70,70,.06),
+        0 8px 24px rgba(255,70,70,.06);
+}
+
+
+
+/* =====================================================
+   MATCH
+===================================================== */
+
+#all-bets .match-teams{
+    text-align:center;
+}
+
+
+
+#all-bets .match-teams small{
+
+    display:block;
+
+    font-size:10px;
+
+    letter-spacing:.5px;
+
+    text-transform:uppercase;
+
+    color:
+        rgba(255,255,255,.45);
+
+    margin-bottom:6px;
+}
+
+
+
+#all-bets .match-teams strong{
+
+    font-size:16px;
+    font-weight:800;
+
+    line-height:1.25;
+
+    color:#fff;
+}
+
+
+
+/* =====================================================
+   INFO
+===================================================== */
+
+#all-bets .bet-info{
+
+    width:100%;
+
+    display:flex;
+    justify-content:center;
+
+    text-align:center;
+}
+
+
+
+/* =====================================================
+   SPLIT
+===================================================== */
+
+#all-bets .bet-info-split{
+
+    width:100%;
+
+    display:grid;
+
+    grid-template-columns:
+        1fr 1fr;
+
+    align-items:center;
+
+    gap:40px;
+}
+
+
+
+/* =====================================================
+   ITEM BASE
+===================================================== */
+
+#all-bets .bet-sub-item{
+
+    display:flex;
+    flex-direction:column;
+
+    gap:4px;
+}
+
+
+
+/* =====================================================
+   ESQUERDA
+===================================================== */
+
+#all-bets .bet-sub-item:first-child{
+
+    align-items:flex-start;
+
+    text-align:left;
+}
+
+
+
+/* =====================================================
+   DIREITA
+===================================================== */
+
+#all-bets .bet-sub-item:last-child{
+
+    align-items:flex-end;
+
+    text-align:right;
+
+    border-left:
+        1px solid rgba(255,255,255,.08);
+
+    padding-left:18px;
+}
+
+
+
+/* =====================================================
+   TEXTOS
+===================================================== */
+
+#all-bets .bet-sub-item small{
+
+    font-size:10px;
+
+    text-transform:uppercase;
+
+    color:
+        rgba(255,255,255,.42);
+}
+
+
+
+#all-bets .bet-sub-item strong{
+
+    font-size:13px;
+    font-weight:700;
+
+    color:#fff;
+}
+
+
+
+/* =====================================================
+   GLOW
+===================================================== */
+
+#all-bets .team-glow-qualified{
+
+    color:#67f4ff !important;
+
+    text-shadow:
+        0 0 10px rgba(103,244,255,.45);
+}
+
+
+
+/* =====================================================
+   STATUS CENTRAL
+===================================================== */
+
+#all-bets .status-info{
+
+    position:absolute;
+
+    left:50%;
+    bottom:10px;
+
+    transform:translateX(-50%);
+
+    margin:0;
+
+    width:auto;
+
+    z-index:5;
+
+    pointer-events:none;
+}
+
+
+
+/* badge */
+
+#all-bets .status-badge{
+
+    width:auto;
+    min-width:auto;
+
+    height:26px;
+
+    padding:0 12px;
+
+    border-radius:999px;
+
+    font-size:11px;
+    font-weight:800;
+
+    display:flex;
+    align-items:center;
+    justify-content:center;
+
+    backdrop-filter:blur(10px);
+
+    box-shadow:
+        0 4px 14px rgba(0,0,0,.25);
+}
+
+
+
+/* WIN */
+
+#all-bets .status-badge.win{
+
+    background:
+        rgba(0,214,143,.14);
+
+    border:
+        1px solid rgba(0,214,143,.20);
+
+    color:#8fffd1;
+}
+
+
+
+/* PARTIAL */
+
+#all-bets .status-badge.partial{
+
+    background:
+        rgba(255,193,7,.14);
+
+    border:
+        1px solid rgba(255,193,7,.18);
+
+    color:#ffd65c;
+}
+
+
+
+/* LOSE */
+
+#all-bets .status-badge.lose{
+
+    background:
+        rgba(255,70,70,.12);
+
+    border:
+        1px solid rgba(255,70,70,.18);
+
+    color:#ff8b8b;
+}
+
+
+
+/* PENDING */
+
+#all-bets .status-badge.pending{
+
+    background:
+        rgba(255,255,255,.05);
+
+    border:
+        1px solid rgba(255,255,255,.06);
+
+    color:#bbb;
+}
+
+
+
+/* LOCKED */
+
+#all-bets .status-badge.locked{
+
+    background:
+        rgba(255,255,255,.04);
+
+    border:
+        1px solid rgba(255,255,255,.05);
+
+    color:#888;
+}
+
+
+
+/* =====================================================
+   LOCKED
+===================================================== */
+
+#all-bets .bet-item-row.is-locked{
+    opacity:.6;
+    filter:grayscale(.5);
+}
+
+
+
+/* =====================================================
+   RESPONSIVO
+===================================================== */
+
+@media(max-width:640px){
+
+    #all-bets .filters.card{
+        padding:12px;
+        border-radius:22px;
+    }
+
+    #all-bets .filters-grid{
+        grid-template-columns:1fr;
+        gap:10px;
+    }
+
+    #all-bets .filters-actions{
+        flex-direction:row;
+    }
+
+    #all-bets .filters-actions .btn{
+        flex:1;
+    }
+
+    #all-bets .form-group input,
+    #all-bets .form-group select{
+
+        height:44px;
+        font-size:13px;
+    }
+
+    #all-bets .user-bets-header{
+        flex-direction:column;
+        align-items:flex-start;
+        gap:8px;
+        background: #141418;
+        padding: 10px;
+        border-bottom: 1px solid #eee;
+        border-radius: 54px
+    }
+
+    #all-bets .match-teams strong{
+        font-size:15px;
+    }
+}
+
+
+/* =====================================================
+   SOMENTE PARTIDAS NORMAIS
+===================================================== */
+
+#all-bets .bet-info:not(:has(.bet-info-split)){
+
+    position:relative !important;
+
+    top:-10px !important;
+
+    display:flex !important;
+
+    flex-direction:column !important;
+
+    align-items:baseline !important;
+
+    justify-content:center !important;
+}
+
+
+
+/* =====================================================
+   MATA-MATA NÃO ALTERA
+===================================================== */
+
+#all-bets .bet-info:has(.bet-info-split){
+
+    top:0 !important;
+}
+
+
+/* =====================================================
+   SELECT DARK MODE
+===================================================== */
+
+#all-bets select{
+
+    background-color:#11141b !important;
+
+    color:#fff !important;
+}
+
+
+
+/* =====================================================
+   OPTIONS
+===================================================== */
+
+#all-bets select option{
+
+    background:#0b0d12 !important;
+
+    color:rgba(255,255,255,.92) !important;
+}
+
+
+
+/* hover visual (alguns navegadores ignoram) */
+
+#all-bets select option:hover{
+
+    background:#151922 !important;
+}
+
+
+
+/* selected */
+
+#all-bets select option:checked{
+
+    background:#1c2330 !important;
+
+    color:#67ffb8 !important;
+}

@@ -1,0 +1,2207 @@
+/* Bolão K Bwalya — matches, bets and knockout tabs. */
+
+
+.match-card{border:1px solid #eaeaea;border-radius:8px;padding:12px;background:#fff}
+
+
+.match-header{display:flex;justify-content:space-between;color:#666;font-size:13px;margin-bottom:8px}
+
+
+.match-teams{display:flex;align-items:center;justify-content:space-between;margin:10px 0}
+
+
+.bet-options{display:flex;gap:8px}
+
+
+.bet-option{flex:1;border:2px solid #ddd;border-radius:6px;padding:8px;font-weight:700;cursor:pointer;text-align:center}
+
+
+.bet-option.selected{border-color:var(--primary);background:rgba(0,102,179,.08)}
+
+
+.bet-option.team-a.selected{border-color:var(--success);background:rgba(40,167,69,.08)}
+
+
+.bet-option.team-b.selected{border-color:var(--success);background:rgba(40,167,69,.08)}
+
+
+.bet-option.draw.selected{border-color:var(--warning);background:rgba(255,193,7,.08)}
+
+
+
+/* podium */
+.podium-section{margin-top:16px;padding-top:8px;border-top:2px dashed #eee}
+
+
+
+
+
+.bet-option span:first-child {
+  font-size: 1.3em;
+}
+
+
+
+
+
+
+.bet-option span:first-child {
+  font-size: 1.45em; /* bigger flag emoji */
+}
+
+
+
+
+/* Bet option visual emphasis:
+   - Bigger flags always
+   - Even bigger when selected
+   - Slightly smaller team name text
+*/
+.bet-option {
+  font-size: 0.94em; /* a bit smaller team name */
+  line-height: 1.25;
+}
+
+
+
+.bet-option span:first-child {
+  font-size: 1.55em; /* bigger flag emoji */
+}
+
+
+
+/* When selected, emphasize the flag even more */
+.bet-option.selected span:first-child,
+.bet-option.active span:first-child {
+  font-size: 1.8em;
+}
+
+
+/* =====================================================
+   🔴🟢🟡 AJUSTE DE CORES DAS OPÇÕES DE PALPITE
+   - Time A / Time B  → VERDE
+   - Empate           → AMARELO
+   - Remove azul padrão
+===================================================== */
+
+/* remove azul padrão */
+.bet-option.selected{
+  border-color: transparent !important;
+  background: transparent !important;
+}
+
+
+
+/* Time A selecionado */
+.bet-option.selected[data-choice="A"]{
+  border-color: var(--success) !important;
+  background: rgba(40,167,69,.12) !important;
+}
+
+
+
+/* Time B selecionado */
+.bet-option.selected[data-choice="B"]{
+  border-color: var(--success) !important;
+  background: rgba(40,167,69,.12) !important;
+}
+
+
+
+/* Empate selecionado */
+.bet-option.selected[data-choice="draw"]{
+  border-color: var(--warning) !important;
+  background: rgba(255,193,7,.18) !important;
+  color: #222 !important;
+}
+
+
+/* Pontos ganhos no card */
+.match-card {
+  position: relative; /* obrigatório para o badge */
+}
+
+
+.group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+
+
+
+
+/* =========================
+   MOBILE - MEUS PALPITES
+========================= */
+@media (max-width: 768px) {
+
+  /* Grid de grupos */
+  .groups-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Card de cada grupo */
+  .groups-grid .card {
+    padding: 12px;
+  }
+
+  /* Chips dos palpites */
+  .chips {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .chips .chip {
+    width: 100%;
+    min-width: unset !important;
+    padding: 10px;
+    text-align: left;
+  }
+
+  /* Texto interno do chip */
+  .chip div {
+    font-size: 0.9rem;
+  }
+
+  /* Resultado e status */
+  .chip em {
+    display: block;
+    margin-top: 4px;
+  }
+}
+
+
+
+.group-header {
+  background: #fff;
+  padding: 18px 15px; /* Ajustado para a nova margem lateral */
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  user-select: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+
+
+.group-header span:first-child {
+  font-weight: 800;
+  color: #333;
+  font-size: 14px;
+}
+
+
+
+/* =====================
+   MATCH CARD – APP STYLE
+===================== */
+
+.match-card {
+  background: #fff;
+  border-radius: 18px;
+  padding: 14px 10px;
+  border: none;
+  box-shadow: 0 8px 22px rgba(0,0,0,.08);
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+
+
+
+/* efeito toque / hover */
+.match-card:active {
+  transform: scale(.98);
+}
+
+
+
+@media (hover:hover) {
+  .match-card:hover {
+    box-shadow: 0 12px 28px rgba(0,0,0,.12);
+  }
+}
+
+
+
+/* cabeçalho do card */
+.match-header {
+  font-size: 0.8rem;
+  opacity: .7;
+  margin-bottom: 8px;
+}
+
+
+/* =====================
+   BET OPTIONS – APP FEEL
+===================== */
+
+.bet-options {
+  gap: 10px;
+  margin-top: 10px;
+}
+
+
+
+.bet-option {
+  border-radius: 16px;
+  padding: 14px 10px;
+  font-size: 0.95rem;
+  background: #f8f9fa;
+  border: 2px solid transparent;
+  transition: all .15s ease;
+}
+
+
+
+/* feedback de toque */
+.bet-option:active {
+  transform: scale(.95);
+}
+
+
+
+/* selecionado */
+.bet-option.selected {
+  box-shadow: 0 6px 14px rgba(0,0,0,.12);
+}
+
+
+.match-teams {
+  margin: 12px 0;
+}
+
+
+
+.match-card {
+  margin-bottom: 6px;
+}
+
+
+
+/* ================================================= */
+/* 🔥 PROGRESSO DO MATA-MATA                         */
+/* ================================================= */
+
+.phase-progress {
+  margin-top: 6px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+
+
+/* Barra (fundo neutro) */
+.progress-bar {
+  flex: 1;
+  height: 6px;
+  background: #e6e6e6;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+
+
+/* ===================== */
+/* MODO 1 — DECISÕES     */
+/* ===================== */
+.progress-fill.decisions {
+  height: 100%;
+  background: linear-gradient(90deg, #28a745, #5fd38d); /* verde */
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+
+
+/* ===================== */
+/* MODO 2 — JOGOS        */
+/* ===================== */
+.progress-fill.games {
+  height: 100%;
+  background: linear-gradient(90deg, #007bff, #4da3ff); /* azul */
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+
+
+/* Texto 4 / 8 */
+.progress-text {
+    font-size: 0.75rem;
+    color: #ab9b9b;
+    min-width: 48px;
+    text-align: right;
+}
+
+
+
+
+/* ================================================= */
+/* FILTRO POR PILLS (GRUPO / DATA)                   */
+/* ================================================= */
+
+.filter-pills {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  justify-content: center;
+  background: #e9ecef;
+  padding: 5px;
+  border-radius: 50px;
+  max-width: fit-content;
+  margin: 0 auto 20px auto;
+}
+
+
+
+
+
+/* Tipografia e Contraste nos Nomes das Seleções - COMPACTADO */
+.match-main-info {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.85rem;
+    font-weight: 900;
+    margin-bottom: 4px; /* Reduzido para aproximar as informações */
+    color: #222;
+    white-space: nowrap;
+}
+
+
+
+.phase-progress {
+  margin: 8px 0 12px;
+}
+
+
+
+.progress-bar {
+  height: 6px;
+  background: #e0e0e0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+
+
+.progress-text {
+  font-size: 12px;
+  opacity: .7;
+  margin-top: 4px;
+  text-align: right;
+}
+
+
+
+
+/* Cards de Mata-Mata - Estilo My Bets */
+.match-card.hit-full {
+    background-color: #e8f5e9 !important; /* Verde suave */
+    border-left: 5px solid #2e7d32;
+}
+
+
+
+.match-card.hit-partial {
+    background-color: #fffde7 !important; /* Amarelo suave */
+    border-left: 5px solid #fbc02d;
+}
+
+
+
+.match-card.hit-none {
+    background-color: #ffeef0 !important; /* Vermelho suave */
+    border-left: 5px solid #d32f2f;
+}
+
+
+
+/* Garante que o texto continue legível */
+.match-card.hit-full .final-score, 
+.match-card.hit-partial .final-score, 
+.match-card.hit-none .final-score {
+    font-weight: 600;
+    margin-top: 8px;
+}
+
+
+
+/* Estilo Base do Card */
+.match-card {
+    background-color: #fff;
+    border: 1px solid #eee;
+    transition: all 0.3s ease;
+    border-left: 5px solid transparent; /* Reserva o espaço da borda */
+}
+
+
+
+/* Acerto Total (Verde) - Grupos e Mata-Mata */
+.match-card.hit-full {
+    background-color: #e8f5e9 !important;
+    border-left: 5px solid #2e7d32 !important;
+    border-color: #c8e6c9;
+}
+
+
+
+/* Acerto Parcial (Amarelo) - Apenas Mata-Mata */
+.match-card.hit-partial {
+    background-color: #fffde7 !important;
+    border-left: 5px solid #fbc02d !important;
+    border-color: #fff9c4;
+}
+
+
+
+/* Erro (Vermelho) - Grupos e Mata-Mata */
+.match-card.hit-none {
+    background-color: #ffeef0 !important;
+    border-left: 5px solid #d32f2f !important;
+    border-color: #ffcdd2;
+}
+
+
+
+/* ============================================================
+   HEADER COMPARTILHADO (NÃO AFETA LÓGICA)
+   ============================================================ */
+
+.match-main-info {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    margin-bottom: 12px;
+}
+
+
+
+.match-main-info strong {
+    font-size: 0.85rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+}
+
+
+
+.match-main-info div:first-child {
+    text-align: right;
+    min-width: 0;
+}
+
+
+
+.match-main-info div:last-child {
+    text-align: left;
+    min-width: 0;
+}
+
+
+
+
+/* Barra fixa no fim */
+.save-bar {
+  position: sticky;
+  bottom: 0;
+  
+  padding: 10px 0 12px;
+  z-index: 50;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+
+
+/* Botão */
+.save-btn {
+  width: min(420px, 95%);
+}
+
+
+
+/* Estrutura de Degraus (Top 3) */
+.podium-wrapper {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 12px;
+  height: 290px;
+  margin-bottom: 30px;
+}
+
+
+
+.podium-track {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1;
+  height: 100%;
+}
+
+
+
+.podium-selector {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+
+
+/* Pontuação dos Cards */
+.podium-points {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 0;
+  font-weight: 500;
+}
+
+
+
+/* Estilização dos Selects */
+.podium-select {
+  width: 100%;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+
+
+.podium-select:focus {
+  border-color: #00d2ff;
+  background: rgba(255, 255, 255, 0.12);
+  outline: none;
+}
+
+
+
+.podium-select option {
+  background-color: #1a1e2e;
+  color: #fff;
+}
+
+
+
+/* Badges de Posição */
+.podium-badge {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 20px;
+  color: #fff;
+}
+
+
+
+.podium-badge.gold { background: linear-gradient(135deg, #ffd700, #ff8c00); color: #000; }
+
+
+.podium-badge.silver { background: linear-gradient(135deg, #e2e8f0, #94a3b8); color: #000; }
+
+
+.podium-badge.bronze { background: linear-gradient(135deg, #b87333, #8a4e1d); }
+
+
+.podium-badge.leather { background: rgba(255,255,255,0.15); color: #fff; }
+
+
+
+/* Degraus Tridimensionais */
+.podium-block {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 38px;
+  border-radius: 12px 12px 0 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: none;
+}
+
+
+
+.position-1 .podium-block { 
+  height: 120px; 
+  background: linear-gradient(to bottom, rgba(255, 215, 0, 0.15), rgba(255, 255, 255, 0.02)); 
+}
+
+
+.position-2 .podium-block { 
+  height: 80px; 
+  background: linear-gradient(to bottom, rgba(226, 232, 240, 0.1), rgba(255, 255, 255, 0.02)); 
+}
+
+
+.position-3 .podium-block { 
+  height: 50px; 
+  background: linear-gradient(to bottom, rgba(184, 115, 51, 0.1), rgba(255, 255, 255, 0.02)); 
+}
+
+
+
+/* Estilização do 4º Lugar */
+.podium-consolation {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 20px;
+  display: flex;
+  justify-content: center;
+}
+
+
+/* ==========================================
+   CARD DE JOGOS - LAYOUT VERTICAL
+   ========================================== */
+
+/* Container original das opções vira 3 colunas */
+.bet-options {
+  display: grid !important; 
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  margin: 15px 0;
+  width: 100%;
+}
+
+
+
+/* O Botão original se adapta para empilhar os itens verticalmente */
+.bet-option {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px;
+  padding: 12px 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: #333;
+  min-height: 105px; /* 🔥 Subi de 95px para 105px para dar respiro à bandeira maior */
+  
+  background: #ffffff !important; 
+  border: 1.5px solid #d1d5db !important; 
+  border-radius: 12px;
+}
+
+
+
+/* Hover apenas se não estiver desativado/finalizado */
+.bet-option:not(:disabled):not(.selected):hover {
+  background: #f3f4f6 !important;
+  transform: translateY(-2px);
+  border-color: #9ca3af !important;
+}
+
+
+
+/* Botão Selecionado NORMAL (Antes do jogo acabar) */
+.bet-option.selected {
+  background: #e0f2fe !important; 
+  border-color: #0ea5e9 !important;
+  color: #0369a1 !important;
+  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.2);
+}
+
+
+
+/* ==========================================
+   🔥 CARD FINALIZADO (CORES OPACAS E BORDAS CLÁSSICAS)
+   ========================================== */
+
+/* --- SE ACERTOU O PALPITE (Verde) --- */
+/* ============================================================
+   ESTILIZAÇÃO MESTRE: METAL SOB VIDRO COLORIDO (HITS)
+   ============================================================ */
+
+/* 1. BASE DO CARD: MANTÉM O METAL E PREPARA PARA O VIDRO */
+.match-card,
+.match-card[class*="hit-"] {
+    background: url('../img/card_grupos.webp') no-repeat center center !important;
+    background-size: 100% 100% !important;
+    background-color: #1a1a1a !important;
+    border: none !important;
+    position: relative !important;
+    overflow: hidden !important; /* Garante que o efeito de vidro não escape */
+    z-index: 1;
+}
+
+
+
+/* 2. CAMADA DE VIDRO COLORIDO (OVERLAY) */
+/* Este pseudo-elemento cria a cor sem esconder a textura do metal */
+.match-card[class*="hit-"]::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none;
+    z-index: 2;
+    mix-blend-mode: overlay !important; 
+    opacity: 0.85 !important;
+    transition: all 0.5s ease;
+}
+
+
+
+/* 3. CORES VIBRANTES DO VIDRO POR RESULTADO */
+
+/* Vidro Verde (Acerto Total) */
+.match-card.hit-full::before {
+    background: linear-gradient(135deg, rgba(0, 255, 68, 0.5), rgba(0, 100, 30, 0.3)) !important;
+    box-shadow: inset 0 0 60px rgba(0, 255, 68, 0.4) !important;
+}
+
+
+
+/* Vidro Amarelo/Ouro (Acerto Parcial) */
+.match-card.hit-partial::before {
+    background: linear-gradient(135deg, rgba(255, 215, 0, 0.5), rgba(184, 134, 11, 0.3)) !important;
+    box-shadow: inset 0 0 60px rgba(255, 215, 0, 0.4) !important;
+}
+
+
+
+/* Vidro Vermelho Rubi (Erro Total) */
+.match-card.hit-none::before {
+    background: linear-gradient(135deg, rgba(255, 0, 0, 0.5), rgba(139, 0, 0, 0.3)) !important;
+    box-shadow: inset 0 0 60px rgba(255, 0, 0, 0.4) !important;
+}
+
+
+
+/* 4. LIMPEZA DOS BOTÕES (MATA FUNDOS SÓLIDOS) */
+div.match-card .bet-option,
+div.match-card button.bet-option {
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    z-index: 10 !important; /* Fica acima do vidro */
+}
+
+
+
+/* 5. DESTAQUE DO PALPITE (O QUE O USUÁRIO CLICOU) */
+.match-card.hit-full .bet-option.selected .bet-team-vertical { 
+    color: #00ff44 !important; -webkit-text-fill-color: #00ff44 !important; 
+    text-shadow: 0 0 10px rgba(0, 255, 68, 0.8) !important; 
+}
+
+
+.match-card.hit-partial .bet-option.selected .bet-team-vertical { 
+    color: #ffd700 !important; -webkit-text-fill-color: #ffd700 !important; 
+    text-shadow: 0 0 10px rgba(255, 215, 0, 0.8) !important; 
+}
+
+
+.match-card.hit-none .bet-option.selected .bet-team-vertical { 
+    color: #ff3333 !important; -webkit-text-fill-color: #ff3333 !important; 
+    text-shadow: 0 0 10px rgba(255, 0, 0, 0.8) !important; 
+}
+
+
+
+/* 6. ESCUDOS: COLORIDOS E VIBRANTES NO HIT */
+.match-card[class*="hit-"] .bet-option.selected .team-logo-api {
+    filter: grayscale(0%) brightness(1.2) contrast(1.1) !important;
+    transform: scale(1.1) !important;
+    z-index: 15 !important;
+}
+
+
+
+/* 7. RODAPÉ (MINI PLACAR NA FENDA) */
+.match-card .knockout-footer-compact {
+    position: absolute !important;
+    bottom: 11px !important;
+    width: 94% !important;
+    left: 3% !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    z-index: 20 !important;
+}
+
+
+
+.bet-team-vertical {
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  text-align: center !important;
+  white-space: normal !important;
+  word-wrap: break-word !important;
+  color: inherit !important;
+}
+
+
+
+/* Card cinza se ninguém foi clicado ainda (Pendente) */
+.match-card:not(:has(.selected)):not(.hit-full):not(.hit-none) {
+  background-color: #f4f4f5 !important;
+  border: 1px solid #e4e4e7 !important;
+}
+
+
+/* Centraliza o texto do empate sozinho dentro do botão vertical */
+.bet-option[data-choice="draw"] {
+  justify-content: center !important; /* Centraliza verticalmente na altura de 105px */
+}
+
+
+
+/* Se quiser dar um leve destaque no tamanho da fonte do Empate para preencher o espaço */
+.bet-option[data-choice="draw"] .bet-team-vertical {
+  font-size: 14px !important;
+  font-weight: 800 !important;
+}
+
+
+
+/* --- ESTILO FINALIZADO (Fixo) --- */
+.match-card.match-finished {
+    background: #ffffff !important;
+    color: #333 !important;
+    border: 1px solid #eee !important;
+}
+
+
+
+.match-card.match-finished.hit-full {
+    background-color: #e8f5e9 !important;
+    border-left: 6px solid #2e7d32 !important;
+}
+
+
+
+.match-card.match-finished.hit-partial {
+    background-color: #fffde7 !important;
+    border-left: 6px solid #fbc02d !important;
+}
+
+
+
+.match-card.match-finished.hit-none {
+    background-color: #ffeef0 !important;
+    border-left: 6px solid #d32f2f !important;
+}
+
+
+
+/* Ajuste para o placar grande no modo Live */
+.score-container-header.big-score {
+    padding: 5px 0;
+    font-size: 1.2rem;
+    font-weight: 900;
+}
+
+
+
+/* --- AJUSTE DE ALTURA ULTRA COMPACTO --- */
+
+.match-card {
+    padding: 6px 10px !important; /* Reduz o enchimento global do card */
+    margin-bottom: 8px !important;
+    margin-top: 55px;
+}
+
+
+
+.match-header.compact {
+    min-height: 28px; /* Reduzi de 35px para 28px */
+    padding: 0 5px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2px;
+}
+
+
+
+.live-match-card .match-header.compact {
+    min-height: 48px;
+    padding: 2px 5px;
+}
+
+
+
+/* Opções de Aposta mais achatadas */
+.bet-options {
+    padding: 2px 0 !important; 
+    gap: 6px !important;
+}
+
+
+
+.bet-option {
+    padding: 17px 12px !important; /* Menos espaço interno nos botões */
+    min-height: 70px !important; /* Força o botão a ser mais baixo */
+}
+
+
+
+/* --- ELEMENTOS DO PLACAR TURBINADO (LIVE) --- */
+
+.score-container-header.big-score {
+    
+    padding: 1px 10px;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    
+}
+
+
+
+.score-numbers-inline {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    line-height: 1;
+}
+
+
+
+.score-val {
+    font-size: 1.3rem;
+    font-weight: 900;
+    color: #003087;
+}
+
+
+
+/* Garante que o botão não herde estilos que quebrem o emoji */
+.bet-option {
+    text-transform: none !important; /* Evita que o CSS transforme tudo em Maiúsculo, o que quebra bandeiras no Windows */
+}
+
+
+
+/* Garante que o botão tenha espaço para a bandeira maior */
+.bet-option {
+    padding: 19px 0px !important;
+    min-height: 60px;
+}
+
+
+
+/* Logo vinda da API */
+.team-logo-api {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain;
+    z-index: 2;
+    background-color: transparent;
+    transition: opacity 0.3s ease-in-out;
+}
+
+
+
+/* Emoji / Bandeira Local */
+.team-emoji {
+    /* Pilha de fontes para renderização correta de bandeiras no Chrome/Windows */
+    font-family: "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", "Android Emoji", EmojiSymbols, sans-serif !important;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+    line-height: 1 !important;
+    text-rendering: optimizeLegibility;
+}
+
+
+
+/* 1. BOTÕES DE SELEÇÃO (40px - Emoji ou Logo) */
+.bet-option .logo-wrapper {
+    width: 40px !important;
+    height: 40px !important;
+}
+
+
+
+.bet-option .team-emoji {
+    font-size: 50px !important;
+    width: 40px !important;
+    height: 40px !important;
+}
+
+
+
+.final-score .team-emoji, 
+.placar-mini .team-emoji {
+    font-size: 20px !important;
+    width: 20px !important;
+    height: 20px !important;
+}
+
+
+
+/* 3. PLACAR AO VIVO / HEADERS (35px) */
+.score-numbers-inline .logo-wrapper {
+    width: 35px !important;
+    height: 35px !important;
+    margin: 0 5px;
+}
+
+
+
+.score-numbers-inline .team-emoji {
+    font-size: 35px !important;
+}
+
+
+
+/* Ajustes de layout dos botões */
+.bet-option {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    padding: 8px 4px;
+}
+
+
+
+.bet-team-vertical {
+    font-size: 0.85rem;
+    text-align: center;
+    word-break: break-word;
+}
+
+
+
+/* Forçar a imagem da API a preencher os 40px */
+.flag-wrapper-podium .team-logo-api {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 40px !important;
+  max-height: 40px !important;
+  object-fit: contain !important;
+  position: static !important; /* Remove posicionamentos absolutos herdados */
+}
+
+
+
+/* Forçar o Emoji a crescer proporcionalmente */
+.flag-wrapper-podium .team-emoji {
+  font-size: 32px !important; /* Ajustado para preencher bem os 40px */
+  line-height: 40px !important;
+  display: block !important;
+}
+
+
+
+#modal-detalhes .score-center { flex: 1.2; text-align: center; }
+
+
+#modal-detalhes .score-numbers { font-size: 2.2rem; font-weight: 900; color: #000; letter-spacing: -1px; }
+
+
+#modal-detalhes .score-divider { color: #ccc; }
+
+
+
+/* Grid de Palpites */
+#modal-detalhes .bet-grid { display: grid; gap: 12px; }
+
+
+
+#modal-detalhes .bet-column-title { font-size: 0.65rem; font-weight: 900; text-align: center; margin-bottom: 10px; text-transform: uppercase; }
+
+
+#modal-detalhes .bet-user-card {
+    background: #fff;
+    padding: 6px 10px;
+    border-radius: 10px;
+    margin-bottom: 8px;
+    font-size: 0.8rem;
+    font-weight: 800;
+    color: #333;
+    text-align: center;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    border: 2px solid #eee;
+}
+
+
+
+#modal-detalhes .bet-locked { text-align: center; padding: 25px; color: #999; font-weight: bold; font-size: 0.9rem; }
+
+
+
+/* 2. A IMAGEM DO LOGO (SOBREPÕE OS 22PX DA FUNÇÃO) */
+#modal-detalhes .team-logo-api {
+    /* O !important é obrigatório para ignorar o style inline do JS */
+    width: 50px !important;
+    height: 50px !important;
+    max-width: 50px !important;
+    max-height: 50px !important;
+    object-fit: contain !important;
+    display: block !important;
+}
+
+
+
+/* 3. CONTAINER PRINCIPAL (SCORE CARD) */
+#modal-detalhes .score-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+    background: #fff;
+    padding: 2px;
+    border-radius: 21px;
+    border: 1px solid #f0f0f0;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.03);
+    gap: 5px;
+}
+
+
+
+/* 6. PLACAR CENTRAL */
+#modal-detalhes .score-center {
+    min-width: 80px; 
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 10px 0 10px;
+}
+
+
+
+#modal-detalhes .score-numbers {
+    font-size: 1.8rem;
+    font-weight: 900;
+    white-space: nowrap;
+    letter-spacing: 2px;
+}
+
+#bets-container,
+
+
+#knockout-container{
+    padding-bottom: 70px !important; 
+    display: block !important;
+    height: auto !important;
+    min-height: 100vh !important;
+    overflow: visible !important;
+}
+
+
+/* ============================================================
+   ESTILIZAÇÃO COMPLETA: CARDS METÁLICOS + LÓGICA DE HITS
+   ============================================================ */
+
+/* 1. O CARD E A MIRA (CONFIGURAÇÃO 43% / 49%) */
+.match-card {
+    background: url('../img/card_grupos.webp') no-repeat center center !important;
+    background-size: 100% 100% !important;
+    width: 100% !important;
+    max-width: 500px !important; 
+    height: 250px !important; 
+    position: relative !important;
+    overflow: visible !important;
+    background-color: transparent !important;
+    border: none !important;
+}
+
+.match-card .bet-options{
+    position: absolute !important;
+    top: 46% !important;
+    left: 48% !important;
+    transform: translate(-50%, -50%) !important;
+    width: 89% !important;
+    height: 130px !important;
+    display: grid !important;
+    grid-template-columns: 1fr 1fr 1fr !important;
+    gap: 7px !important;
+    z-index: 5 !important;
+}
+
+
+
+.match-card .option-wrapper:nth-child(2) .bet-team-vertical {
+    position: relative !important;
+    bottom: 10px !important;
+    left: 6px !important;
+    transform: none !important;
+    display: block !important;
+}
+
+
+
+/* 2. NOMES DOS TIMES (FORA DO METAL - EXCETO EMPATE) */
+.match-card .bet-option:not([data-type="draw"]):not(:nth-child(2)) .bet-team-vertical {
+    position: absolute !important;
+    bottom: -32px !important; 
+    width: 140% !important;
+    text-align: center !important;
+    font-weight: 900 !important;
+    font-size: 8.5px !important;
+    text-transform: uppercase !important;
+    color: #1a1a1a !important;
+    text-shadow: 0.5px 0.5px 0px rgba(255,255,255,0.5) !important;
+    z-index: 10 !important;
+}
+
+
+
+/* 3. LÓGICA DE CORES PÓS-FINALIZADO (HITS) */
+
+/* ACERTO CHEIO (Hit Full) - Brilho Verde */
+.match-card.hit-full .bet-option.selected {
+    filter: drop-shadow(0 0 8px rgba(40, 167, 69, 0.8)) !important;
+}
+
+
+.match-card.hit-full .bet-option.selected .bet-team-vertical {
+    color: #28a745 !important;
+    text-shadow: none !important;
+}
+
+
+
+/* ACERTO PARCIAL (Hit Parcial) - Brilho Amarelo/Dourado */
+.match-card.hit-parcial .bet-option.selected {
+    filter: drop-shadow(0 0 8px rgba(255, 193, 7, 0.8)) !important;
+}
+
+
+.match-card.hit-parcial .bet-option.selected .bet-team-vertical {
+    color: #b8860b !important;
+    text-shadow: none !important;
+}
+
+
+
+/* ERRO (Hit None) - Brilho Vermelho */
+.match-card.hit-none .bet-option.selected {
+    filter: drop-shadow(0 0 5px rgba(220, 53, 69, 0.6)) !important;
+}
+
+
+.match-card.hit-none .bet-option.selected .bet-team-vertical {
+    color: #dc3545 !important;
+    text-shadow: none !important;
+}
+
+
+
+/* 4. REGRAS DE ESCUDOS (P&B VS SELECIONADO) */
+.match-card[data-status="finished"] .team-logo-api,
+.match-card[data-status="encerrado"] .team-logo-api,
+.match-card[data-status="scheduled"] .team-logo-api {
+    filter: grayscale(100%) brightness(80%) !important;
+    width: 45px !important;
+    height: 45px !important;
+}
+
+
+
+.match-card .bet-option.selected .team-logo-api,
+.match-card .bet-option.active .team-logo-api {
+    filter: grayscale(0%) brightness(100%) !important;
+}
+
+
+
+/* 5. CORREÇÃO DO EMPATE (TRAVADO NO CENTRO) */
+.match-card .bet-option[data-type="draw"] .bet-team-vertical, 
+.match-card .bet-option:nth-child(2) .bet-team-vertical {
+    position: relative !important;
+    bottom: 0 !important;
+    font-weight: 900 !important;
+    font-size: 11px !important;
+    color: black !important;
+    text-shadow: 0.5px 0.5px 0px rgba(255,255,255,0.5) !important;
+    margin: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+.match-card .knockout-footer-compact img{
+    filter: grayscale(0%) !important; 
+    width: 18px !important;
+    height: 18px !important;
+}
+
+.match-card .bet-option,
+
+
+.logo-wrapper{
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+
+/* ============================================================
+   ESTILIZAÇÃO MESTRE: CARDS METÁLICOS (COMPLETO)
+   ============================================================ */
+
+/* 1. ESTRUTURA DO CARD E MIRA (43% / 49%) */
+.match-card {
+    background: url('../img/card_grupos.webp') no-repeat center center !important;
+    background-size: 100% 100% !important;
+    width: 100% !important;
+    max-width: 500px !important; 
+    height: 250px !important; 
+    position: relative !important;
+    overflow: visible !important;
+    border: none !important;
+}
+
+.match-card .bet-options{
+    position: absolute !important;
+    top: 43% !important;
+    left: 49% !important;
+    transform: translate(-50%, -50%) !important;
+    width: 93% !important;
+    height: 130px !important;
+    display: grid !important;
+    grid-template-columns: 1fr 1fr 1fr !important;
+    gap: 7px !important;
+    z-index: 5 !important;
+}
+
+
+
+/* 2. LIMPEZA TOTAL DE FUNDOS E BORDAS (MESMO AO CLICAR/SELECIONAR) */
+.match-card .bet-option, 
+.match-card button.bet-option {
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+    -webkit-tap-highlight-color: transparent !important;
+}
+
+
+
+/* 3. NOMES DOS TIMES (EXPULSOS PARA FORA - EXCETO EMPATE) */
+.match-card .bet-option:not([data-type="draw"]):not(:nth-child(2)) .bet-team-vertical {
+    position: absolute !important;
+    bottom: -32px !important; 
+    width: 140% !important;
+    text-align: center !important;
+    font-weight: 900 !important;
+    font-size: 8.5px !important;
+    text-transform: uppercase !important;
+    color: #1a1a1a !important; 
+    z-index: 10 !important;
+    transition: color 0.2s ease !important;
+}
+
+
+
+/* 4. LÓGICA DO VERDE FORÇADO (QUANDO SELECIONADO) */
+.match-card .bet-option.selected .bet-team-vertical,
+.match-card .bet-option.active .bet-team-vertical {
+    color: #28a745 !important; 
+    text-shadow: none !important;
+    -webkit-text-fill-color: #28a745 !important;
+}
+
+
+
+/* 5. ESCUDOS (P&B -> COLORIDO SELECIONADO) */
+.match-card .team-logo-api {
+    width: 45px !important;
+    height: 45px !important;
+    filter: grayscale(100%) brightness(90%) !important;
+    transition: all 0.3s ease !important;
+}
+
+
+
+/* 6. CORREÇÃO DO EMPATE (TRAVADO NO CENTRO DO METAL) */
+.match-card .bet-option[data-type="draw"] .bet-team-vertical,
+.match-card .bet-option:nth-child(2) .bet-team-vertical {
+    position: relative !important;
+    bottom: 0 !important;
+    font-weight: 900 !important;
+    font-size: 13px !important;
+    color: black !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    height: 100% !important;
+}
+
+
+
+/* 7. RODAPÉ E PLACAR (FENDA INFERIOR) */
+.match-card .knockout-footer-compact {
+    position: absolute !important;
+    bottom: 13px !important;
+    width: 94% !important;
+    left: 6% !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+}
+
+
+/* ============================================================
+   BETS + KNOCKOUT ONLY
+   ESTILIZAÇÃO MESTRE METÁLICA
+============================================================ */
+
+/* ============================================================
+   ESCOPO TOTAL
+   EVITA VAZAMENTO PARA OUTRAS ABAS
+============================================================ */
+
+#matches-container .match-card,
+#knockout-container .match-card {
+    position: relative !important;
+}
+
+
+
+/* ============================================================
+   ANULA FUNDOS SÓLIDOS DOS BOTÕES
+============================================================ */
+
+#matches-container .match-card .bet-option,
+#matches-container .match-card button.bet-option,
+#matches-container .match-card.hit-full div.option-wrapper button.bet-option.selected,
+#matches-container .match-card.hit-full .bet-option,
+#matches-container .match-card[class*="hit-"] .bet-option,
+#matches-container .match-card button.bet-option:focus,
+#matches-container .match-card button.bet-option:active,
+#matches-container .match-card button.bet-option.selected,
+#matches-container .match-card button.bet-option.active,
+
+#knockout-container .match-card .bet-option,
+#knockout-container .match-card button.bet-option,
+#knockout-container .match-card.hit-full div.option-wrapper button.bet-option.selected,
+#knockout-container .match-card.hit-full .bet-option,
+#knockout-container .match-card[class*="hit-"] .bet-option,
+#knockout-container .match-card button.bet-option:focus,
+#knockout-container .match-card button.bet-option:active,
+#knockout-container .match-card button.bet-option.selected,
+#knockout-container .match-card button.bet-option.active {
+
+    background: transparent !important;
+    background-color: transparent !important;
+    background-image: none !important;
+
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+
+    -webkit-tap-highlight-color: transparent !important;
+}
+
+
+
+/* ============================================================
+   TEXTURA METÁLICA
+============================================================ */
+
+#matches-container .match-card,
+#matches-container .match-card.hit-full,
+#matches-container .match-card.hit-parcial,
+#matches-container .match-card.hit-none,
+#matches-container .match-card[data-status="encerrado"],
+#matches-container .match-card[data-status="finished"],
+
+#knockout-container .match-card,
+#knockout-container .match-card.hit-full,
+#knockout-container .match-card.hit-parcial,
+#knockout-container .match-card.hit-none,
+#knockout-container .match-card[data-status="encerrado"],
+#knockout-container .match-card[data-status="finished"] {
+
+   background: url(../img/card_grupos.webp) no-repeat center center !important;
+    background-size: 107% 121% !important;
+    background-color: transparent !important;
+  }
+
+
+
+/* ============================================================
+   GLOW DOS ACERTOS
+============================================================ */
+
+#matches-container .match-card.hit-full .bet-option.selected,
+#knockout-container .match-card.hit-full .bet-option.selected {
+
+    filter: drop-shadow(0 0 15px rgba(40, 167, 69, 0.9)) !important;
+}
+
+
+
+#matches-container .match-card .bet-option.selected .bet-team-vertical,
+#matches-container .match-card .bet-option.active .bet-team-vertical,
+
+#knockout-container .match-card .bet-option.selected .bet-team-vertical,
+#knockout-container .match-card .bet-option.active .bet-team-vertical {
+
+    color: #28a745 !important;
+    -webkit-text-fill-color: #00ff3a !important;
+
+    text-shadow: 0px 0px 3px rgba(0, 0, 0, 0.5) !important;
+
+    font-weight: 900 !important;
+}
+
+
+
+/* ============================================================
+   RESET GLOBAL DOS LOGOS
+============================================================ */
+
+#matches-container .team-logo-api,
+#knockout-container .team-logo-api {
+
+    object-fit: contain !important;
+    vertical-align: middle !important;
+}
+
+
+
+/* ============================================================
+   ESCUDOS DAS APOSTAS
+============================================================ */
+
+#matches-container .bet-options .bet-option .team-logo-api,
+#knockout-container .bet-options .bet-option .team-logo-api {
+
+    width: 50px !important;
+    height: 50px !important;
+
+    filter: grayscale(100%) brightness(90%) !important;
+
+    transition:
+        filter 0.25s ease,
+        transform 0.25s ease !important;
+}
+
+
+
+/* COLORIDO SOMENTE SELECIONADO */
+
+#matches-container .bet-options .bet-option.selected .team-logo-api,
+#matches-container .bet-options .bet-option.active .team-logo-api,
+
+#knockout-container .bet-options .bet-option.selected .team-logo-api,
+#knockout-container .bet-options .bet-option.active .team-logo-api {
+
+    filter: grayscale(0%) brightness(100%) !important;
+
+    transform: scale(1.9) !important;
+}
+
+
+
+/* ============================================================
+   PLACAR AO VIVO
+============================================================ */
+
+#matches-container .score-container-header .team-logo-api,
+#matches-container .score-numbers-inline .team-logo-api,
+
+#knockout-container .score-container-header .team-logo-api,
+#knockout-container .score-numbers-inline .team-logo-api {
+
+    width: 28px !important;
+    height: 28px !important;
+
+    min-width: 28px !important;
+    max-width: 28px !important;
+
+    filter: none !important;
+    -webkit-filter: none !important;
+
+    opacity: 1 !important;
+
+    transform: none !important;
+
+    position: relative !important;
+    top: -1px !important;
+
+    margin: 0 6px !important;
+}
+
+#matches-container .final-score img,
+
+
+#matches-container .final-score .team-logo-api,
+
+
+#matches-container .final-score .logo-wrapper img,
+
+
+#matches-container .final-score .logo-wrapper .team-logo-api,
+
+
+#matches-container .placar-mini .team-logo-api,
+
+
+#matches-container .knockout-footer-compact .team-logo-api,
+
+
+#knockout-container .final-score img,
+
+
+#knockout-container .final-score .team-logo-api,
+
+
+#knockout-container .final-score .logo-wrapper img,
+
+
+#knockout-container .final-score .logo-wrapper .team-logo-api,
+
+
+#knockout-container .placar-mini .team-logo-api,
+
+
+#knockout-container .knockout-footer-compact .team-logo-api{
+
+    width: 18px !important;
+    height: 18px !important;
+
+    min-width: 18px !important;
+    max-width: 18px !important;
+
+    filter: grayscale(0%) !important;
+    -webkit-filter: grayscale(0%) !important;
+
+    opacity: 1 !important;
+
+    object-fit: contain !important;
+
+    transform: none !important;
+
+    margin: 0 4px !important;
+
+    position: relative !important;
+    top: -1px !important;
+
+    display: inline-block !important;
+    vertical-align: middle !important;
+}
+
+#matches-container .final-score *,
+
+
+#matches-container .placar-mini *,
+
+
+#matches-container .knockout-footer-compact *,
+
+
+#knockout-container .final-score *,
+
+
+#knockout-container .placar-mini *,
+
+
+#knockout-container .knockout-footer-compact *{
+
+    filter: none !important;
+    -webkit-filter: none !important;
+}
+
+
+
+/* ============================================================
+   FOOTER
+============================================================ */
+
+#knockout-container .match-card .knockout-footer-compact {
+
+    position: absolute !important;
+
+    bottom: 13px !important;
+
+    width: 85% !important;
+    left: 7% !important;
+
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+
+    z-index: 50 !important;
+}
+
+
+
+/* ============================================================
+   EMPATE CENTRALIZADO
+============================================================ */
+
+#matches-container .match-card .bet-option[data-type="draw"] .bet-team-vertical,
+#matches-container .match-card .bet-option:nth-child(2) .bet-team-vertical,
+
+#knockout-container .match-card .bet-option[data-type="draw"] .bet-team-vertical,
+#knockout-container .match-card .bet-option:nth-child(2) .bet-team-vertical {
+
+    position: relative !important;
+
+    
+
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+
+    height: 100% !important;
+
+    font-size: 14px !important;
+}
+
+
+
+/* ============================================================
+   EMOJIS
+============================================================ */
+
+#matches-container .bet-options .bet-option .team-emoji,
+#knockout-container .bet-options .bet-option .team-emoji {
+
+    filter: grayscale(100%) opacity(0.6) !important;
+
+    transition:
+        filter 0.3s ease,
+        transform 0.3s ease !important;
+
+    display: inline-block !important;
+}
+
+
+
+/* COLORIDO SOMENTE SELECIONADO */
+
+#matches-container .bet-options .bet-option.selected .team-emoji,
+#matches-container .bet-options .bet-option.active .team-emoji,
+
+#knockout-container .bet-options .bet-option.selected .team-emoji,
+#knockout-container .bet-options .bet-option.active .team-emoji {
+
+    filter: grayscale(0%) opacity(1) !important;
+
+    transform: scale(1.9) !important;
+}
+
+
+
+/* ============================================================
+   LIMPEZA DE FUNDO
+============================================================ */
+
+#matches-container .match-card .bet-option,
+#knockout-container .match-card .bet-option {
+
+    background: transparent !important;
+    background-color: transparent !important;
+
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+
+
+/* ============================================================
+   BANDEIRA ENCRAVADA
+============================================================ */
+
+#knockout-container .match-card .qual-mini-row {
+    position: relative !important;
+}
+
+
+
+/* SELECT */
+
+#knockout-container .match-card select[data-q] {
+
+    appearance: none !important;
+    -webkit-appearance: none !important;
+
+    width: 26px !important;
+    height: 26px !important;
+
+    background: rgb(255 255 255 / 40%) !important;
+
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    border-radius: 50% !important;
+
+    box-shadow: inset 2px 2px 4px rgba(0,0,0,0.8) !important;
+
+    color:  #000000 !important;
+
+    cursor: pointer !important;
+
+    vertical-align: middle !important;
+
+    position: relative !important;
+    z-index: 2 !important;
+}
+
+
+
+/* CONTAINER DA BANDEIRA */
+
+#knockout-container .engraved-real-flag {
+
+    position: absolute !important;
+
+    z-index: 5 !important;
+
+    pointer-events: none !important;
+
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+
+    width: 26px !important;
+    height: 26px !important;
+
+    top: 50% !important;
+
+    transform: translateY(-50%) !important;
+}
+
+
+
+/* IMAGEM DENTRO */
+
+#knockout-container .engraved-real-flag img,
+#knockout-container .engraved-real-flag .team-emoji,
+#knockout-container .engraved-real-flag span {
+
+    width: 17px !important;
+    height: 17px !important;
+
+    object-fit: contain !important;
+
+    filter: brightness(1.1) !important;
+}
+
+
+
+/* ============================================================
+   TEXTO CLASSIFICADO
+============================================================ */
+
+#knockout-container .match-card .qual-label {
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    color: #fffefe !important;
+    margin-right: 5px !important;
+    vertical-align: middle !important;
+}
+
+.filter-container-tabela .pill:hover:not(.active),
+
+
+.filter-pills .pill:hover:not(.active){
+    color: #ffffff !important;
+    background: rgba(255, 255, 255, 0.03) !important;
+}
+
+
+
+ /* =========================================================
+     REFERÊNCIA
+  ========================================================= */
+
+  .match-card .option-wrapper {
+
+      position: relative !important;
+
+      overflow: visible !important;
+  }
+
+
+
+  /* =========================================================
+     MOVE APENAS TIME A
+  ========================================================= */
+
+  .match-card .option-wrapper:first-child .bet-team-vertical {
+    position: absolute !important;
+    left: 63% !important;
+    bottom: -43px !important;
+    transform: translateX(-50%) !important;
+    width: 120% !important;
+    text-align: center !important;
+    z-index: 50 !important;
+}
+
+
+
+  /* =========================================================
+     MOVE APENAS TIME B
+  ========================================================= */
+.match-card .option-wrapper:last-child .bet-team-vertical {
+    position: absolute !important;
+    left: 56% !important;
+    bottom: -43px !important;
+    transform: translateX(-50%) !important;
+    width: 120% !important;
+    text-align: center !important;
+    z-index: 50 !important;
+}
+
+
+.match-card .option-wrapper:last-child .team-logo-api, .match-card .option-wrapper:last-child .team-emoji {
+    position: relative !important;
+    top: 11px !important;
+    left: -4px !important;
+}
+
+
+
+  /* =========================================================
+     EMPATE FICA ORIGINAL
+  ========================================================= */
+
+  .match-card .option-wrapper:nth-child(2) .bet-team-vertical {
+    position: relative !important;
+    left: 3px !important;
+    bottom: 4px !important;
+    transform: none !important;
+    width: auto !important;
+}
+
+
+
+ /* =========================================================
+     BANDEIRA API — ESQUERDA
+  ========================================================= */
+
+  .match-card .option-wrapper:first-child .team-logo-api {
+
+      position: relative !important;
+
+      top: 17px !important;
+
+      left: 7px !important;
+  }
+
+
+
+  /* =========================================================
+     EMOJI — ESQUERDA
+  ========================================================= */
+
+  .match-card .option-wrapper:first-child .team-emoji {
+
+      position: relative !important;
+
+      top: 8px !important;
+
+      left: 1px !important;
+  }
+
+
+
+  /* =========================================================
+     BANDEIRA API — DIREITA
+  ========================================================= */
+
+  .match-card .option-wrapper:last-child .team-logo-api {
+
+      position: relative !important;
+
+      top: 17px !important;
+
+      left: -2px !important;
+  }
+
+
+
+  /* =========================================================
+     EMOJI — DIREITA
+  ========================================================= */
+
+  .match-card .option-wrapper:last-child .team-emoji {
+
+      position: relative !important;
+
+      top: 11px !important;
+
+      left: -4px !important;
+  }
+
+
+
+/* =========================================================
+   PROGRESS
+========================================================= */
+
+.phase-progress {
+  display: flex;
+  align-items: center;
+
+  gap: 8px;
+
+  padding:
+    6px 4px 10px;
+}
+
+
+
+.progress-bar {
+  flex: 1;
+
+  height: 5px;
+
+  border-radius: 999px;
+
+  overflow: hidden;
+
+  background: rgba(255,255,255,.06);
+}
+
+
+
+.progress-fill.games {
+  height: 100%;
+
+  border-radius: 999px;
+
+  background:
+    linear-gradient(
+      90deg,
+      #2b69ff,
+      #31a8ff
+    );
+
+  box-shadow:
+    0 0 10px rgba(50,140,255,.28);
+}
+
+
+
+.progress-text {
+  color: rgba(255,255,255,.45);
+
+  font-size: 10px;
+}
+
+
+
+.match-left {
+  flex: 1;
+
+  display: flex;
+  flex-direction: column;
+
+  gap: 6px;
+
+  min-width: 0;
+}
+
+
+
+.match-divider {
+  width: 100%;
+  height: 1px;
+
+  background: rgba(255,255,255,.05);
+}
+
+
+
+.match-center {
+  min-width: 42px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+
+
+.match-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+
+  gap: 5px;
+}
+
+
+
+/* 2. CARD DO PLACAR SUPERIOR (CABECALHO) */
+#modal-detalhes .score-card,
+#modal-detalhes div[style*="justify-content: space-between"][style*="padding: 15px 0"] {
+    background: rgba(255, 255, 255, 0.03) !important;
+    border-radius: 16px !important;
+    border: 1px solid rgba(255, 255, 255, 0.06) !important;
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.02), 0 4px 20px rgba(0,0,0,0.2) !important;
+    padding: 16px 12px !important;
+}
+
+
+#modal-detalhes .team-name, #modal-detalhes .score-numbers { color: #ffffff !important; }
+
+
+
+/* Cards de Usuários na lista de palpites inferior (.bet-user-card) */
+#modal-detalhes .bet-user-card {
+    background: rgba(255, 255, 255, 0.03) !important;
+    color: #cbd5e1 !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 10px !important;
+    padding: 8px 12px !important;
+    margin-bottom: 6px !important;
+    font-size: 0.9rem !important;
+    font-weight: 600 !important;
+    text-align: center !important;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15) !important;
+}
+
+
+#modal-detalhes .bet-column-title { font-weight: 800 !important; font-size: 0.85rem !important; text-transform: uppercase !important; margin-bottom: 10px !important; }
+
+
+
+.podium-strategy-footer {
+  margin-top: 10px;
+  padding: 9px 10px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  box-shadow: inset 0 1px 2px rgba(255,255,255,0.02);
+  width: 100%;
+  box-sizing: border-box;
+}
