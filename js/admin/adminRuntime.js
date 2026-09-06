@@ -36,3 +36,69 @@ export const R = {
  withFlag:(name)=>formatWithFlag(name,flagEmoji), SAVE_LOCK_KEYS
 };
 export function registerAdminFunctions(fns){Object.assign(R,fns);}
+
+
+// ADMIN-CATEGORY-SELECTOR-V3
+(function(){
+  const labels = {
+    participants:"👥 PARTICIPANTES",
+    payments:"💳 PAGAMENTOS",
+    rules:"🎯 REGRAS DA COMPETIÇÃO",
+    control:"🔒 CONTROLE DO BOLÃO",
+    communication:"📧 COMUNICAÇÃO",
+    system:"⚙️ SISTEMA",
+    advanced:"🛠️ FERRAMENTAS AVANÇADAS"
+  };
+
+  function initAdminCategorySelector(){
+    const selector=document.getElementById("admin-category-selector");
+    if(!selector) return;
+    const main=selector.querySelector("#admin-category-selector-btn");
+    const label=selector.querySelector(".admin-category-selector-label");
+    const menu=selector.querySelector("#admin-category-selector-menu");
+    const choices=selector.querySelectorAll("[data-admin-category-choice]");
+    const drawers=document.querySelectorAll("#admin .admin-tools-drawer.admin-category-drawer");
+    if(!main || !label || !menu || !drawers.length) return;
+
+    function closeMenu(){
+      menu.hidden=true;
+      main.setAttribute("aria-expanded","false");
+    }
+    function selectCategory(key){
+      drawers.forEach(d=>{
+        const active=d.getAttribute("data-admin-category")===key;
+        d.classList.toggle("admin-category-active",active);
+        if(active) d.setAttribute("open","");
+      });
+      choices.forEach(c=>c.classList.toggle("active",c.getAttribute("data-admin-category-choice")===key));
+      label.textContent=labels[key] || key;
+      closeMenu();
+    }
+
+    if(!selector.dataset.initialized){
+      selector.dataset.initialized="1";
+      main.addEventListener("click",function(e){
+        e.stopPropagation();
+        menu.hidden=!menu.hidden;
+        main.setAttribute("aria-expanded",String(!menu.hidden));
+      });
+      choices.forEach(c=>c.addEventListener("click",function(){
+        selectCategory(c.getAttribute("data-admin-category-choice"));
+      }));
+      document.addEventListener("click",function(e){
+        if(!selector.contains(e.target)) closeMenu();
+      });
+      document.addEventListener("keydown",function(e){
+        if(e.key==="Escape") closeMenu();
+      });
+      selectCategory("participants");
+    }
+  }
+
+  if(document.readyState==="loading"){
+    document.addEventListener("DOMContentLoaded",initAdminCategorySelector);
+  }else{
+    initAdminCategorySelector();
+  }
+  window.initAdminCategorySelector=initAdminCategorySelector;
+})();

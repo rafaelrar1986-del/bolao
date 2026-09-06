@@ -17764,3 +17764,77 @@ body:has(#admin) .modal-content .setting-section {
         width: min(245px, calc(100vw - 42px));
     }
 }
+
+
+/* ADMIN-CATEGORY-SELECTOR-V3
+   One current-section button; clicking it opens the other section choices.
+   Existing inner action buttons remain unchanged. */
+#admin .admin-category-selector{
+  position:relative;
+  margin:12px 0 10px;
+  z-index:30;
+}
+#admin .admin-category-selector-btn{
+  width:100%;
+  min-height:52px;
+  display:flex;
+  align-items:center;
+  gap:9px;
+  padding:12px 14px;
+  border:1px solid rgba(96,165,250,.25);
+  border-radius:14px;
+  background:linear-gradient(145deg,rgba(17,31,50,.96),rgba(8,13,22,.96));
+  color:#e5e7eb;
+  font-weight:800;
+  font-size:13px;
+  cursor:pointer;
+  text-align:left;
+}
+#admin .admin-category-selector-btn i{margin-left:auto;transition:transform .18s ease}
+#admin .admin-category-selector-btn[aria-expanded="true"] i{transform:rotate(180deg)}
+#admin .admin-category-selector-menu{
+  position:absolute;
+  left:0;
+  right:0;
+  top:calc(100% + 6px);
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  padding:7px;
+  border:1px solid rgba(255,255,255,.10);
+  border-radius:14px;
+  background:#0b1220;
+  box-shadow:0 14px 30px rgba(0,0,0,.45);
+}
+#admin .admin-category-selector-menu[hidden]{display:none!important}
+#admin .admin-category-selector-menu button{
+  width:100%;
+  border:0;
+  border-radius:10px;
+  background:transparent;
+  color:#dbe4ef;
+  padding:11px 12px;
+  text-align:left;
+  font:inherit;
+  font-size:12px;
+  font-weight:750;
+  cursor:pointer;
+}
+#admin .admin-category-selector-menu button:hover,
+#admin .admin-category-selector-menu button.active{
+  background:rgba(59,130,246,.14);
+  color:#fff;
+}
+#admin .admin-tools-drawer.admin-category-drawer{
+  display:none;
+  margin-bottom:10px;
+}
+#admin .admin-tools-drawer.admin-category-drawer.admin-category-active{
+  display:block;
+}
+#admin .admin-tools-drawer.admin-category-drawer > summary{
+  display:none;
+}
+#admin .admin-tools-drawer.admin-category-drawer .admin-tools-grid{
+  padding-top:11px;
+}

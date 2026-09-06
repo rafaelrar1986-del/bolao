@@ -749,7 +749,23 @@
     <!-- =========================================================
          ADMIN — PARTICIPANTES
          ========================================================= -->
-    <details class="admin-tools-drawer admin-category-drawer">
+    <div id="admin-category-selector" class="admin-category-selector" aria-label="Seção administrativa">
+  <button type="button" id="admin-category-selector-btn" class="admin-category-selector-btn"
+          aria-haspopup="true" aria-expanded="false">
+    <span class="admin-category-selector-label">👥 PARTICIPANTES</span>
+    <i class="fas fa-chevron-down" aria-hidden="true"></i>
+  </button>
+  <div id="admin-category-selector-menu" class="admin-category-selector-menu" hidden>
+    <button type="button" data-admin-category-choice="participants">👥 PARTICIPANTES</button>
+    <button type="button" data-admin-category-choice="payments">💳 PAGAMENTOS</button>
+    <button type="button" data-admin-category-choice="rules">🎯 REGRAS DA COMPETIÇÃO</button>
+    <button type="button" data-admin-category-choice="control">🔒 CONTROLE DO BOLÃO</button>
+    <button type="button" data-admin-category-choice="communication">📧 COMUNICAÇÃO</button>
+    <button type="button" data-admin-category-choice="system">⚙️ SISTEMA</button>
+    <button type="button" data-admin-category-choice="advanced">🛠️ FERRAMENTAS AVANÇADAS</button>
+  </div>
+</div>
+<details class="admin-tools-drawer admin-category-drawer" data-admin-category="participants">
       <summary><i class="fas fa-users"></i><span>👥 PARTICIPANTES</span><i class="fas fa-chevron-down"></i></summary>
       <div class="admin-tools-grid">
         <button class="admin-tool-btn" id="btn-load-users" onclick="loadAdminUsers()" data-tooltip="Gerenciar usuários e pagamentos">
@@ -763,7 +779,7 @@
     <!-- =========================================================
          ADMIN — PAGAMENTOS
          ========================================================= -->
-    <details class="admin-tools-drawer admin-category-drawer">
+    <details class="admin-tools-drawer admin-category-drawer" data-admin-category="payments">
       <summary><i class="fas fa-receipt"></i><span>💳 PAGAMENTOS</span><i class="fas fa-chevron-down"></i></summary>
       <div class="admin-tools-grid">
 
@@ -777,7 +793,7 @@
     <!-- =========================================================
          ADMIN — REGRAS DA COMPETIÇÃO
          ========================================================= -->
-    <details class="admin-tools-drawer admin-category-drawer">
+    <details class="admin-tools-drawer admin-category-drawer" data-admin-category="rules">
       <summary><i class="fas fa-trophy"></i><span>🎯 REGRAS DA COMPETIÇÃO</span><i class="fas fa-chevron-down"></i></summary>
       <div class="admin-tools-grid">
         <button class="admin-tool-btn" id="btn-open-championship-rules-modal" data-tooltip="Formato e regras do campeonato">
@@ -798,7 +814,7 @@
     <!-- =========================================================
          ADMIN — CONTROLE DO BOLÃO
          ========================================================= -->
-    <details class="admin-tools-drawer admin-category-drawer">
+    <details class="admin-tools-drawer admin-category-drawer" data-admin-category="control">
       <summary><i class="fas fa-lock"></i><span>🔒 CONTROLE DO BOLÃO</span><i class="fas fa-chevron-down"></i></summary>
       <div class="admin-subsection-label">Bloqueio das apostas</div>
       <div class="admin-control-grid admin-control-grid-single">
@@ -834,7 +850,7 @@
     <!-- =========================================================
          ADMIN — COMUNICAÇÃO
          ========================================================= -->
-    <details class="admin-tools-drawer admin-category-drawer">
+    <details class="admin-tools-drawer admin-category-drawer" data-admin-category="communication">
       <summary><i class="fas fa-envelope"></i><span>📧 COMUNICAÇÃO</span><i class="fas fa-chevron-down"></i></summary>
       <div class="admin-tools-grid">
         <button class="admin-tool-btn" id="btn-open-email-modal" data-tooltip="Enviar e-mail aos participantes">
@@ -846,7 +862,7 @@
     <!-- =========================================================
          ADMIN — SISTEMA
          ========================================================= -->
-    <details class="admin-tools-drawer admin-category-drawer">
+    <details class="admin-tools-drawer admin-category-drawer" data-admin-category="system">
       <summary><i class="fas fa-cogs"></i><span>⚙️ SISTEMA</span><i class="fas fa-chevron-down"></i></summary>
       <div class="admin-tools-grid">
         <button class="admin-tool-btn" type="button" onclick="openRobotSettings()" data-tooltip="Configurações do Robô API">
@@ -861,7 +877,7 @@
     <!-- =========================================================
          ADMIN — FERRAMENTAS AVANÇADAS
          ========================================================= -->
-    <details class="admin-tools-drawer admin-category-drawer admin-advanced-drawer">
+    <details class="admin-tools-drawer admin-category-drawer admin-advanced-drawer" data-admin-category="advanced">
       <summary><i class="fas fa-tools"></i><span>🛠️ FERRAMENTAS AVANÇADAS</span><i class="fas fa-chevron-down"></i></summary>
       <div class="admin-tools-grid">
         <button class="admin-tool-btn" id="btn-recalc" onclick="recalculateAllPoints()" data-tooltip="Recalcular todos os pontos">
