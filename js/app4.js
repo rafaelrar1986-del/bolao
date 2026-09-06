@@ -661,6 +661,7 @@ async function completeGoogleLogin(credential) {
 async function wireGoogleLogin() {
   const fallbackButton = document.getElementById('google-login-button');
   const googleContainer = document.getElementById('google-login-container');
+  const googleAction = document.querySelector('.google-login-action');
   if (!fallbackButton || !googleContainer) return;
 
   let config = null;
@@ -681,14 +682,13 @@ async function wireGoogleLogin() {
     // Botão oficial do Google lado a lado com o login tradicional.
     // O container responsivo define a largura disponível em cada tela.
     google.accounts.id.renderButton(googleContainer, {
-      type: 'standard',
+      type: 'icon',
       theme: 'outline',
       size: 'large',
-      shape: 'rectangular',
-      text: 'signin_with',
-      width: 190
+      shape: 'square'
     });
     fallbackButton.hidden = true;
+    if (googleAction) googleAction.hidden = false;
     googleContainer.hidden = false;
     return;
   }
