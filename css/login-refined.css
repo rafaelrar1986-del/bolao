@@ -561,7 +561,8 @@ body:has(#login-section:not([hidden])) {
   max-height: 40px !important;
   opacity: 1 !important;
   pointer-events: auto !important;
-  transform: none !important;
+  transform: scale(1.55) !important;
+  transform-origin: center center !important;
 }
 
 #login-section .login-actions-row .google-login-action .google-login-official-icon,
