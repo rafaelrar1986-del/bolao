@@ -661,7 +661,6 @@ async function completeGoogleLogin(credential) {
 async function wireGoogleLogin() {
   const fallbackButton = document.getElementById('google-login-button');
   const googleContainer = document.getElementById('google-login-container');
-  const googleAction = document.querySelector('.google-login-action');
   if (!fallbackButton || !googleContainer) return;
 
   let config = null;
@@ -675,12 +674,24 @@ async function wireGoogleLogin() {
   if (config?.enabled && config.clientId && google?.accounts?.id) {
     google.accounts.id.initialize({
       client_id: config.clientId,
+      // O login é iniciado pelo botão oficial renderizado abaixo.
+      // Não chamamos google.accounts.id.prompt(), que abre o One Tap/FedCM
+      // e pode ser abortado pelo Chrome quando o FedCM está bloqueado nas
+      // configurações do site ou após uma recusa anterior do usuário.
+      auto_select: false,
       callback: ({ credential }) => {
         if (credential) void completeGoogleLogin(credential);
       }
     });
-    // Botão oficial do Google lado a lado com o login tradicional.
-    // O container responsivo define a largura disponível em cada tela.
+
+    // O container precisa estar visível antes do renderButton para que o
+    // Google consiga medir o iframe. O clique passa a ser tratado pelo
+    // próprio botão oficial, sem uma camada visual falsa por cima dele.
+    googleContainer.hidden = false;
+    googleContainer.removeAttribute('aria-hidden');
+    googleContainer.removeAttribute('inert');
+    googleContainer.setAttribute('aria-label', 'Login com Google');
+
     google.accounts.id.renderButton(googleContainer, {
       type: 'icon',
       theme: 'outline',
@@ -688,40 +699,7 @@ async function wireGoogleLogin() {
       shape: 'square'
     });
 
-    // O iframe criado pelo Google pode receber foco. Nunca o mantenha
-    // dentro de um ancestral aria-hidden/inert enquanto o botão estiver ativo.
-    googleContainer.hidden = false;
-    googleContainer.removeAttribute('aria-hidden');
-    googleContainer.removeAttribute('inert');
-    googleContainer.setAttribute('aria-label', 'Login com Google');
-
-    // O layout visual usa um botão próprio, enquanto o GIS é renderizado
-    // internamente. Não dependemos do iframe do Google para receber o clique:
-    // o clique no botão visual inicia o fluxo oficial do Google diretamente.
-    if (googleAction && !googleAction.dataset.googleClickBound) {
-      googleAction.dataset.googleClickBound = 'true';
-      googleAction.setAttribute('role', 'button');
-      googleAction.setAttribute('tabindex', '0');
-      googleAction.setAttribute('aria-label', 'Login Google');
-      const startGoogleLogin = () => {
-        try {
-          google.accounts.id.prompt();
-        } catch (err) {
-          console.error('Falha ao iniciar Login Google:', err);
-          showInlineError('login-email', 'Não foi possível iniciar o Login Google');
-        }
-      };
-      googleAction.addEventListener('click', startGoogleLogin);
-      googleAction.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          startGoogleLogin();
-        }
-      });
-    }
-
     fallbackButton.hidden = true;
-    if (googleAction) googleAction.hidden = false;
     return;
   }
 
