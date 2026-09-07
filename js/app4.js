@@ -695,6 +695,31 @@ async function wireGoogleLogin() {
     googleContainer.removeAttribute('inert');
     googleContainer.setAttribute('aria-label', 'Login com Google');
 
+    // O layout visual usa um botão próprio, enquanto o GIS é renderizado
+    // internamente. Não dependemos do iframe do Google para receber o clique:
+    // o clique no botão visual inicia o fluxo oficial do Google diretamente.
+    if (googleAction && !googleAction.dataset.googleClickBound) {
+      googleAction.dataset.googleClickBound = 'true';
+      googleAction.setAttribute('role', 'button');
+      googleAction.setAttribute('tabindex', '0');
+      googleAction.setAttribute('aria-label', 'Login Google');
+      const startGoogleLogin = () => {
+        try {
+          google.accounts.id.prompt();
+        } catch (err) {
+          console.error('Falha ao iniciar Login Google:', err);
+          showInlineError('login-email', 'Não foi possível iniciar o Login Google');
+        }
+      };
+      googleAction.addEventListener('click', startGoogleLogin);
+      googleAction.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          startGoogleLogin();
+        }
+      });
+    }
+
     fallbackButton.hidden = true;
     if (googleAction) googleAction.hidden = false;
     return;

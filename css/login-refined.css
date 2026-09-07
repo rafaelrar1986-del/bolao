@@ -624,3 +624,17 @@ body:has(#login-section:not([hidden])) {
     font-size: 13px !important;
   }
 }
+
+/* Login Google — interação do botão visual */
+#login-section .login-actions-row .google-login-action {
+  pointer-events: auto !important;
+  cursor: pointer !important;
+}
+
+#login-section .login-actions-row .google-login-action .google-login-container {
+  pointer-events: none !important;
+}
+
+#login-section .login-actions-row .google-login-action .google-login-container iframe {
+  pointer-events: none !important;
+}
