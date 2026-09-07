@@ -21,7 +21,7 @@ export function createMatchesPodiumExtras(ctx = {}) {
       { selector: '.position-1 .podium-points', index: 0 },
       { selector: '.position-2 .podium-points', index: 1 },
       { selector: '.position-3 .podium-points', index: 2 },
-      { selector: '.podium-consolation .podium-points', index: 3 }
+      { selector: '.position-4 .podium-points', index: 3 }
     ];
 
     positionMap.forEach(({ selector, index }) => {
@@ -39,7 +39,59 @@ export function createMatchesPodiumExtras(ctx = {}) {
     });
   }
 
+  function renderPodiumLayout() {
+    const { getPodiumSize, getScoringRules } = ctx;
+    const mount = document.getElementById('podium-dynamic-mount');
+    if (!mount) return;
+
+    const rawSize = Number(typeof getPodiumSize === 'function' ? getPodiumSize() : 4);
+    const size = Math.max(1, Math.min(4, Number.isFinite(rawSize) ? Math.floor(rawSize) : 4));
+    const rules = typeof getScoringRules === 'function' ? (getScoringRules() || {}) : {};
+    const points = Array.isArray(rules.podiumPoints) ? rules.podiumPoints : [7, 5, 4, 3];
+
+    const defs = [
+      { key:'first',  index:0, label:'1º Lugar', badge:'gold',   medal:'🥇', className:'position-1' },
+      { key:'second', index:1, label:'2º Lugar', badge:'silver', medal:'🥈', className:'position-2' },
+      { key:'third',  index:2, label:'3º Lugar', badge:'bronze', medal:'🥉', className:'position-3' },
+      { key:'fourth', index:3, label:'4º Lugar', badge:'leather',medal:'4',   className:'position-4' }
+    ].slice(0,size);
+
+    const subtitle = document.querySelector('.podium-subtitle');
+    if (subtitle) {
+      const labels = defs.map(d => d.label);
+      subtitle.textContent = labels.length === 1
+        ? `Selecione o time que será ${labels[0]}.`
+        : `Selecione os times que serão ${labels.slice(0,-1).join(', ')} e ${labels.at(-1)}.`;
+    }
+
+    const tracks = defs.map(d => `
+      <div class="podium-track ${d.className}" data-podium-position="${d.key}">
+        <div class="podium-selector">
+          <span class="podium-badge ${d.badge}">${d.label}</span>
+          <p class="podium-points">(${Number(points[d.index] || 0)} pontos)</p>
+          <select class="podium-select" id="${d.key}-place" aria-label="${d.label}">
+            <option value="">Selecione...</option>
+          </select>
+          <span id="${d.key}-indicator" class="podium-status" aria-live="polite"></span>
+        </div>
+        <div class="podium-block podium-block-${d.key}" aria-hidden="true">${d.medal}</div>
+      </div>
+    `).join('');
+
+    mount.innerHTML = `
+      <div class="podium-stage podium-stage-${size}" data-podium-size="${size}">
+        <div class="podium-stage-glow" aria-hidden="true"></div>
+        <div class="podium-wrapper podium-wrapper-${size}">${tracks}</div>
+      </div>
+      <div class="podium-config-note">
+        <span class="podium-config-note-icon" aria-hidden="true">ⓘ</span>
+        <span>O número de posições exibidas é definido pelo administrador da liga.</span>
+      </div>
+    `;
+  }
+
   function fillPodiumSelects() {
+    renderPodiumLayout();
       const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, hasPodium, getPodiumPositions, updateBetsCounters, togglePodiumVisibility, updatePodiumIndicator } = ctx;
     togglePodiumVisibility();
     if (!hasPodium()) return;
@@ -418,6 +470,7 @@ export function createMatchesPodiumExtras(ctx = {}) {
     togglePodiumVisibility,
     updatePodiumPointsDisplay,
     fillPodiumSelects,
+    renderPodiumLayout,
     updatePodiumIndicator,
     renderExtrasSection,
     updateExtrasPointsDisplay,

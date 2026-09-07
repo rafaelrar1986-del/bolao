@@ -687,9 +687,16 @@ async function wireGoogleLogin() {
       size: 'large',
       shape: 'square'
     });
+
+    // O iframe criado pelo Google pode receber foco. Nunca o mantenha
+    // dentro de um ancestral aria-hidden/inert enquanto o botão estiver ativo.
+    googleContainer.hidden = false;
+    googleContainer.removeAttribute('aria-hidden');
+    googleContainer.removeAttribute('inert');
+    googleContainer.setAttribute('aria-label', 'Login com Google');
+
     fallbackButton.hidden = true;
     if (googleAction) googleAction.hidden = false;
-    googleContainer.hidden = false;
     return;
   }
 
@@ -874,17 +881,29 @@ async function saveAllBets({ validateKnockout }) {
       return;
     }
 
-    // Valida podio dinamico: so exige as posicoes que o admin habilitou (podiumSize)
+    // Valida o pódio de forma dinâmica: somente as posições habilitadas
+    // pelo administrador são obrigatórias. O layout atual usa IDs como
+    // first-place/second-place/... (não mais o prefixo podium-select-).
     const podiumSection = document.querySelector('.podium-section');
     const isPodiumVisible = podiumSection && podiumSection.style.display !== 'none';
     if (isPodiumVisible) {
-      const podiumSelects = Array.from(document.querySelectorAll('[id^="podium-select-"]'));
-      const emptyPositions = podiumSelects
-        .map((sel, idx) => ({ sel, pos: idx + 1 }))
-        .filter(({ sel }) => !sel.value);
+      const rules = window.STATE?.championshipRules || {};
+      const rawSize = Number(rules.podiumSize);
+      const podiumSize = Number.isFinite(rawSize)
+        ? Math.max(1, Math.min(4, Math.floor(rawSize)))
+        : 4;
+      const positionIds = ['first', 'second', 'third', 'fourth'];
+      const emptyPositions = positionIds
+        .slice(0, podiumSize)
+        .map((key, index) => ({
+          sel: document.getElementById(`${key}-place`),
+          pos: index + 1
+        }))
+        .filter(({ sel }) => !sel || !String(sel.value || '').trim());
+
       if (emptyPositions.length > 0) {
-        const positions = emptyPositions.map(e => `${e.pos}o`).join(', ');
-        toast(`Selecione o podio completo! Faltam: ${positions}`, 'warning');
+        const positions = emptyPositions.map(e => `${e.pos}º`).join(', ');
+        toast(`Selecione o pódio completo! Faltam: ${positions}`, 'warning');
         return;
       }
     }

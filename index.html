@@ -120,7 +120,7 @@
       </button>
 
       <div class="google-login-action" hidden>
-        <div id="google-login-container" class="google-login-container" aria-hidden="true"></div>
+        <div id="google-login-container" class="google-login-container" hidden inert aria-label="Login com Google"></div>
         <span class="google-login-official-icon" aria-hidden="true"></span>
         <span class="google-login-label">Login Google</span>
       </div>
@@ -289,69 +289,19 @@
       </div>
     </div>
 
-    <!-- PÓDIO -->
-    <div class="podium-section">
-  <h2 class="podium-title">Pódio</h2>
-
-  <div class="podium-container">
-    
-    <div class="podium-wrapper">
-
-      <div class="podium-track position-2">
-        <div class="podium-selector">
-          <span class="podium-badge silver">2º Lugar</span>
-          <p class="podium-points">(5 pontos)</p>
-          <select class="podium-select" id="second-place">
-            <option value="">Selecione...</option>
-          </select>
-          <span id="second-indicator" class="podium-status"></span>
+    <!-- PÓDIO — layout renderizado dinamicamente conforme podiumSize -->
+    <section class="podium-section" aria-labelledby="podium-title">
+      <div class="podium-container">
+        <div class="podium-header">
+          <div class="podium-header-icon" aria-hidden="true">🏆</div>
+          <div>
+            <h2 id="podium-title" class="podium-title">Escolha seu pódio</h2>
+            <p class="podium-subtitle">Selecione as posições do pódio.</p>
+          </div>
         </div>
-        <div class="podium-block">🥈</div>
+        <div id="podium-dynamic-mount" class="podium-dynamic-mount"></div>
       </div>
-
-      <div class="podium-track position-1">
-        <div class="podium-selector">
-          <span class="podium-badge gold">1º Lugar</span>
-          <p class="podium-points">(7 pontos)</p>
-          <select class="podium-select" id="first-place">
-            <option value="">Selecione...</option>
-          </select>
-          <span id="first-indicator" class="podium-status"></span>
-        </div>
-        <div class="podium-block">🥇</div>
-      </div>
-
-      <div class="podium-track position-3">
-        <div class="podium-selector">
-          <span class="podium-badge bronze">3º Lugar</span>
-          <p class="podium-points">(4 pontos)</p>
-          <select class="podium-select" id="third-place">
-            <option value="">Selecione...</option>
-          </select>
-          <span id="third-indicator" class="podium-status"></span>
-        </div>
-        <div class="podium-block">🥉</div>
-      </div>
-
-    </div>
-
-    <div class="podium-consolation">
-      <div class="consolation-item">
-        <div class="consolation-badge">
-          <span class="podium-badge leather">4º Lugar</span>
-        </div>
-        <div class="consolation-select-wrapper">
-          <select class="podium-select" id="fourth-place">
-            <option value="">Selecione...</option>
-          </select>
-        </div>
-        <p class="podium-points" style="margin: 0; white-space: nowrap;">(3 pontos)</p>
-        <span id="fourth-indicator" class="podium-status"></span>
-      </div>
-    </div>
-
-  </div>
-</div>
+    </section>
 
     <!-- MARCAR TODOS -->
     <div class="form-check" style="margin-top:16px;">

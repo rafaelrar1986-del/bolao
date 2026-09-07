@@ -5162,189 +5162,42 @@ html, body {
 input:checked + .slider { background-color: #28a745; } /* Cor verde quando ativo */
 input:checked + .slider:before { transform: translateX(18px); }
 /* ==========================================
-   PÓDIO ESPORTIVO (1º ao 4º Lugar)
+   PÓDIO ESPORTIVO DINÂMICO — identidade Bolão
+   Renderizado para 1, 2, 3 ou 4 posições.
    ========================================== */
+.podium-section{margin:18px auto 0;width:100%}
+.podium-container{width:100%;max-width:760px;margin:0 auto;padding:18px;box-sizing:border-box;background:linear-gradient(145deg,rgba(13,27,43,.96),rgba(8,15,25,.98));border:1px solid rgba(96,165,250,.16);border-radius:18px;box-shadow:0 14px 40px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.035);overflow:hidden}
+.podium-header{display:flex;align-items:center;gap:12px;padding:4px 4px 16px;border-bottom:1px solid rgba(255,255,255,.07)}
+.podium-header-icon{width:44px;height:44px;flex:0 0 44px;display:grid;place-items:center;border-radius:13px;background:linear-gradient(145deg,rgba(245,190,60,.20),rgba(245,190,60,.06));border:1px solid rgba(245,190,60,.18);font-size:24px}
+.podium-title{margin:0;color:#f7fafc;font-size:20px;line-height:1.15;font-weight:800;letter-spacing:.1px}
+.podium-subtitle{margin:5px 0 0;color:rgba(226,232,240,.70);font-size:12px;line-height:1.4}
+.podium-dynamic-mount{margin-top:16px}
+.podium-stage{position:relative;border-radius:15px;padding:18px 14px 12px;background:radial-gradient(circle at 50% 76%,rgba(255,198,64,.09),transparent 34%),linear-gradient(180deg,rgba(14,31,48,.82),rgba(6,13,22,.92));border:1px solid rgba(255,255,255,.055);overflow:hidden}
+.podium-stage-glow{position:absolute;left:12%;right:12%;bottom:15px;height:72px;background:radial-gradient(ellipse,rgba(255,196,55,.13),transparent 68%);pointer-events:none}
+.podium-wrapper{position:relative;z-index:1;width:100%;min-height:250px;display:flex;align-items:flex-end;justify-content:center;gap:10px;margin:0 auto}
+.podium-track{min-width:0;flex:1 1 0;max-width:190px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;position:relative}
+.podium-selector{width:100%;max-width:170px;min-width:0;display:flex;flex-direction:column;align-items:center;gap:6px;margin-bottom:7px}
+.podium-badge{display:inline-flex;align-items:center;justify-content:center;min-height:24px;padding:4px 10px;box-sizing:border-box;border-radius:999px;font-size:11px;line-height:1;font-weight:800;white-space:nowrap;border:1px solid rgba(255,255,255,.10)}
+.podium-badge.gold{background:linear-gradient(135deg,#ffe58a,#c99522);color:#221700;box-shadow:0 3px 12px rgba(255,205,73,.14)}
+.podium-badge.silver{background:linear-gradient(135deg,#f5f7fa,#9ca7b5);color:#17202b;box-shadow:0 3px 12px rgba(220,228,236,.10)}
+.podium-badge.bronze{background:linear-gradient(135deg,#e3a070,#9b5129);color:#fff;box-shadow:0 3px 12px rgba(188,104,59,.12)}
+.podium-badge.leather{background:linear-gradient(135deg,rgba(148,163,184,.35),rgba(71,85,105,.45));color:#e5e7eb}
+.podium-points{margin:0;min-height:15px;color:rgba(226,232,240,.58);font-size:10px;font-weight:600}
+.podium-select{width:100%;min-height:40px;box-sizing:border-box;padding:8px 28px 8px 10px;border:1px solid rgba(148,163,184,.28);border-radius:9px;background:rgba(3,10,18,.86);color:#f8fafc;font-size:12px;cursor:pointer;text-align:center;transition:border-color .18s ease,box-shadow .18s ease,background .18s ease}
+.podium-select:focus{border-color:rgba(96,165,250,.70);background:rgba(8,20,34,.96);outline:none;box-shadow:0 0 0 3px rgba(59,130,246,.10)}
+.podium-select option{background:#111827;color:#fff}
+.podium-status{min-height:16px;font-size:14px;font-weight:800;line-height:16px}
+.podium-block{width:100%;display:flex;align-items:center;justify-content:center;border-radius:9px 9px 3px 3px;border:1px solid rgba(255,255,255,.12);border-bottom:0;font-size:34px;line-height:1;box-sizing:border-box;text-shadow:0 3px 12px rgba(0,0,0,.35)}
+.podium-block-first{height:112px;background:linear-gradient(180deg,rgba(255,220,101,.95),rgba(181,125,18,.92));box-shadow:0 -5px 24px rgba(255,201,53,.12)}
+.podium-block-second{height:88px;background:linear-gradient(180deg,rgba(226,232,240,.92),rgba(113,125,140,.94))}
+.podium-block-third{height:70px;background:linear-gradient(180deg,rgba(220,142,94,.94),rgba(139,68,34,.94))}
+.podium-block-fourth{height:55px;background:linear-gradient(180deg,rgba(148,163,184,.66),rgba(62,73,87,.92));font-size:22px;color:#e5e7eb}
+.podium-track.position-1{order:2}.podium-track.position-2{order:1}.podium-track.position-3{order:3}.podium-track.position-4{order:4}
+.podium-stage-1 .podium-wrapper{max-width:250px}.podium-stage-2 .podium-wrapper{max-width:420px}.podium-stage-3 .podium-wrapper{max-width:610px}.podium-stage-4 .podium-wrapper{max-width:720px;gap:8px}.podium-stage-4 .podium-selector{max-width:160px}
+.podium-config-note{display:flex;align-items:center;justify-content:center;gap:7px;margin-top:11px;padding:8px 10px;color:rgba(191,219,254,.76);font-size:10px;line-height:1.35;text-align:center}.podium-config-note-icon{font-size:13px}
+@media (max-width:600px){.podium-container{padding:14px;border-radius:16px}.podium-header{padding-bottom:13px}.podium-header-icon{width:38px;height:38px;flex-basis:38px;font-size:21px}.podium-title{font-size:17px}.podium-subtitle{font-size:10px}.podium-stage{padding:14px 8px 9px}.podium-wrapper{min-height:220px;gap:6px}.podium-track{max-width:none}.podium-selector{max-width:100%;gap:4px;margin-bottom:5px}.podium-badge{font-size:9px;padding:4px 7px}.podium-points{font-size:9px}.podium-select{min-height:36px;padding:7px 20px 7px 5px;font-size:10px}.podium-block-first{height:94px;font-size:29px}.podium-block-second{height:75px;font-size:27px}.podium-block-third{height:60px;font-size:25px}.podium-block-fourth{height:48px;font-size:18px}.podium-stage-4 .podium-wrapper{gap:4px}.podium-stage-4 .podium-selector{max-width:100%}.podium-config-note{font-size:9px}}
+@media (max-width:390px){.podium-container{padding:11px}.podium-wrapper{min-height:205px}.podium-select{font-size:9px}.podium-badge{font-size:8px;padding-left:5px;padding-right:5px}.podium-points{font-size:8px}}
 
-/* Container Principal */
-.podium-container {
-  width: 100%;
-  max-width: 600px;
-  margin: 0 auto;
-  padding: 24px;
-  background: rgba(20, 24, 39, 0.7);
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-}
-
-/* Estrutura de Degraus (Top 3) */
-.podium-wrapper {
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 12px;
-  height: 290px;
-  margin-bottom: 30px;
-}
-
-.podium-track {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-end;
-  flex: 1;
-  height: 100%;
-}
-
-.podium-selector {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 4px;
-}
-
-/* Pontuação dos Cards */
-.podium-points {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.6);
-  margin: 0;
-  font-weight: 500;
-}
-
-/* Estilização dos Selects */
-.podium-select {
-  width: 100%;
-  padding: 10px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
-  color: #fff;
-  font-size: 13px;
-  cursor: pointer;
-  text-align: center;
-  transition: all 0.2s ease;
-}
-
-.podium-select:focus {
-  border-color: #00d2ff;
-  background: rgba(255, 255, 255, 0.12);
-  outline: none;
-}
-
-.podium-select option {
-  background-color: #1a1e2e;
-  color: #fff;
-}
-
-/* Badges de Posição */
-.podium-badge {
-  font-size: 12px;
-  font-weight: 700;
-  padding: 4px 12px;
-  border-radius: 20px;
-  color: #fff;
-}
-
-.podium-badge.gold { background: linear-gradient(135deg, #ffd700, #ff8c00); color: #000; }
-.podium-badge.silver { background: linear-gradient(135deg, #e2e8f0, #94a3b8); color: #000; }
-.podium-badge.bronze { background: linear-gradient(135deg, #b87333, #8a4e1d); }
-.podium-badge.leather { background: rgba(255,255,255,0.15); color: #fff; }
-
-/* Indicadores de Acerto e Erro (JS) */
-.podium-status {
-  font-size: 14px;
-  font-weight: bold;
-  min-height: 16px;
-}
-
-/* Degraus Tridimensionais */
-.podium-block {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 38px;
-  border-radius: 12px 12px 0 0;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-bottom: none;
-}
-
-.position-1 .podium-block { 
-  height: 120px; 
-  background: linear-gradient(to bottom, rgba(255, 215, 0, 0.15), rgba(255, 255, 255, 0.02)); 
-}
-.position-2 .podium-block { 
-  height: 80px; 
-  background: linear-gradient(to bottom, rgba(226, 232, 240, 0.1), rgba(255, 255, 255, 0.02)); 
-}
-.position-3 .podium-block { 
-  height: 50px; 
-  background: linear-gradient(to bottom, rgba(184, 115, 51, 0.1), rgba(255, 255, 255, 0.02)); 
-}
-
-/* Estilização do 4º Lugar */
-.podium-consolation {
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  padding-top: 20px;
-  display: flex;
-  justify-content: center;
-}
-
-.consolation-item {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  background: rgba(0, 0, 0, 0.25);
-  padding: 14px 20px;
-  border-radius: 12px;
-  width: 100%;
-  max-width: 440px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.consolation-badge {
-  display: flex;
-  align-items: center;
-}
-
-.consolation-select-wrapper {
-  flex: 1;
-}
-/* Container da Bandeira Estática do Pódio */
-.big-flag-display {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
-  padding: 8px;
-  
-  border-radius: 12px;
-  
-  animation: popIn 0.3s ease-out;
-}
-
-.big-flag-display .flag-icon {
-  font-size: 32px; /* Tamanho do emoji da bandeira */
-  line-height: 1;
-  filter: drop-shadow(0 4px 6px rgba(0,0,0,0.3));
-}
-
-.big-flag-display .flag-team-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: #ffffff;
-  text-align: center;
-  text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
-}
-
-@keyframes popIn {
-  0% { transform: scale(0.8); opacity: 0; }
-  100% { transform: scale(1); opacity: 1; }
-}
 /* ==========================================
    CARD DE JOGOS - LAYOUT VERTICAL
    ========================================== */
