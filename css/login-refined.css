@@ -507,3 +507,71 @@ body:has(#login-section:not([hidden])) {
   background-size: 24px 24px;
   pointer-events: none;
 }
+
+/* Login Google — correção final de clique:
+   o iframe oficial do Google permanece visível e recebe o clique diretamente.
+   O texto "Login Google" continua sendo fornecido pelo site ao lado do ícone. */
+#login-section .login-actions-row .google-login-action {
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  cursor: pointer !important;
+  overflow: visible !important;
+}
+
+#login-section .login-actions-row .google-login-action .google-login-container {
+  position: relative !important;
+  inset: auto !important;
+  flex: 0 0 40px !important;
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+  height: 40px !important;
+  min-height: 40px !important;
+  max-height: 40px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  z-index: 2 !important;
+  opacity: 1 !important;
+  overflow: visible !important;
+  background: transparent !important;
+  pointer-events: auto !important;
+}
+
+#login-section .login-actions-row .google-login-action .google-login-container > div {
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+  height: 40px !important;
+  min-height: 40px !important;
+  max-height: 40px !important;
+  display: block !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+#login-section .login-actions-row .google-login-action .google-login-container iframe {
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+  height: 40px !important;
+  min-height: 40px !important;
+  max-height: 40px !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  transform: none !important;
+}
+
+#login-section .login-actions-row .google-login-action .google-login-official-icon,
+#login-section .login-actions-row .google-login-action .google-login-mark {
+  display: none !important;
+}
+
+#login-section .login-actions-row .google-login-action .google-login-label {
+  position: relative !important;
+  z-index: 1 !important;
+  pointer-events: none !important;
+  white-space: nowrap !important;
+}
