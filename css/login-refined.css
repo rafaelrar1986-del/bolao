@@ -638,3 +638,33 @@ body:has(#login-section:not([hidden])) {
 #login-section .login-actions-row .google-login-action .google-login-container iframe {
   pointer-events: none !important;
 }
+
+/* Login: centraliza o conjunto dos dois botões, não apenas o card. */
+#login-section .login-actions-row {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 12px !important;
+}
+
+#login-section .login-actions-row > .btn-primary {
+  flex: 0 1 184px !important;
+  width: 184px !important;
+  max-width: 100% !important;
+}
+
+#login-section .login-actions-row > .google-login-container {
+  flex: 0 0 50px !important;
+  width: 50px !important;
+  min-width: 50px !important;
+  max-width: 50px !important;
+  margin: 0 !important;
+  justify-content: center !important;
+}
+
+#login-section .login-actions-row > .google-login-container > div {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+}
