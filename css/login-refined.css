@@ -508,71 +508,119 @@ body:has(#login-section:not([hidden])) {
   pointer-events: none;
 }
 
-/* Login Google — correção final de clique:
-   o iframe oficial do Google permanece visível e recebe o clique diretamente.
-   O texto "Login Google" continua sendo fornecido pelo site ao lado do ícone. */
+/* LOGIN GOOGLE — bloco final, único e autoritativo.
+   O botão visual é HTML/CSS e o iframe oficial do Google fica como camada de clique.
+   Assim o G mantém as quatro cores, o texto permanece "Login Google" e o clique
+   continua sendo processado pelo Google Identity Services. */
 #login-section .login-actions-row .google-login-action {
   position: relative !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 44px !important;
+  min-height: 44px !important;
+  max-height: 44px !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
   gap: 8px !important;
+  margin: 0 !important;
+  padding: 0 12px !important;
+  box-sizing: border-box !important;
+  border: 1px solid rgba(120, 130, 140, 0.35) !important;
+  border-radius: 7px !important;
+  background: #fff !important;
+  overflow: hidden !important;
   cursor: pointer !important;
-  overflow: visible !important;
 }
 
 #login-section .login-actions-row .google-login-action .google-login-container {
-  position: relative !important;
-  inset: auto !important;
-  flex: 0 0 40px !important;
-  width: 40px !important;
-  min-width: 40px !important;
-  max-width: 40px !important;
-  height: 40px !important;
-  min-height: 40px !important;
-  max-height: 40px !important;
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  min-width: 100% !important;
+  max-width: 100% !important;
+  height: 100% !important;
+  min-height: 100% !important;
+  max-height: 100% !important;
   margin: 0 !important;
   padding: 0 !important;
-  z-index: 2 !important;
+  z-index: 5 !important;
   opacity: 1 !important;
-  overflow: visible !important;
+  overflow: hidden !important;
   background: transparent !important;
   pointer-events: auto !important;
 }
 
 #login-section .login-actions-row .google-login-action .google-login-container > div {
-  width: 40px !important;
-  min-width: 40px !important;
-  max-width: 40px !important;
-  height: 40px !important;
-  min-height: 40px !important;
-  max-height: 40px !important;
-  display: block !important;
-  opacity: 1 !important;
+  width: 100% !important;
+  min-width: 100% !important;
+  max-width: 100% !important;
+  height: 100% !important;
+  min-height: 100% !important;
+  max-height: 100% !important;
+  opacity: 0 !important;
   pointer-events: auto !important;
 }
 
 #login-section .login-actions-row .google-login-action .google-login-container iframe {
-  width: 40px !important;
-  min-width: 40px !important;
-  max-width: 40px !important;
-  height: 40px !important;
-  min-height: 40px !important;
-  max-height: 40px !important;
-  opacity: 1 !important;
+  width: 100% !important;
+  min-width: 100% !important;
+  max-width: 100% !important;
+  height: 44px !important;
+  min-height: 44px !important;
+  max-height: 44px !important;
+  border: 0 !important;
+  opacity: 0 !important;
   pointer-events: auto !important;
-  transform: scale(1.55) !important;
-  transform-origin: center center !important;
+  transform: none !important;
 }
 
-#login-section .login-actions-row .google-login-action .google-login-official-icon,
-#login-section .login-actions-row .google-login-action .google-login-mark {
-  display: none !important;
+#login-section .login-actions-row .google-login-action .google-login-official-icon {
+  position: relative !important;
+  z-index: 1 !important;
+  flex: 0 0 24px !important;
+  width: 24px !important;
+  height: 24px !important;
+  display: inline-block !important;
+  background-repeat: no-repeat !important;
+  background-position: center !important;
+  background-size: 24px 24px !important;
+  pointer-events: none !important;
 }
 
 #login-section .login-actions-row .google-login-action .google-login-label {
   position: relative !important;
   z-index: 1 !important;
-  pointer-events: none !important;
+  color: #3c4043 !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  line-height: 1 !important;
   white-space: nowrap !important;
+  pointer-events: none !important;
+}
+
+@media (max-width: 480px) {
+  #login-section .login-actions-row .google-login-action {
+    height: 42px !important;
+    min-height: 42px !important;
+    max-height: 42px !important;
+    padding: 0 10px !important;
+    gap: 7px !important;
+  }
+
+  #login-section .login-actions-row .google-login-action .google-login-container iframe {
+    height: 42px !important;
+    min-height: 42px !important;
+    max-height: 42px !important;
+  }
+
+  #login-section .login-actions-row .google-login-action .google-login-official-icon {
+    width: 24px !important;
+    height: 24px !important;
+    flex-basis: 24px !important;
+  }
+
+  #login-section .login-actions-row .google-login-action .google-login-label {
+    font-size: 13px !important;
+  }
 }
