@@ -1,11 +1,11 @@
-const CACHE_NAME = "bolao-k-bwalya-refactor-full-v8";
+const CACHE_NAME = "bolao-k-bwalya-refactor-full-v9";
 
 const APP_SHELL = [
   "./",
   "./index.html",
   "./manifest.webmanifest",
   "./css/styles4.css?v=1.44",
-  "./js/app4.js?v=1.12",
+  "./js/app4.js?v=1.15",
   "./js/api.js",
   "./js/auth.js",
   "./js/auth-tabs.js",
@@ -28,7 +28,14 @@ const APP_SHELL = [
   "./js/matches/matchesController.js",
   "./js/matches/matchesUtils.js",
   "./js/matches/matchesConfrontation.js",
-  "./js/ranking2.js?v=1.09",
+  "./js/ranking2.js?v=1.10",
+  "./js/ranking/state.js",
+  "./js/ranking/helpers.js",
+  "./js/ranking/controller.js",
+  "./js/ranking/strategyRenderer.js",
+  "./js/ranking/simulation.js",
+  "./js/ranking/viewEvents.js",
+  "./js/ranking/uiActions.js",
   "./js/newsTicker.js",
   "./js/newsWall.js",
   "./js/myBets1.js",
