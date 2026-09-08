@@ -25,6 +25,7 @@ const auditService = require('./auditService');
 const emailService = require('./emailService');
 const { getEffectiveKnockoutFormat, getEffectiveKnockoutLegCount, buildKnockoutTieKey } = require('../utils/knockoutFormat');
 const { materializeKnockoutConfrontation } = require('./knockoutConfrontationService');
+const { getAutomaticLockTarget } = require('./betLockService');
 
 async function addMatch(ctx) {
 
@@ -499,130 +500,113 @@ async function editMatch(ctx) {
     await match.save();
 
     // ============================================================
-    // 🔒 TRAVA AUTOMÁTICA (GRADE OU PARTIDA) + 👁️ VISIBILIDADE + 📧 AUDITORIA
+    // 🔒 TRAVA AUTOMÁTICA — alcance definido pelo modo configurado
     //
-    // SOMENTE A PRIMEIRA PARTIDA DA GRADE EXECUTA ESTE BLOCO.
-    //
-    // Ao iniciar a primeira partida:
-    //   lockedPhases   -> adiciona a rodada/fase
-    //   unlockedPhases -> adiciona a rodada/fase
-    //   unlockedPhases -> mantém 'podium'
-    //   envia 1 único e-mail
-    //
-    // As partidas seguintes da mesma grade não entram,
-    // porque lockIdentifier já estará em lockedPhases.
+    // Por partida: nenhuma trava de fase/rodada é persistida.
+    // Por rodada + disponibilidade por rodada: trava somente a rodada.
+    // Por rodada + disponibilidade da fase inteira: trava a fase.
+    // No modo de teste, o início oficial não cria travas automáticas.
     // ============================================================
+    let automaticLockTarget = null;
+    let settingsUpdated = null;
+    let auditIdentifier = null;
+
     if (
       updates.status &&
       oldStatus === 'scheduled' &&
       !['scheduled', 'cancelled', 'postponed'].includes(updates.status)
     ) {
       const configId = toLeagueId(match.leagueId);
+      const currentSettings = await Settings.findById(configId).lean();
 
-      const lockIdentifier =
-        match.phaseName ||
-        match.group;
+      if (currentSettings?.testMode !== true) {
+        automaticLockTarget = getAutomaticLockTarget(match, currentSettings);
+        const phaseIdentifier = match.phaseName || match.group;
 
-      if (lockIdentifier) {
+        if (automaticLockTarget.scope === 'round') {
+          const roundField = automaticLockTarget.phaseKind === 'group'
+            ? 'lockedGroupRounds'
+            : automaticLockTarget.phaseKind === 'points_run'
+              ? 'lockedPointsRunRounds'
+              : 'lockedKnockoutRounds';
 
-        const currentSettings =
-          await Settings.findById(configId).lean();
-
-        const betLockMode =
-          currentSettings?.betLockMode || 'grade';
-
-        let settingsUpdated = null;
-
-        if (betLockMode === 'grade') {
-          settingsUpdated =
-            await Settings.findOneAndUpdate(
-              {
-                _id: configId,
-                lockedPhases: { $ne: lockIdentifier }
-              },
-              {
-                $addToSet: {
-                  lockedPhases: lockIdentifier,
-                  unlockedPhases: {
-                    $each: [
-                      lockIdentifier,
-                      'podium'
-                    ]
-                  }
-                },
-                $set: {
-                  statsLocked: false
+          settingsUpdated = await Settings.findOneAndUpdate(
+            {
+              _id: configId,
+              [roundField]: { $ne: automaticLockTarget.round }
+            },
+            {
+              $addToSet: { [roundField]: automaticLockTarget.round },
+              $set: { statsLocked: false }
+            },
+            { new: true }
+          );
+          auditIdentifier = `Rodada ${automaticLockTarget.round}`;
+        } else if (automaticLockTarget.scope === 'phase' && automaticLockTarget.identifier) {
+          settingsUpdated = await Settings.findOneAndUpdate(
+            {
+              _id: configId,
+              lockedPhases: { $ne: automaticLockTarget.identifier }
+            },
+            {
+              $addToSet: {
+                lockedPhases: automaticLockTarget.identifier,
+                unlockedPhases: {
+                  $each: [automaticLockTarget.identifier, 'podium']
                 }
               },
-              {
-                new: true
-              }
-            );
+              $set: { statsLocked: false }
+            },
+            { new: true }
+          );
+          auditIdentifier = automaticLockTarget.identifier;
         } else {
-          // No modo por partida, o horário da própria partida
-          // é a trava. Não bloqueamos a grade nem o salvamento global.
           await Settings.updateOne(
             { _id: configId },
             { $set: { statsLocked: false } }
           );
         }
 
-        // ========================================================
-        // E-MAIL SOMENTE SE ESTA FOI A PRIMEIRA PARTIDA
-        // DA GRADE.
-        //
-        // Se lockedPhases já continha lockIdentifier,
-        // settingsUpdated será null e nenhum e-mail será enviado.
-        // ========================================================
-        if (settingsUpdated) {
+        // Para auditoria, o serviço continua recebendo o identificador da
+        // fase/grupo, pois é assim que ele localiza as partidas no banco.
+        // O assunto do e-mail informa a rodada quando esse for o alcance.
+        if (settingsUpdated && phaseIdentifier) {
+          auditIdentifier = auditIdentifier || phaseIdentifier;
+        }
+      }
+    }
 
-          try {
+    // ========================================================
+    // 📧 AUDITORIA/E-MAIL SOMENTE QUANDO UMA NOVA UNIDADE FOI TRANCADA
+    // ========================================================
+    if (settingsUpdated && auditIdentifier) {
+      try {
+        const csv = await auditService.generateAuditCSV(
+          match.leagueId || 'default',
+          match.phaseName || match.group
+        );
 
-            const csv =
-              await auditService.generateAuditCSV(
-                match.leagueId || 'default',
-                lockIdentifier
-              );
+        if (csv) {
+          const users = await User.find(
+            { leagues: String(match.leagueId || 'default') },
+            'email'
+          );
+          const emails = users.map(u => u.email).filter(Boolean);
 
-            if (csv) {
-
-              const users =
-                await User.find(
-                  {
-                    leagues: String(
-                      match.leagueId || 'default'
-                    )
-                  },
-                  'email'
-                );
-
-              const emails =
-                users
-                  .map(u => u.email)
-                  .filter(Boolean);
-
-              if (emails.length > 0) {
-
-                await emailService.sendBroadcastEmail(
-                  emails,
-
-                  `🔒 Auditoria Manual (Painel Admin): ${lockIdentifier}`,
-
-                  `A rodada/fase foi trancada manualmente pelo administrador. Partida disparadora: ${match.teamA} x ${match.teamB}.`,
-
-                  csv
-                );
-              }
-            }
-
-          } catch (auditErr) {
-
-            console.error(
-              '❌ [ADMIN AUDIT]: Erro na auditoria manual:',
-              auditErr.message
+          if (emails.length > 0) {
+            await emailService.sendBroadcastEmail(
+              emails,
+              `🔒 Auditoria Manual (Painel Admin): ${auditIdentifier}`,
+              `A unidade de apostas foi trancada automaticamente. Partida disparadora: ${match.teamA} x ${match.teamB}.`,
+              csv
             );
           }
         }
+      } catch (auditErr) {
+        console.error(
+          '❌ [ADMIN AUDIT]: Erro na auditoria automática:',
+          auditErr.message
+        );
       }
     }
 

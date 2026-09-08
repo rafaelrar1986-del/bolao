@@ -10,6 +10,7 @@ const {
   getMatchGrade,
   getBetLockState,
   isMatchStarted,
+  isMatchStartedByTime,
   isGradeLocked
 } = require('../services/betLockService');
 
@@ -261,139 +262,57 @@ async function saveBets(req, res) {
     );
 
     // ============================================================
-    // 🛡️ VALIDAÇÃO DE GRADE TRANCADA
+    // 🛡️ REENVIO DE APOSTAS JÁ SALVAS
     // ============================================================
-    const rawMatchIdsEnviados = Object.keys(groupMatches || {});
-
-    if (rawMatchIdsEnviados.some(matchId => !isValidMatchIdValue(matchId))) {
-      return res.status(400).json({
-        success: false,
-        message: 'matchId inválido. O identificador da partida deve ser um inteiro positivo.'
-      });
-    }
-
-    const matchIdsEnviados = rawMatchIdsEnviados.map(Number);
-
-    // Garante que todos os matchIds enviados realmente pertencem
-    // à liga informada. A validação numérica acima só verifica o formato.
-    const matchIdsInvalidos = matchIdsEnviados.filter(
-      id => !validMatchIds.has(id)
+    // A trava de edição é a mesma autoridade usada no salvamento.
+    // Se uma partida/rodada/fase estiver bloqueada, permitimos apenas o
+    // reenvio exatamente igual ao palpite já salvo, preservando a política
+    // anterior de não invalidar um rascunho legítimo após o bloqueio.
+    const matchesReenvioPermitido = new Set();
+    const existingForLockPolicy = await Bet.findOne({
+      user: req.user._id,
+      leagueId: String(leagueId)
+    }).lean();
+    const existingBetsForLockPolicy = new Map(
+      (existingForLockPolicy?.groupMatches || []).map(b => [Number(b.matchId), b])
     );
 
-    if (matchIdsInvalidos.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Uma ou mais partidas não pertencem à liga informada.'
-      });
-    }
+    const scoringRulesForLockPolicy = settings?.scoringRules || {};
+    const scoresEnabledForLockPolicy = scoresAreEnabled(scoringRulesForLockPolicy);
 
-    const betLockMode = getBetLockMode(settings);
+    const samePrediction = (submitted, saved) => {
+      if (!submitted || !saved) return false;
 
-    // Partidas de grades já bloqueadas que estão sendo reenviadas
-    // exatamente como já estavam salvas. Elas não podem ser
-    // rejeitadas novamente pela trava de horário abaixo.
-    const matchesReenvioPermitido = new Set();
+      const sameWinner = String(submitted?.winner ?? '') === String(saved?.winner ?? '');
+      const sameQualifier = String(submitted?.qualifier ?? '') === String(saved?.qualifier ?? '');
+      if (!sameWinner || !sameQualifier) return false;
 
-    if (
-      betLockMode === 'grade' &&
-      Array.isArray(settings?.lockedPhases) &&
-      settings.lockedPhases.length > 0
-    ) {
-      const existing = await Bet.findOne({ user: req.user._id, leagueId: String(leagueId) }).lean();
-      const palpitesAntigosMap = new Map();
-      if (existing && Array.isArray(existing.groupMatches)) {
-        existing.groupMatches.forEach(b => palpitesAntigosMap.set(Number(b.matchId), b));
-      }
+      if (!scoresEnabledForLockPolicy) return true;
 
-      for (const matchId of matchIdsEnviados) {
-        const idNum = Number(matchId);
-        const matchData = matchMap.get(idNum);
+      const a = submitted?.scoreA == null || submitted?.scoreA === '' ? null : Number(submitted.scoreA);
+      const b = submitted?.scoreB == null || submitted?.scoreB === '' ? null : Number(submitted.scoreB);
+      const savedA = saved?.scoreA == null || saved?.scoreA === '' ? null : Number(saved.scoreA);
+      const savedB = saved?.scoreB == null || saved?.scoreB === '' ? null : Number(saved.scoreB);
+      return a === savedA && b === savedB;
+    };
 
-        if (matchData) {
-          const gradeDaPartida = getMatchGrade(matchData);
+    const checkNow = new Date();
+    for (const matchId of matchIdsEnviados) {
+      const matchData = matchMap.get(Number(matchId));
+      if (!matchData) continue;
 
-          if (isGradeLocked(matchData, settings)) {
-            const palpiteEnviado = groupMatches[matchId] || groupMatches[String(matchId)];
-            const classificadoEnviado = palpiteEnviado?.qualifier || null;
+      const lockState = getBetLockState(matchData, settings, checkNow, dbMatches);
+      if (!lockState.locked) continue;
 
-            const dadosAntigos = palpitesAntigosMap.get(idNum);
+      const submitted = groupMatches[matchId] || groupMatches[String(matchId)];
+      const saved = existingBetsForLockPolicy.get(Number(matchId));
 
-            // Uma grade já encerrada pode ser reenviada somente com exatamente
-            // o mesmo palpite que já estava salvo.
-            //
-            // IMPORTANTE:
-            // - winner e qualifier fazem parte da aposta e continuam sendo
-            //   comparados normalmente;
-            // - scoreA/scoreB só fazem parte da comparação quando alguma
-            //   categoria de pontuação de placar está habilitada.
-            //   Se placar não gera pontos, a aposta legítima pode ter
-            //   scoreA/scoreB = null e esses campos devem ser ignorados.
-            if (!dadosAntigos) {
-              return res.status(403).json({
-                success: false,
-                message: `As apostas para a grade "${gradeDaPartida}" já foram encerradas!`
-              });
-            }
-
-            const palpiteJaSalvo = dadosAntigos.winner ?? null;
-            const classificadoJaSalvo = dadosAntigos.qualifier ?? null;
-
-            const naoAlterouVencedor =
-              String(palpiteEnviado?.winner ?? '') === String(palpiteJaSalvo ?? '');
-
-            const naoAlterouClassificado =
-              String(classificadoEnviado ?? '') === String(classificadoJaSalvo ?? '');
-
-            const scoringRulesLocked = settings?.scoringRules || {};
-            const scoresEnabledLocked = scoresAreEnabled(scoringRulesLocked);
-
-            let naoAlterouPlacar = true;
-
-            if (scoresEnabledLocked) {
-              const scoreEnviadoA =
-                palpiteEnviado?.scoreA == null || palpiteEnviado?.scoreA === ''
-                  ? null
-                  : Number(palpiteEnviado.scoreA);
-
-              const scoreEnviadoB =
-                palpiteEnviado?.scoreB == null || palpiteEnviado?.scoreB === ''
-                  ? null
-                  : Number(palpiteEnviado.scoreB);
-
-              const scoreSalvoA =
-                dadosAntigos.scoreA == null || dadosAntigos.scoreA === ''
-                  ? null
-                  : Number(dadosAntigos.scoreA);
-
-              const scoreSalvoB =
-                dadosAntigos.scoreB == null || dadosAntigos.scoreB === ''
-                  ? null
-                  : Number(dadosAntigos.scoreB);
-
-              naoAlterouPlacar =
-                scoreEnviadoA === scoreSalvoA &&
-                scoreEnviadoB === scoreSalvoB;
-            }
-
-            if (naoAlterouVencedor && naoAlterouClassificado && naoAlterouPlacar) {
-              matchesReenvioPermitido.add(idNum);
-              continue;
-            }
-
-            return res.status(403).json({
-              success: false,
-              message: `As apostas para a grade "${gradeDaPartida}" já foram encerradas!`
-            });
-          }
-        }
+      if (samePrediction(submitted, saved)) {
+        matchesReenvioPermitido.add(Number(matchId));
       }
     }
 
     // 🛡️ AUTORIDADE ÚNICA DE BLOQUEIO
-    // Usa exatamente a mesma regra do frontend/backend de visibilidade.
-    // No modo 'grade', o início de QUALQUER partida da grade bloqueia
-    // todas as demais partidas daquela grade, inclusive em testMode.
-    const checkNow = new Date();
     for (const matchId of matchIdsEnviados) {
       const matchData = matchMap.get(Number(matchId));
       if (!matchData) continue;
@@ -407,16 +326,25 @@ async function saveBets(req, res) {
 
       if (lockState.locked && !matchesReenvioPermitido.has(Number(matchId))) {
         const gradeDaPartida = getMatchGrade(matchData);
-        const isGradeLock =
+        const isPhaseLock =
+          lockState.scope === 'phase' ||
           lockState.reason === 'grade_locked' ||
           lockState.reason === 'grade_started';
+        const isRoundLock = lockState.scope === 'round' ||
+          lockState.reason === 'round_locked' ||
+          lockState.reason === 'round_started' ||
+          lockState.reason === 'round_not_released';
 
-        return res.status(403).json({
-          success: false,
-          message: isGradeLock
-            ? `As apostas para a fase "${gradeDaPartida}" foram encerradas!`
-            : `Aposta bloqueada: Partida ${matchData.teamA} x ${matchData.teamB} já foi iniciada ou encerrada.`
-        });
+        let message;
+        if (isPhaseLock) {
+          message = `As apostas para a fase "${gradeDaPartida}" foram encerradas!`;
+        } else if (isRoundLock) {
+          message = `As apostas para a rodada ${Number(matchData.roundNumber)} foram encerradas!`;
+        } else {
+          message = `Aposta bloqueada: Partida ${matchData.teamA} x ${matchData.teamB} já foi iniciada ou encerrada.`;
+        }
+
+        return res.status(403).json({ success: false, message });
       }
     }
 
@@ -753,7 +681,8 @@ async function saveSingleBet(req, res) {
 
     if (
       settings?.testMode !== true &&
-      (match.status !== 'scheduled' || (matchDate && matchDate <= now))
+      getBetLockMode(settings) === 'match' &&
+      isMatchStartedByTime(match, now)
     ) {
       return res.status(403).json({
         success: false,

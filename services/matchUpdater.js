@@ -8,6 +8,7 @@ const { recalculateAllPoints } = require('./pointsService');
 const { trySaveDailyPoints } = require('./dailyHistoryService');
 const { getEffectiveKnockoutFormat, getEffectiveKnockoutLegCount, buildKnockoutTieKey, normalizeTeamKey } = require('../utils/knockoutFormat');
 const { materializeKnockoutConfrontation } = require('./knockoutConfrontationService');
+const { getAutomaticLockTarget } = require('./betLockService');
 
 function toLeagueId(leagueId) {
   return leagueId != null ? String(leagueId).trim() : 'default';
@@ -762,57 +763,75 @@ if (match.status === 'scheduled' && proposedStatus === 'scheduled') {
         : proposedStatus;
       const statusChanged = match.status !== status;
 
-      // --- TRAVA AUTOMÁTICA (GRADE OU PARTIDA) E AUDITORIA ---
+      // --- TRAVA AUTOMÁTICA E AUDITORIA ---
+      // O alcance é determinado pelo modo de bloqueio + disponibilidade da fase:
+      // match -> partida; grade+round -> rodada; grade+all -> fase.
       if (match.status === 'scheduled' && !['scheduled', 'cancelled'].includes(status)) {
-        // 🆕 CORREÇÃO: Usa toLeagueId() consistente com o resto do sistema
         const configId = toLeagueId(match.leagueId || core.leagueId || 'default');
-        const lockIdentifier = match.phaseName || match.group;
-        const currentSettings =
-          await Settings.findById(configId).lean();
+        const currentSettings = await Settings.findById(configId).lean();
 
-        const betLockMode =
-          currentSettings?.betLockMode || 'grade';
+        if (currentSettings?.testMode !== true) {
+          const target = getAutomaticLockTarget(match, currentSettings);
+          const phaseIdentifier = match.phaseName || match.group;
+          let settingsUpdated = null;
+          let auditIdentifier = null;
 
-        let settingsUpdated = null;
+          if (target.scope === 'round') {
+            const roundField = target.phaseKind === 'group'
+              ? 'lockedGroupRounds'
+              : target.phaseKind === 'points_run'
+                ? 'lockedPointsRunRounds'
+                : 'lockedKnockoutRounds';
 
-        if (betLockMode === 'grade') {
-          settingsUpdated = await Settings.findOneAndUpdate(
-            {
-              _id: configId,
-              lockedPhases: { $ne: lockIdentifier }
-            },
-            {
-              $addToSet: {
-                lockedPhases: lockIdentifier,
-                unlockedPhases: {
-                  $each: [lockIdentifier, 'podium']
-                }
+            settingsUpdated = await Settings.findOneAndUpdate(
+              { _id: configId, [roundField]: { $ne: target.round } },
+              {
+                $addToSet: { [roundField]: target.round },
+                $set: { statsLocked: false }
               },
-              $set: {
-                statsLocked: false
-              }
-            },
-            { new: true }
-          );
-        } else {
-          await Settings.updateOne(
-            { _id: configId },
-            { $set: { statsLocked: false } }
-          );
-        }
+              { new: true }
+            );
+            auditIdentifier = `Rodada ${target.round}`;
+          } else if (target.scope === 'phase' && target.identifier) {
+            settingsUpdated = await Settings.findOneAndUpdate(
+              { _id: configId, lockedPhases: { $ne: target.identifier } },
+              {
+                $addToSet: {
+                  lockedPhases: target.identifier,
+                  unlockedPhases: { $each: [target.identifier, 'podium'] }
+                },
+                $set: { statsLocked: false }
+              },
+              { new: true }
+            );
+            auditIdentifier = target.identifier;
+          } else {
+            await Settings.updateOne(
+              { _id: configId },
+              { $set: { statsLocked: false } }
+            );
+          }
 
-        if (settingsUpdated) {
-          auditService.generateAuditCSV(match.leagueId || 1, lockIdentifier)
-            .then(async (csv) => {
-              if (!csv) return;
-              // 🆕 CORREÇÃO: User.leagues é [String], não [Number]
-              const users = await User.find({ leagues: toLeagueId(match.leagueId || 'default') }, 'email');
-              const emails = users.map((u) => u.email).filter((e) => !!e);
-              if (emails.length > 0) {
-                await emailService.sendBroadcastEmail(emails, `🔒 Auditoria: ${lockIdentifier}`, 'Trancado.', csv);
-              }
-            })
-            .catch((e) => console.error('Audit Err:', e.message));
+          if (settingsUpdated && phaseIdentifier) {
+            auditService.generateAuditCSV(match.leagueId || 1, phaseIdentifier)
+              .then(async (csv) => {
+                if (!csv) return;
+                const users = await User.find(
+                  { leagues: toLeagueId(match.leagueId || 'default') },
+                  'email'
+                );
+                const emails = users.map((u) => u.email).filter(Boolean);
+                if (emails.length > 0) {
+                  await emailService.sendBroadcastEmail(
+                    emails,
+                    `🔒 Auditoria: ${auditIdentifier}`,
+                    'Trancado.',
+                    csv
+                  );
+                }
+              })
+              .catch((e) => console.error('Audit Err:', e.message));
+          }
         }
       }
 
