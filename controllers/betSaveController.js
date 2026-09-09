@@ -249,6 +249,13 @@ async function saveBets(req, res) {
     const validMatchIds = new Set(dbMatches.map(m => m.matchId));
     const matchMap = new Map(dbMatches.map(m => [m.matchId, m]));
 
+    // IDs das partidas efetivamente enviados neste salvamento.
+    // A mesma lista é usada pela autoridade única de bloqueio e pela
+    // validação posterior, evitando divergência entre os dois fluxos.
+    const matchIdsEnviados = Object.keys(groupMatches || {})
+      .map(Number)
+      .filter(Number.isFinite);
+
     // Carrega a aposta atual uma única vez para aplicar a política de edição
     // sem interferir nas regras de bloqueio/salvamento. A opção permite ou
     // impede apenas a alteração de uma aposta já existente; novas apostas
