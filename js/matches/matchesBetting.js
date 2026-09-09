@@ -93,7 +93,7 @@ export function createMatchesBetting(ctx = {}) {
       const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, isMatchStartedByStatus, isMatchStartedByTime } = ctx;
     if (!match || isKnockoutMatch(match)) return false;
     if (match.status === 'cancelled') return false;
-    if (isMatchStartedByStatus(match) || isMatchStartedByTime(match)) return false;
+    if (!STATE.testMode && (isMatchStartedByStatus(match) || isMatchStartedByTime(match))) return false;
 
     const phase = String(match.phase || '').toLowerCase();
     const isGroup = phase === 'group';
@@ -120,7 +120,7 @@ export function createMatchesBetting(ctx = {}) {
       const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, isMatchStartedByStatus, isMatchStartedByTime } = ctx;
     if (!match || !isKnockoutMatch(match)) return false;
     if (match.status === 'cancelled') return false;
-    if (isMatchStartedByStatus(match) || isMatchStartedByTime(match)) return false;
+    if (!STATE.testMode && (isMatchStartedByStatus(match) || isMatchStartedByTime(match))) return false;
 
     if (STATE.knockoutBetAvailabilityMode !== 'round') return true;
 
@@ -144,9 +144,7 @@ export function createMatchesBetting(ctx = {}) {
     const startedByStatus = isMatchStartedByStatus(match);
     const startedByTime = isMatchStartedByTime(match, now);
 
-    if (startedByStatus || startedByTime) {
-      return false;
-    }
+    if (!STATE.testMode && (startedByStatus || startedByTime)) { return false; }
 
     // No modo por grade, o primeiro jogo iniciado bloqueia TODOS os jogos
     // que pertencem à mesma grade. Essa verificação vem ANTES das regras
@@ -157,7 +155,7 @@ export function createMatchesBetting(ctx = {}) {
       (other.phaseName || other.group || 'Mata-mata') === gradeDaPartida &&
       (isMatchStartedByStatus(other) || isMatchStartedByTime(other, now))
     );
-    if (gradeJaIniciou) return false;
+    if (!STATE.testMode && gradeJaIniciou) return false;
 
     const matchPhase = String(match.phase || '').toLowerCase();
 
