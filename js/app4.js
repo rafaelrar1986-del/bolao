@@ -370,6 +370,10 @@ async function showLeagueSelection() {
   }
 }
 
+// Expõe somente o fluxo de seleção de ligas para ações de saída que
+// preservam a sessão (ex.: sair do paywall sem fazer logout).
+window.showLeagueSelection = showLeagueSelection;
+
 async function selectLeague(id, name) {
   const leagueId = String(id ?? '').trim();
   if (!leagueId) {

@@ -122,7 +122,7 @@ export async function showPaywall() {
 }
 
 // Sai da liga atualmente selecionada sem fazer logout.
-// O token de autenticação permanece salvo; ao recarregar, o app volta para
+// O token de autenticação permanece salvo; a tela volta diretamente para
 // a seleção de ligas. O eventual pedido de pagamento já registrado não é
 // cancelado aqui: sair da tela não significa cancelar a solicitação.
 window.exitSelectedLeaguePayment = () => {
@@ -133,8 +133,21 @@ window.exitSelectedLeaguePayment = () => {
   if (paywall) paywall.remove();
   document.body.style.overflow = '';
 
-  // Reaproveita o fluxo oficial de inicialização, preservando a sessão.
-  window.location.reload();
+  // Volta diretamente para a seleção de ligas, preservando a sessão.
+  // Não recarregamos a página: isso evita que mecanismos de login automático
+  // (especialmente Google Identity) sejam inicializados novamente.
+  document.body.classList.remove('has-app-nav');
+  if (typeof window.showLeagueSelection === 'function') {
+    void window.showLeagueSelection();
+  } else {
+    // Fallback seguro caso o módulo principal ainda não tenha exposto o fluxo.
+    const loginSection = document.getElementById('login-section');
+    const appSection = document.getElementById('app-section');
+    const leagueSection = document.getElementById('league-selection-section');
+    if (loginSection) loginSection.hidden = true;
+    if (appSection) appSection.hidden = true;
+    if (leagueSection) leagueSection.hidden = false;
+  }
 };
 
 // Helper global para o botão de cópia
