@@ -261,7 +261,7 @@ export function createMatchesProgress(ctx = {}) {
       const checkKO =
         typeof isKnockoutMatch === 'function'
           ? isKnockoutMatch
-          : (m) => m.isKnockout;
+          : (m) => String(m?.phase || '').trim().toLowerCase() === 'knockout';
 
       const scheduledKnockouts = (STATE.matches || [])
         .filter(checkKO)

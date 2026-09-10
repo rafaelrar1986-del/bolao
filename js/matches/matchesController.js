@@ -114,9 +114,7 @@ export function createMatchesController(ctx = {}) {
       const newStatus = (data.status || '').toLowerCase().trim();
       
       const phaseAttr = (matchCard.getAttribute('data-phase') || 'group').toLowerCase();
-      const isKnockout = phaseAttr === 'knockout' || 
-                         phaseAttr === 'mata-mata' || 
-                         phaseAttr === 'eliminatória' ||
+      const isKnockout = phaseAttr === 'knockout' ||
                          (typeof isKnockoutMatch === 'function' && isKnockoutMatch(data));
       
       const isStatusChanging = previousStatus !== newStatus;

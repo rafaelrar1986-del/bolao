@@ -247,7 +247,7 @@ export function renderStrategyView(data, mobileRoot, body, targetName = "SEU") {
                     ? `<div style="text-align:center; padding: 40px; background: rgba(255,255,255,0.02); border: 1px dashed rgba(255,255,255,0.1); border-radius: 15px; color: rgba(255,255,255,0.3);">Nenhum jogo futuro altera seu teto.</div>` 
                     : impactMatches.map(m => {
                         const mId = String(m.matchId || m.id);
-                        const isKnockout = m.phase === 'knockout' || m.phase === 'mata-mata';
+                        const isKnockout = m.phase === 'knockout';
                         
                         const teamsArray = m.teams ? m.teams.split(/ x | X | vs | VS /) : [];
                         const teamA = teamsArray[0]?.trim() || 'Time A';

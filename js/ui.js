@@ -112,13 +112,30 @@ export async function showPaywall() {
       ${qrHtml}
       ${pixHtml}
       <p class="paywall-status">A liberação é feita manualmente pelo administrador.</p>
-      <button class="btn-refresh" onclick="location.reload()">Já paguei, atualizar site</button>
+      <button class="btn-refresh" type="button" onclick="window.exitSelectedLeaguePayment()">Já paguei, atualizar site</button>
+      <button class="btn-paywall-exit" type="button" onclick="window.exitSelectedLeaguePayment()">↩ Sair</button>
     </div>
   `;
 
   document.body.appendChild(pw);
   document.body.style.overflow = 'hidden';
 }
+
+// Sai da liga atualmente selecionada sem fazer logout.
+// O token de autenticação permanece salvo; ao recarregar, o app volta para
+// a seleção de ligas. O eventual pedido de pagamento já registrado não é
+// cancelado aqui: sair da tela não significa cancelar a solicitação.
+window.exitSelectedLeaguePayment = () => {
+  localStorage.removeItem('selectedLeagueId');
+  localStorage.removeItem('selectedLeagueName');
+
+  const paywall = document.getElementById('paywall-wrapper');
+  if (paywall) paywall.remove();
+  document.body.style.overflow = '';
+
+  // Reaproveita o fluxo oficial de inicialização, preservando a sessão.
+  window.location.reload();
+};
 
 // Helper global para o botão de cópia
 window.copyPix = () => {

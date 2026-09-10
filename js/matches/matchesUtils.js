@@ -36,18 +36,9 @@ export function renderTeamMedia(teamName, logoUrl) {
 
 export function isKnockoutMatch(m) {
   if (!m) return false;
-  const phase = m.phase == null ? '' : String(m.phase).trim().toLowerCase();
-  const stage = m.stage == null ? '' : String(m.stage).trim().toLowerCase();
-
-  // Fase explícita tem prioridade. 'round 24' é uma rodada de grupo,
-  // portanto não pode ativar a pontuação de classificado.
-  if (phase === 'knockout' || phase === 'mata-mata' || phase.includes('knockout') || phase.includes('mata')) return true;
-  if (phase === 'group' || phase === 'groups' || phase === 'grupo' || phase === 'grupos') return false;
-
-  if (/quarter|quartas|semi|semifinal|final|playoff|knockout/.test(stage)) return true;
-  if (/round\s*(of\s*)?(16|8|4|2)\b/.test(stage)) return true;
-
-  return false;
+  // O campo `phase` é a única fonte oficial para identificar o mata-mata.
+  // O valor canônico do projeto é exclusivamente `knockout`.
+  return String(m.phase ?? '').trim().toLowerCase() === 'knockout';
 }
 
 export function statusLabel(status) {

@@ -233,13 +233,7 @@ export function createMatchesModal(ctx = {}) {
           const phaseFromCard = matchCard ? String(matchCard.getAttribute('data-phase')).toLowerCase() : "";
           const groupName = String(matchObj.group || matchObj.phaseName || "").toLowerCase();
 
-          const isKnockout = isKnockoutMatch(matchObj) || 
-                             phaseFromCard === 'knockout' || 
-                             phaseFromCard === 'mata-mata' ||
-                             groupName.includes('avos') || 
-                             groupName.includes('16') ||
-                             groupName.includes('final') ||
-                             matchObj.phase === 'knockout';
+          const isKnockout = isKnockoutMatch(matchObj) || phaseFromCard === 'knockout';
 
           const currentUserIdStr = String(window.currentUser?._id || window.currentUser?.id || localStorage.getItem('userId') || "").trim();
           const currentUserNameStr = String(window.currentUser?.name || window.currentUser?.userName || "").trim();

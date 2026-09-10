@@ -18,7 +18,7 @@ export function enterManualSimulationFromMiracle() {
             if (Number.isInteger(m.miracleScoreA)) sim.scoreA = m.miracleScoreA;
             if (Number.isInteger(m.miracleScoreB)) sim.scoreB = m.miracleScoreB;
 
-            const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
+            const isKnockoutPhase = m.phase === 'knockout';
             const req = window.__getSimulationCardRequirements?.(mId);
             if (isKnockoutPhase && req?.requiresQualifier && choice !== 'Draw' && m.miracleQualifier) {
                 sim.qualifier = m.miracleQualifier;
@@ -86,7 +86,7 @@ window.__getSimulationCardRequirements = function(matchId) {
     const match = matches.find(item => String(item.matchId || item.id) === id);
     if (!match) return null;
 
-    const isKnockout = match.phase === 'knockout' || match.phase === 'mata-mata';
+    const isKnockout = match.phase === 'knockout';
     const winnerFromScore = match.winnerFromScore === true;
     const scoreRequired = winnerFromScore || match.scoreScoring?.enabled === true;
 
@@ -146,7 +146,7 @@ window.__refreshSimulationControls = function(matchId) {
 };
 
 export function isStrategyHomeAwayMatch(match) {
-    if (!match || !(match.phase === 'knockout' || match.phase === 'mata-mata')) return false;
+    if (!match || !(match.phase === 'knockout')) return false;
     if (match.stageFormat === 'home_away') return true;
     if (match.stageFormat === 'single') return false;
     return match.knockoutFormat === 'home_away' && !match.isFinalSingle;
@@ -211,7 +211,7 @@ window.updateSimulationScore = function(matchId, field, rawValue) {
     if (matchData?.winnerFromScore === true && Number.isInteger(sim.scoreA) && Number.isInteger(sim.scoreB)) {
         sim.winner = sim.scoreA > sim.scoreB ? 'A' : (sim.scoreB > sim.scoreA ? 'B' : 'Draw');
 
-        const isKnockout = matchData.phase === 'knockout' || matchData.phase === 'mata-mata';
+        const isKnockout = matchData.phase === 'knockout';
         const isSingleLeg = isKnockout && !isStrategyHomeAwayMatch(matchData);
         if (isSingleLeg && sim.winner !== 'Draw') {
             sim.qualifier = sim.winner;

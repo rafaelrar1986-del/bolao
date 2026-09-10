@@ -88,7 +88,7 @@ function isMatchPhaseEnabled(match, settings = {}) {
   if (phase === 'group' || phase === 'groups' || phase === 'grupo' || phase === 'grupos') {
     return rules.hasGroupPhase !== false;
   }
-  if (phase === 'knockout' || phase === 'mata-mata' || phase === 'mata_mata' || phase.includes('knockout') || phase.includes('mata')) {
+  if (phase === 'knockout') {
     return rules.hasKnockoutPhase === true;
   }
   if (phase === 'pontos_corridos' || phase === 'points_run') {
@@ -109,23 +109,8 @@ function isQualifierApplicable(match, settings = {}) {
 
 export function isKnockoutMatch(match) {
   if (!match) return false;
-  const phase = String(match.phase ?? '').trim().toLowerCase();
-  const stage = String(match.stage ?? '').trim().toLowerCase();
-
-  // A fase explícita é a fonte principal. 'round 24', 'round 5', etc.
-  // são rodadas da fase de grupos e NÃO significam mata-mata.
-  if (phase === 'knockout' || phase === 'mata-mata' || phase.includes('knockout') || phase.includes('mata')) {
-    return true;
-  }
-  if (phase === 'group' || phase === 'groups' || phase === 'grupo' || phase === 'grupos') {
-    return false;
-  }
-
-  // Só reconhece nomes explícitos de fases eliminatórias no stage.
-  if (/quarter|quartas|semi|semifinal|final|playoff|knockout/.test(stage)) return true;
-  if (/round\s*(of\s*)?(16|8|4|2)\b/.test(stage)) return true;
-
-  return false;
+  // O campo `phase` é a única fonte oficial. O valor canônico é exclusivamente `knockout`.
+  return String(match.phase ?? '').trim().toLowerCase() === 'knockout';
 }
 
 export function getReferenceScore(match, settings = {}, isPartial = false) {

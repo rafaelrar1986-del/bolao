@@ -5678,6 +5678,23 @@ div.match-card button.bet-option {
     cursor: pointer;
 }
 
+.btn-paywall-exit {
+    margin-top: 10px;
+    width: 100%;
+    padding: 11px 12px;
+    background: transparent;
+    color: #ddd;
+    font-weight: 700;
+    border: 1px solid #555;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+.btn-paywall-exit:hover {
+    background: #2a2a2a;
+    border-color: #777;
+}
+
 /* Status dos jogos em andamento (Badges) */
 .badge.in_progress, 
 .badge.1_tempo, 

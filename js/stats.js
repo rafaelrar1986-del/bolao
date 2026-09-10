@@ -45,8 +45,8 @@ function isStatsPhaseVisible(match) {
         addKeys.push('group');
     } else if (phase === 'pontos_corridos' || phase === 'points_run') {
         addKeys.push('pontos_corridos', 'points_run');
-    } else if (phase === 'knockout' || phase === 'mata-mata' || phase === 'mata_mata') {
-        addKeys.push('knockout', 'mata-mata');
+    } else if (phase === 'knockout') {
+        addKeys.push('knockout');
     }
 
     const round = Number(match.roundNumber);

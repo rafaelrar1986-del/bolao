@@ -104,7 +104,7 @@ export async function loadRanking(targetUserId = null, targetUserName = "SEU") {
                             tempSimulations[mId].scoreB = miracleScoreB;
                         }
                         
-                        const isKnockoutPhase = m.phase === 'knockout' || m.phase === 'mata-mata';
+                        const isKnockoutPhase = m.phase === 'knockout';
                         if (isKnockoutPhase && choice !== 'Draw') {
                             tempSimulations[mId].qualifier = m.miracleQualifier || choice;
                         }

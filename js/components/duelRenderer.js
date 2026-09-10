@@ -92,7 +92,7 @@ export function renderDuelInterface(
 
   function renderPhase() {
     const matchesToShow = allMatches.filter(m =>
-      currentDuelPhase === 'group' ? (m.phase === 'group' || m.phase === 'pontos_corridos') : m.phase !== 'group'
+      currentDuelPhase === 'group' ? (m.phase === 'group' || m.phase === 'pontos_corridos') : m.phase === 'knockout'
     );
 
     const groups = {};

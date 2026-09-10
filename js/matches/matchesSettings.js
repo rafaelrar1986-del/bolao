@@ -183,13 +183,13 @@ export function createMatchesSettings(ctx = {}) {
 
     const knockoutGroups = new Set(
       STATE.matches
-        .filter(m => typeof isKnockoutMatch === 'function' ? isKnockoutMatch(m) : m.isKnockout)
+        .filter(m => typeof isKnockoutMatch === 'function' ? isKnockoutMatch(m) : String(m?.phase || '').trim().toLowerCase() === 'knockout')
         .map(m => m.group || 'Mata-mata')
     );
 
     knockoutGroups.forEach(groupName => {
       const gamesInGroup = STATE.matches.filter(m => {
-        const isKO = typeof isKnockoutMatch === 'function' ? isKnockoutMatch(m) : m.isKnockout;
+        const isKO = typeof isKnockoutMatch === 'function' ? isKnockoutMatch(m) : String(m?.phase || '').trim().toLowerCase() === 'knockout';
         return isKO && (m.group || 'Mata-mata') === groupName;
       });
 

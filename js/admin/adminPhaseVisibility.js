@@ -34,7 +34,7 @@ function phaseKind(match) {
     const phase = normalizePhase(match?.phase);
     if (['group', 'groups', 'grupo', 'grupos'].includes(phase)) return 'group';
     if (['pontos_corridos', 'points_run'].includes(phase)) return 'points_run';
-    if (['knockout', 'mata-mata', 'mata_mata'].includes(phase)) return 'knockout';
+    if (phase === 'knockout') return 'knockout';
     return null;
 }
 

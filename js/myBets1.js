@@ -250,10 +250,8 @@ function isPointsRunPhase(phase) {
 }
 
 function isKnockoutPhase(phase) {
-  const p = String(phase || '').toLowerCase().trim();
-  // Fase desconhecida não pode ser classificada como mata-mata.
-  if (!p) return false;
-  return p !== 'group' && !isPointsRunPhase(p);
+  // O valor canônico e único para a fase eliminatória é `knockout`.
+  return String(phase || '').toLowerCase().trim() === 'knockout';
 }
 
 function getBetPhase(bet, matchMap) {
