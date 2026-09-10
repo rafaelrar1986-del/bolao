@@ -103,7 +103,7 @@ async function saveBets(req, res) {
     ]);
 
     // 🛡️ Verificação de bloqueio global de apostas
-    if (settings?.blockSaveBets && settings?.testMode !== true) {
+    if (settings?.blockSaveBets) {
       return res.status(403).json({
         success: false,
         message: 'O administrador bloqueou novas apostas nesta liga.'
@@ -242,6 +242,65 @@ async function saveBets(req, res) {
               });
             }
           }
+        }
+      }
+    }
+
+    // 🛡️ requireAllBets também exige todos os palpites de partidas, extras e pódio.
+    if (settings?.requireAllBets) {
+      // Partidas da fase de grupo: todas as disponíveis para aposta devem ter palpite.
+      if (settings?.championshipRules?.hasGroupPhase !== false) {
+        const groupMatchesDb = dbMatches.filter(
+          m => String(m.phase || '').toLowerCase() === 'group'
+        );
+        for (const m of groupMatchesDb) {
+          const lockState = getBetLockState(m, settings, new Date(), dbMatches);
+          if (lockState.locked) continue; // indisponível para aposta não conta como pendente
+          const submitted = groupMatches && groupMatches[m.matchId];
+          if (!submitted ||
+              !isValidScoreValue(submitted.scoreA) ||
+              !isValidScoreValue(submitted.scoreB)) {
+            return res.status(400).json({
+              success: false,
+              message: 'Preencha o placar de todas as partidas da fase de grupos antes de enviar.'
+            });
+          }
+        }
+      }
+
+      // Extras: cada extra com pontuação configurada (> 0) é obrigatório.
+      const scoringRules = settings?.scoringRules || {};
+      const requiredExtras = [
+        { key: 'topScorer', label: 'Artilheiro' },
+        { key: 'bestAttack', label: 'Melhor Ataque' },
+        { key: 'worstDefense', label: 'Pior Defesa' },
+        { key: 'upset', label: 'Zebra' }
+      ].filter(extra => Number(scoringRules[extra.key]) > 0);
+
+      if (requiredExtras.length > 0) {
+        const submittedExtras = extras && typeof extras === 'object' ? extras : {};
+        for (const { key, label } of requiredExtras) {
+          const value = submittedExtras[key];
+          if (value == null || String(value).trim() === '') {
+            return res.status(400).json({
+              success: false,
+              message: 'Preencha os Extras obrigatórios: ' + label + '.'
+            });
+          }
+        }
+      }
+
+      // Pódio: obrigatório quando o tamanho do pódio é maior que zero.
+      const podiumSize = Number(settings?.championshipRules?.podiumSize ?? 0);
+      if (podiumSize > 0) {
+        const submittedPodium = Array.isArray(podium)
+          ? podium.map(t => String(t || '').trim()).filter(Boolean)
+          : [];
+        if (submittedPodium.length < podiumSize) {
+          return res.status(400).json({
+            success: false,
+            message: 'Selecione o pódio completo antes de enviar. Faltam ' + (podiumSize - submittedPodium.length) + ' posição(ões).'
+          });
         }
       }
     }
@@ -731,7 +790,7 @@ async function saveSingleBet(req, res) {
     }
 
     // 🛡️ Verificação de bloqueio global de apostas
-    if (settings?.blockSaveBets && settings?.testMode !== true) {
+    if (settings?.blockSaveBets) {
       return res.status(403).json({
         success: false,
         message: 'O administrador bloqueou novas apostas nesta liga.'

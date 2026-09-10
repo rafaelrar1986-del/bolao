@@ -164,7 +164,13 @@ router.post('/test-mode', protect, admin, async (req, res) => {
         blockSaveKnockout: Boolean(settings.blockSaveKnockout),
         betLockMode: settings.betLockMode || 'grade',
         lockedReason: settings.lockedReason ?? null,
-        unlockAt: settings.unlockAt ?? null
+        unlockAt: settings.unlockAt ?? null,
+        lockedGroupRounds: Array.isArray(settings.lockedGroupRounds) ? [...settings.lockedGroupRounds] : [],
+        unlockedGroupRounds: Array.isArray(settings.unlockedGroupRounds) ? [...settings.unlockedGroupRounds] : [],
+        lockedPointsRunRounds: Array.isArray(settings.lockedPointsRunRounds) ? [...settings.lockedPointsRunRounds] : [],
+        unlockedPointsRunRounds: Array.isArray(settings.unlockedPointsRunRounds) ? [...settings.unlockedPointsRunRounds] : [],
+        lockedKnockoutRounds: Array.isArray(settings.lockedKnockoutRounds) ? [...settings.lockedKnockoutRounds] : [],
+        unlockedKnockoutRounds: Array.isArray(settings.unlockedKnockoutRounds) ? [...settings.unlockedKnockoutRounds] : []
       };
 
       settings.testModeBackup = backup;
@@ -181,6 +187,14 @@ router.post('/test-mode', protect, admin, async (req, res) => {
       // Metadados de trava não devem induzir o frontend a bloquear.
       settings.lockedReason = null;
       settings.unlockAt = null;
+
+      // Limpa os travamentos administrativos por rodada durante o teste.
+      settings.lockedGroupRounds = [];
+      settings.unlockedGroupRounds = [];
+      settings.lockedPointsRunRounds = [];
+      settings.unlockedPointsRunRounds = [];
+      settings.lockedKnockoutRounds = [];
+      settings.unlockedKnockoutRounds = [];
 
       await settings.save();
 
@@ -217,6 +231,13 @@ router.post('/test-mode', protect, admin, async (req, res) => {
     settings.unlockAt = backup.unlockAt
       ? new Date(backup.unlockAt)
       : null;
+
+    settings.lockedGroupRounds = Array.isArray(backup.lockedGroupRounds) ? backup.lockedGroupRounds : [];
+    settings.unlockedGroupRounds = Array.isArray(backup.unlockedGroupRounds) ? backup.unlockedGroupRounds : [];
+    settings.lockedPointsRunRounds = Array.isArray(backup.lockedPointsRunRounds) ? backup.lockedPointsRunRounds : [];
+    settings.unlockedPointsRunRounds = Array.isArray(backup.unlockedPointsRunRounds) ? backup.unlockedPointsRunRounds : [];
+    settings.lockedKnockoutRounds = Array.isArray(backup.lockedKnockoutRounds) ? backup.lockedKnockoutRounds : [];
+    settings.unlockedKnockoutRounds = Array.isArray(backup.unlockedKnockoutRounds) ? backup.unlockedKnockoutRounds : [];
 
     settings.testMode = false;
     settings.testModeBackup = null;
