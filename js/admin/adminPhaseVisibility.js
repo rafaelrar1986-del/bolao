@@ -5,11 +5,108 @@
 import { api } from '../api.js';
 import { toast } from '../ui.js';
 import { knockoutDisplayLabel } from './adminUtils.js';
+import { parseMatchDate } from '../matches/matchesUtils.js';
 import { R } from './adminRuntime.js';
 
 /* ============================================================
    CONTROLE DE VISIBILIDADE POR FASE (ATUALIZADO PARA MULTI-LIGAS)
    ============================================================ */
+
+/* ============================================================
+   STATUS VISUAL DAS TRAVAS DE APOSTAS
+
+   Ordem de precedência:
+   1. 🔴 bloqueada manualmente pelo administrador
+   2. 🟠 encerrada automaticamente pelo início de uma partida
+   3. 🟢 liberada
+   4. ⚪ não liberada
+
+   Estes estados são somente informativos no painel. As regras reais de
+   bloqueio continuam no backend; aqui reproduzimos a mesma decisão para
+   que o administrador enxergue o motivo da situação atual.
+   ============================================================ */
+
+function normalizePhase(value) {
+    return String(value ?? '').trim().toLowerCase();
+}
+
+function phaseKind(match) {
+    const phase = normalizePhase(match?.phase);
+    if (['group', 'groups', 'grupo', 'grupos'].includes(phase)) return 'group';
+    if (['pontos_corridos', 'points_run'].includes(phase)) return 'points_run';
+    if (['knockout', 'mata-mata', 'mata_mata'].includes(phase)) return 'knockout';
+    return null;
+}
+
+function phaseGrade(match) {
+    if (!match) return null;
+    return String(match.phaseName || match.group || '').trim() || null;
+}
+
+function matchStarted(match, now = new Date()) {
+    if (!match) return false;
+    const status = normalizePhase(match.status);
+    if (status && !['scheduled', 'cancelled', 'postponed'].includes(status)) return true;
+    const date = parseMatchDate(match);
+    return Boolean(date && date.getTime() <= now.getTime());
+}
+
+function isExplicitlyLocked(value, lockedValues) {
+    const target = normalizePhase(value);
+    return Boolean(target && lockedValues.some(v => normalizePhase(v) === target));
+}
+
+function getRoundStatus({ round, matches, kind, unlocked, locked, testMode = false, now = new Date() }) {
+    const n = Number(round);
+    if (!Number.isInteger(n) || n <= 0) {
+        return { state: 'not_released', icon: '⚪', label: 'NÃO LIBERADA', title: 'Rodada sem número válido' };
+    }
+
+    if (locked.includes(n)) {
+        return { state: 'admin_locked', icon: '🔴', label: 'BLOQUEADA PELO ADM', title: 'Bloqueada manualmente pelo administrador' };
+    }
+
+    const roundMatches = matches.filter(m => phaseKind(m) === kind && Number(m.roundNumber) === n);
+    if (!testMode && roundMatches.some(m => matchStarted(m, now))) {
+        return { state: 'auto_locked', icon: '🟠', label: 'ENCERRADA AUTOMATICAMENTE', title: 'Uma partida desta rodada já começou' };
+    }
+
+    if (unlocked.includes(n)) {
+        return { state: 'released', icon: '🟢', label: 'LIBERADA', title: 'Rodada liberada para apostas' };
+    }
+
+    return { state: 'not_released', icon: '⚪', label: 'NÃO LIBERADA', title: 'Rodada ainda não foi liberada pelo administrador' };
+}
+
+function getPhaseStatus({ matches, kind, lockedPhases, testMode = false, now = new Date() }) {
+    const phaseMatches = matches.filter(m => phaseKind(m) === kind);
+    if (!phaseMatches.length) {
+        return { state: 'not_released', icon: '⚪', label: 'NÃO LIBERADA', title: 'Nenhuma partida cadastrada' };
+    }
+
+    if (phaseMatches.some(m => isExplicitlyLocked(phaseGrade(m), lockedPhases))) {
+        return { state: 'admin_locked', icon: '🔴', label: 'BLOQUEADA PELO ADM', title: 'Fase bloqueada manualmente pelo administrador' };
+    }
+
+    if (!testMode && phaseMatches.some(m => matchStarted(m, now))) {
+        return { state: 'auto_locked', icon: '🟠', label: 'ENCERRADA AUTOMATICAMENTE', title: 'Uma partida desta fase já começou' };
+    }
+
+    return { state: 'released', icon: '🟢', label: 'LIBERADA', title: 'Fase disponível para apostas' };
+}
+
+function renderStatusBadge(status, extraClass = '') {
+    return `<span class="admin-lock-status admin-lock-status-${status.state} ${extraClass}" title="${status.title}">${status.icon} ${status.label}</span>`;
+}
+
+function getMatchModeStatus() {
+    return { state: 'not_applicable', icon: 'ℹ️', label: 'POR PARTIDA', title: 'O modo Por partida é definitivo; disponibilidade por rodada/fase não altera o bloqueio.' };
+}
+
+function getRoundModeStatus() {
+    return { state: 'not_applicable', icon: '📅', label: 'POR RODADA', title: 'Cada rodada possui seu próprio estado de liberação/bloqueio.' };
+}
+
 
 async function renderPhaseControls() {
     const container = document.getElementById('admin-phase-controls');
@@ -30,6 +127,12 @@ async function renderPhaseControls() {
         const unlockedKnockoutRounds =
             (res.data.unlockedKnockoutRounds || []).map(Number);
         const unlockedRounds = (res.data.unlockedGroupRounds || []).map(Number);
+        const lockedRounds = (res.data.lockedGroupRounds || []).map(Number);
+        const lockedPointsRunRounds = (res.data.lockedPointsRunRounds || []).map(Number);
+        const lockedKnockoutRounds = (res.data.lockedKnockoutRounds || []).map(Number);
+        const lockedPhases = res.data.lockedPhases || [];
+        const testMode = res.data.testMode === true;
+        const betLockMode = res.data.betLockMode === 'match' ? 'match' : 'grade';
         const knockoutSelect = document.getElementById('match-group-knockout');
 
         let groupRounds = [];
@@ -187,6 +290,7 @@ async function renderPhaseControls() {
           <div style="grid-column:1/-1; margin-top:10px; padding:10px; border:1px solid rgba(255,255,255,.08); border-radius:8px;">
             <div class="admin-availability-heading">
               <span>📅 Disponibilidade da fase de grupos</span>
+              <span class="admin-availability-phase-status">${renderStatusBadge(betLockMode === 'match' ? getMatchModeStatus() : (groupMode === 'round' ? getRoundModeStatus() : getPhaseStatus({ matches: allLeagueMatches, kind: 'group', lockedPhases, testMode })))}</span>
               <span class="admin-availability-count">${groupMatchCount} ${groupMatchCount === 1 ? 'partida' : 'partidas'}</span>
             </div>
             <select id="admin-group-bet-mode" onchange="setGroupBetAvailabilityMode(this.value)"
@@ -198,9 +302,14 @@ async function renderPhaseControls() {
               <div style="margin-top:8px; display:grid; grid-template-columns:repeat(4,1fr); gap:5px;">
                 ${groupRounds.map(round => {
                     const on = unlockedRounds.includes(round);
-                    return `<button class="btn ${on ? 'btn-success' : 'btn-outline-secondary'}"
-                      onclick="toggleGroupRound(${round}, ${on})"
-                      style="font-size:10px; min-height:30px;">Rodada ${round}</button>`;
+                    const status = betLockMode === 'match' ? getMatchModeStatus() : getRoundStatus({ round, matches: allLeagueMatches, kind: 'group', unlocked: unlockedRounds, locked: lockedRounds, testMode });
+                    return `<button class="btn admin-round-control admin-round-control-${status.state}"
+                      ${status.state === 'auto_locked' || status.state === 'not_applicable' ? '' : `onclick="toggleGroupRound(${round}, ${on})"`}
+                      ${status.state === 'auto_locked' || status.state === 'not_applicable' ? 'disabled' : ''}
+                      title="${status.title}">
+                      <span class="admin-round-label">Rodada ${round}</span>
+                      <span class="admin-round-status">${status.icon}</span>
+                    </button>`;
                 }).join('')}
               </div>
               ${groupRounds.length === 0 ? '<small style="color:#999;">Nenhuma rodada encontrada nas partidas importadas.</small>' : ''}
@@ -212,6 +321,7 @@ async function renderPhaseControls() {
           <div id="points-run-controls" style="grid-column:1/-1; margin-top:10px; padding:10px; border:1px solid rgba(255,255,255,.08); border-radius:8px;">
             <div class="admin-availability-heading">
               <span>🏁 Disponibilidade dos pontos corridos</span>
+              <span class="admin-availability-phase-status">${renderStatusBadge(betLockMode === 'match' ? getMatchModeStatus() : (pointsRunMode === 'round' ? getRoundModeStatus() : getPhaseStatus({ matches: allLeagueMatches, kind: 'points_run', lockedPhases, testMode })))}</span>
               <span class="admin-availability-count">${pointsRunMatchCount} ${pointsRunMatchCount === 1 ? 'partida' : 'partidas'}</span>
             </div>
             <select id="admin-points-run-bet-mode" onchange="setPointsRunBetAvailabilityMode(this.value)"
@@ -223,9 +333,14 @@ async function renderPhaseControls() {
               <div style="margin-top:8px; display:grid; grid-template-columns:repeat(4,1fr); gap:5px;">
                 ${pointsRunRounds.map(round => {
                     const on = unlockedPointsRunRounds.includes(round);
-                    return `<button class="btn ${on ? 'btn-success' : 'btn-outline-secondary'}"
-                      onclick="togglePointsRunRound(${round}, ${on})"
-                      style="font-size:10px; min-height:30px;">Rodada ${round}</button>`;
+                    const status = betLockMode === 'match' ? getMatchModeStatus() : getRoundStatus({ round, matches: allLeagueMatches, kind: 'points_run', unlocked: unlockedPointsRunRounds, locked: lockedPointsRunRounds, testMode });
+                    return `<button class="btn admin-round-control admin-round-control-${status.state}"
+                      ${status.state === 'auto_locked' || status.state === 'not_applicable' ? '' : `onclick="togglePointsRunRound(${round}, ${on})"`}
+                      ${status.state === 'auto_locked' || status.state === 'not_applicable' ? 'disabled' : ''}
+                      title="${status.title}">
+                      <span class="admin-round-label">Rodada ${round}</span>
+                      <span class="admin-round-status">${status.icon}</span>
+                    </button>`;
                 }).join('')}
               </div>
               ${pointsRunRounds.length === 0 ? '<small style="color:#999;">Nenhuma rodada de pontos corridos encontrada.</small>' : ''}
@@ -237,6 +352,7 @@ async function renderPhaseControls() {
           <div id="knockout-round-controls" style="grid-column:1/-1; margin-top:10px; padding:10px; border:1px solid rgba(255,255,255,.08); border-radius:8px;">
             <div class="admin-availability-heading">
               <span>🥊 Disponibilidade do mata-mata</span>
+              <span class="admin-availability-phase-status">${renderStatusBadge(betLockMode === 'match' ? getMatchModeStatus() : (knockoutMode === 'round' ? getRoundModeStatus() : getPhaseStatus({ matches: allLeagueMatches, kind: 'knockout', lockedPhases, testMode })))}</span>
               <span class="admin-availability-count">${knockoutMatchCount} ${knockoutMatchCount === 1 ? 'partida' : 'partidas'}</span>
             </div>
             <select onchange="setKnockoutBetAvailabilityMode(this.value)"
@@ -250,9 +366,14 @@ async function renderPhaseControls() {
                   const on = unlockedKnockoutRounds.includes(round);
                   const label = knockoutRoundLabels[round] || `Rodada ${round}`;
                   const displayLabel = knockoutDisplayLabel(label);
-                  return `<button class="btn ${on ? 'btn-success' : 'btn-outline-secondary'}"
-                    onclick="toggleKnockoutRound(${round}, ${on})"
-                    style="font-size:10px; min-height:32px;">${displayLabel}</button>`;
+                  const status = betLockMode === 'match' ? getMatchModeStatus() : getRoundStatus({ round, matches: allLeagueMatches, kind: 'knockout', unlocked: unlockedKnockoutRounds, locked: lockedKnockoutRounds, testMode });
+                  return `<button class="btn admin-round-control admin-round-control-${status.state}"
+                    ${status.state === 'auto_locked' || status.state === 'not_applicable' ? '' : `onclick="toggleKnockoutRound(${round}, ${on})"`}
+                    ${status.state === 'auto_locked' || status.state === 'not_applicable' ? 'disabled' : ''}
+                    title="${status.title}">
+                    <span class="admin-round-label">${displayLabel}</span>
+                    <span class="admin-round-status">${status.icon}</span>
+                  </button>`;
                 }).join('')}
               </div>
               ${knockoutRounds.length === 0 ? '<small style="color:#999;">Nenhuma rodada de mata-mata encontrada nas partidas importadas.</small>' : ''}
@@ -278,6 +399,13 @@ async function renderPhaseControls() {
                 ${roundControls}
                 ${pointsRunControls}
                 ${knockoutRoundControls}
+                <div class="admin-lock-status-legend" style="grid-column:1/-1;">
+                  <span class="admin-lock-legend-title">Status das travas:</span>
+                  ${renderStatusBadge({state:'released', icon:'🟢', label:'LIBERADA', title:'Rodada/fase liberada'})}
+                  ${renderStatusBadge({state:'admin_locked', icon:'🔴', label:'BLOQUEADA PELO ADM', title:'Bloqueada manualmente'})}
+                  ${renderStatusBadge({state:'auto_locked', icon:'🟠', label:'ENCERRADA AUTOMATICAMENTE', title:'Bloqueada pelo início de uma partida'})}
+                  ${renderStatusBadge({state:'not_released', icon:'⚪', label:'NÃO LIBERADA', title:'Ainda não liberada'})}
+                </div>
             </div>
         `;
     } catch (err) {
@@ -467,4 +595,5 @@ window.togglePointsRunRound = togglePointsRunRound;
 window.setKnockoutBetAvailabilityMode = setKnockoutBetAvailabilityMode;
 window.toggleKnockoutRound = toggleKnockoutRound;
 
-export { renderPhaseControls };
+export { renderPhaseControls, getRoundStatus, getPhaseStatus, getMatchModeStatus, getRoundModeStatus };
+

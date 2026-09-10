@@ -5072,6 +5072,163 @@ input:checked + .slider:before {
     display: none !important;
 }
 
+/* ============================================================
+   ESTADOS DAS TRAVAS NO PAINEL ADMIN
+   A cor identifica o estado real; o ícone mantém a leitura rápida.
+   ============================================================ */
+#admin-phase-controls .admin-round-control {
+    position: relative;
+    min-width: 0 !important;
+    height: auto !important;
+    min-height: 42px !important;
+    padding: 4px 6px !important;
+    flex-direction: row !important;
+    gap: 4px;
+    border: 1px solid transparent !important;
+    transition: filter .15s ease, transform .15s ease;
+}
+
+#admin-phase-controls .admin-round-control:hover {
+    filter: brightness(1.08);
+    transform: translateY(-1px);
+}
+
+#admin-phase-controls .admin-round-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+#admin-phase-controls .admin-round-status {
+    flex: 0 0 auto;
+    font-size: 12px;
+    line-height: 1;
+}
+
+#admin-phase-controls .admin-round-control-released {
+    background: #28a745 !important;
+    color: #fff !important;
+    border-color: #28a745 !important;
+}
+
+#admin-phase-controls .admin-round-control-admin_locked {
+    background: #dc3545 !important;
+    color: #fff !important;
+    border-color: #dc3545 !important;
+}
+
+#admin-phase-controls .admin-round-control-auto_locked {
+    background: #fd7e14 !important;
+    color: #fff !important;
+    border-color: #fd7e14 !important;
+}
+
+#admin-phase-controls .admin-round-control-not_released {
+    background: rgba(255,255,255,.10) !important;
+    color: rgba(255,255,255,.62) !important;
+    border-color: rgba(255,255,255,.16) !important;
+}
+
+#admin-phase-controls .admin-lock-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    width: fit-content;
+    max-width: 100%;
+    padding: 3px 7px;
+    border-radius: 999px;
+    font-size: 9px;
+    line-height: 1.2;
+    font-weight: 800;
+    letter-spacing: .15px;
+    white-space: nowrap;
+}
+
+#admin-phase-controls .admin-lock-status-released {
+    background: rgba(40,167,69,.18);
+    color: #75e39a;
+    border: 1px solid rgba(40,167,69,.45);
+}
+
+#admin-phase-controls .admin-lock-status-admin_locked {
+    background: rgba(220,53,69,.18);
+    color: #ff8794;
+    border: 1px solid rgba(220,53,69,.45);
+}
+
+#admin-phase-controls .admin-lock-status-auto_locked {
+    background: rgba(253,126,20,.18);
+    color: #ffb16d;
+    border: 1px solid rgba(253,126,20,.45);
+}
+
+#admin-phase-controls .admin-lock-status-not_released {
+    background: rgba(255,255,255,.08);
+    color: rgba(255,255,255,.60);
+    border: 1px solid rgba(255,255,255,.14);
+}
+
+#admin-phase-controls .admin-lock-status-not_applicable {
+    background: rgba(108,117,125,.18);
+    color: rgba(255,255,255,.72);
+    border: 1px solid rgba(108,117,125,.38);
+}
+
+#admin-phase-controls .admin-round-control-not_applicable {
+    background: rgba(108,117,125,.18) !important;
+    color: rgba(255,255,255,.58) !important;
+    border-color: rgba(108,117,125,.30) !important;
+    cursor: not-allowed !important;
+}
+
+#admin-phase-controls .admin-round-control-auto_locked {
+    cursor: not-allowed !important;
+    opacity: .94;
+}
+
+#admin-phase-controls .admin-availability-phase-status {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+}
+
+#admin-phase-controls .admin-availability-heading {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 7px;
+}
+
+#admin-phase-controls .admin-lock-status-legend {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 2px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255,255,255,.07);
+}
+
+#admin-phase-controls .admin-lock-legend-title {
+    font-size: 9px;
+    color: rgba(255,255,255,.55);
+    font-weight: 700;
+    margin-right: 2px;
+}
+
+@media (max-width: 600px) {
+    #admin-phase-controls .admin-lock-status {
+        font-size: 8px;
+        padding: 3px 5px;
+    }
+
+    #admin-phase-controls .admin-lock-status-legend {
+        gap: 4px;
+    }
+}
+
 /* 5. Proteção da Lista de Jogos */
 #admin-matches-list {
     width: 100% !important;

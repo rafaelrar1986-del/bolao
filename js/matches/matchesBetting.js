@@ -102,6 +102,18 @@ export function createMatchesBetting(ctx = {}) {
     if (isGroup && STATE.groupBetAvailabilityMode === 'round') {
       const round = Number(match.roundNumber);
       if (!Number.isInteger(round) || round <= 0) return false;
+
+      // Por rodada + rodada por rodada: o início de QUALQUER partida
+      // da mesma rodada encerra a rodada inteira, como no backend.
+      if (!STATE.testMode) {
+        const roundStarted = STATE.matches.some(other =>
+          String(other.phase || '').toLowerCase() === 'group' &&
+          Number(other.roundNumber) === round &&
+          (isMatchStartedByStatus(other) || isMatchStartedByTime(other))
+        );
+        if (roundStarted) return false;
+      }
+
       return STATE.unlockedGroupRounds.has(round) &&
              !STATE.lockedGroupRounds.has(round);
     }
@@ -109,6 +121,16 @@ export function createMatchesBetting(ctx = {}) {
     if (isPointsRun && STATE.pointsRunBetAvailabilityMode === 'round') {
       const round = Number(match.roundNumber);
       if (!Number.isInteger(round) || round <= 0) return false;
+
+      if (!STATE.testMode) {
+        const roundStarted = STATE.matches.some(other =>
+          String(other.phase || '').toLowerCase() === String(match.phase || '').toLowerCase() &&
+          Number(other.roundNumber) === round &&
+          (isMatchStartedByStatus(other) || isMatchStartedByTime(other))
+        );
+        if (roundStarted) return false;
+      }
+
       return STATE.unlockedPointsRunRounds.has(round) &&
              !STATE.lockedPointsRunRounds.has(round);
     }
@@ -126,6 +148,17 @@ export function createMatchesBetting(ctx = {}) {
 
     const round = Number(match.roundNumber);
     if (!Number.isInteger(round) || round <= 0) return false;
+
+    // Por rodada + rodada por rodada: qualquer partida iniciada
+    // da mesma rodada encerra a rodada inteira.
+    if (!STATE.testMode) {
+      const roundStarted = STATE.matches.some(other =>
+        String(other.phase || '').toLowerCase() === 'knockout' &&
+        Number(other.roundNumber) === round &&
+        (isMatchStartedByStatus(other) || isMatchStartedByTime(other))
+      );
+      if (roundStarted) return false;
+    }
 
     return STATE.unlockedKnockoutRounds.has(round) &&
            !STATE.lockedKnockoutRounds.has(round);
@@ -151,11 +184,21 @@ export function createMatchesBetting(ctx = {}) {
     // de rodada para impedir que uma rodada ainda liberada continue editável.
     const lockMode = STATE.betLockMode || 'grade';
     const gradeDaPartida = match.phaseName || match.group || 'Mata-mata';
-    const gradeJaIniciou = lockMode === 'grade' && STATE.matches.some(other =>
-      (other.phaseName || other.group || 'Mata-mata') === gradeDaPartida &&
-      (isMatchStartedByStatus(other) || isMatchStartedByTime(other, now))
-    );
-    if (!STATE.testMode && gradeJaIniciou) return false;
+    const phaseLower = String(match.phase || '').toLowerCase();
+    const isPointsRunPhase = phaseLower === 'pontos_corridos' || phaseLower === 'points_run';
+    // Em modo de disponibilidade 'round', o travamento é por rodada
+    // (regras abaixo); a fase inteira só trava em modo 'all'.
+    const isRoundAvailability =
+      (match.phase === 'group' && STATE.groupBetAvailabilityMode === 'round') ||
+      (isPointsRunPhase && STATE.pointsRunBetAvailabilityMode === 'round') ||
+      (phaseLower === 'knockout' && STATE.knockoutBetAvailabilityMode === 'round');
+    if (!isRoundAvailability && lockMode === 'grade' && !STATE.testMode) {
+      const gradeJaIniciou = STATE.matches.some(other =>
+        (other.phaseName || other.group || 'Mata-mata') === gradeDaPartida &&
+        (isMatchStartedByStatus(other) || isMatchStartedByTime(other, now))
+      );
+      if (gradeJaIniciou) return false;
+    }
 
     const matchPhase = String(match.phase || '').toLowerCase();
 
