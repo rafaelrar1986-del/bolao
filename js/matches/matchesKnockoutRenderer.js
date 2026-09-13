@@ -452,64 +452,72 @@ export function createMatchesKnockoutRenderer(ctx = {}) {
         padding: 8px 0;
       "
     >
-      <input
-        type="number"
-        min="0"
-        class="score-input"
-        data-match="${m.matchId}"
-        data-side="A"
-        value="${scoreData.scoreA ?? ''}"
-        placeholder="0"
-        ${!canEdit ? 'readonly' : ''}
-        style="
-          position: relative;
-          z-index: 51;
-          pointer-events: auto;
-          width: 44px;
-          text-align: center;
-          border-radius: 6px;
-          border: 1px solid rgba(255,255,255,0.3);
-          font-size: 1rem;
-          padding: 4px;
-          ${getPredictionScoreInputStyle(
-            m,
-            scoreData,
-            false
-          )}
-        "
-      >
+      <div class="score-control" data-score-side="A" style="display:flex;align-items:center;gap:3px;">
+        ${canEdit ? '<button type="button" class="score-step" data-score-action="increment" data-score-side="A" aria-label="Aumentar gols do time A">▲</button>' : ''}
+        <input
+          type="number"
+          min="0"
+          class="score-input"
+          data-match="${m.matchId}"
+          data-side="A"
+          value="${scoreData.scoreA ?? ''}"
+          placeholder="0"
+          ${!canEdit ? 'readonly' : ''}
+          style="
+            position: relative;
+            z-index: 51;
+            pointer-events: auto;
+            width: 44px;
+            text-align: center;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.3);
+            font-size: 1rem;
+            padding: 4px;
+            ${getPredictionScoreInputStyle(
+              m,
+              scoreData,
+              false
+            )}
+          "
+        >
+        ${canEdit ? '<button type="button" class="score-step" data-score-action="decrement" data-score-side="A" aria-label="Diminuir gols do time A">▼</button>' : ''}
+      </div>
 
       <span style="
         color: rgba(255,255,255,0.6);
         font-weight: bold;
       ">×</span>
 
-      <input
-        type="number"
-        min="0"
-        class="score-input"
-        data-match="${m.matchId}"
-        data-side="B"
-        value="${scoreData.scoreB ?? ''}"
-        placeholder="0"
-        ${!canEdit ? 'readonly' : ''}
-        style="
-          position: relative;
-          z-index: 51;
-          pointer-events: auto;
-          width: 44px;
-          text-align: center;
-          border-radius: 6px;
-          border: 1px solid rgba(255,255,255,0.3);
-          font-size: 1rem;
-          padding: 4px;
-          ${getPredictionScoreInputStyle(
-            m,
-            scoreData,
-            false
-          )}
-        "
-      >
+      <div class="score-control" data-score-side="B" style="display:flex;align-items:center;gap:3px;">
+        ${canEdit ? '<button type="button" class="score-step" data-score-action="increment" data-score-side="B" aria-label="Aumentar gols do time B">▲</button>' : ''}
+        <input
+          type="number"
+          min="0"
+          class="score-input"
+          data-match="${m.matchId}"
+          data-side="B"
+          value="${scoreData.scoreB ?? ''}"
+          placeholder="0"
+          ${!canEdit ? 'readonly' : ''}
+          style="
+            position: relative;
+            z-index: 51;
+            pointer-events: auto;
+            width: 44px;
+            text-align: center;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.3);
+            font-size: 1rem;
+            padding: 4px;
+            ${getPredictionScoreInputStyle(
+              m,
+              scoreData,
+              false
+            )}
+          "
+        >
+        ${canEdit ? '<button type="button" class="score-step" data-score-action="decrement" data-score-side="B" aria-label="Diminuir gols do time B">▼</button>' : ''}
+      </div>
     </div>
   ` : ''}
 
@@ -638,6 +646,21 @@ export function createMatchesKnockoutRenderer(ctx = {}) {
 
         updateBetsCounters();
         updateKnockoutProgressUI();
+      };
+    });
+
+
+    // 🆕 Event listeners para botões de seta do placar (▲ / ▼)
+    wrap.querySelectorAll('.score-step').forEach(button => {
+      button.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const card = button.closest('.match-card');
+        const input = card?.querySelector(`.score-input[data-side="${button.dataset.scoreSide}"]`);
+        if (!input || input.readOnly) return;
+        const delta = button.dataset.scoreAction === 'increment' ? 1 : -1;
+        input.value = String(Math.max(0, (Number(input.value) || 0) + delta));
+        input.dispatchEvent(new Event('input', { bubbles: true }));
       };
     });
 
