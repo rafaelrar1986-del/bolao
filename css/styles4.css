@@ -18123,3 +18123,56 @@ body .group-third-qualifier:not(.active):hover {
 }
 
 .score-step{width:28px;min-width:28px;height:26px;padding:0;border:1px solid rgba(128,128,128,.45);border-radius:5px;background:transparent;color:inherit;font-size:12px;font-weight:700;cursor:pointer;touch-action:manipulation}.score-step:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+
+/* Controles de placar: uma seta verde acima e uma vermelha abaixo de cada campo */
+.score-inputs-row .score-control {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 2px !important;
+    width: 44px !important;
+}
+
+.score-inputs-row .score-step {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 30px !important;
+    min-width: 30px !important;
+    height: 22px !important;
+    padding: 0 !important;
+    border: 1px solid rgba(255,255,255,.35) !important;
+    border-radius: 5px !important;
+    color: #fff !important;
+    font-size: 13px !important;
+    font-weight: 900 !important;
+    line-height: 1 !important;
+    text-shadow: 0 1px 2px rgba(0,0,0,.8) !important;
+}
+
+.score-inputs-row .score-step[data-score-action="increment"] {
+    background: #16803c !important;
+    border-color: #39d875 !important;
+}
+
+.score-inputs-row .score-step[data-score-action="decrement"] {
+    background: #b4232d !important;
+    border-color: #ff6870 !important;
+}
+
+.score-inputs-row .score-step:active {
+    transform: scale(.94);
+}
+
+@media (max-width: 450px) {
+    .score-inputs-row .score-control {
+        width: 36px !important;
+    }
+    .score-inputs-row .score-step {
+        width: 26px !important;
+        min-width: 26px !important;
+        height: 20px !important;
+        font-size: 12px !important;
+    }
+}
