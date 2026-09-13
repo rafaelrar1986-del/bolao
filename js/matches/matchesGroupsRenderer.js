@@ -257,7 +257,20 @@ export function createMatchesGroupsRenderer(ctx = {}) {
     });
 
     // 🆕 Event listeners para inputs de placar
-   wrap.querySelectorAll('.score-input').forEach(inp => {
+   wrap.querySelectorAll('.score-step').forEach(button => {
+      button.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const card = button.closest('.match-card');
+        const input = card?.querySelector(`.score-input[data-side="${button.dataset.scoreSide}"]`);
+        if (!input || input.readOnly) return;
+        const delta = button.dataset.scoreAction === 'increment' ? 1 : -1;
+        input.value = String(Math.max(0, (Number(input.value) || 0) + delta));
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      };
+    });
+
+    wrap.querySelectorAll('.score-input').forEach(inp => {
 
       inp.onmousedown = (e) => {
           e.stopPropagation();
@@ -488,7 +501,9 @@ export function createMatchesGroupsRenderer(ctx = {}) {
         padding: 8px 0;
       "
     >
-      <input
+      <div class="score-control" data-score-side="A" style="display:flex;align-items:center;gap:3px;">
+        ${canEdit ? '<button type="button" class="score-step" data-score-action="increment" data-score-side="A" aria-label="Aumentar gols do time A">▲</button>' : ''}
+        <input
         type="number"
         min="0"
         class="score-input"
@@ -515,13 +530,17 @@ export function createMatchesGroupsRenderer(ctx = {}) {
   )}
         "
       >
+        ${canEdit ? '<button type="button" class="score-step" data-score-action="decrement" data-score-side="A" aria-label="Diminuir gols do time A">▼</button>' : ''}
+      </div>
 
       <span style="
         color: rgba(255,255,255,0.6);
         font-weight: bold;
       ">×</span>
 
-      <input
+      <div class="score-control" data-score-side="B" style="display:flex;align-items:center;gap:3px;">
+        ${canEdit ? '<button type="button" class="score-step" data-score-action="increment" data-score-side="B" aria-label="Aumentar gols do time B">▲</button>' : ''}
+        <input
         type="number"
         min="0"
         class="score-input"
@@ -548,38 +567,10 @@ export function createMatchesGroupsRenderer(ctx = {}) {
   )}
         "
       >
+        ${canEdit ? '<button type="button" class="score-step" data-score-action="decrement" data-score-side="B" aria-label="Diminuir gols do time B">▼</button>' : ''}
+      </div>
     </div>
   ` : '';
-
-    wrap.querySelectorAll('.score-input').forEach((input) => {
-      if (input.parentElement?.classList.contains('score-control')) return;
-      const holder = document.createElement('div');
-      holder.className = 'score-control';
-      holder.style.cssText = 'display:flex;align-items:center;gap:3px;';
-      input.parentNode.insertBefore(holder, input);
-      holder.appendChild(input);
-      if (input.readOnly) return;
-      const side = input.dataset.side;
-      const makeButton = (action, label, symbol) => {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'score-step';
-        b.dataset.scoreAction = action;
-        b.dataset.scoreSide = side;
-        b.setAttribute('aria-label', label);
-        b.textContent = symbol;
-        b.onclick = (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          if (input.readOnly) return;
-          input.value = String(Math.max(0, (Number(input.value) || 0) + (action === 'increment' ? 1 : -1)));
-          input.dispatchEvent(new Event('input', { bubbles: true }));
-        };
-        return b;
-      };
-      holder.insertBefore(makeButton('increment', `Aumentar gols do time ${side}`, '▲'), input);
-      holder.appendChild(makeButton('decrement', `Diminuir gols do time ${side}`, '▼'));
-    });
 
    const winnerButtonsHtml = `
     <div class="bet-options" style="position: relative; display: flex; gap: 5px;">
