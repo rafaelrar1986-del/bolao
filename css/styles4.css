@@ -18121,3 +18121,4 @@ body .group-third-qualifier:not(.active):hover {
         padding: 2px !important;
     }
 }
+.score-step{width:28px;min-width:28px;height:26px;padding:0;border:1px solid rgba(128,128,128,.45);border-radius:5px;background:transparent;color:inherit;font-size:12px;font-weight:700;cursor:pointer;touch-action:manipulation}.score-step:focus-visible{outline:2px solid currentColor;outline-offset:2px}

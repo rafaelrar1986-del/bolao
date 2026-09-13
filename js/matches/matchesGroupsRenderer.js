@@ -551,6 +551,36 @@ export function createMatchesGroupsRenderer(ctx = {}) {
     </div>
   ` : '';
 
+    wrap.querySelectorAll('.score-input').forEach((input) => {
+      if (input.parentElement?.classList.contains('score-control')) return;
+      const holder = document.createElement('div');
+      holder.className = 'score-control';
+      holder.style.cssText = 'display:flex;align-items:center;gap:3px;';
+      input.parentNode.insertBefore(holder, input);
+      holder.appendChild(input);
+      if (input.readOnly) return;
+      const side = input.dataset.side;
+      const makeButton = (action, label, symbol) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'score-step';
+        b.dataset.scoreAction = action;
+        b.dataset.scoreSide = side;
+        b.setAttribute('aria-label', label);
+        b.textContent = symbol;
+        b.onclick = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (input.readOnly) return;
+          input.value = String(Math.max(0, (Number(input.value) || 0) + (action === 'increment' ? 1 : -1)));
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        };
+        return b;
+      };
+      holder.insertBefore(makeButton('increment', `Aumentar gols do time ${side}`, '▲'), input);
+      holder.appendChild(makeButton('decrement', `Diminuir gols do time ${side}`, '▼'));
+    });
+
    const winnerButtonsHtml = `
     <div class="bet-options" style="position: relative; display: flex; gap: 5px;">
       ${['A', 'draw', 'B'].map(c => {
