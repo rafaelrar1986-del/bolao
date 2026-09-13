@@ -3,7 +3,7 @@ export function createMatchesGroupsRenderer(ctx = {}) {
   const get = (name) => ctx[name];
 
   function renderMatches(openedGroups = []) {
-      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, calculateScoringMatchPointsForUI, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, getScoringRules, winnerDerivesFromScore, deriveWinnerFromScoreData, calcLivePoints, getGroupPhaseProgress, updateGroupProgressUI, updateBetsCounters, renderFilterHeader, renderGroupPredictionSection, refreshPredictedGroupForMatch, bindAllGroupPredictionSections, renderGroupCard } = ctx;
+      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, calculateScoringMatchPointsForUI, getMatchPointStatusForUI, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, getScoringRules, winnerDerivesFromScore, deriveWinnerFromScoreData, calcLivePoints, getGroupPhaseProgress, updateGroupProgressUI, updateBetsCounters, renderFilterHeader, renderGroupPredictionSection, refreshPredictedGroupForMatch, bindAllGroupPredictionSections, renderGroupCard } = ctx;
     if (!STATE.hasSubmitted) STATE.groupFilter = 'group';
 
     // A navegação é dinâmica: pontos corridos não é fase de grupos e
@@ -344,7 +344,7 @@ export function createMatchesGroupsRenderer(ctx = {}) {
   }
 
   function renderGroupCard(m) {
-      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, calculateScoringMatchPointsForUI, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, getScoringRules, hasScoreInput, winnerDerivesFromScore, getDisplayWinner, getPredictionScoreSideInputStyle, hasWinnerBet, generateShotmapDots, getMatchRefWinner, calcLivePoints, isMatchEditable } = ctx;
+      const { STATE, api, flagEmoji, $, toast, getBackendAlignedQualifier, getFrontendMatchPointStatus, getEffectiveBetWinner, calculateScoringMatchPoints, calculateScoringMatchPointsForUI, withFlag, flagOnly, renderTeamMedia, isKnockoutMatch, statusLabel, resultWinnerFromScore, parseMatchDate, formatMatchTimeLocal, formatMatchDateLocal, getScoringRules, hasScoreInput, winnerDerivesFromScore, getDisplayWinner, getPredictionScoreSideInputStyle, hasWinnerBet, generateShotmapDots, getMatchRefWinner, calcLivePoints, isMatchEditable, getMatchPointStatusForUI } = ctx;
     const idNum = Number(m.matchId);
     const storedChoice = STATE.betsMap.get(idNum) || STATE.betsMap.get(String(m.matchId));
     
@@ -415,7 +415,18 @@ export function createMatchesGroupsRenderer(ctx = {}) {
       );
       points = result.points;
 
-      statusClass = points > 0 ? 'hit-full' : 'hit-none';
+      const pointStatus = getMatchPointStatusForUI ? getMatchPointStatusForUI(
+        {
+          scoreA: scoreData.scoreA,
+          scoreB: scoreData.scoreB,
+          winner: choice
+        },
+        m,
+        { scoringRules: rules },
+        false
+      ) : { category: points > 0 ? (result.breakdown && result.breakdown.exactScore ? 'full' : 'partial') : 'none' };
+      
+      statusClass = `hit-${pointStatus.category}`;
     }
 
     const minutoFormatado = (isLive && m.minute && !isPenalties) ? (String(m.minute).includes("'") ? m.minute : m.minute + "'") : "";
@@ -563,7 +574,7 @@ export function createMatchesGroupsRenderer(ctx = {}) {
 
         return `
           <div
-            class="option-wrapper"
+            class="option-wrapper ${c === 'A' ? 'option-wrapper-a' : c === 'B' ? 'option-wrapper-b' : 'option-wrapper-draw'}"
             style="position: relative; flex: 1; display: flex; flex-direction: column; align-items: center;"
           >
             <div
@@ -574,7 +585,7 @@ export function createMatchesGroupsRenderer(ctx = {}) {
             </div>
 
             <button
-              class="bet-option ${choice === c ? 'selected' : ''}"
+              class="bet-option ${c === 'A' ? 'bet-option-a' : c === 'B' ? 'bet-option-b' : ''} ${choice === c ? 'selected' : ''}"
               data-match="${m.matchId}"
               data-choice="${c}"
               style="${buttonStyle}"

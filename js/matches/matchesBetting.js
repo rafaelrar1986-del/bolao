@@ -188,8 +188,9 @@ export function createMatchesBetting(ctx = {}) {
     const isPointsRunPhase = phaseLower === 'pontos_corridos' || phaseLower === 'points_run';
     // Em modo de disponibilidade 'round', o travamento é por rodada
     // (regras abaixo); a fase inteira só trava em modo 'all'.
+    const isGroupPhase = phaseLower === 'group';
     const isRoundAvailability =
-      (match.phase === 'group' && STATE.groupBetAvailabilityMode === 'round') ||
+      (isGroupPhase && STATE.groupBetAvailabilityMode === 'round') ||
       (isPointsRunPhase && STATE.pointsRunBetAvailabilityMode === 'round') ||
       (phaseLower === 'knockout' && STATE.knockoutBetAvailabilityMode === 'round');
     if (!isRoundAvailability && lockMode === 'grade' && !STATE.testMode) {
@@ -202,7 +203,7 @@ export function createMatchesBetting(ctx = {}) {
 
     const matchPhase = String(match.phase || '').toLowerCase();
 
-    if (match.phase === 'group' && STATE.groupBetAvailabilityMode === 'round') {
+    if (isGroupPhase && STATE.groupBetAvailabilityMode === 'round') {
       return isMatchAvailableForBetting(match);
     }
 

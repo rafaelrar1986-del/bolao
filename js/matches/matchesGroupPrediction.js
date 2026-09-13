@@ -417,13 +417,21 @@ export function createMatchesGroupPrediction(ctx = {}) {
     const rows=prediction.positions.map(p=>{
       const candidate=candidatePosition!=null&&Number(p.position)===Number(candidatePosition);
       const active=selected.has(p.team);
+      const isQualified = p.position <= (config.baseQualifiedPerGroup || 2) || active;
       return `<div class="group-prediction-position" style="display:grid;grid-template-columns:34px minmax(0,1fr) 58px 42px;gap:7px;align-items:center;margin:6px 0;">
-        <span style="font-weight:800;text-align:center;">${p.position===1?'🥇':p.position===2?'🥈':p.position===3?'🥉':`${p.position}º`}</span>
-        <select class="group-prediction-position-select" data-group="${encodeURIComponent(groupName)}" data-position="${p.position}" data-previous-value="${String(p.team).replace(/"/g,'&quot;')}" style="width:100%;min-width:0;padding:8px 6px;border-radius:7px;">
+        ${p.position === 1 ? `<div style="width:22px;height:22px;margin:0 auto;border-radius:50%;background:linear-gradient(135deg, #ffd700, #b8860b);box-shadow:0 0 8px rgba(255,215,0,0.6);display:flex;align-items:center;justify-content:center;color:#000;font-size:12px;font-weight:900;">1</div>` :
+           p.position === 2 ? `<div style="width:22px;height:22px;margin:0 auto;border-radius:50%;background:linear-gradient(135deg, #e0e0e0, #888888);box-shadow:0 0 8px rgba(224,224,224,0.4);display:flex;align-items:center;justify-content:center;color:#000;font-size:12px;font-weight:900;">2</div>` :
+           p.position === 3 ? `<div style="width:22px;height:22px;margin:0 auto;border-radius:50%;background:linear-gradient(135deg, #cd7f32, #8b4513);box-shadow:0 0 8px rgba(205,127,50,0.4);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:900;">3</div>` :
+           `<div style="width:22px;height:22px;margin:0 auto;border-radius:50%;background:rgba(255,255,255,0.05);display:flex;align-items:center;justify-content:center;color:#aaa;font-size:11px;font-weight:800;">${p.position}º</div>`}
+        ${STATE.hasSubmitted ? 
+            `<div class="group-prediction-position-readonly" style="width:100%;min-width:0;padding:6px 12px;height:40px;border-radius:6px;background:linear-gradient(90deg, ${isQualified ? 'rgba(0,255,255,0.1)' : 'rgba(255,255,255,0.03)'} 0%, rgba(0,0,0,0.2) 100%);border-left:3px solid ${isQualified ? 'rgba(0, 255, 255, 0.8)' : 'rgba(255, 255, 255, 0.1)'};border-top:1px solid rgba(255,255,255,0.03);border-bottom:1px solid rgba(255,255,255,0.03);border-right:1px solid rgba(255,255,255,0.03);color:${isQualified ? '#ffffff' : 'rgba(255,255,255,0.4)'};font-weight:700;letter-spacing:0.3px;display:flex;align-items:center;gap:10px;box-sizing:border-box;box-shadow:${isQualified ? 'inset 20px 0 30px -20px rgba(0,255,255,0.2)' : 'none'};transition:all 0.3s ease;">
+               <div style="opacity: ${isQualified ? '1' : '0.4'}; display:flex; align-items:center;">${flagOnly(p.team, '20px')}</div> <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px;text-shadow: ${isQualified ? '0 0 5px rgba(255,255,255,0.2)' : 'none'}">${p.team}</span>
+             </div>`
+          : `<select class="group-prediction-position-select" data-group="${encodeURIComponent(groupName)}" data-position="${p.position}" data-previous-value="${String(p.team).replace(/"/g,'&quot;')}" style="width:100%;min-width:0;padding:8px 6px;border-radius:7px;">
           ${teams.map(t=>`<option value="${String(t).replace(/"/g,'&quot;')}" ${t===p.team?'selected':''}>${t}</option>`).join('')}
-        </select>
+        </select>`}
         <span class="group-prediction-points" style="font-size:.68rem;font-weight:900;text-align:right;white-space:nowrap;color:#999;">—</span>
-        ${candidate?`<button type="button" class="group-third-qualifier ${active?'active':''}" data-group="${encodeURIComponent(groupName)}" data-position="${p.position}" data-team="${String(p.team).replace(/"/g,'&quot;')}" style="width:38px;height:34px;border-radius:8px;border:1px solid ${active?'#ffd34d':'rgba(255,255,255,.18)'};background:${active?'rgba(255,211,77,.18)':'rgba(255,255,255,.06)'};color:${active?'#ffd34d':'#aaa'};font-size:16px;">🏆</button>`:'<span></span>'}
+        ${(candidate && !STATE.hasSubmitted)?`<button type="button" class="group-third-qualifier ${active?'active':''}" data-group="${encodeURIComponent(groupName)}" data-position="${p.position}" data-team="${String(p.team).replace(/"/g,'&quot;')}" style="width:38px;height:34px;border-radius:8px;border:1px solid ${active?'#ffd34d':'rgba(255,255,255,.18)'};background:${active?'rgba(255,211,77,.18)':'rgba(255,255,255,.06)'};color:${active?'#ffd34d':'#aaa'};font-size:16px;">🏆</button>`:'<span></span>'}
       </div>`;
     }).join('');
 
@@ -433,7 +441,7 @@ export function createMatchesGroupPrediction(ctx = {}) {
         ${limit>0?`<span class="group-third-counter" style="font-size:.68rem;color:${globalSelectedCount===limit?'#6ee7b7':'#ffd34d'};">${globalSelectedCount} de ${limit}</span>`:''}
       </div>
       ${rows}
-      ${limit>0?`<div style="font-size:.68rem;color:#888;margin-top:6px;">Toque no 🏆 do ${candidatePosition}º colocado para indicar que ele avançará.</div>`:''}
+      ${limit>0 && !STATE.hasSubmitted?`<div style="font-size:.68rem;color:#888;margin-top:6px;">Toque no 🏆 do ${candidatePosition}º colocado para indicar que ele avançará.</div>`:''}
       ${!complete?`<div style="margin-top:7px;font-size:.68rem;color:#f5b942;">A classificação será refinada conforme você preencher mais palpites.</div>`:''}
       <div class="group-prediction-live-total" style="margin-top:8px;text-align:right;font-size:.75rem;font-weight:900;color:#67e8f9;">${STATE.groupPredictionPointsStarted.has(groupName) ? '🔴 Ao vivo: 0 pts' : '⏳ Aguardando início do grupo'}</div>
     </section>`;

@@ -43,7 +43,7 @@ for (const symbol of [
   assert.match(facade + read('js/ranking/state.js') + read('js/ranking/helpers.js') + read('js/ranking/simulation.js') + read('js/ranking/uiActions.js'), new RegExp(`(?:window\\.)?${symbol.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}`), `missing ${symbol}`);
 }
 
-assert.match(sw, /refactor-full-v9/);
+assert.match(sw, /refactor-full-v10/);
 assert.match(sw, /ranking2\.js\?v=1\.10/);
 for (const file of ['state.js','helpers.js','controller.js','strategyRenderer.js','simulation.js','viewEvents.js','uiActions.js']) {
   assert.match(sw, new RegExp(`ranking/${file.replace('.', '\\.')}`), `service worker missing ranking/${file}`);

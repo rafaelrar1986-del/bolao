@@ -742,7 +742,7 @@
 /* 1. BASE DO CARD: MANTÉM O METAL E PREPARA PARA O VIDRO */
 .match-card,
 .match-card[class*="hit-"] {
-    background: url('../img/card_grupos.webp') no-repeat center center !important;
+    background: url('../img/card_grupos_neutral.jpg') no-repeat center center !important;
     background-size: 100% 100% !important;
     background-color: #1a1a1a !important;
     border: none !important;
@@ -1222,7 +1222,7 @@ div.match-card button.bet-option {
 
 /* 1. O CARD E A MIRA (CONFIGURAÇÃO 43% / 49%) */
 .match-card {
-    background: url('../img/card_grupos.webp') no-repeat center center !important;
+    background: url('../img/card_grupos_neutral.jpg') no-repeat center center !important;
     background-size: 100% 100% !important;
     width: 100% !important;
     max-width: 500px !important; 
@@ -1370,7 +1370,7 @@ div.match-card button.bet-option {
 
 /* 1. ESTRUTURA DO CARD E MIRA (43% / 49%) */
 .match-card {
-    background: url('../img/card_grupos.webp') no-repeat center center !important;
+    background: url('../img/card_grupos_neutral.jpg') no-repeat center center !important;
     background-size: 100% 100% !important;
     width: 100% !important;
     max-width: 500px !important; 
@@ -1544,7 +1544,7 @@ div.match-card button.bet-option {
 #knockout-container .match-card[data-status="encerrado"],
 #knockout-container .match-card[data-status="finished"] {
 
-   background: url(../img/card_grupos.webp) no-repeat center center !important;
+   background: url('../img/card_grupos_neutral.jpg') no-repeat center center !important;
     background-size: 107% 121% !important;
     background-color: transparent !important;
   }
@@ -1621,7 +1621,7 @@ div.match-card button.bet-option {
 
     filter: grayscale(0%) brightness(100%) !important;
 
-    transform: scale(1.9) !important;
+    
 }
 
 
@@ -1812,7 +1812,7 @@ div.match-card button.bet-option {
 
     filter: grayscale(0%) opacity(1) !important;
 
-    transform: scale(1.9) !important;
+    
 }
 
 
@@ -2204,4 +2204,278 @@ div.match-card button.bet-option {
   box-shadow: inset 0 1px 2px rgba(255,255,255,0.02);
   width: 100%;
   box-sizing: border-box;
+}
+
+/* ============================================================
+   GLOBAL OVERRIDES FOR DYNAMIC CARDS (BAKED IMAGES)
+   ============================================================ */
+
+body .match-card,
+body #matches-container .match-card,
+body #knockout-container .match-card {
+    background: url('../img/card_grupos_neutral.png') no-repeat center center !important;
+    background-color: transparent !important;
+    background-size: 105% 112% !important; /* Zoom para esconder borda branca */
+    border: none !important;
+    box-shadow: none !important;
+}
+
+body .match-card.hit-full,
+body #matches-container .match-card.hit-full,
+body #knockout-container .match-card.hit-full {
+    background: url('../img/card_grupos_hit_full.png') no-repeat center center !important;
+    background-color: transparent !important;
+    background-size: 105% 112% !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+body .match-card.hit-partial,
+body .match-card.hit-parcial,
+body #matches-container .match-card.hit-partial,
+body #matches-container .match-card.hit-parcial,
+body #knockout-container .match-card.hit-partial,
+body #knockout-container .match-card.hit-parcial {
+    background: url('../img/card_grupos_hit_partial.jpg') no-repeat center center !important;
+    background-color: transparent !important;
+    background-size: 105% 112% !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+body .match-card.hit-none,
+body #matches-container .match-card.hit-none,
+body #knockout-container .match-card.hit-none {
+    background: url('../img/card_grupos_hit_none.jpg') no-repeat center center !important;
+    background-color: transparent !important;
+    background-size: 105% 112% !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+/* KILLS THE COLORED OVERLAYS AND BACKGROUNDS FROM OLD RULES */
+body .match-card[class*="hit-"]::before,
+body #matches-container .match-card[class*="hit-"]::before,
+body #knockout-container .match-card[class*="hit-"]::before {
+    display: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+/* ============================================================
+   FINE-TUNING INTERNAL LAYOUT FOR 3D METAL BACKGROUND
+   ============================================================ */
+
+/* 1. Header (Grupo A, Encerrado/Agendado) - Descer um pouco e clarear */
+body .match-card > div:first-child,
+body .match-card .scheduled-time-header {
+    transform: translateY(6px) !important;
+    color: #ffffff !important;
+    opacity: 0.8 !important;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8) !important;
+}
+
+/* 2. Container Central (Grids de Aposta) - Subir levemente para centralizar escudos nos quadrados escuros */
+body .match-card .bet-options {
+    top: 43% !important; /* Antes estava 46% ou 50%, subimos um pouco */
+}
+
+/* 3. Escudos (Logos) - Diminuir sutilmente para encaixar melhor no quadrado */
+body .match-card .team-logo-api {
+    max-width: 65px !important;
+    max-height: 65px !important;
+}
+
+/* 4. Nomes dos Times - Subir para não encostar no vinco de baixo e clarear a cor */
+body .match-card .bet-team-vertical,
+body .match-card .team-name-small {
+    transform: translateY(-8px) !important;
+    color: #f0f0f0 !important;
+    text-shadow: 0px 1px 3px rgba(0,0,0,1) !important;
+    font-weight: 700 !important;
+}
+
+/* Opcional: Se for acerto, mantém a cor original verde/amarelo, mas com mais brilho */
+body .match-card.hit-full .bet-option.selected .bet-team-vertical { color: #00ff44 !important; text-shadow: 0 0 8px rgba(0,255,68,0.8) !important; }
+body .match-card.hit-partial .bet-option.selected .bet-team-vertical { color: #ffd700 !important; text-shadow: 0 0 8px rgba(255,215,0,0.8) !important; }
+
+/* 5. Placar Central (1 x 0) - Descer para ficar mais perto do botão de Empate e da pílula central */
+body .match-card .score-container-header.big-score {
+    transform: translateY(18px) !important;
+    z-index: 10 !important;
+}
+
+/* 6. Botão de Empate - Ajustar posição dentro da pílula */
+body .match-card button.bet-option[data-choice="draw"] {
+    transform: translateY(4px) !important;
+}
+
+/* 7. Barra Inferior (Rodapé com placar final) - Descer para encaixar perfeitamente no vinco/fenda escura */
+body .match-card .knockout-footer-compact {
+    bottom: 5px !important; /* Estava 11px, descendo 6px para o centro do vinco */
+    width: 88% !important;
+    left: 6% !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+
+body .match-card.hit-wrong,
+body #matches-container .match-card.hit-wrong,
+body #knockout-container .match-card.hit-wrong {
+    background: url('../img/card_grupos_hit_none.jpg') no-repeat center center !important;
+    background-color: transparent !important;
+    background-size: 105% 112% !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+/* ============================================================
+   EXTRA FINE-TUNING (POINTS, LOGOS, BOTTOM BAR)
+   ============================================================ */
+
+/* 1. Pontuação no Topo (+10 pts) */
+body .match-card .points-earned,
+body .match-card .points-earned.partial {
+    background: rgba(10, 15, 20, 0.9) !important;
+    border: 1px solid #00ff44 !important;
+    color: #00ff44 !important;
+    text-shadow: 0 0 5px #00ff44 !important;
+    box-shadow: 0 0 8px rgba(0, 255, 68, 0.4) !important;
+    top: -14px !important; /* Push slightly up to align with the top cut */
+    font-size: 0.8rem !important;
+    padding: 2px 12px !important;
+    border-radius: 12px !important;
+}
+
+body .match-card.hit-partial .points-earned.partial {
+    border-color: #ffd700 !important;
+    color: #ffd700 !important;
+    text-shadow: 0 0 5px #ffd700 !important;
+    box-shadow: 0 0 8px rgba(255, 215, 0, 0.4) !important;
+}
+
+/* 2. Centralizar Bandeiras nos Quadrados */
+body .match-card .bet-option:first-child .team-logo-api {
+    transform: translate(12px, 5px) !important;
+}
+body .match-card .bet-option:last-child .team-logo-api {
+    transform: translate(-12px, 5px) !important;
+}
+
+/* 3. Centralizar Placar Final no Vinco Inferior */
+body .match-card .knockout-footer-compact {
+    bottom: 8px !important; /* Move slightly up/down to center vertically in the slit */
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+}
+
+body .match-card .knockout-footer-compact .final-score {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    transform: translateY(-2px) !important; /* Tweak internal vertical alignment */
+}
+
+/* ============================================================
+   CLASSIFICATION PREDICTION UI (DARK NEON MODE)
+   ============================================================ */
+
+/* 1. Container Principal */
+body .group-prediction-section {
+    background: linear-gradient(145deg, rgba(20,25,30,0.8), rgba(5,10,15,0.9)) !important;
+    border: 1px solid rgba(0, 255, 255, 0.15) !important;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(0, 255, 255, 0.05) !important;
+    border-radius: 12px !important;
+}
+
+/* 2. Caixas de Seleção (Dropdowns de Times) */
+body .group-prediction-position-select {
+    background: rgba(0, 5, 10, 0.6) !important;
+    border: 1px solid rgba(0, 255, 255, 0.3) !important;
+    color: #e0f7fa !important;
+    border-radius: 8px !important;
+    box-shadow: inset 0 0 10px rgba(0, 255, 255, 0.05) !important;
+    outline: none !important;
+    font-weight: 600 !important;
+    transition: all 0.3s ease !important;
+}
+
+body .group-prediction-position-select:focus {
+    border-color: #00ffff !important;
+    box-shadow: 0 0 8px rgba(0, 255, 255, 0.4), inset 0 0 10px rgba(0, 255, 255, 0.2) !important;
+}
+
+/* Fundo das opções do dropdown (para navegadores que suportam) */
+body .group-prediction-position-select option {
+    background: #111820 !important;
+    color: #fff !important;
+}
+
+/* 3. Pontuação (✓ +3 ou ✗ 0) */
+body .group-prediction-points {
+    text-shadow: 0 0 8px currentColor !important;
+    font-size: 0.8rem !important;
+}
+
+/* 4. Botão do Troféu (Classificado Extra) */
+body .group-third-qualifier {
+    transition: all 0.3s ease !important;
+    border-radius: 8px !important;
+}
+
+body .group-third-qualifier.active {
+    background: rgba(255, 215, 0, 0.15) !important;
+    border: 1px solid #ffd700 !important;
+    color: #ffd700 !important;
+    box-shadow: 0 0 15px rgba(255, 215, 0, 0.5), inset 0 0 10px rgba(255, 215, 0, 0.2) !important;
+    text-shadow: 0 0 10px rgba(255, 215, 0, 0.8) !important;
+    transform: scale(1.05) !important;
+}
+
+/* Efeito Hover no botão inativo */
+body .group-third-qualifier:not(.active):hover {
+    border-color: rgba(255, 215, 0, 0.5) !important;
+    box-shadow: 0 0 8px rgba(255, 215, 0, 0.2) !important;
+}
+
+
+
+
+/* GLOBAL FIX FOR SELECTED FLAG ALIGNMENT (PRESERVE BOX POSITION) */
+.bet-option:first-child.selected .team-logo-api, 
+.match-card .bet-option:first-child.active .team-logo-api { 
+    transform: translate(12px, 5px) scale(1.7) !important; 
+}
+.bet-option:last-child.selected .team-logo-api, 
+.match-card .bet-option:last-child.active .team-logo-api { 
+    transform: translate(-12px, 5px) scale(1.7) !important; 
+}
+
+/* MOBILE FIXES for overlapping scores */
+@media (max-width: 450px) {
+    /* Compress the score input field laterally to avoid overlap */
+    .score-input {
+        width: 32px !important;
+        font-size: 0.85rem !important;
+        padding: 0 !important;
+    }
+    
+    /* Slightly smaller scale for mobile so it fits the background box perfectly */
+    .bet-option:first-child.selected .team-logo-api, 
+    .match-card .bet-option:first-child.active .team-logo-api { 
+        transform: translate(12px, 5px) scale(1.55) !important; 
+    }
+    .bet-option:last-child.selected .team-logo-api, 
+    .match-card .bet-option:last-child.active .team-logo-api { 
+        transform: translate(-12px, 5px) scale(1.55) !important; 
+    }
+    
+    /* Push the team name text down a bit if it was colliding with the score bottom bar */
+    .bet-option:not([data-type="draw"]):not(:nth-child(2)) .bet-team-vertical {
+        bottom: -38px !important; 
+        font-size: 8.5px !important;
+    }
 }

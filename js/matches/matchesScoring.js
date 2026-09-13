@@ -237,16 +237,28 @@ export function createMatchesScoring(ctx = {}) {
         side
       );
 
-    let background = 'rgba(0,0,0,0.2)';
-
     if (state === 'correct') {
-      background = '#28a745';
+      return `
+        background: rgba(40, 167, 69, 0.15) !important;
+        border: 1px solid #00ff44 !important;
+        color: #00ff44 !important;
+        text-shadow: 0 0 5px rgba(0, 255, 68, 0.5) !important;
+        box-shadow: inset 0 0 8px rgba(0, 255, 68, 0.3) !important;
+        ${locked ? 'opacity: 0.9;' : ''}
+      `;
     } else if (state === 'wrong') {
-      background = '#dc3545';
+      return `
+        background: rgba(220, 53, 69, 0.15) !important;
+        border: 1px solid #ff3333 !important;
+        color: #ff3333 !important;
+        text-shadow: 0 0 5px rgba(255, 51, 51, 0.5) !important;
+        box-shadow: inset 0 0 8px rgba(255, 51, 51, 0.3) !important;
+        ${locked ? 'opacity: 0.9;' : ''}
+      `;
     }
 
     return `
-      background: ${background};
+      background: rgba(0,0,0,0.2);
       color: #fff;
       ${locked ? 'opacity: 0.6;' : ''}
     `;
@@ -257,16 +269,28 @@ export function createMatchesScoring(ctx = {}) {
     const visualState =
       getPredictionScoreVisualState(match, scoreData);
 
-    let background = 'rgba(0,0,0,0.2)';
-
     if (visualState === 'correct') {
-      background = '#28a745';
+      return `
+        background: rgba(40, 167, 69, 0.15) !important;
+        border: 1px solid #00ff44 !important;
+        color: #00ff44 !important;
+        text-shadow: 0 0 5px rgba(0, 255, 68, 0.5) !important;
+        box-shadow: inset 0 0 8px rgba(0, 255, 68, 0.3) !important;
+        ${locked ? 'opacity: 0.9;' : ''}
+      `;
     } else if (visualState === 'wrong') {
-      background = '#dc3545';
+      return `
+        background: rgba(220, 53, 69, 0.15) !important;
+        border: 1px solid #ff3333 !important;
+        color: #ff3333 !important;
+        text-shadow: 0 0 5px rgba(255, 51, 51, 0.5) !important;
+        box-shadow: inset 0 0 8px rgba(255, 51, 51, 0.3) !important;
+        ${locked ? 'opacity: 0.9;' : ''}
+      `;
     }
 
     return `
-      background: ${background};
+      background: rgba(0,0,0,0.2);
       color: #fff;
       ${locked ? 'opacity: 0.6;' : ''}
     `;

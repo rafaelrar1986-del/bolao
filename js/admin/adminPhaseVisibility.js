@@ -304,8 +304,8 @@ async function renderPhaseControls() {
                     const on = unlockedRounds.includes(round);
                     const status = betLockMode === 'match' ? getMatchModeStatus() : getRoundStatus({ round, matches: allLeagueMatches, kind: 'group', unlocked: unlockedRounds, locked: lockedRounds, testMode });
                     return `<button class="btn admin-round-control admin-round-control-${status.state}"
-                      ${status.state === 'auto_locked' || status.state === 'not_applicable' ? '' : `onclick="toggleGroupRound(${round}, ${on})"`}
-                      ${status.state === 'auto_locked' || status.state === 'not_applicable' ? 'disabled' : ''}
+                      ${status.state === 'not_applicable' ? '' : `onclick="toggleGroupRound(${round}, ${on})"`}
+                      ${status.state === 'not_applicable' ? 'disabled' : ''}
                       title="${status.title}">
                       <span class="admin-round-label">Rodada ${round}</span>
                       <span class="admin-round-status">${status.icon}</span>
@@ -335,8 +335,8 @@ async function renderPhaseControls() {
                     const on = unlockedPointsRunRounds.includes(round);
                     const status = betLockMode === 'match' ? getMatchModeStatus() : getRoundStatus({ round, matches: allLeagueMatches, kind: 'points_run', unlocked: unlockedPointsRunRounds, locked: lockedPointsRunRounds, testMode });
                     return `<button class="btn admin-round-control admin-round-control-${status.state}"
-                      ${status.state === 'auto_locked' || status.state === 'not_applicable' ? '' : `onclick="togglePointsRunRound(${round}, ${on})"`}
-                      ${status.state === 'auto_locked' || status.state === 'not_applicable' ? 'disabled' : ''}
+                      ${status.state === 'not_applicable' ? '' : `onclick="togglePointsRunRound(${round}, ${on})"`}
+                      ${status.state === 'not_applicable' ? 'disabled' : ''}
                       title="${status.title}">
                       <span class="admin-round-label">Rodada ${round}</span>
                       <span class="admin-round-status">${status.icon}</span>
@@ -368,8 +368,8 @@ async function renderPhaseControls() {
                   const displayLabel = knockoutDisplayLabel(label);
                   const status = betLockMode === 'match' ? getMatchModeStatus() : getRoundStatus({ round, matches: allLeagueMatches, kind: 'knockout', unlocked: unlockedKnockoutRounds, locked: lockedKnockoutRounds, testMode });
                   return `<button class="btn admin-round-control admin-round-control-${status.state}"
-                    ${status.state === 'auto_locked' || status.state === 'not_applicable' ? '' : `onclick="toggleKnockoutRound(${round}, ${on})"`}
-                    ${status.state === 'auto_locked' || status.state === 'not_applicable' ? 'disabled' : ''}
+                    ${status.state === 'not_applicable' ? '' : `onclick="toggleKnockoutRound(${round}, ${on})"`}
+                    ${status.state === 'not_applicable' ? 'disabled' : ''}
                     title="${status.title}">
                     <span class="admin-round-label">${displayLabel}</span>
                     <span class="admin-round-status">${status.icon}</span>
