@@ -24,3 +24,19 @@
 
 /* RESTAURACAO BUG2 - divisoria extras estrategia */
 #ranking .strategy-glass-card>div[style*="border-bottom"]{margin-bottom:6px !important;padding-bottom:5px !important;gap:3px !important}
+
+/* RESTAURACAO - .strategy-extra-card perdeu propriedades base no dedup */
+.strategy-extra-card{
+  border:1px solid rgba(74,222,128,0.78) !important;
+  box-sizing:border-box !important;
+  display:flex !important;
+  flex-direction:column !important;
+  align-items:center !important;
+  justify-content:center !important;
+  text-align:center !important;
+  background:rgba(0,0,0,0.12) !important;
+  overflow:hidden !important;
+}
+.strategy-extra-card.is-dead{
+  border-color:#ef4444 !important;
+}

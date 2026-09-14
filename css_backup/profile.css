@@ -1,0 +1,3372 @@
+/* Bolão K Bwalya — profile and duel tabs. */
+
+
+
+/* =====================
+   CARD DE DETALHES (MOBILE)
+===================== */
+.user-score-card {
+  margin-top: 8px;                /* ↓ menos espaço externo */
+  padding: 12px;                  /* ↓ padding menor */
+  border-radius: 14px;            /* ↓ levemente menor */
+  background: linear-gradient(135deg, #e3f2fd, #ffffff);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.08); /* ↓ sombra mais leve */
+  animation: fadeUp 1s ease;
+}
+
+
+
+.user-score-breakdown {
+  display: flex;
+  justify-content: space-around;
+  text-align: center;
+  margin-bottom: 6px;             /* ↓ */
+}
+
+
+/* =====================
+   PROFILE – ESTRUTURA
+===================== */
+.profile-page {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+
+
+.profile-title {
+  text-align: center;
+  font-weight: 800;
+  margin-bottom: 4px;
+}
+
+
+
+/* cards do perfil */
+.profile-card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 14px;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.06);
+}
+
+
+
+/* =====================
+   GRÁFICO
+===================== */
+.profile-chart-wrapper {
+  width: 100%;
+  height: 240px;
+}
+
+
+
+@media (max-width: 768px) {
+  .profile-chart-wrapper {
+    height: 220px;
+  }
+}
+
+
+
+/* =====================
+   FILTRO DO GRÁFICO
+===================== */
+.chart-filters {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+
+
+.chart-btn {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid #ddd;
+  background: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+
+
+.chart-btn.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+
+
+/* =====================
+   HISTÓRICO DIÁRIO – GRID FINAL
+===================== */
+
+.history-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 2px;
+    margin-top: 8px;
+}
+
+
+
+/* card de cada dia */
+.history-row {
+  background: #16191b;
+  border-radius: 12px;
+  padding: 8px 6px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  font-size: 0.8rem;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.05);
+}
+
+
+
+/* data (05/12) */
+.history-row .history-date {
+  font-weight: 700;
+  font-size: 0.75rem;
+  color: #333;
+  white-space: nowrap;
+}
+
+
+
+/* pontos (+5) */
+.history-row .history-points {
+  font-weight: 800;
+  font-size: 0.9rem;
+}
+
+
+
+/* emoji */
+.history-row .history-icon {
+  font-size: 1rem;
+}
+
+
+
+/* =====================
+   CORES POR RESULTADO
+===================== */
+
+.history-row.positive .history-points {
+  color: #2e7d32;
+}
+
+
+
+.history-row.hot {
+  background: #000000;
+}
+
+
+
+.history-row.hot .history-points {
+  color: #000000;
+}
+
+
+
+.history-row.neutral .history-points {
+  color: #000000;
+}
+
+
+
+/* =====================
+   DESKTOP – MAIS COLUNAS
+===================== */
+@media (min-width: 768px) {
+  .history-grid {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+
+
+
+
+.history-toggle-btn {
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid #ddd;
+  background: #fff;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+
+
+.history-toggle-btn:hover {
+  background: #f5f5f5;
+}
+
+
+
+
+.chart-compare {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 6px;
+}
+
+
+
+.chart-compare select {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #ddd;
+  font-size: 13px;
+}
+
+
+
+
+
+
+/* =====================
+   PERFIL (MEU + PÚBLICO)
+   👉 respeita o menu inferior
+===================== */
+body.has-app-nav #profile,
+body.has-app-nav #user-profile {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+
+  bottom: var(--bottom-nav-height);
+
+  width: 100vw;
+  background: #f5f5f5;
+
+  z-index: 9000;
+
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: black;
+}
+
+
+/* ============================================================
+   ESTILOS DO DUELO - PERFIL (MODERNIZADO)
+============================================================ */
+
+/* Abas Principais com Sliding Indicator */
+.profile-tabs {
+    display: flex;
+    justify-content: center;
+    gap: 0;
+    margin-bottom: 20px;
+    background: #f0f2f5;
+    padding: 5px;
+    border-radius: 35px;
+    position: relative;
+    width: 280px; 
+    margin-left: auto;
+    margin-right: auto;
+}
+
+
+
+/* Navegação de Fases */
+.duel-phase-nav {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 15px;
+}
+
+
+
+/* Acordeão do Duelo */
+.duel-accordion-item {
+    background: white;
+    border-radius: 12px;
+    margin-bottom: 10px;
+    border: 1px solid #eee;
+    overflow: hidden;
+}
+
+
+
+.duel-accordion-header {
+    padding: 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    font-weight: 800;
+    background: #fafafa;
+}
+
+
+
+.duel-accordion-header span {
+    font-size: 0.85rem;
+    letter-spacing: 0.5px;
+}
+
+
+
+.duel-accordion-body {
+    display: none;
+    padding: 10px;
+}
+
+
+
+.duel-accordion-item.open .duel-accordion-body {
+    display: block;
+}
+
+
+
+.duel-accordion-item.open .duel-accordion-header i {
+    transform: rotate(180deg);
+}
+
+
+
+/* Pill do Placar (Suavizado) */
+.duel-score-pill {
+    background: #f0f2f5; 
+    color: #222;
+    border: 1px solid #ddd;
+    padding: 3px 12px;
+    border-radius: 6px;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 1rem;
+    font-weight: bold;
+    min-width: 60px;
+    text-align: center;
+    letter-spacing: 1px;
+}
+
+
+
+
+/* ============================================================
+   DUELO — DROPDOWN DE USUÁRIOS (PERFIL PRIVADO)
+   (NÃO AFETA PERFIL PÚBLICO)
+============================================================ */
+
+#profile-duel {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+
+
+/* Wrapper do seletor */
+.duel-user-select-wrapper {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 10px;
+}
+
+
+
+/* Mensagem placeholder dentro do container */
+#profile-duel-container > p {
+    text-align: center;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #777;
+    margin-top: 20px;
+}
+
+
+/* =========================
+   NOVAS ABAS (ESTILO PROFILE)
+========================= */
+.profile-tabs {
+    display: flex;
+    justify-content: center;
+    gap: 0;
+    margin: 10px auto 20px auto;
+    background: #f0f2f5;
+    padding: 5px;
+    border-radius: 35px;
+    position: relative;
+    width: 280px; 
+}
+
+
+
+/* ============================================================
+   PENDENTE (NUNCA COLORIDO)
+   ============================================================ */
+
+.chip.duel-pending {
+    background: #f3f4f6 !important;
+    border-color: rgba(0,0,0,0.08) !important;
+}
+
+
+
+/* ============================================================
+   SPLIT COLORS (APENAS DUELO)
+   ============================================================ */
+
+/* iguais */
+
+.chip.duel-split-green-green {
+    background: linear-gradient(to right, var(--duel-green-bg) 50%, var(--duel-green-bg) 50%);
+    border-color: var(--duel-green-border);
+}
+
+
+
+.chip.duel-split-red-red {
+    background: linear-gradient(to right, var(--duel-red-bg) 50%, var(--duel-red-bg) 50%);
+    border-color: var(--duel-red-border);
+}
+
+
+
+.chip.duel-split-yellow-yellow {
+    background: linear-gradient(to right, var(--duel-yellow-bg) 50%, var(--duel-yellow-bg) 50%);
+    border-color: var(--duel-yellow-border);
+}
+
+
+
+/* mistos */
+
+.chip.duel-split-green-red {
+    background: linear-gradient(to right, var(--duel-green-bg) 50%, var(--duel-red-bg) 50%);
+    border-left-color: var(--duel-green-border);
+    border-right-color: var(--duel-red-border);
+}
+
+
+
+.chip.duel-split-red-green {
+    background: linear-gradient(to right, var(--duel-red-bg) 50%, var(--duel-green-bg) 50%);
+    border-left-color: var(--duel-red-border);
+    border-right-color: var(--duel-green-border);
+}
+
+
+
+.chip.duel-split-green-yellow {
+    background: linear-gradient(to right, var(--duel-green-bg) 50%, var(--duel-yellow-bg) 50%);
+    border-left-color: var(--duel-green-border);
+    border-right-color: var(--duel-yellow-border);
+}
+
+
+
+.chip.duel-split-yellow-green {
+    background: linear-gradient(to right, var(--duel-yellow-bg) 50%, var(--duel-green-bg) 50%);
+    border-left-color: var(--duel-yellow-border);
+    border-right-color: var(--duel-green-border);
+}
+
+
+
+.chip.duel-split-red-yellow {
+    background: linear-gradient(to right, var(--duel-red-bg) 50%, var(--duel-yellow-bg) 50%);
+    border-left-color: var(--duel-red-border);
+    border-right-color: var(--duel-yellow-border);
+}
+
+
+
+.chip.duel-split-yellow-red {
+    background: linear-gradient(to right, var(--duel-yellow-bg) 50%, var(--duel-red-bg) 50%);
+    border-left-color: var(--duel-yellow-border);
+    border-right-color: var(--duel-red-border);
+}
+
+
+
+.duel-score-pill {
+    background: rgba(0, 0, 0, 0.8);
+    color: #fff !important;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-weight: 800;
+    font-size: 0.9rem;
+    min-width: 42px;
+    text-align: center;
+}
+
+
+
+/* Ajuste de responsividade para os cards de duelo quando houver cadeado */
+.chip.duel-split-pending-green, 
+.chip.duel-split-pending-red {
+    border-left: 5px solid #ccc; /* Lado do rival pendente/bloqueado */
+}
+
+
+
+/* =========================================================
+   BACKGROUND FORÇADO
+========================================================= */
+
+#profile,
+#profile-main,
+#profile .profile-tab-section {
+
+    background:
+        radial-gradient(
+            circle at top left,
+            rgba(0,120,255,.16),
+            transparent 28%
+        ),
+
+        radial-gradient(
+            circle at top right,
+            rgba(0,180,255,.10),
+            transparent 30%
+        ),
+
+        linear-gradient(
+            180deg,
+            #05080f 0%,
+            #081018 45%,
+            #05080f 100%
+        ) !important;
+
+    min-height:
+        100vh !important;
+
+    color:
+        #fff !important;
+
+    position:
+        relative !important;
+
+    overflow-x:
+        hidden !important;
+
+    padding-bottom:
+        120px !important;
+}
+
+
+
+/* =========================================================
+   TÍTULO
+========================================================= */
+
+#profile .profile-title {
+
+    font-weight: 900 !important;
+
+    text-transform: lowercase !important;
+
+    letter-spacing: -1.5px !important;
+
+    text-align: center !important;
+
+    font-size: 2.2rem !important;
+
+    margin-bottom: 20px !important;
+
+    background:
+        linear-gradient(
+            90deg,
+            #ffffff,
+            #7fdcff,
+            #00d2ff
+        );
+
+    -webkit-background-clip: text !important;
+
+    -webkit-text-fill-color: transparent !important;
+
+    text-shadow:
+        0 0 18px rgba(0,210,255,.18);
+}
+
+
+
+/* =========================================================
+   CARDS BASE
+========================================================= */
+
+#profile #profileScoreCard > div,
+#profile .profile-card,
+#profile .user-score-card {
+    background:
+        linear-gradient(
+            180deg,
+            rgba(255,255,255,.05),
+            rgba(255,255,255,.025)
+        ) !important;
+
+    border:
+        1px solid rgba(255,255,255,.06) !important;
+
+    backdrop-filter:
+        blur(20px) !important;
+
+    border-radius:
+        22px !important;
+
+    box-shadow:
+        0 10px 30px rgba(0,0,0,.45),
+        0 0 14px rgba(0,120,255,.04) !important;
+}
+
+
+
+/* =========================================================
+   PROFILE PREMIUM CARD
+========================================================= */
+
+#profile-main .profile-premium-card {
+    position: relative !important;
+    overflow: hidden !important;
+    padding: 14px !important;
+    border-radius: 24px !important;
+    background:
+        radial-gradient(
+            circle at top left,
+            rgba(0,120,255,.12),
+            transparent 32%
+        ),
+        linear-gradient(
+            180deg,
+            rgba(7,12,20,.96),
+            rgba(4,8,16,.98)
+        ) !important;
+
+    border:
+        1px solid rgba(80,130,255,.10) !important;
+
+    box-shadow:
+        inset 0 0 30px rgba(0,120,255,.03),
+        0 10px 25px rgba(0,0,0,.45),
+        0 0 14px rgba(0,120,255,.05) !important;
+}
+
+
+
+/* Estilo dos títulos de aproveitamento */
+.profile-accuracy-title {
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    opacity: 0.5;
+    text-align: center;
+    margin-bottom: 15px;
+}
+
+  /* =========================================================
+     HEADER
+  ========================================================= */
+
+  #profile-main .profile-premium-header {
+
+      display: flex !important;
+
+      justify-content: space-between !important;
+
+      align-items: center !important;
+
+      margin-bottom: 14px !important;
+  }
+
+
+
+  #profile-main .profile-user-left {
+
+      display: flex !important;
+
+      align-items: center !important;
+
+      gap: 10px !important;
+  }
+
+
+
+  /* =========================================================
+     AVATAR
+  ========================================================= */
+
+  #profile-main .profile-avatar-ring {
+
+      width: 56px !important;
+      height: 56px !important;
+
+      border-radius: 50% !important;
+
+      padding: 3px !important;
+
+      background:
+          linear-gradient(
+              180deg,
+              #3b82ff,
+              #005eff
+          ) !important;
+
+      box-shadow:
+          0 0 18px rgba(0,120,255,.25) !important;
+  }
+
+
+
+  #profile-main .profile-avatar-letter {
+
+      width: 100% !important;
+      height: 100% !important;
+
+      border-radius: 50% !important;
+
+      background:
+          #071019 !important;
+
+      display: flex !important;
+
+      align-items: center !important;
+
+      justify-content: center !important;
+
+      font-size: 2rem !important;
+
+      font-weight: 900 !important;
+
+      color:
+          #fff !important;
+  }
+
+
+
+  /* =========================================================
+     USER
+  ========================================================= */
+
+  #profile-main .profile-user-meta {
+
+      display: flex !important;
+
+      flex-direction: column !important;
+
+      justify-content: center !important;
+
+      gap: 4px !important;
+  }
+
+
+
+  #profile-main .profile-user-name {
+
+      font-size: 1.1rem !important;
+
+      font-weight: 900 !important;
+
+      color:
+          #fff !important;
+
+      line-height: 1 !important;
+  }
+
+
+
+  #profile-main .profile-rank-badge {
+
+      display: inline-flex !important;
+
+      align-items: center !important;
+
+      justify-content: center !important;
+
+      width: fit-content !important;
+
+      padding: 4px 10px !important;
+
+      border-radius: 10px !important;
+
+      background:
+          rgba(30,70,180,.45) !important;
+
+      border:
+          1px solid rgba(80,130,255,.25) !important;
+
+      color:
+          #fff !important;
+
+      font-size: .75rem !important;
+
+      font-weight: 800 !important;
+  }
+
+
+
+  /* =========================================================
+     TOTAL
+  ========================================================= */
+
+  #profile-main .profile-total-side {
+
+      display: flex !important;
+
+      flex-direction: column !important;
+
+      align-items: center !important;
+
+      justify-content: center !important;
+  }
+
+
+
+  #profile-main .profile-total-points {
+
+      font-size: 3.4rem !important;
+
+      line-height: .9 !important;
+
+      font-weight: 900 !important;
+
+      background:
+          linear-gradient(
+              180deg,
+              #6bb6ff,
+              #005eff
+          );
+
+      -webkit-background-clip: text !important;
+
+      -webkit-text-fill-color: transparent !important;
+
+      text-shadow:
+          0 0 18px rgba(0,120,255,.20) !important;
+  }
+
+
+
+  #profile-main .profile-total-label {
+
+      font-size: .68rem !important;
+
+      font-weight: 700 !important;
+
+      letter-spacing: .6px !important;
+
+      color:
+          rgba(255,255,255,.55) !important;
+
+      text-align: center !important;
+  }
+
+
+
+  /* =========================================================
+     BREAKDOWN
+  ========================================================= */
+
+  #profile-main .profile-breakdown-grid {
+
+    display: grid !important;
+
+    grid-template-columns:
+        1fr 1px 1fr 1px 1fr 1px 1fr !important;
+
+    align-items: center !important;
+
+    margin-top: 8px !important;
+
+    padding-top: 14px !important;
+
+    border-top:
+        1px solid rgba(255,255,255,.06) !important;
+}
+
+
+
+#profile-main .rules-grid {
+    display: grid !important;
+
+    grid-template-columns: 1fr 1fr !important;
+
+    gap: 8px 14px !important;
+
+    width: 100% !important;
+}
+
+
+
+  #profile-main .profile-stat-divider {
+
+      width: 1px !important;
+
+      height: 54px !important;
+
+      background:
+          rgba(255,255,255,.06) !important;
+  }
+
+
+
+  #profile-main .profile-stat-box {
+
+      display: flex !important;
+
+      flex-direction: column !important;
+
+      align-items: center !important;
+
+      justify-content: center !important;
+
+      gap: 4px !important;
+  }
+
+
+
+  #profile-main .profile-stat-value {
+
+      font-size: 2rem !important;
+
+      line-height: 1 !important;
+
+      font-weight: 900 !important;
+
+      color:
+          #fff !important;
+  }
+
+
+
+  #profile-main .profile-stat-label {
+
+      font-size: .72rem !important;
+
+      font-weight: 700 !important;
+
+      text-transform: uppercase !important;
+
+      color:
+          rgba(255,255,255,.58) !important;
+  }
+
+
+
+  #profile-main .profile-stat-icon {
+
+      font-size: 1.1rem !important;
+
+      line-height: 1 !important;
+  }
+
+
+
+  /* =========================================================
+     ACCURACY
+  ========================================================= */
+
+  #profile-main .profile-accuracy-wrapper {
+
+      margin-top: 14px !important;
+
+      border-radius: 18px !important;
+
+      overflow: hidden !important;
+
+      border:
+          1px solid rgba(255,255,255,.05) !important;
+
+      background:
+          rgba(255,255,255,.02) !important;
+  }
+
+
+
+  #profile-main .profile-accuracy-title {
+
+      text-align: center !important;
+
+      font-size: .64rem !important;
+
+      font-weight: 700 !important;
+
+      letter-spacing: .7px !important;
+
+      color:
+          rgba(255,255,255,.42) !important;
+
+      padding: 8px 0 !important;
+
+      text-transform: uppercase !important;
+  }
+
+
+
+  #profile-main .profile-accuracy-grid {
+
+      display: grid !important;
+
+      grid-template-columns:
+          1fr 1px 1fr !important;
+
+      align-items: stretch !important;
+  }
+
+
+
+  #profile-main .accuracy-divider {
+
+      width: 1px !important;
+
+      background:
+          rgba(255,255,255,.06) !important;
+  }
+
+
+
+  
+/* =========================================================
+   INPUT ZOAÇÃO — NEON
+========================================================= */
+
+#profile-main #newsInput {
+
+    background:
+        rgba(0,0,0,.42) !important;
+
+    border:
+        2px solid #00bfff !important;
+
+    border-radius:
+        16px !important;
+
+    color:
+        #fff !important;
+
+    box-shadow:
+        0 0 6px rgba(0,191,255,.55),
+        0 0 14px rgba(0,191,255,.22),
+        inset 0 0 8px rgba(0,191,255,.12) !important;
+
+    transition:
+        .25s ease !important;
+}
+
+
+
+#profile-main #newsInput:focus {
+
+    border-color:
+        #35d1ff !important;
+
+    box-shadow:
+        0 0 8px rgba(0,191,255,.8),
+        0 0 22px rgba(0,191,255,.35),
+        inset 0 0 10px rgba(0,191,255,.18) !important;
+
+    outline:
+        none !important;
+}
+
+
+
+/* =========================================================
+   SELECT PREMIUM
+========================================================= */
+
+#profile-main #compareUserSelect {
+
+    width: 100% !important;
+
+    background:
+        linear-gradient(
+            180deg,
+            rgba(18,25,40,.95),
+            rgba(8,12,20,.98)
+        ) !important;
+
+    color:
+        #fff !important;
+
+    border:
+        1px solid rgba(70,130,255,.22) !important;
+
+    border-radius:
+        18px !important;
+
+    padding:
+        14px 18px !important;
+
+    font-size:
+        1rem !important;
+
+    font-weight:
+        600 !important;
+
+    box-shadow:
+        inset 0 0 12px rgba(0,120,255,.04),
+        0 0 14px rgba(0,120,255,.06) !important;
+
+    outline:
+        none !important;
+
+    appearance:
+        none !important;
+
+    -webkit-appearance:
+        none !important;
+}
+
+
+
+#profile-main #compareUserSelect option {
+
+    background:
+        #0b1118 !important;
+
+    color:
+        #fff !important;
+}
+
+
+
+/* =========================================================
+   FILTROS
+========================================================= */
+
+#profile-main .chart-filters {
+
+    background:
+        rgba(0, 0, 0, 0.3) !important;
+
+    border-radius:
+        50px !important;
+
+    padding:
+        4px !important;
+
+    border:
+        1px solid var(--glass-border) !important;
+}
+
+
+
+#profile-main .chart-btn {
+
+    background:
+        transparent !important;
+
+    border:
+        none !important;
+
+    color:
+        #94a3b8 !important;
+
+    font-weight:
+        700 !important;
+
+    border-radius:
+        50px !important;
+}
+
+
+
+#profile-main .chart-btn.active {
+
+    background:
+        var(--neon-cyan) !important;
+
+    color:
+        #fff !important;
+
+    box-shadow:
+        0 0 15px var(--neon-glow) !important;
+}
+
+
+
+/* =========================================================
+   HISTÓRICO DIÁRIO
+========================================================= */
+
+#profile-main .history-row {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    min-height: 64px !important;
+    padding: 0px 0px !important;
+}
+
+
+
+/* DATA */
+
+#profile-main .history-date {
+
+    font-size: .72rem !important;
+
+    font-weight: 700 !important;
+
+    line-height: 1 !important;
+
+    color:
+        rgba(255,255,255,.58) !important;
+}
+
+
+
+/* LINHA INFERIOR */
+
+#profile-main .history-bottom {
+
+    display: flex !important;
+
+    align-items: center !important;
+
+    justify-content: center !important;
+
+    gap: 6px !important;
+}
+
+
+
+
+
+/* PONTOS */
+
+#profile-main .history-points {
+
+    font-size: 1rem !important;
+
+    font-weight: 900 !important;
+
+    line-height: 1 !important;
+
+    color:
+        #7dff9b !important;
+}
+
+
+
+        /* ============================================================
+   TEMA DARK & GLASSMORPHISM — ABA DE DUELOS (TOTALMENTE ISOLADO)
+   ============================================================ */
+
+/* 0. Aba / Container Principal da Seção de Duelos */
+#profile-duel.profile-tab-section {
+  background: transparent !important; /* Neutraliza fundos brancos herdados */
+  color: #ffffff !important;
+  padding: 15px 5px !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+
+
+/* 1. Container da Fase / Abas de Navegação Interna (Grupos / Mata-mata) */
+#profile-duel .duel-phase-nav {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  background: rgba(15, 23, 42, 0.4) !important;
+  padding: 6px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+
+
+#profile-duel .duel-phase-nav .phase-btn {
+  flex: 1;
+  background: transparent !important;
+  border: none !important;
+  color: #94a3b8 !important;
+  padding: 10px;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+
+
+#profile-duel .duel-phase-nav .phase-btn.active {
+  background: #3b82f6 !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3) !important;
+}
+
+
+
+/* 2. O Bloco Principal da Rodada (Antigo Bloco Branco -> Agora Vidro Escuro) */
+#profile-duel .duel-accordion-item {
+  background: rgba(15, 23, 42, 0.45) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 24px !important;
+  margin-bottom: 18px !important;
+  overflow: hidden !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3) !important;
+}
+
+
+
+/* Cabeçalho do Accordion (Ex: "RODADA 15") */
+#profile-duel .duel-accordion-header {
+  background: rgba(255, 255, 255, 0.02) !important;
+  padding: 16px 20px !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+  color: #94a3b8 !important;
+}
+
+
+
+#profile-duel .duel-accordion-header span {
+  color: #e2e8f0 !important;
+  font-size: 0.8rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.06em !important;
+}
+
+
+
+#profile-duel .duel-accordion-header i {
+  color: #64748b !important;
+}
+
+
+
+#profile-duel .duel-accordion-body {
+  background: transparent !important;
+  padding: 16px !important;
+}
+
+
+
+/* 3. Cards de Confronto Individual (Chips) - PROTEGIDO CONTRA VAZAMENTOS */
+#profile-duel .chip {
+  background: rgba(30, 41, 59, 0.45) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  border-radius: 18px !important;
+  padding: 14px !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1) !important;
+  transition: transform 0.2s, background 0.2s !important;
+}
+
+
+
+#profile-duel .chip:hover {
+  transform: translateY(-1px) !important;
+  background: rgba(30, 41, 59, 0.55) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+
+
+/* Nomes dos times */
+#profile-duel .chip strong {
+  color: #f8fafc !important;
+  font-size: 0.9rem !important;
+  font-weight: 600 !important;
+}
+
+
+
+/* Escudos dos times */
+#profile-duel .flag-mini, 
+#profile-duel .flag-mini img, 
+#profile-duel .flag-mini svg {
+  width: 24px !important;
+  height: 24px !important;
+  object-fit: contain;
+}
+
+
+
+/* Pílula central de Placar Oficial / "VS" */
+#profile-duel .duel-score-pill {
+  background: rgba(15, 23, 42, 0.8) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #ffffff !important;
+  padding: 4px 14px !important;
+  border-radius: 8px !important;
+  font-family: 'Courier New', Courier, monospace !important;
+  font-weight: 700 !important;
+  font-size: 0.9rem !important;
+  letter-spacing: 0.5px;
+}
+
+
+
+/* 4. Caixa de Comparação Inferior (Onde aparecem os palpites salvos) */
+#profile-duel .comparison-grid {
+  background: rgba(15, 23, 42, 0.3) !important;
+  border-radius: 12px !important;
+  padding: 10px 14px !important;
+  border: 1px solid rgba(255, 255, 255, 0.03) !important;
+  margin-top: 10px !important;
+}
+
+
+
+/* Rótulos secundários ("RAFAEL:", "VOCÊ:") */
+#profile-duel .label-side {
+  color: #64748b !important;
+  font-size: 0.7rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.05em !important;
+  margin-bottom: 3px !important;
+}
+
+
+
+/* Conteúdo real do palpite */
+#profile-duel .val-content {
+  color: #f1f5f9 !important;
+  font-size: 0.85rem !important;
+  font-weight: 600 !important;
+}
+
+
+
+/* Placar palpado em texto puro */
+#profile-duel .score-bet-label {
+  color: #3b82f6 !important;
+  font-weight: 700 !important;
+}
+
+
+
+/* Ícone central de Status (Espadas ⚔️, Apertos de mão 🤝 ou Cadeados 🔒) */
+#profile-duel .status-icon {
+  color: #94a3b8 !important;
+  font-size: 1rem !important;
+}
+
+
+
+/* Tamanho dos escudos nos palpites simples (Lado A ou B) */
+#profile-duel .duel-bet-logo-only img, 
+#profile-duel .duel-bet-logo-only svg {
+  width: 20px !important;
+  height: 20px !important;
+  object-fit: contain;
+}
+
+
+
+/* 5. Bordas de Status do Confronto (Lógica de cores baseada no acerto) */
+#profile-duel .chip[class*="duel-split-green-green"] { border-left: 4px solid #10b981 !important; }
+
+ 
+#profile-duel .chip[class*="duel-split-red-red"]     { border-left: 4px solid #ef4444 !important; }
+
+ 
+#profile-duel .chip[class*="duel-split-green-red"]   { border-left: 4px solid #f59e0b !important; }
+
+ 
+#profile-duel .chip[class*="duel-split-red-green"]   { border-left: 4px solid #3b82f6 !important; }
+
+ 
+
+/* Mantem o tema glass, mas recupera a leitura de cores original dos cards */
+#profile-duel .chip.duel-split-green-green {
+  background: linear-gradient(to right, var(--duel-green-bg) 50%, var(--duel-green-bg) 50%) !important;
+  border-color: var(--duel-green-border) !important;
+}
+
+
+
+#profile-duel .chip.duel-split-red-red {
+  background: linear-gradient(to right, var(--duel-red-bg) 50%, var(--duel-red-bg) 50%) !important;
+  border-color: var(--duel-red-border) !important;
+}
+
+
+
+#profile-duel .chip.duel-split-yellow-yellow {
+  background: linear-gradient(to right, var(--duel-yellow-bg) 50%, var(--duel-yellow-bg) 50%) !important;
+  border-color: var(--duel-yellow-border) !important;
+}
+
+
+
+#profile-duel .chip.duel-split-green-red {
+  background: linear-gradient(to right, var(--duel-green-bg) 50%, var(--duel-red-bg) 50%) !important;
+  border-left-color: var(--duel-green-border) !important;
+  border-right-color: var(--duel-red-border) !important;
+}
+
+
+
+#profile-duel .chip.duel-split-red-green {
+  background: linear-gradient(to right, var(--duel-red-bg) 50%, var(--duel-green-bg) 50%) !important;
+  border-left-color: var(--duel-red-border) !important;
+  border-right-color: var(--duel-green-border) !important;
+}
+
+
+
+#profile-duel .chip.duel-split-green-yellow {
+  background: linear-gradient(to right, var(--duel-green-bg) 50%, var(--duel-yellow-bg) 50%) !important;
+  border-left-color: var(--duel-green-border) !important;
+  border-right-color: var(--duel-yellow-border) !important;
+}
+
+
+
+#profile-duel .chip.duel-split-yellow-green {
+  background: linear-gradient(to right, var(--duel-yellow-bg) 50%, var(--duel-green-bg) 50%) !important;
+  border-left-color: var(--duel-yellow-border) !important;
+  border-right-color: var(--duel-green-border) !important;
+}
+
+
+
+#profile-duel .chip.duel-split-red-yellow {
+  background: linear-gradient(to right, var(--duel-red-bg) 50%, var(--duel-yellow-bg) 50%) !important;
+  border-left-color: var(--duel-red-border) !important;
+  border-right-color: var(--duel-yellow-border) !important;
+}
+
+
+
+#profile-duel .chip.duel-split-yellow-red {
+  background: linear-gradient(to right, var(--duel-yellow-bg) 50%, var(--duel-red-bg) 50%) !important;
+  border-left-color: var(--duel-yellow-border) !important;
+  border-right-color: var(--duel-red-border) !important;
+}
+
+
+
+#profile-duel .chip[class*="duel-split-"],
+#profile-duel .chip[class*="duel-split-"]:hover {
+  color: #111827 !important;
+}
+
+
+
+#profile-duel .chip[class*="duel-split-"] strong,
+#profile-duel .chip[class*="duel-split-"] .val-content {
+  color: #111827 !important;
+}
+
+
+
+#profile-duel .chip[class*="duel-split-"] .label-side,
+#profile-duel .chip[class*="duel-split-"] .status-icon {
+  color: #475569 !important;
+}
+
+
+
+#profile-duel .chip[class*="duel-split-"] .comparison-grid {
+  background: rgba(255, 255, 255, 0.42) !important;
+  border-color: rgba(15, 23, 42, 0.08) !important;
+}
+
+
+
+/* Duelos de Concordância (Mesmo palpite cravado) */
+#profile-duel .match-concordance {
+  box-shadow:
+    0 4px 15px rgba(0, 0, 0, 0.1),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.35) !important;
+}
+
+
+
+/* Refinamento final: cards de duelo em glass dark com reflexo da cor do resultado */
+#profile-duel .chip[class*="duel-split-"] {
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #f8fafc !important;
+  backdrop-filter: blur(18px) saturate(135%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(135%) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 -18px 36px rgba(15, 23, 42, 0.28),
+    0 12px 28px rgba(0, 0, 0, 0.26) !important;
+}
+
+
+
+#profile-duel .chip.duel-split-green-green {
+  background:
+    linear-gradient(135deg, rgba(16, 185, 129, 0.32), rgba(16, 185, 129, 0.12)),
+    rgba(15, 23, 42, 0.72) !important;
+  border-color: rgba(16, 185, 129, 0.48) !important;
+}
+
+
+
+#profile-duel .chip.duel-split-red-red {
+  background:
+    linear-gradient(135deg, rgba(239, 68, 68, 0.34), rgba(239, 68, 68, 0.12)),
+    rgba(15, 23, 42, 0.72) !important;
+  border-color: rgba(239, 68, 68, 0.5) !important;
+}
+
+
+
+#profile-duel .chip.duel-split-yellow-yellow {
+  background:
+    linear-gradient(135deg, rgba(250, 204, 21, 0.3), rgba(250, 204, 21, 0.1)),
+    rgba(15, 23, 42, 0.72) !important;
+  border-color: rgba(250, 204, 21, 0.48) !important;
+}
+
+
+
+#profile-duel .chip.duel-split-green-red {
+  background:
+    linear-gradient(to right, rgba(16, 185, 129, 0.28) 0 50%, rgba(239, 68, 68, 0.26) 50% 100%),
+    rgba(15, 23, 42, 0.74) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+
+
+#profile-duel .chip.duel-split-red-green {
+  background:
+    linear-gradient(to right, rgba(239, 68, 68, 0.26) 0 50%, rgba(16, 185, 129, 0.28) 50% 100%),
+    rgba(15, 23, 42, 0.74) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+
+
+#profile-duel .chip.duel-split-green-yellow {
+  background:
+    linear-gradient(to right, rgba(16, 185, 129, 0.28) 0 50%, rgba(250, 204, 21, 0.24) 50% 100%),
+    rgba(15, 23, 42, 0.74) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+
+
+#profile-duel .chip.duel-split-yellow-green {
+  background:
+    linear-gradient(to right, rgba(250, 204, 21, 0.24) 0 50%, rgba(16, 185, 129, 0.28) 50% 100%),
+    rgba(15, 23, 42, 0.74) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+
+
+#profile-duel .chip.duel-split-red-yellow {
+  background:
+    linear-gradient(to right, rgba(239, 68, 68, 0.26) 0 50%, rgba(250, 204, 21, 0.24) 50% 100%),
+    rgba(15, 23, 42, 0.74) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+
+
+#profile-duel .chip.duel-split-yellow-red {
+  background:
+    linear-gradient(to right, rgba(250, 204, 21, 0.24) 0 50%, rgba(239, 68, 68, 0.26) 50% 100%),
+    rgba(15, 23, 42, 0.74) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+
+
+#profile-duel .chip[class*="duel-split-"]:hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px) !important;
+}
+
+
+
+#profile-duel .chip[class*="duel-split-"] strong,
+#profile-duel .chip[class*="duel-split-"] .val-content {
+  color: #f8fafc !important;
+}
+
+
+
+#profile-duel .chip[class*="duel-split-"] .label-side,
+#profile-duel .chip[class*="duel-split-"] .status-icon {
+  color: #cbd5e1 !important;
+}
+
+
+
+#profile-duel .chip[class*="duel-split-"] .comparison-grid {
+  background: rgba(15, 23, 42, 0.34) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+
+
+/* Estilização para o modo Mata-mata (Vencedor e Classificado) */
+#profile-duel .knockout-bet-detail-mini {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+
+
+#profile-duel .mini-row {
+  font-size: 0.75rem !important;
+  color: #cbd5e1 !important;
+}
+
+
+/* =========================================================
+   ESPELHAMENTO COMPLETO: PERFIL PÚBLICO (#user-profile)
+   REPLICANDO FIELMENTE A IDENTIDADE DO PERFIL PRINCIPAL
+========================================================= */
+
+/* BACKGROUND FORÇADO NA ABA PÚBLICA */
+#user-profile {
+    background:
+        radial-gradient(
+            circle at top left,
+            rgba(0,120,255,.16),
+            transparent 28%
+        ),
+        radial-gradient(
+            circle at top right,
+            rgba(0,180,255,.10),
+            transparent 30%
+        ),
+        linear-gradient(
+            180deg,
+            #05080f 0%,
+            #081018 45%,
+            #05080f 100%
+        ) !important;
+    min-height: 100vh !important;
+    color: #fff !important;
+    position: relative !important;
+    overflow-x: hidden !important;
+    padding-bottom: 120px !important;
+}
+
+
+
+/* TÍTULO COM GRADIENTE NEON */
+#user-profile .profile-title {
+    font-weight: 900 !important;
+    text-transform: lowercase !important;
+    letter-spacing: -1.5px !important;
+    text-align: center !important;
+    font-size: 2.2rem !important;
+    margin-bottom: 20px !important;
+    background:
+        linear-gradient(
+            90deg,
+            #ffffff,
+            #7fdcff,
+            #00d2ff
+        );
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    text-shadow: 0 0 18px rgba(0,210,255,.18) !important;
+}
+
+
+
+/* CARDS BASE GLASSMORPHISM */
+#user-profile #userProfileScoreCard > div,
+#user-profile .profile-card,
+#user-profile .user-score-card {
+    background:
+        linear-gradient(
+            180deg,
+            rgba(255,255,255,.05),
+            rgba(255,255,255,.025)
+        ) !important;
+    border: 1px solid rgba(255,255,255,.06) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+    border-radius: 22px !important;
+    box-shadow:
+        0 10px 30px rgba(0,0,0,.45),
+        0 0 14px rgba(0,120,255,.04) !important;
+}
+
+
+
+/* PROFILE PREMIUM CARD (DENTRO DO CARD DE SCORE) */
+#user-profile .profile-premium-card {
+    position: relative !important;
+    overflow: hidden !important;
+    padding: 14px !important;
+    border-radius: 24px !important;
+    background:
+        radial-gradient(
+            circle at top left,
+            rgba(0,120,255,.12),
+            transparent 32%
+        ),
+        linear-gradient(
+            180deg,
+            rgba(7,12,20,.96),
+            rgba(4,8,16,.98)
+        ) !important;
+    border: 1px solid rgba(80,130,255,.10) !important;
+    box-shadow:
+        inset 0 0 30px rgba(0,120,255,.03),
+        0 10px 25px rgba(0,0,0,.45),
+        0 0 14px rgba(0,120,255,.05) !important;
+}
+
+
+
+/* HEADER DO CARD */
+#user-profile .profile-premium-header {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    margin-bottom: 14px !important;
+}
+
+
+
+#user-profile .profile-user-left {
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+}
+
+
+
+/* AVATAR COM ANEL LUMINOSO */
+#user-profile .profile-avatar-ring {
+    width: 56px !important;
+    height: 56px !important;
+    border-radius: 50% !important;
+    padding: 3px !important;
+    background: linear-gradient(180deg, #3b82ff, #005eff) !important;
+    box-shadow: 0 0 18px rgba(0,120,255,.25) !important;
+}
+
+
+
+#user-profile .profile-avatar-letter {
+    width: 100% !important;
+    height: 100% !important;
+    border-radius: 50% !important;
+    background: #071019 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 2rem !important;
+    font-weight: 900 !important;
+    color: #fff !important;
+}
+
+
+
+/* META USER & BADGE DE RANKING */
+#user-profile .profile-user-meta {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    gap: 4px !important;
+}
+
+
+
+#user-profile .profile-user-name {
+    font-size: 1.1rem !important;
+    font-weight: 900 !important;
+    color: #fff !important;
+    line-height: 1 !important;
+}
+
+
+
+#user-profile .profile-rank-badge {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: fit-content !important;
+    padding: 4px 10px !important;
+    border-radius: 10px !important;
+    background: rgba(30,70,180,.45) !important;
+    border: 1px solid rgba(80,130,255,.25) !important;
+    color: #fff !important;
+    font-size: .75rem !important;
+    font-weight: 800 !important;
+}
+
+
+
+/* LADO DOS PONTOS TOTAIS */
+#user-profile .profile-total-side {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+
+
+#user-profile .profile-total-points {
+    font-size: 3.4rem !important;
+    line-height: .9 !important;
+    font-weight: 900 !important;
+    background: linear-gradient(180deg, #6bb6ff, #005eff);
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    text-shadow: 0 0 18px rgba(0,120,255,.20) !important;
+}
+
+
+
+#user-profile .profile-total-label {
+    font-size: .68rem !important;
+    font-weight: 700 !important;
+    letter-spacing: .6px !important;
+    color: rgba(255,255,255,.55) !important;
+    text-align: center !important;
+}
+
+
+
+/* GRID DE MEDALHAS/PÓDIOS */
+#user-profile .profile-breakdown-grid {
+
+    display: grid !important;
+
+    grid-template-columns: 1fr 1px 1fr 1px 1fr 1px 1fr !important;
+
+    align-items: center !important;
+
+    margin-top: 8px !important;
+
+    padding-top: 14px !important;
+
+    border-top: 1px solid rgba(255,255,255,.06) !important;
+
+}
+
+
+
+#user-profile .profile-stat-divider {
+    width: 1px !important;
+    height: 54px !important;
+    background: rgba(255,255,255,.06) !important;
+}
+
+
+
+#user-profile .profile-stat-box {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+}
+
+
+
+#user-profile .profile-stat-value {
+    font-size: 2rem !important;
+    line-height: 1 !important;
+    font-weight: 900 !important;
+    color: #fff !important;
+}
+
+
+
+#user-profile .profile-stat-label {
+    font-size: .72rem !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    color: rgba(255,255,255,.58) !important;
+}
+
+
+
+#user-profile .profile-stat-icon {
+    font-size: 1.1rem !important;
+    line-height: 1 !important;
+}
+
+
+
+/* SEÇÃO DE APROVEITAMENTO DO SCORECARD */
+#user-profile .profile-accuracy-wrapper {
+    margin-top: 14px !important;
+    border-radius: 18px !important;
+    overflow: hidden !important;
+    border: 1px solid rgba(255,255,255,.05) !important;
+    background: rgba(255,255,255,.02) !important;
+}
+
+
+
+#user-profile .profile-accuracy-title {
+    text-align: center !important;
+    font-size: .64rem !important;
+    font-weight: 700 !important;
+    letter-spacing: .7px !important;
+    color: rgba(255,255,255,.42) !important;
+    padding: 8px 0 !important;
+    text-transform: uppercase !important;
+}
+
+
+
+#user-profile .profile-accuracy-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1px 1fr !important;
+    align-items: stretch !important;
+}
+
+
+
+#user-profile .accuracy-divider {
+    width: 1px !important;
+    background: rgba(255,255,255,.06) !important;
+}
+
+
+
+#user-profile .rules-grid {
+
+    display: grid !important;
+
+    grid-template-columns: 1fr 1fr !important;
+
+    column-gap: 14px !important;
+
+    row-gap: 8px !important;
+
+    width: 100% !important;
+}
+
+
+
+/* FILTROS INTEGRADOS ESTILO CÁPSULA (7d, 15d, Tudo) */
+#user-profile .chart-filters {
+    background: rgba(0, 0, 0, 0.3) !important;
+    border-radius: 50px !important;
+    padding: 4px !important;
+    border: 1px solid var(--glass-border) !important;
+}
+
+
+
+#user-profile .chart-btn {
+    background: transparent !important;
+    border: none !important;
+    color: #94a3b8 !important;
+    font-weight: 700 !important;
+    border-radius: 50px !important;
+}
+
+
+
+#user-profile .chart-btn.active {
+    background: var(--neon-cyan) !important;
+    color: #fff !important;
+    box-shadow: 0 0 15px var(--neon-glow) !important;
+}
+
+
+
+/* HISTÓRICO DIÁRIO CONFIGURADO EM COLUNAS VERTICAIS */
+#user-profile .history-row {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    min-height: 64px !important;
+    padding: 0px 0px !important;
+}
+
+
+
+#user-profile .history-date {
+    font-size: .72rem !important;
+    font-weight: 700 !important;
+    line-height: 1 !important;
+    color: rgba(255,255,255,.58) !important;
+}
+
+
+
+#user-profile .history-bottom {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+}
+
+
+
+
+
+#user-profile .history-points {
+    font-size: 1rem !important;
+    font-weight: 900 !important;
+    line-height: 1 !important;
+    color: #7dff9b !important;
+}
+
+
+
+/* =========================================================
+   DUELOS DO PERFIL PUBLICO (#user-profile)
+   Espelha o visual dark/glass do #profile-duel sem vazar.
+========================================================= */
+
+#user-profile #duel-section-wrapper {
+    background: transparent !important;
+    color: #ffffff !important;
+    padding: 15px 5px !important;
+    box-shadow: none !important;
+    border: none !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .profile-card {
+    background: rgba(15, 23, 42, 0.45) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 24px !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3) !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .duel-header-main h3 {
+    color: #f8fafc !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .duel-subtitle {
+    color: #94a3b8 !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .duel-phase-nav {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    background: rgba(15, 23, 42, 0.4) !important;
+    padding: 6px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+
+
+#user-profile #duel-section-wrapper .duel-phase-nav .phase-btn {
+    flex: 1;
+    background: transparent !important;
+    border: none !important;
+    color: #94a3b8 !important;
+    padding: 10px;
+    border-radius: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+
+
+#user-profile #duel-section-wrapper .duel-phase-nav .phase-btn.active {
+    background: #3b82f6 !important;
+    color: #ffffff !important;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3) !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .duel-accordion-item {
+    background: rgba(15, 23, 42, 0.45) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 24px !important;
+    margin-bottom: 18px !important;
+    overflow: hidden !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3) !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .duel-accordion-header {
+    background: rgba(255, 255, 255, 0.02) !important;
+    padding: 16px 20px !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+    color: #94a3b8 !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .duel-accordion-header span {
+    color: #e2e8f0 !important;
+    font-size: 0.8rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.06em !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .duel-accordion-header i {
+    color: #64748b !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .duel-accordion-body {
+    background: transparent !important;
+    padding: 16px !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .chip {
+    background: rgba(30, 41, 59, 0.45) !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+    border-radius: 18px !important;
+    padding: 14px !important;
+    color: #ffffff !important;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1) !important;
+    transition: transform 0.2s, background 0.2s !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .chip:hover {
+    transform: translateY(-1px) !important;
+    background: rgba(30, 41, 59, 0.55) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .chip strong {
+    color: #f8fafc !important;
+    font-size: 0.9rem !important;
+    font-weight: 600 !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .flag-mini,
+#user-profile #duel-section-wrapper .flag-mini img,
+#user-profile #duel-section-wrapper .flag-mini svg {
+    width: 24px !important;
+    height: 24px !important;
+    object-fit: contain;
+}
+
+
+
+#user-profile #duel-section-wrapper .duel-score-pill {
+    background: rgba(15, 23, 42, 0.8) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    color: #ffffff !important;
+    padding: 4px 14px !important;
+    border-radius: 8px !important;
+    font-family: 'Courier New', Courier, monospace !important;
+    font-weight: 700 !important;
+    font-size: 0.9rem !important;
+    letter-spacing: 0.5px;
+}
+
+
+
+#user-profile #duel-section-wrapper .comparison-grid {
+    background: rgba(15, 23, 42, 0.3) !important;
+    border-radius: 12px !important;
+    padding: 10px 14px !important;
+    border: 1px solid rgba(255, 255, 255, 0.03) !important;
+    margin-top: 10px !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .label-side {
+    color: #64748b !important;
+    font-size: 0.7rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.05em !important;
+    margin-bottom: 3px !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .val-content {
+    color: #f1f5f9 !important;
+    font-size: 0.85rem !important;
+    font-weight: 600 !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .score-bet-label {
+    color: #3b82f6 !important;
+    font-weight: 700 !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .status-icon {
+    color: #94a3b8 !important;
+    font-size: 1rem !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .duel-bet-logo-only img,
+#user-profile #duel-section-wrapper .duel-bet-logo-only svg {
+    width: 20px !important;
+    height: 20px !important;
+    object-fit: contain;
+}
+
+
+
+#user-profile #duel-section-wrapper .chip[class*="duel-split-"] {
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    color: #f8fafc !important;
+    backdrop-filter: blur(18px) saturate(135%) !important;
+    -webkit-backdrop-filter: blur(18px) saturate(135%) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.14),
+        inset 0 -18px 36px rgba(15, 23, 42, 0.28),
+        0 12px 28px rgba(0, 0, 0, 0.26) !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .chip.duel-pending {
+    background: rgba(30, 41, 59, 0.45) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .chip.duel-split-green-green {
+    background:
+        linear-gradient(135deg, rgba(16, 185, 129, 0.32), rgba(16, 185, 129, 0.12)),
+        rgba(15, 23, 42, 0.72) !important;
+    border-color: rgba(16, 185, 129, 0.48) !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .chip.duel-split-red-red {
+    background:
+        linear-gradient(135deg, rgba(239, 68, 68, 0.34), rgba(239, 68, 68, 0.12)),
+        rgba(15, 23, 42, 0.72) !important;
+    border-color: rgba(239, 68, 68, 0.5) !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .chip.duel-split-yellow-yellow {
+    background:
+        linear-gradient(135deg, rgba(250, 204, 21, 0.3), rgba(250, 204, 21, 0.1)),
+        rgba(15, 23, 42, 0.72) !important;
+    border-color: rgba(250, 204, 21, 0.48) !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .chip.duel-split-green-red {
+    background:
+        linear-gradient(to right, rgba(16, 185, 129, 0.28) 0 50%, rgba(239, 68, 68, 0.26) 50% 100%),
+        rgba(15, 23, 42, 0.74) !important;
+    border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .chip.duel-split-red-green {
+    background:
+        linear-gradient(to right, rgba(239, 68, 68, 0.26) 0 50%, rgba(16, 185, 129, 0.28) 50% 100%),
+        rgba(15, 23, 42, 0.74) !important;
+    border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .chip.duel-split-green-yellow {
+    background:
+        linear-gradient(to right, rgba(16, 185, 129, 0.28) 0 50%, rgba(250, 204, 21, 0.24) 50% 100%),
+        rgba(15, 23, 42, 0.74) !important;
+    border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .chip.duel-split-yellow-green {
+    background:
+        linear-gradient(to right, rgba(250, 204, 21, 0.24) 0 50%, rgba(16, 185, 129, 0.28) 50% 100%),
+        rgba(15, 23, 42, 0.74) !important;
+    border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .chip.duel-split-red-yellow {
+    background:
+        linear-gradient(to right, rgba(239, 68, 68, 0.26) 0 50%, rgba(250, 204, 21, 0.24) 50% 100%),
+        rgba(15, 23, 42, 0.74) !important;
+    border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .chip.duel-split-yellow-red {
+    background:
+        linear-gradient(to right, rgba(250, 204, 21, 0.24) 0 50%, rgba(239, 68, 68, 0.26) 50% 100%),
+        rgba(15, 23, 42, 0.74) !important;
+    border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .chip[class*="duel-split-"]:hover {
+    filter: brightness(1.06);
+    transform: translateY(-1px) !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .chip[class*="duel-split-"] strong,
+#user-profile #duel-section-wrapper .chip[class*="duel-split-"] .val-content {
+    color: #f8fafc !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .chip[class*="duel-split-"] .label-side,
+#user-profile #duel-section-wrapper .chip[class*="duel-split-"] .status-icon {
+    color: #cbd5e1 !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .chip[class*="duel-split-"] .comparison-grid {
+    background: rgba(15, 23, 42, 0.34) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .match-concordance {
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.16),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.16),
+        0 12px 28px rgba(0, 0, 0, 0.26) !important;
+}
+
+
+
+#user-profile #duel-section-wrapper .knockout-bet-detail-mini {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+
+
+#user-profile #duel-section-wrapper .mini-row {
+    font-size: 0.75rem !important;
+    color: #cbd5e1 !important;
+}
+
+
+
+/* =========================================================
+   PROFILE — REGRAS DE PONTUAÇÃO / MODO
+   Visual glass + neon alinhado ao scorecard mobile
+========================================================= */
+#profile-main .profile-rules-card,
+#user-profile .profile-rules-card {
+    position: relative !important;
+    overflow: hidden !important;
+    margin-top: 1rem !important;
+    padding: 18px !important;
+    border-radius: 24px !important;
+    border: 1px solid rgba(255,255,255,.075) !important;
+    background:
+        radial-gradient(circle at 100% 0%, rgba(0,210,255,.08), transparent 34%),
+        linear-gradient(145deg, rgba(20,32,49,.96), rgba(9,15,24,.98)) !important;
+    box-shadow:
+        0 18px 42px rgba(0,0,0,.22),
+        inset 0 1px 0 rgba(255,255,255,.035) !important;
+}
+
+
+
+#profile-main .profile-rules-card::before,
+#user-profile .profile-rules-card::before {
+    content: "" !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 18px !important;
+    right: 18px !important;
+    height: 1px !important;
+    background: linear-gradient(90deg, transparent, rgba(0,210,255,.45), transparent) !important;
+    opacity: .75 !important;
+}
+
+
+
+#profile-main .profile-rules-title-icon,
+#user-profile .profile-rules-title-icon {
+    width: 40px !important;
+    height: 40px !important;
+    flex: 0 0 40px !important;
+    display: grid !important;
+    place-items: center !important;
+    border-radius: 13px !important;
+    background: linear-gradient(145deg, rgba(0,210,255,.18), rgba(59,130,246,.12)) !important;
+    border: 1px solid rgba(0,210,255,.18) !important;
+    box-shadow: 0 0 20px rgba(0,210,255,.08) !important;
+    font-size: 1.2rem !important;
+}
+
+
+
+#profile-main .profile-rules-divider,
+#user-profile .profile-rules-divider {
+    height: 1px !important;
+    margin: 16px 0 14px !important;
+    background: linear-gradient(90deg, rgba(255,255,255,.075), rgba(0,210,255,.16), rgba(255,255,255,.075)) !important;
+}
+
+
+
+#profile-main .profile-rules-group,
+#user-profile .profile-rules-group {
+    margin-top: 12px !important;
+    padding: 11px !important;
+    border-radius: 17px !important;
+    border: 1px solid rgba(255,255,255,.055) !important;
+    background: rgba(255,255,255,.018) !important;
+}
+
+
+
+#profile-main .profile-rules-group:first-of-type,
+#user-profile .profile-rules-group:first-of-type {
+    margin-top: 0 !important;
+}
+
+
+
+#profile-main .profile-rules-group-title,
+#user-profile .profile-rules-group-title {
+    display: flex !important;
+    align-items: center !important;
+    gap: 7px !important;
+    margin: 0 2px 9px !important;
+    color: rgba(255,255,255,.7) !important;
+    font-size: .68rem !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    letter-spacing: .75px !important;
+}
+
+
+
+#profile-main .profile-rules-group-icon,
+#user-profile .profile-rules-group-icon {
+    font-size: .85rem !important;
+    filter: drop-shadow(0 0 6px rgba(0,210,255,.16)) !important;
+}
+
+
+
+#profile-main .profile-rules-group .rules-grid,
+#user-profile .profile-rules-group .rules-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+    width: 100% !important;
+}
+
+
+
+#profile-main .profile-rule-item,
+#user-profile .profile-rule-item {
+    display: grid !important;
+    grid-template-columns: 25px minmax(0, 1fr) auto !important;
+    align-items: center !important;
+    gap: 7px !important;
+    min-width: 0 !important;
+    min-height: 43px !important;
+    padding: 7px 9px !important;
+    box-sizing: border-box !important;
+    border-radius: 12px !important;
+    border: 1px solid rgba(255,255,255,.045) !important;
+    background: rgba(7,14,23,.42) !important;
+    transition: transform .18s ease, border-color .18s ease, background .18s ease !important;
+}
+
+
+
+#profile-main .profile-rule-item:hover,
+#user-profile .profile-rule-item:hover {
+    transform: translateY(-1px) !important;
+    border-color: rgba(0,210,255,.16) !important;
+    background: rgba(0,210,255,.035) !important;
+}
+
+
+
+#profile-main .profile-rule-icon,
+#user-profile .profile-rule-icon {
+    width: 25px !important;
+    height: 25px !important;
+    display: grid !important;
+    place-items: center !important;
+    border-radius: 8px !important;
+    background: rgba(255,255,255,.055) !important;
+    font-size: .78rem !important;
+}
+
+
+
+#profile-main .profile-rule-item .rule-label,
+#user-profile .profile-rule-item .rule-label {
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    color: rgba(255,255,255,.78) !important;
+    font-size: .72rem !important;
+    font-weight: 650 !important;
+}
+
+
+
+#profile-main .profile-rule-points,
+#user-profile .profile-rule-points {
+    display: inline-flex !important;
+    align-items: baseline !important;
+    gap: 2px !important;
+    padding: 4px 7px !important;
+    border-radius: 8px !important;
+    color: #fff !important;
+    background: linear-gradient(135deg, rgba(59,130,246,.22), rgba(0,210,255,.12)) !important;
+    border: 1px solid rgba(96,165,250,.14) !important;
+    font-size: .74rem !important;
+    font-weight: 850 !important;
+    white-space: nowrap !important;
+}
+
+
+
+#profile-main .profile-rule-points small,
+#user-profile .profile-rule-points small {
+    color: rgba(255,255,255,.5) !important;
+    font-size: .52rem !important;
+    font-weight: 800 !important;
+}
+
+
+
+#profile-main .profile-rules-group-extra .profile-rule-points,
+#user-profile .profile-rules-group-extra .profile-rule-points {
+    background: linear-gradient(135deg, rgba(245,158,11,.18), rgba(236,72,153,.08)) !important;
+    border-color: rgba(245,158,11,.13) !important;
+}
+
+
+
+#profile-main .profile-rules-group-podium .profile-rule-points,
+#user-profile .profile-rules-group-podium .profile-rule-points {
+    background: linear-gradient(135deg, rgba(168,85,247,.18), rgba(59,130,246,.10)) !important;
+    border-color: rgba(168,85,247,.14) !important;
+}
+
+
+
+#profile-main .profile-rules-empty,
+#user-profile .profile-rules-empty {
+    padding: 18px 10px !important;
+    text-align: center !important;
+    color: rgba(255,255,255,.42) !important;
+    font-size: .75rem !important;
+}
+
+
+
+@media (max-width: 560px) {
+    #profile-main .profile-rules-card,
+    #user-profile .profile-rules-card {
+        padding: 15px !important;
+        border-radius: 22px !important;
+    }
+
+    #profile-main .profile-rules-title-icon,
+    #user-profile .profile-rules-title-icon {
+        width: 36px !important;
+        height: 36px !important;
+        flex-basis: 36px !important;
+        border-radius: 11px !important;
+    }
+
+    #profile-main .profile-rules-group,
+    #user-profile .profile-rules-group {
+        padding: 9px !important;
+        border-radius: 15px !important;
+    }
+
+    #profile-main .profile-rule-item,
+    #user-profile .profile-rule-item {
+        grid-template-columns: 22px minmax(0, 1fr) auto !important;
+        gap: 5px !important;
+        min-height: 40px !important;
+        padding: 6px 7px !important;
+        border-radius: 10px !important;
+    }
+
+    #profile-main .profile-rule-icon,
+    #user-profile .profile-rule-icon {
+        width: 22px !important;
+        height: 22px !important;
+        border-radius: 7px !important;
+        font-size: .7rem !important;
+    }
+
+    #profile-main .profile-rule-item .rule-label,
+    #user-profile .profile-rule-item .rule-label {
+        font-size: .64rem !important;
+    }
+
+    #profile-main .profile-rule-points,
+    #user-profile .profile-rule-points {
+        padding: 3px 5px !important;
+        font-size: .66rem !important;
+    }
+}
+
+
+
+
+/* =========================================================
+   PROFILE RULES — COMPACT MOBILE / DESKTOP OVERRIDE
+   Mantém o visual glass, mas transforma as regras em uma
+   única malha compacta para reduzir drasticamente a altura.
+========================================================= */
+#profile-main .profile-rules-card .profile-rules-group,
+#user-profile .profile-rules-card .profile-rules-group {
+    display: contents !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+}
+
+
+
+#profile-main .profile-rules-card .profile-rules-group-title,
+#user-profile .profile-rules-card .profile-rules-group-title {
+    grid-column: 1 / -1 !important;
+    margin: 8px 0 5px !important;
+    padding: 0 2px !important;
+    min-height: 18px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    color: rgba(255,255,255,.48) !important;
+    font-size: .58rem !important;
+    letter-spacing: .8px !important;
+}
+
+
+
+#profile-main .profile-rules-card .profile-rules-group:first-of-type .profile-rules-group-title,
+#user-profile .profile-rules-card .profile-rules-group:first-of-type .profile-rules-group-title {
+    margin-top: 0 !important;
+}
+
+
+
+#profile-main .profile-rules-card .profile-rules-group .rules-grid,
+#user-profile .profile-rules-card .profile-rules-group .rules-grid {
+    display: contents !important;
+}
+
+
+
+#profile-main .profile-rules-card .profile-rule-item,
+#user-profile .profile-rules-card .profile-rule-item {
+    min-height: 38px !important;
+    height: 38px !important;
+    padding: 5px 8px !important;
+    border-radius: 11px !important;
+    grid-template-columns: 22px minmax(0,1fr) auto !important;
+    gap: 6px !important;
+    background: linear-gradient(135deg, rgba(255,255,255,.035), rgba(255,255,255,.012)) !important;
+}
+
+
+
+#profile-main .profile-rules-card .profile-rule-icon,
+#user-profile .profile-rules-card .profile-rule-icon {
+    width: 22px !important;
+    height: 22px !important;
+    font-size: .68rem !important;
+    border-radius: 7px !important;
+}
+
+
+
+#profile-main .profile-rules-card .profile-rule-item .rule-label,
+#user-profile .profile-rules-card .profile-rule-item .rule-label {
+    font-size: .66rem !important;
+    line-height: 1 !important;
+}
+
+
+
+#profile-main .profile-rules-card .profile-rule-points,
+#user-profile .profile-rules-card .profile-rule-points {
+    padding: 3px 6px !important;
+    font-size: .65rem !important;
+    border-radius: 7px !important;
+}
+
+
+
+#profile-main .profile-rules-card .profile-rule-points small,
+#user-profile .profile-rules-card .profile-rule-points small {
+    font-size: .48rem !important;
+}
+
+
+
+@media (min-width: 700px) {
+    #profile-main .profile-rules-card .profile-rules-group .rules-grid,
+    #user-profile .profile-rules-card .profile-rules-group .rules-grid {
+        grid-template-columns: repeat(3, minmax(0,1fr)) !important;
+        gap: 7px !important;
+    }
+}
+
+
+
+@media (max-width: 699px) {
+    #profile-main .profile-rules-card .profile-rules-group .rules-grid,
+    #user-profile .profile-rules-card .profile-rules-group .rules-grid {
+        grid-template-columns: repeat(2, minmax(0,1fr)) !important;
+        gap: 6px !important;
+    }
+
+    #profile-main .profile-rules-card,
+    #user-profile .profile-rules-card {
+        padding: 13px !important;
+        border-radius: 21px !important;
+    }
+
+    #profile-main .profile-rules-card .profile-rules-divider,
+    #user-profile .profile-rules-card .profile-rules-divider {
+        margin: 11px 0 8px !important;
+    }
+}
+
+
+
+@media (max-width: 380px) {
+    #profile-main .profile-rules-card .profile-rule-item,
+    #user-profile .profile-rules-card .profile-rule-item {
+        grid-template-columns: 20px minmax(0,1fr) auto !important;
+        gap: 4px !important;
+        padding: 4px 6px !important;
+    }
+
+    #profile-main .profile-rules-card .profile-rule-item .rule-label,
+    #user-profile .profile-rules-card .profile-rule-item .rule-label {
+        font-size: .59rem !important;
+    }
+}
+
+
+
+
+/* ============================================================
+   REGRAS DE PONTUAÇÃO — CARD RECOLHÍVEL
+   ============================================================ */
+
+.profile-rules-card {
+  overflow: hidden;
+}
+
+
+
+.profile-rules-card > summary.profile-rules-collapsed {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 66px;
+  padding: 18px 22px;
+  margin: 0;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+
+
+.profile-rules-card > summary.profile-rules-collapsed::-webkit-details-marker {
+  display: none;
+}
+
+
+
+.profile-rules-card > summary.profile-rules-collapsed::marker {
+  display: none;
+  content: "";
+}
+
+
+
+.profile-rules-collapsed-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #fff;
+}
+
+
+
+.profile-rules-collapsed .profile-rules-title-icon {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+
+
+.profile-rules-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: #8ecbff;
+  background: rgba(61, 126, 218, 0.12);
+  border: 1px solid rgba(100, 170, 255, 0.20);
+  transition: transform .22s ease, background .22s ease;
+}
+
+
+
+.profile-rules-card[open] > summary .profile-rules-toggle {
+  transform: rotate(180deg);
+  background: rgba(61, 126, 218, 0.22);
+}
+
+
+
+.profile-rules-card > summary.profile-rules-collapsed:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+
+
+.profile-rules-card > summary.profile-rules-collapsed:focus-visible {
+  outline: 2px solid #4db7ff;
+  outline-offset: -2px;
+}
+
+
+
+.profile-rules-expanded {
+  padding: 0 22px 20px;
+  animation: profileRulesOpen .20s ease-out;
+}
+
+
+
+@media (max-width: 480px) {
+  .profile-rules-card > summary.profile-rules-collapsed {
+    min-height: 58px;
+    padding: 15px 18px;
+  }
+
+  .profile-rules-collapsed-title {
+    font-size: 1.05rem;
+  }
+
+  .profile-rules-expanded {
+    padding-left: 18px;
+    padding-right: 18px;
+    padding-bottom: 16px;
+  }
+}
+
+
+
+
+
+/* ============================================================
+   REGRAS — MODO + BLOQUEIO + AJUDA
+   ============================================================ */
+
+.profile-rules-collapsed-left {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+}
+
+
+
+.profile-rules-badges {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+
+
+.profile-rules-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: .72rem;
+  font-weight: 800;
+  color: #bfe5ff;
+  background: rgba(57, 145, 220, .13);
+  border: 1px solid rgba(100, 180, 255, .18);
+  white-space: nowrap;
+}
+
+
+
+.profile-rules-badge-lock {
+  color: #d7dcff;
+  background: rgba(126, 108, 214, .13);
+  border-color: rgba(150, 130, 230, .18);
+}
+
+
+
+.profile-rules-collapsed-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+}
+
+
+
+.profile-rules-help {
+  width: 27px;
+  height: 27px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(120, 190, 255, .28);
+  background: rgba(60, 145, 220, .10);
+  color: #bfe6ff;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+
+
+.profile-rules-help:hover,
+.profile-rules-help:focus-visible {
+  background: rgba(60, 145, 220, .22);
+}
+
+
+
+.profile-rules-help-panel {
+  margin: 0 0 15px;
+  padding: 13px 14px;
+  border-radius: 13px;
+  background: rgba(8, 20, 38, .72);
+  border: 1px solid rgba(105, 175, 240, .18);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
+}
+
+
+
+.profile-rules-help-panel[hidden] {
+  display: none;
+}
+
+
+
+.profile-rules-help-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+
+
+.profile-rules-help-panel p {
+  margin: 5px 0 0;
+  font-size: .82rem;
+  line-height: 1.4;
+  color: rgba(230, 238, 248, .78);
+}
+
+
+
+.profile-rules-help-close {
+  width: 25px;
+  height: 25px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255,255,255,.06);
+  color: #dcecff;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+
+
+@media (max-width: 480px) {
+  .profile-rules-collapsed-left {
+    gap: 7px 9px;
+  }
+
+  .profile-rules-badges {
+    width: 100%;
+  }
+
+  .profile-rules-badge {
+    font-size: .68rem;
+    padding: 3px 7px;
+  }
+}
+
+
+
+
+/* ============================================================
+   🖼️ AVATAR DO PERFIL — foto pessoal editável somente no próprio perfil
+   ============================================================ */
+.profile-avatar-editable {
+  position: relative;
+  cursor: pointer;
+}
+
+
+
+.profile-avatar-image {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+
+
+.profile-avatar-edit-button {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 27px;
+  height: 27px;
+  border: 2px solid rgba(12,20,32,.95);
+  border-radius: 50%;
+  background: #24334a;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  box-shadow: 0 3px 10px rgba(0,0,0,.35);
+}
+
+
+
+.profile-avatar-edit-button:disabled {
+  opacity: .55;
+  cursor: wait;
+}
+
+
+
+.profile-avatar-editable:focus-visible {
+  outline: 2px solid #4ddfff;
+  outline-offset: 3px;
+}
+
+
+
+@media (max-width: 600px) {
+  .profile-avatar-edit-button {
+    width: 25px;
+    height: 25px;
+    font-size: 12px;
+  }
+}
+
+
+
+
+/* ============================================================
+   Ranking - detalhamento hierárquico de pontuação
+   ============================================================ */
+.user-score-category {
+    margin-top: 8px;
+    border-radius: 10px;
+    overflow: hidden;
+    background: rgba(255,255,255,.025);
+    border: 1px solid rgba(255,255,255,.08);
+}
+
+
+.user-score-category-toggle,
+.user-score-detail-toggle {
+    width: 100%;
+    border: 0;
+    color: inherit;
+    background: transparent;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-align: left;
+    cursor: pointer;
+}
+
+
+.user-score-category-toggle {
+    padding: 7px 10px;
+    min-height: 48px;
+}
+
+
+.user-score-category-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    line-height: 1.05;
+}
+
+
+.user-score-category-main strong {
+    min-width: 0;
+    text-align: center;
+    font-size: 1.08rem;
+    line-height: 1;
+}
+
+
+.user-score-category-main > span {
+    font-size: .70rem;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    opacity: .72;
+    line-height: 1;
+}
+
+
+.user-score-chevron {
+    font-size: 1.15rem;
+    line-height: 1;
+    opacity: .65;
+    transition: transform .18s ease;
+}
+
+
+.user-score-category.is-open > .user-score-category-toggle .user-score-chevron,
+.user-score-detail-row.is-open .user-score-chevron {
+    transform: rotate(90deg);
+}
+
+
+.user-score-subdetails {
+    padding: 0 8px 8px;
+}
+
+
+.user-score-detail-row {
+    margin-top: 5px;
+}
+
+
+.user-score-detail-toggle {
+    padding: 7px 9px;
+    border-radius: 7px;
+    background: rgba(255,255,255,.025);
+    font-size: .82rem;
+}
+
+
+.user-score-detail-toggle span:first-child {
+    flex: 1;
+}
+
+
+.user-score-detail-toggle:disabled {
+    cursor: default;
+}
+
+
+.user-score-group-details {
+    margin: 4px 0 0 12px;
+    padding-left: 10px;
+    border-left: 1px solid rgba(255,255,255,.10);
+}
+
+
+.user-score-group-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 8px;
+    font-size: .78rem;
+    opacity: .86;
+}
+
+
+.user-score-category button:focus-visible,
+.user-score-detail-row button:focus-visible {
+    outline: 2px solid rgba(255,255,255,.45);
+    outline-offset: -2px;
+}
